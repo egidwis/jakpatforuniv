@@ -982,7 +982,8 @@ export const markScheduleAsPaid = async (entry: AdScheduleEntry): Promise<Schedu
  */
 async function flagStaleBannerForExtend(entry: AdScheduleEntry): Promise<void> {
   const rewardChanged = entry.isNewPeriod || (entry.additionalPrizePerWinner ?? 0) > 0;
-  if (!rewardChanged) return;
+  const bannerMissing = entry.pageBannerIsPlaceholder;
+  if (!rewardChanged && !bannerMissing) return;
 
   try {
     const { data, error } = await supabase
@@ -993,7 +994,7 @@ async function flagStaleBannerForExtend(entry: AdScheduleEntry): Promise<void> {
     if (error) throw error;
     if (!data || data.length === 0) {
       console.info(
-        `[markScheduleAsPaid] Jadwal #${entry.bookingId} membuka hadiah baru, tapi order `
+        `[markScheduleAsPaid] Jadwal #${entry.bookingId} membuka hadiah baru atau banner belum ada, tapi order `
         + `${entry.submissionId} belum punya halaman iklan — penanda banner basi dilewati.`,
       );
     }

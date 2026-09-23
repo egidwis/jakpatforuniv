@@ -135,11 +135,31 @@ describe('computeAlerts & indicator chips', () => {
       startDate: '2026-09-10T08:00:00Z',
       endDate: '2026-09-14T08:00:00Z',
     });
+    // Iklan yang sudah selesai tayang (completed) tidak memicu needsBannerSwap
+    const eCompleted = makeEntry({
+      status: 'completed',
+      pageStatus: 'published',
+      pageBannerIsPlaceholder: true,
+      startDate: '2026-06-01T08:00:00Z',
+      endDate: '2026-06-04T08:00:00Z',
+    });
+    // Perpanjangan iklan (extend ad) 3 bulan kemudian yang belum punya banner tetap memicu needsBannerSwap
+    const eExtendAfter3Months = makeEntry({
+      ordinal: 2,
+      isExtension: true,
+      status: 'scheduled',
+      pageStatus: 'published',
+      pageBannerIsPlaceholder: true,
+      startDate: '2026-10-01T08:00:00Z',
+      endDate: '2026-10-04T08:00:00Z',
+    });
 
     expect(needsBannerSwap(e1)).toBe(true);
     expect(needsBannerSwap(e2)).toBe(false);
+    expect(needsBannerSwap(eCompleted)).toBe(false);
+    expect(needsBannerSwap(eExtendAfter3Months)).toBe(true);
 
-    const alerts = computeAlerts([e1, e2]);
-    expect(alerts.placeholderBanner).toBe(1);
+    const alerts = computeAlerts([e1, e2, eCompleted, eExtendAfter3Months]);
+    expect(alerts.placeholderBanner).toBe(2);
   });
 });

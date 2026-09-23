@@ -371,8 +371,12 @@ export interface FilterState {
   query: string;
 }
 
-/** Halaman sudah terbit tapi masih memakai gambar bawaan — pekerjaan yang mendesak. */
+/**
+ * Halaman sudah terbit tapi masih memakai gambar bawaan — pekerjaan yang mendesak.
+ * Jadwal yang sudah selesai tayang (`completed`) tidak lagi membutuhkan tindakan banner.
+ */
 export function needsBannerSwap(e: AdScheduleEntry): boolean {
+  if (e.status === 'completed') return false;
   return e.pageStatus === 'published' && e.pageBannerIsPlaceholder;
 }
 

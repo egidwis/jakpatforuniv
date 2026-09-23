@@ -1241,7 +1241,9 @@ async function applyPaidSchedule(sb, target, appStatus) {
       'STEP 5 PATCH ad_schedules (jadwal ke-2 dst.)'
     );
 
-    // Check if banner update is needed (new rewards = new banner).
+    // Check if banner update is needed:
+    // 1. New rewards = new banner needed.
+    // 2. Banner missing or placeholder (e.g. deleted after 2 months retention) = new banner needed!
     // Efek sekunder: sengaja ditelan sendiri supaya kegagalannya tidak membuat
     // pembayaran yang SUDAH tercatat lunas ikut dianggap gagal & di-retry.
     if (formPaymentStatus === 'paid') {
@@ -1254,8 +1256,22 @@ async function applyPaidSchedule(sb, target, appStatus) {
         );
         const extData = await extRes.json();
         const ext = Array.isArray(extData) && extData.length > 0 ? extData[0] : null;
-        if (ext && (ext.is_new_period || (ext.additional_prize_per_winner && ext.additional_prize_per_winner > 0))) {
-          console.log(`[Extend] Setting requires_banner_update=true for submission ${formSubmissionId}`);
+
+        // Ambil info banner halaman saat ini: jika hadiah berubah ATAU banner lama sudah terhapus/kosong,
+        // halaman WAJIB ditandai requires_banner_update = true.
+        const pageRes = await sbFetch(
+          `${sb.url}/rest/v1/survey_pages?submission_id=eq.${formSubmissionId}&select=banner_url`,
+          { headers: sb.headers },
+          'STEP 5 SELECT survey_pages untuk cek ketersediaan banner'
+        );
+        const pageData = await pageRes.json();
+        const page = Array.isArray(pageData) && pageData.length > 0 ? pageData[0] : null;
+        const currentBanner = (page?.banner_url || '').trim();
+        const bannerMissing = !currentBanner || currentBanner === '/default-ad-banner.jpg';
+        const rewardChanged = Boolean(ext && (ext.is_new_period || (ext.additional_prize_per_winner && ext.additional_prize_per_winner > 0)));
+
+        if (rewardChanged || bannerMissing) {
+          console.log(`[Extend] Setting requires_banner_update=true for submission ${formSubmissionId} (rewardChanged=${rewardChanged}, bannerMissing=${bannerMissing})`);
           await sbFetch(
             `${sb.url}/rest/v1/survey_pages?submission_id=eq.${formSubmissionId}`,
             {

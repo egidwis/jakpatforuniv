@@ -6,8 +6,8 @@ import { createClient } from '@supabase/supabase-js';
  * Automatically cleans up files from expired surveys to free storage space.
  * Called internally by the SurveyPage when an upload fails (likely storage full).
  *
- * Deletes ONLY from surveys whose publish_end_date is older than 7 days.
- * Surveys that are still live are NEVER touched.
+ * Deletes ONLY from surveys whose publish_end_date is older than 60 days (2 months).
+ * Surveys that are still live or ended within 60 days are NEVER touched.
  *
  * Deletes in this order:
  *   1. Proof files from page_respondents
@@ -19,6 +19,9 @@ import { createClient } from '@supabase/supabase-js';
  *
  * Uses service_role key if available to bypass RLS. Falls back to anon key.
  */
+
+// Masa retensi aset (banner, extend, proof responden) sebelum dibersihkan otomatis: 60 hari (~2 bulan)
+const RETENTION_DAYS = 60;
 
 export async function onRequestPost(context) {
     const corsHeaders = {
@@ -44,14 +47,15 @@ export async function onRequestPost(context) {
     const supabase = createClient(supabaseUrl, keyToUse);
 
     try {
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const retentionCutoff = new Date();
+        retentionCutoff.setDate(retentionCutoff.getDate() - RETENTION_DAYS);
+        const cutoffIso = retentionCutoff.toISOString();
 
         // ── 1. Find expired surveys ──────────────────────────────────────
         const { data: expiredPages, error: pagesError } = await supabase
             .from('survey_pages')
             .select('id, title, submission_id, publish_end_date, banner_url, blocks')
-            .lt('publish_end_date', sevenDaysAgo.toISOString())
+            .lt('publish_end_date', cutoffIso)
             .order('publish_end_date', { ascending: true });
 
         if (pagesError) throw pagesError;
@@ -64,8 +68,8 @@ export async function onRequestPost(context) {
         }
 
         // ── Guard: never clean a page whose submission still has a confirmed (paid) extend
-        // that is upcoming or only recently ended. With gapped extends, publish_end_date can
-        // sit at the original period while a future extend still needs the banner/blocks
+        // that is upcoming or only recently ended within the retention window. With gapped extends,
+        // publish_end_date can sit at the original period while a future extend still needs the banner/blocks
         // (the cron only moves publish_* once the extend goes live — see sql/20_extend_rpcs.sql).
         const candidateSubmissionIds = [...new Set(expiredPages.map(p => p.submission_id).filter(Boolean))];
         let protectedSubmissionIds = new Set();
@@ -80,7 +84,7 @@ export async function onRequestPost(context) {
                 .eq('source_table', 'form_submissions_extend')
                 .in('submission_id', candidateSubmissionIds)
                 .eq('payment_status', 'paid')
-                .gte('end_date', sevenDaysAgo.toISOString());
+                .gte('end_date', cutoffIso);
             protectedSubmissionIds = new Set((activeExtends || []).map(e => e.submission_id));
         }
 
