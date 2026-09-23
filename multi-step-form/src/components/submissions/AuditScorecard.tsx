@@ -1,39 +1,45 @@
 import { useState, useEffect, useRef } from 'react';
-import {
-  CheckCircle2,
-  AlertTriangle,
-  ShieldAlert,
-  RotateCw,
-  Copy,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  Sparkles,
-  HelpCircle,
-  Shuffle
-} from 'lucide-react';
+import { RotateCw, Copy, Check, ChevronDown, ChevronUp, Sparkles, AlertTriangle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
 import type { FormAuditResult, SurveySubmission } from './types';
 import { auditSubmissionForm } from '../../utils/auditService';
+import {
+  auditViewOf, headerOf, shouldAutoAudit, autoAuditKey, reviewNotesOf, COUNT_SOURCE_LABEL,
+  type AuditView,
+} from './auditView';
 
+/**
+ * Kartu Pra-cek AI — BUKTI, bukan vonis. Semua keputusan tampilan ada di
+ * `auditView.ts`; komponen ini hanya merender dan menjalankan audit.
+ *
+ * Kartu netral (slate). Warna hanya pada baris yang menyala: selisih pertanyaan
+ * ke atas dan temuan data pribadi, keduanya amber. Tidak ada hijau/merah
+ * keseluruhan — kartu tidak tahu apakah order ini layak disetujui.
+ */
 interface AuditScorecardProps {
   submission: SurveySubmission;
+  /**
+   * Auto-cek hanya selama order menunggu keputusan review (`isNeedReview` di
+   * SubmissionDetailSheet). Selain itu kartu diam sampai admin menekan Cek.
+   */
+  autoRun: boolean;
   /** Dipanggil dengan id order yang DIAUDIT — tetap benar walau kartu ini
    *  sudah dilepas karena admin pindah baris. */
   onAuditComplete?: (submissionId: string, newResult: FormAuditResult) => void;
 }
 
-export function AuditScorecard({ submission, onAuditComplete }: AuditScorecardProps) {
+export function AuditScorecard({ submission, autoRun, onAuditComplete }: AuditScorecardProps) {
   const [isAuditing, setIsAuditing] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [showFindingsDetail, setShowFindingsDetail] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [localAudit, setLocalAudit] = useState<FormAuditResult | null | undefined>(
     submission.ai_prescreening
   );
 
-  const autoTriggeredMap = useRef<Record<string, boolean>>({});
-  const audit = localAudit ?? submission.ai_prescreening;
+  const triggered = useRef<Record<string, boolean>>({});
+  const audit = localAudit ?? submission.ai_prescreening ?? null;
 
   // Penjaga identitas: hasil `await` hanya boleh menyentuh state kartu ini bila
   // kartunya masih hidup DAN masih milik order yang sama. Pemanggil memasang
@@ -43,7 +49,6 @@ export function AuditScorecard({ submission, onAuditComplete }: AuditScorecardPr
   currentIdRef.current = submission.id;
   useEffect(() => () => { aliveRef.current = false; }, []);
 
-  // Sync state when active submission changes
   useEffect(() => {
     setLocalAudit(submission.ai_prescreening);
   }, [submission.id, submission.ai_prescreening]);
@@ -59,8 +64,8 @@ export function AuditScorecard({ submission, onAuditComplete }: AuditScorecardPr
     const isCurrent = () => aliveRef.current && currentIdRef.current === requestedId;
 
     setIsAuditing(true);
+    setFailed(false);
     try {
-      if (!isAuto) toast.info('Memulai AI Pre-Screening kuesioner...');
       const result = await auditSubmissionForm(
         requestedId,
         submission.formUrl,
@@ -70,332 +75,187 @@ export function AuditScorecard({ submission, onAuditComplete }: AuditScorecardPr
       onAuditComplete?.(requestedId, result);
       if (!isCurrent()) return;
       setLocalAudit(result);
-      if (!isAuto) toast.success('Audit selesai diproses!');
+      if (!isAuto) toast.success('Pra-cek selesai');
     } catch (err: any) {
       console.error('Audit failed:', err);
-      if (!isAuto && isCurrent()) toast.error(`Audit gagal: ${err.message || 'Terjadi kesalahan sistem'}`);
+      if (!isCurrent()) return;
+      // Gagal TIDAK lagi sunyi: auto-run dulu menelan error dan kartu kembali
+      // kosong. Sekarang kepala kartu berbunyi "gagal memindai".
+      setFailed(true);
+      if (!isAuto) toast.error(`Pra-cek gagal: ${err.message || 'Terjadi kesalahan sistem'}`);
     } finally {
       if (isCurrent()) setIsAuditing(false);
     }
   };
 
-  // Auto-trigger on mount / submission change if audit not yet present
   useEffect(() => {
-    if (!audit && submission.formUrl && !isAuditing && !autoTriggeredMap.current[submission.id]) {
-      autoTriggeredMap.current[submission.id] = true;
+    const key = autoAuditKey(submission.id, submission.formUrl);
+    if (shouldAutoAudit({
+      autoRun,
+      audit,
+      formUrl: submission.formUrl,
+      isAuditing,
+      alreadyTriggered: Boolean(triggered.current[key]),
+    })) {
+      triggered.current[key] = true;
       handleRunAudit(true);
     }
-  }, [submission.id, submission.formUrl, audit, isAuditing]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submission.id, submission.formUrl, autoRun, audit, isAuditing]);
 
-  const handleCopyReviewNotes = () => {
-    if (!audit) return;
+  const view = audit ? auditViewOf(audit, submission) : null;
+  const header = headerOf(view, { isAuditing, failed });
 
-    let text = `Halo Kak ${submission.researcherName || ''},\n\n`;
-    text += `Berikut catatan hasil verifikasi awal untuk kuesioner "${submission.formTitle}":\n`;
-
-    // Question count note
-    if (audit.question_count.status === 'mismatch_over') {
-      text += `- 📋 Jumlah pertanyaan: Terdeteksi ${audit.question_count.actual_detected} pertanyaan (order diajukan ${audit.question_count.reported} pertanyaan, selisih +${audit.question_count.diff}).\n`;
-    }
-
-    // PII note
-    if (audit.pii.has_pii && audit.pii.findings.length > 0) {
-      const types = audit.pii.findings.map(f => f.type).join(', ');
-      text += `- 🛡️ Data Pribadi (PII): Terdeteksi permintaan data sensitif (${types}). Mohon pastikan data bersifat opsional untuk pengiriman reward/hadiah, atau ditiadakan dari kuesioner utama sesuai regulasi Jakpat.\n`;
-    }
-
-    // Randomizer
-    if (audit.randomizer.detected) {
-      text += `- 🔀 Randomizer: Terindikasi adanya pengacakan urutan soal/opsi.\n`;
-    }
-
-    if (audit.summary) {
-      text += `\nCatatan Admin: ${audit.summary}\n`;
-    }
-
-    text += `\nMohon bantuannya untuk memeriksa kembali kuesioner ya Kak. Terima kasih! 🙏`;
-
-    navigator.clipboard.writeText(text);
+  const handleCopy = () => {
+    if (!view) return;
+    navigator.clipboard.writeText(reviewNotesOf(view, submission));
     setCopied(true);
     toast.success('Catatan revisi disalin ke clipboard!');
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // State 1: Sedang memindai otomatis (Scanning in progress)
-  if (isAuditing && !audit) {
-    return (
-      <div className="rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50/70 via-purple-50/50 to-blue-50/70 p-4 flex items-center justify-between gap-3 shadow-2xs animate-pulse">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 flex items-center justify-center shrink-0">
-            <RotateCw className="w-4 h-4 animate-spin text-indigo-600" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h4 className="text-xs font-bold text-gray-900 dark:text-white">
-                Sedang Memindai Kuesioner via AI...
-              </h4>
-              <span className="text-[10px] bg-indigo-100 text-indigo-700 font-semibold px-1.5 py-0.2 rounded">
-                Auto-Audit
-              </span>
-            </div>
-            <p className="text-[11px] text-gray-500 mt-0.5">
-              Mengekstrak DOM pertanyaan, mencocokkan jumlah kuota, & memindai PII...
-            </p>
-          </div>
-        </div>
-
-        <span className="text-[11px] font-semibold text-indigo-600 bg-white/80 dark:bg-gray-800/80 px-2.5 py-1 rounded-full border border-indigo-200 shrink-0">
-          Memproses...
-        </span>
-      </div>
-    );
-  }
-
-  // State 2: Belum diaudit / Manual Trigger Fallback
-  if (!audit) {
-    return (
-      <div className="rounded-xl border border-dashed border-indigo-200 bg-gradient-to-r from-indigo-50/50 via-purple-50/30 to-blue-50/50 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
-        <div className="flex items-start gap-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shrink-0 mt-0.5">
-            <Sparkles className="w-4 h-4 animate-pulse" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h4 className="text-xs font-bold text-gray-900 dark:text-white">
-                AI Pre-Screening Kuesioner
-              </h4>
-              <span className="text-[10px] bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 px-1.5 py-0.2 rounded font-semibold">
-                Beta
-              </span>
-            </div>
-            <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">
-              Otomatisasi inspeksi PII, kecocokan kuota pertanyaan, dan randomizer via headless DOM extractor.
-            </p>
-          </div>
-        </div>
-
-        <Button
-          size="sm"
-          onClick={() => handleRunAudit(false)}
-          disabled={isAuditing}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shrink-0 shadow-sm flex items-center gap-1.5"
-        >
-          <RotateCw className={`w-3.5 h-3.5 ${isAuditing ? 'animate-spin' : ''}`} />
-          <span>{isAuditing ? 'Mengekstrak Form...' : '⚡ Mulai Audit AI'}</span>
-        </Button>
-      </div>
-    );
-  }
-
-  // State 2: Audited Scorecard
-  const isClean = audit.status === 'clean' || audit.recommendation === 'ready_to_approve';
-  const isFlagged = audit.status === 'flagged' || audit.recommendation === 'reject_or_revise';
-
-  const themeClasses = isClean
-    ? 'border-emerald-200/90 bg-emerald-50/40 dark:bg-emerald-950/20'
-    : isFlagged
-    ? 'border-rose-200/90 bg-rose-50/40 dark:bg-rose-950/20'
-    : 'border-amber-200/90 bg-amber-50/40 dark:bg-amber-950/20';
-
-  const statusBadge = isClean ? (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300">
-      <CheckCircle2 className="w-3.5 h-3.5" /> Lolos Pre-Screening
-    </span>
-  ) : isFlagged ? (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-300 dark:bg-rose-900/40 dark:text-rose-300">
-      <ShieldAlert className="w-3.5 h-3.5" /> Perlu Revisi / Flagged
-    </span>
-  ) : (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-900/40 dark:text-amber-300">
-      <AlertTriangle className="w-3.5 h-3.5" /> Perlu Review Manual
-    </span>
-  );
-
-  const platformLabel = {
-    google_forms: 'Google Forms',
-    microsoft_forms: 'Microsoft Forms',
-    typeform: 'Typeform',
-    qualtrics: 'Qualtrics',
-    other: 'External Survey'
-  }[audit.source_platform] || 'Survey Link';
+  // Isi di bawah kepala: hanya untuk hasil yang masih milik link ini.
+  const showBody = view && !view.isStale && header.kind !== 'scanning' && header.kind !== 'rescanning_stale';
+  const bodyKind = !showBody ? null : view.readState === 'unreadable' ? 'unreadable' : view.isClean ? 'clean' : 'findings';
+  const canExpand = bodyKind === 'clean';
+  const showCopy = Boolean(showBody && view.readState === 'read' && view.hasEvidence);
 
   return (
-    <div className={`rounded-xl border ${themeClasses} p-3.5 space-y-3 transition-all shadow-2xs`}>
-      {/* Top Bar: Title, Verdict Badge, Platform, Re-run */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center shadow-2xs">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-          </div>
-          <span className="text-xs font-bold text-gray-900 dark:text-white">
-            AI Pre-Screening
+    <div className="rounded-xl border border-slate-200 bg-slate-50/60 dark:border-slate-700 dark:bg-slate-900/40 px-3 py-2.5 space-y-2">
+      <div className="flex items-center gap-2">
+        <Sparkles className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden />
+        <p className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
+          <span className="font-semibold text-slate-900 dark:text-white">Pra-cek AI</span>
+          <span className="text-slate-400"> · </span>
+          <span className={header.kind === 'failed' ? 'text-amber-700 dark:text-amber-400' : undefined}>
+            {header.status}
           </span>
-          <span className="text-[10px] px-1.5 py-0.2 rounded font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
-            {platformLabel}
-          </span>
-          {statusBadge}
-        </div>
+        </p>
 
-        <div className="flex items-center gap-1.5 ml-auto">
+        {showCopy && (
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
-            onClick={() => handleRunAudit(false)}
-            disabled={isAuditing}
-            className="h-7 px-2 text-xs text-gray-600 hover:text-gray-900 dark:text-gray-300 flex items-center gap-1"
-            title="Jalankan ulang audit kuesioner"
+            onClick={handleCopy}
+            className="h-7 px-2 text-xs text-slate-700 border-slate-200 hover:bg-white shrink-0"
+            title="Salin template catatan revisi untuk dikirimkan ke peneliti"
           >
-            <RotateCw className={`w-3 h-3 ${isAuditing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">{isAuditing ? 'Memindai...' : 'Audit Ulang'}</span>
+            {copied ? <Check className="w-3 h-3 mr-1" /> : <Copy className="w-3 h-3 mr-1" />}
+            {copied ? 'Tersalin' : 'Salin'}
           </Button>
+        )}
 
-          {(isFlagged || !isClean) && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleCopyReviewNotes}
-              className="h-7 px-2 text-xs text-indigo-700 border-indigo-200 hover:bg-indigo-50 dark:text-indigo-300 flex items-center gap-1"
-              title="Salin template catatan revisi untuk dikirimkan ke peneliti"
-            >
-              {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-              <span>{copied ? 'Tersalin' : 'Salin Catatan'}</span>
-            </Button>
-          )}
-        </div>
-      </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => handleRunAudit(false)}
+          disabled={header.buttonDisabled}
+          className="h-7 px-2 text-xs text-slate-700 border-slate-200 hover:bg-white shrink-0"
+          title="Pindai ulang kuesioner dari link order saat ini"
+        >
+          <RotateCw className={`w-3 h-3 mr-1 ${isAuditing ? 'animate-spin' : ''}`} />
+          {header.buttonLabel}
+        </Button>
 
-      {/* Metric Pills Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-0.5">
-        {/* Metric 1: Question Count */}
-        <div className="bg-white/80 dark:bg-gray-800/80 rounded-lg p-2 border border-gray-200/80 dark:border-gray-700/80 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <HelpCircle className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-            <span className="text-[11px] font-semibold text-gray-700 dark:text-gray-300">
-              Jumlah Pertanyaan
-            </span>
-          </div>
-          {audit.question_count.status === 'match' ? (
-            <span
-              className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded"
-              title={`Order: ${audit.question_count.reported} · Aktual: ${audit.question_count.actual_detected} pertanyaan`}
-            >
-              {audit.question_count.actual_detected} Pertanyaan (Sesuai)
-            </span>
-          ) : audit.question_count.status === 'mismatch_over' ? (
-            <span
-              className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded"
-              title={`Total di kuesioner: ${audit.question_count.actual_detected} pertanyaan. Dilaporkan saat order: ${audit.question_count.reported} pertanyaan (Kelebihan ${audit.question_count.diff} pertanyaan)`}
-            >
-              {audit.question_count.actual_detected} Pertanyaan
-            </span>
-          ) : (
-            <span
-              className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded"
-              title={`Total di kuesioner: ${audit.question_count.actual_detected} pertanyaan. Dilaporkan saat order: ${audit.question_count.reported} pertanyaan (Kurang ${Math.abs(audit.question_count.diff)} pertanyaan)`}
-            >
-              {audit.question_count.actual_detected} Pertanyaan
-            </span>
-          )}
-        </div>
-
-        {/* Metric 2: PII */}
-        <div className="bg-white/80 dark:bg-gray-800/80 rounded-lg p-2 border border-gray-200/80 dark:border-gray-700/80 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <ShieldAlert className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-            <span className="text-[11px] font-semibold text-gray-700 dark:text-gray-300">
-              Data Pribadi (PII)
-            </span>
-          </div>
-          {!audit.pii.has_pii ? (
-            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">
-              Bebas PII
-            </span>
-          ) : audit.pii.status === 'violation' ? (
-            <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded">
-              ⚠️ {audit.pii.findings.length} Terdeteksi
-            </span>
-          ) : (
-            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">
-              ⚠️ {audit.pii.findings.length} Perlu Cek
-            </span>
-          )}
-        </div>
-
-        {/* Metric 3: Randomizer */}
-        <div className="bg-white/80 dark:bg-gray-800/80 rounded-lg p-2 border border-gray-200/80 dark:border-gray-700/80 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <Shuffle className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-            <span className="text-[11px] font-semibold text-gray-700 dark:text-gray-300">
-              Randomizer
-            </span>
-          </div>
-          {audit.randomizer.detected ? (
-            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">
-              Terindikasi Acak
-            </span>
-          ) : (
-            <span className="text-[10px] font-medium text-gray-600 bg-gray-100 border border-gray-200 px-1.5 py-0.2 rounded">
-              Tidak Terdeteksi
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Summary Description */}
-      {audit.summary && (
-        <div className="text-xs text-gray-700 dark:text-gray-300 bg-white/60 dark:bg-gray-800/60 p-2.5 rounded-lg border border-gray-200/60 dark:border-gray-700/60 leading-relaxed">
-          <span className="font-semibold text-gray-900 dark:text-white">Kesimpulan AI: </span>
-          {audit.summary}
-        </div>
-      )}
-
-      {/* Expandable PII Findings Breakdown */}
-      {audit.pii.has_pii && audit.pii.findings.length > 0 && (
-        <div>
+        {canExpand && (
           <button
             type="button"
-            onClick={() => setShowFindingsDetail(!showFindingsDetail)}
-            className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 flex items-center gap-1 cursor-pointer transition-colors"
+            onClick={() => setExpanded((v) => !v)}
+            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-white shrink-0"
+            aria-label={expanded ? 'Sembunyikan ringkasan AI' : 'Tampilkan ringkasan AI'}
+            aria-expanded={expanded}
           >
-            {showFindingsDetail ? (
-              <>
-                <ChevronUp className="w-3 h-3" /> Sembunyikan detail temuan ({audit.pii.findings.length})
-              </>
-            ) : (
-              <>
-                <ChevronDown className="w-3 h-3" /> Lihat detail temuan ({audit.pii.findings.length})
-              </>
-            )}
+            {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           </button>
+        )}
+      </div>
 
-          {showFindingsDetail && (
-            <div className="mt-2 space-y-1.5 pl-2 border-l-2 border-amber-300 dark:border-amber-700 text-xs">
-              {audit.pii.findings.map((finding, idx) => (
-                <div
-                  key={idx}
-                  className="bg-white dark:bg-gray-800 p-2 rounded border border-gray-200 dark:border-gray-700 space-y-1"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded">
-                      {finding.type}
-                    </span>
-                    <span className="text-[10px] text-gray-400">
-                      Tingkat: {finding.confidence}
-                    </span>
-                  </div>
-                  <p className="text-gray-900 dark:text-gray-100 font-mono text-[11px] bg-gray-50 dark:bg-gray-900 p-1 rounded">
-                    &quot;{finding.snippet}&quot;
-                  </p>
-                  {finding.context && (
-                    <p className="text-[10px] text-gray-500">
-                      Konteks: {finding.context}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
+      {bodyKind === 'unreadable' && (
+        <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+          Form tidak bisa dibaca otomatis (login / tertutup). Cek manual lewat Buka Link.
+        </p>
+      )}
+
+      {bodyKind === 'findings' && view && <FindingsBody view={view} />}
+
+      {bodyKind === 'clean' && expanded && view && <SummaryBlock view={view} />}
+    </div>
+  );
+}
+
+function FindingsBody({ view }: { view: AuditView }) {
+  const { count, pii } = view;
+  const over = count.delta != null && count.delta > 0;
+  return (
+    <div className="space-y-1.5 text-xs">
+      <div className="flex items-baseline gap-2">
+        <span className="w-24 shrink-0 text-slate-500">Pertanyaan</span>
+        <span className="min-w-0 text-slate-800 dark:text-slate-200">
+          {count.detected == null ? (
+            <>tak terhitung · order {count.orderNow}</>
+          ) : (
+            <>
+              <strong className="font-semibold">{count.detected}</strong> {COUNT_SOURCE_LABEL[count.source]} · order {count.orderNow}
+              {over && (
+                <span className="ml-2 font-semibold text-amber-700 dark:text-amber-400">▲ +{count.delta}</span>
+              )}
+              {count.delta != null && count.delta < 0 && (
+                <span className="ml-2 text-slate-500">▼ {count.delta}</span>
+              )}
+            </>
           )}
-        </div>
+          {count.maybePartial && (
+            <span className="block text-[11px] text-slate-400">mungkin terbaca sebagian — teks form terpotong</span>
+          )}
+        </span>
+      </div>
+
+      <div className="flex items-baseline gap-2">
+        <span className="w-24 shrink-0 text-slate-500">Data pribadi</span>
+        {pii.total === 0 ? (
+          <span className="text-slate-800 dark:text-slate-200">tidak ditemukan</span>
+        ) : (
+          <div className="min-w-0 space-y-1">
+            <span className="font-semibold text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="mr-1 inline w-3 h-3 -translate-y-px" aria-hidden />
+              {pii.total} pertanyaan perlu dicek
+            </span>
+            <div className="flex flex-wrap gap-1">
+              {pii.top.map((f, i) => (
+                <span
+                  key={i}
+                  title={f.context ? `Konteks: ${f.context}` : undefined}
+                  className="max-w-full truncate rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+                >
+                  &quot;{f.snippet}&quot;
+                </span>
+              ))}
+              {pii.rest > 0 && <span className="px-1 py-0.5 text-[11px] text-slate-500">+{pii.rest} lainnya</span>}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Tidak di-clamp: ini satu-satunya penjelasan saat ada temuan. */}
+      <SummaryBlock view={view} />
+    </div>
+  );
+}
+
+function SummaryBlock({ view }: { view: AuditView }) {
+  if (!view.summary && !view.auditedAt) return null;
+  return (
+    <div className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+      {view.summary && (
+        <p>
+          <span className="font-semibold text-slate-700 dark:text-slate-300">AI: </span>
+          {view.summary}
+        </p>
+      )}
+      {view.auditedAt && (
+        <p className="mt-0.5 text-[11px] text-slate-400">
+          Dipindai {new Date(view.auditedAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}
+        </p>
       )}
     </div>
   );

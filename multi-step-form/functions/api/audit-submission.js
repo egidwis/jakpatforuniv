@@ -10,6 +10,13 @@
  * 4. Persists the structured result to Supabase `form_submissions.ai_prescreening`.
  */
 
+import {
+  parseGoogleFormsPublicData,
+  parseMicrosoftFormsQuestions,
+  withCountEvidence,
+  AI_TEXT_LIMIT,
+} from './_formParsers.js';
+
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const AUDIT_MODEL = 'google/gemini-2.5-flash-lite';
 
@@ -70,50 +77,6 @@ function performFastRegexScan(text) {
   };
 }
 
-function parseGoogleFormsPublicData(html) {
-  if (!html) return null;
-  const match = html.match(/FB_PUBLIC_LOAD_DATA_\s*=\s*(\[[\s\S]+?\]);\s*<\/script>/);
-  if (!match) return null;
-  try {
-    const parsed = JSON.parse(match[1]);
-    const items = parsed?.[1]?.[1];
-    if (!Array.isArray(items)) return null;
-
-    const questions = [];
-    for (const item of items) {
-      const title = item[1];
-      const typeCode = item[3];
-      // Type 8 is page break / section header without question
-      if (typeCode === 8 && !title) continue;
-
-      const desc = item[2] || '';
-      let options = [];
-      if (item[4] && item[4][0] && Array.isArray(item[4][0][1])) {
-        options = item[4][0][1].map(opt => opt[0]).filter(Boolean);
-      }
-
-      if (title) {
-        let qText = title;
-        if (desc) qText += ` (${desc})`;
-        if (options.length > 0) qText += ` [Opsi: ${options.join(', ')}]`;
-        questions.push(qText);
-      }
-    }
-
-    if (questions.length > 0) {
-      return {
-        formTitle: parsed?.[1]?.[8] || parsed?.[1]?.[0] || '',
-        questions,
-        totalQuestions: questions.length,
-        fullText: questions.map((q, idx) => `[Pertanyaan ${idx + 1}] ${q}`).join('\n\n')
-      };
-    }
-  } catch (err) {
-    console.warn('[audit-submission] Error parsing FB_PUBLIC_LOAD_DATA_:', err);
-  }
-  return null;
-}
-
 async function parseMicrosoftFormsData(url) {
   try {
     console.log('[audit-submission] Attempting Microsoft Forms schema extraction for:', url);
@@ -143,34 +106,10 @@ async function parseMicrosoftFormsData(url) {
 
     if (!formRes.ok) return null;
     const formData = await formRes.json();
-    if (!formData || !Array.isArray(formData.questions)) return null;
-
-    const questions = [];
-    for (const q of formData.questions) {
-      const type = q.type || '';
-      // Skip pure group headers (e.g. MatrixChoiceGroup), keep actual input sub-questions
-      if (type === 'Question.MatrixChoiceGroup') {
-        continue;
-      }
-      const rawTitle = (q.title || '').replace(/<[^>]+>/g, '').trim();
-      const rawSubtitle = (q.subtitle || '').replace(/<[^>]+>/g, '').trim();
-      let choicesStr = '';
-      if (Array.isArray(q.choices) && q.choices.length > 0) {
-        choicesStr = ` [Opsi: ${q.choices.map(c => (c.description || '').replace(/<[^>]+>/g, '').trim()).filter(Boolean).join(', ')}]`;
-      }
-      if (rawTitle) {
-        questions.push(`[${type}] ${rawTitle}${rawSubtitle ? ` (${rawSubtitle})` : ''}${choicesStr}`);
-      }
-    }
-
-    if (questions.length > 0) {
-      console.log(`[audit-submission] Successfully extracted ${questions.length} questions from Microsoft Forms API!`);
-      return {
-        formTitle: formData.title || '',
-        questions,
-        totalQuestions: questions.length,
-        fullText: questions.map((q, idx) => `[Pertanyaan ${idx + 1}] ${q}`).join('\n\n')
-      };
+    const parsed = parseMicrosoftFormsQuestions(formData);
+    if (parsed) {
+      console.log(`[audit-submission] Successfully extracted ${parsed.totalQuestions} questions from Microsoft Forms API!`);
+      return parsed;
     }
   } catch (err) {
     console.warn('[audit-submission] Error parsing Microsoft Forms schema:', err.message);
@@ -178,9 +117,16 @@ async function parseMicrosoftFormsData(url) {
   return null;
 }
 
+/**
+ * @returns {{ extractedText: string, extractorUsed: string, parsedCount: number | null }}
+ *   `parsedCount` = jumlah pertanyaan TERHITUNG oleh parser skema (Google /
+ *   MS), menurut aturan di `_formParsers.js`. null = tidak ada parser yang
+ *   berhasil, jumlahnya hanya bisa ditebak LLM.
+ */
 async function extractContentFromUrl(url, env) {
   let extractedText = '';
   let extractorUsed = 'fetch_fallback';
+  let parsedCount = null;
 
   // Strategy 1: Google Forms Direct Schema Parser (Bypasses page breaks & branching, extracts 100% of questions)
   const isGForm = url.toLowerCase().includes('docs.google.com/forms') || url.toLowerCase().includes('forms.gle');
@@ -200,7 +146,8 @@ async function extractContentFromUrl(url, env) {
           console.log(`[audit-submission] Successfully extracted ${gformData.totalQuestions} questions from Google Forms schema!`);
           return {
             extractedText: gformData.fullText,
-            extractorUsed: 'google_forms_schema'
+            extractorUsed: 'google_forms_schema',
+            parsedCount: gformData.totalQuestions
           };
         }
       }
@@ -218,7 +165,8 @@ async function extractContentFromUrl(url, env) {
     if (msData && msData.questions.length > 0) {
       return {
         extractedText: msData.fullText,
-        extractorUsed: 'microsoft_forms_schema'
+        extractorUsed: 'microsoft_forms_schema',
+        parsedCount: msData.totalQuestions
       };
     }
   }
@@ -243,6 +191,7 @@ async function extractContentFromUrl(url, env) {
         console.log(`[audit-submission] Successfully extracted ${gformData.totalQuestions} questions via browser DOM!`);
         extractedText = gformData.fullText;
         extractorUsed = 'google_forms_schema';
+        parsedCount = gformData.totalQuestions;
       } else {
         // Multi-page advancing loop (e.g. for MS Forms, Typeform, etc.)
         const allPages = [];
@@ -330,6 +279,7 @@ async function extractContentFromUrl(url, env) {
         if (gform && gform.questions.length > 0) {
           extractedText = gform.fullText;
           extractorUsed = 'google_forms_schema';
+          parsedCount = gform.totalQuestions;
         } else {
           extractedText = cleanHtmlToText(rawHtml);
         }
@@ -341,7 +291,7 @@ async function extractContentFromUrl(url, env) {
     }
   }
 
-  return { extractedText, extractorUsed };
+  return { extractedText, extractorUsed, parsedCount };
 }
 
 async function runSemanticAuditWithAI(params) {
@@ -351,7 +301,7 @@ async function runSemanticAuditWithAI(params) {
     throw new Error('OPENROUTER_API_KEY tidak terkonfigurasi di server');
   }
 
-  const snippetForAi = text.slice(0, 15000); // Guard token limits
+  const snippetForAi = text.slice(0, AI_TEXT_LIMIT); // Guard token limits
 
   const systemPrompt = `Anda adalah Jakpat AI Compliance & Survey Quality Inspector.
 Tugas Anda adalah memeriksa teks formulir kuesioner survei hasil scraping dan menghasilkan audit terstruktur.
@@ -501,21 +451,24 @@ export async function onRequestPost({ request, env }) {
     console.log(`[audit-submission] Starting pre-screening for URL: ${formUrl} (Platform: ${platform})`);
 
     // 1. Extract content
-    const { extractedText, extractorUsed } = await extractContentFromUrl(formUrl, env);
+    const { extractedText, extractorUsed, parsedCount } = await extractContentFromUrl(formUrl, env);
+    const evidence = {
+      parsedCount,
+      extractorUsed,
+      textLength: (extractedText || '').length,
+      reported: reportedQuestionCount,
+    };
 
     if (!extractedText || extractedText.length < 30) {
       // Content extraction yielded little or nothing (e.g. strict login/firewall)
-      const fallbackResult = {
+      // ⚠️ Tanpa baris PII/randomizer "bersih": tidak ada yang dibaca, jadi
+      // tidak ada yang boleh dinyatakan bersih. Kartu merender keadaan
+      // "tak terbaca" dari `read_state`.
+      const fallbackResult = withCountEvidence({
         status: 'warning',
         audited_at: auditedAt,
         source_platform: platform,
         url: formUrl,
-        question_count: {
-          reported: reportedQuestionCount,
-          actual_detected: 0,
-          diff: -reportedQuestionCount,
-          status: 'mismatch_under'
-        },
         pii: {
           has_pii: false,
           findings: [],
@@ -528,7 +481,7 @@ export async function onRequestPost({ request, env }) {
         recommendation: 'needs_manual_review',
         summary: 'Form terkunci login atau konten SPA tidak dapat dirender secara otomatis. Silakan verifikasi manual via tombol Buka Link.',
         error_message: 'Halaman form memerlukan otentikasi login atau tidak mengembalikan konten publik.'
-      };
+      }, { ...evidence, unreadable: true });
 
       if (submissionId) {
         await saveAuditToSupabase(env, submissionId, fallbackResult);
@@ -557,12 +510,12 @@ export async function onRequestPost({ request, env }) {
           preliminaryFindings
         });
 
-        auditReport = {
+        auditReport = withCountEvidence({
           ...aiOutput,
           audited_at: auditedAt,
           source_platform: platform,
           url: formUrl
-        };
+        }, evidence);
       } catch (aiErr) {
         console.error('[audit-submission] Semantic AI audit error, falling back to rule-based:', aiErr.message);
       }
@@ -571,17 +524,14 @@ export async function onRequestPost({ request, env }) {
     // Fallback if AI call was skipped or failed
     if (!auditReport) {
       const hasPii = preliminaryFindings.length > 0;
-      auditReport = {
+      // Dulu: `actual_detected = reported` + `status: 'match'` — cocok palsu
+      // untuk form yang tidak pernah dihitung siapa pun. Sekarang angka parser
+      // bila ada, selain itu null (withCountEvidence → tak terbaca/tanpa angka).
+      auditReport = withCountEvidence({
         status: hasPii ? 'warning' : 'clean',
         audited_at: auditedAt,
         source_platform: platform,
         url: formUrl,
-        question_count: {
-          reported: reportedQuestionCount,
-          actual_detected: reportedQuestionCount,
-          diff: 0,
-          status: 'match'
-        },
         pii: {
           has_pii: hasPii,
           findings: preliminaryFindings.map(f => ({
@@ -601,7 +551,7 @@ export async function onRequestPost({ request, env }) {
           ? `Terdeteksi indikasi data pribadi (${preliminaryFindings.map(f => f.type).join(', ')}) via rule scanner.`
           : 'Kuesioner berhasil dipindai dan tidak ditemukan indikasi data pribadi sensitif.',
         error_message: !openrouterKey ? 'OPENROUTER_API_KEY tidak terpasang di environment' : undefined
-      };
+      }, evidence);
     }
 
     // 4. Persist to DB if submissionId given

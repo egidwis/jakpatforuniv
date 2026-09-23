@@ -20,10 +20,14 @@ export function ReviewTab({
   submission,
   onEditFormDetails,
   onAuditComplete,
+  autoRunAudit = false,
 }: {
   submission: SurveySubmission;
   onEditFormDetails: (submission: SurveySubmission) => void;
   onAuditComplete?: (submissionId: string, newResult: FormAuditResult) => void;
+  /** Pra-cek AI berjalan sendiri hanya selama order menunggu keputusan
+   *  review — `isNeedReview` di SubmissionDetailSheet, bukan predikat baru. */
+  autoRunAudit?: boolean;
 }) {
   const embedInfo = getSurveyEmbedInfo(submission.formUrl);
 
@@ -93,6 +97,7 @@ export function ReviewTab({
           <AuditScorecard
             key={submission.id}
             submission={submission}
+            autoRun={autoRunAudit}
             onAuditComplete={onAuditComplete}
           />
         </DetailSheetSection>

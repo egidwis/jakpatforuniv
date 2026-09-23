@@ -93,10 +93,22 @@ export interface FormAuditResult {
   url: string;
   question_count: {
     reported: number;
-    actual_detected: number;
-    diff: number;
-    status: 'match' | 'mismatch_over' | 'mismatch_under';
+    /** null = tidak terhitung (tak terbaca, atau tanpa LLM & tanpa parser). */
+    actual_detected: number | null;
+    diff: number | null;
+    status: 'match' | 'mismatch_over' | 'mismatch_under' | 'unknown';
   };
+  /**
+   * Dari mana angka `actual_detected`. `'parser'` = dihitung parser skema
+   * Google/MS dengan aturan OAuth; `'ai'` = tebakan LLM. Baris sebelum
+   * 24 Sep 2026 tidak punya kolom ini → perlakukan `'ai'`.
+   */
+  count_source?: 'parser' | 'ai';
+  extractor_used?: string;
+  /** Teks form melebihi batas yang dikirim ke LLM — hitungan AI bisa kurang. */
+  text_truncated?: boolean;
+  /** `'unreadable'` = halaman login / tertutup; tidak ada yang benar-benar dibaca. */
+  read_state?: 'read' | 'unreadable';
   pii: {
     has_pii: boolean;
     findings: FormAuditFinding[];

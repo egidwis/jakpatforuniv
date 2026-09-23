@@ -440,6 +440,7 @@ export function SubmissionDetailSheet({
           submission={submission}
           onEditFormDetails={onEditFormDetails}
           onAuditComplete={onAuditComplete}
+          autoRunAudit={isNeedReview}
         />
       )}
       {activeTab === 'schedule-payment' && (
