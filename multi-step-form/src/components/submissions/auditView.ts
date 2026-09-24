@@ -36,8 +36,6 @@ export interface AuditView {
   count: AuditCountView;
   /** Temuan diurutkan per `confidence`; `types` = semua jenis, tanpa duplikat. */
   pii: { total: number; top: FormAuditFinding[]; rest: number; types: string[] };
-  /** Ada yang layak dikirim ke peneliti: data pribadi, atau pertanyaan lebih banyak dari order. */
-  hasEvidence: boolean;
   /** Terbaca, jumlah cocok, nol temuan — kartu boleh diringkas satu baris. */
   isClean: boolean;
   summary: string;
@@ -81,8 +79,6 @@ export function auditViewOf(
   const findings = readState === 'unreadable' ? [] : [...(audit.pii?.findings ?? [])];
   findings.sort((a, b) => (CONFIDENCE_RANK[a.confidence] ?? 3) - (CONFIDENCE_RANK[b.confidence] ?? 3));
 
-  const hasEvidence = findings.length > 0 || (delta != null && delta > 0);
-
   return {
     readState,
     isStale: isAuditStale(audit, submission.formUrl),
@@ -100,7 +96,6 @@ export function auditViewOf(
       rest: Math.max(0, findings.length - PII_TOP),
       types: Array.from(new Set(findings.map((f) => f.type))),
     },
-    hasEvidence,
     isClean: readState === 'read' && findings.length === 0 && delta === 0,
     summary: audit.summary || '',
     auditedAt: audit.audited_at || null,
@@ -152,54 +147,54 @@ export type AuditHeaderKind =
 
 export interface AuditHeader {
   kind: AuditHeaderKind;
-  /** Teks sesudah "Pra-cek AI · ". */
+  /** Teks sesudah "Pra-cek AI · " (juga jadi label aksesibel ringkasan). */
   status: string;
   buttonLabel: 'Cek' | 'Cek Ulang' | 'Memindai…';
   buttonDisabled: boolean;
+  /**
+   * Percobaan terakhir gagal. Terpisah dari `kind`: hasil lama yang masih
+   * milik link ini tetap ditampilkan, dengan penanda gagal di sampingnya —
+   * bukan diganti kalimat gagal yang menyembunyikan bukti.
+   */
+  failed: boolean;
+  /** Ada rincian di balik ⌄ (baris ringkas selalu tampil). */
+  expandable: boolean;
 }
 
 export function headerOf(
   view: AuditView | null,
   s: { isAuditing: boolean; failed: boolean },
 ): AuditHeader {
+  const base = { buttonDisabled: false, failed: s.failed && !s.isAuditing, expandable: false };
   if (s.isAuditing) {
     return view?.isStale
-      ? { kind: 'rescanning_stale', status: 'link berubah, memindai ulang…', buttonLabel: 'Memindai…', buttonDisabled: true }
-      : { kind: 'scanning', status: 'memindai…', buttonLabel: 'Memindai…', buttonDisabled: true };
+      ? { ...base, kind: 'rescanning_stale', status: 'link berubah, memindai ulang…', buttonLabel: 'Memindai…', buttonDisabled: true }
+      : { ...base, kind: 'scanning', status: 'memindai…', buttonLabel: 'Memindai…', buttonDisabled: true };
   }
-  const again = view ? 'Cek Ulang' : 'Cek';
-  if (s.failed) return { kind: 'failed', status: 'gagal memindai', buttonLabel: again, buttonDisabled: false };
-  if (!view) return { kind: 'unchecked', status: 'belum dicek', buttonLabel: 'Cek', buttonDisabled: false };
-  if (view.isStale) return { kind: 'stale', status: 'hasil untuk link lama', buttonLabel: 'Cek Ulang', buttonDisabled: false };
-  if (view.readState === 'unreadable') return { kind: 'unreadable', status: 'tak terbaca', buttonLabel: 'Cek Ulang', buttonDisabled: false };
-  if (view.isClean) return { kind: 'clean', status: cleanLineOf(view), buttonLabel: 'Cek Ulang', buttonDisabled: false };
-  return { kind: 'findings', status: view.platformLabel, buttonLabel: 'Cek Ulang', buttonDisabled: false };
+  if (!view) {
+    return s.failed
+      ? { ...base, kind: 'failed', status: 'gagal memindai', buttonLabel: 'Cek' }
+      : { ...base, kind: 'unchecked', status: 'belum dicek', buttonLabel: 'Cek' };
+  }
+  if (view.isStale) return { ...base, kind: 'stale', status: 'hasil untuk link lama', buttonLabel: 'Cek Ulang' };
+  if (view.readState === 'unreadable') {
+    return { ...base, kind: 'unreadable', status: 'tak terbaca', buttonLabel: 'Cek Ulang', expandable: true };
+  }
+  return {
+    ...base,
+    kind: view.isClean ? 'clean' : 'findings',
+    status: factsLineOf(view),
+    buttonLabel: 'Cek Ulang',
+    expandable: true,
+  };
 }
 
-/** "36 terhitung = order 36 · tanpa data pribadi" */
-export function cleanLineOf(view: AuditView): string {
-  return `${view.count.detected} ${COUNT_SOURCE_LABEL[view.count.source]} = order ${view.count.orderNow} · tanpa data pribadi`;
-}
-
-/**
- * Template "Salin Catatan" untuk peneliti — HANYA bukti, dan memakai `delta`
- * hasil hitung ulang terhadap order sekarang (bukan `question_count.status`
- * yang basi). Ringkasan & randomizer LLM sengaja tidak ikut: keduanya tidak
- * terukur, dan yang pertama bisa menyebut angka yang berbeda dari parser.
- */
-export function reviewNotesOf(
-  view: AuditView,
-  submission: { researcherName?: string | null; formTitle?: string | null },
-): string {
-  let text = `Halo Kak ${submission.researcherName || ''},\n\n`;
-  text += `Berikut catatan hasil verifikasi awal untuk kuesioner "${submission.formTitle || ''}":\n`;
-  const { detected, delta, orderNow } = view.count;
-  if (detected != null && delta != null && delta > 0) {
-    text += `- 📋 Jumlah pertanyaan: terdapat ${detected} pertanyaan, sedangkan order diajukan ${orderNow} pertanyaan (selisih +${delta}).\n`;
-  }
-  if (view.pii.total > 0) {
-    text += `- 🛡️ Data Pribadi (PII): terdapat permintaan data pribadi (${view.pii.types.join(', ')}). Mohon pastikan data bersifat opsional untuk pengiriman reward/hadiah, atau ditiadakan dari kuesioner utama sesuai regulasi Jakpat.\n`;
-  }
-  text += `\nMohon bantuannya untuk memeriksa kembali kuesioner ya Kak. Terima kasih! 🙏`;
-  return text;
+/** "39 perkiraan AI · order 35 · +4 · tanpa data pribadi" — bentuk teks baris ringkas. */
+export function factsLineOf(view: AuditView): string {
+  const { detected, source, orderNow, delta } = view.count;
+  const count = detected == null
+    ? `jumlah tak terhitung · order ${orderNow}`
+    : `${detected} ${COUNT_SOURCE_LABEL[source]} · order ${orderNow}${delta ? ` · ${delta > 0 ? '+' : ''}${delta}` : ''}`;
+  const pii = view.pii.total === 0 ? 'tanpa data pribadi' : `${view.pii.total} data pribadi`;
+  return `${count} · ${pii}`;
 }

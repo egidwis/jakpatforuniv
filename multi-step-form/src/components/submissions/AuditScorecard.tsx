@@ -1,21 +1,25 @@
 import { useState, useEffect, useRef } from 'react';
-import { RotateCw, Copy, Check, ChevronDown, ChevronUp, Sparkles, AlertTriangle } from 'lucide-react';
+import { RotateCw, ChevronDown, Sparkles, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
 import type { FormAuditResult, SurveySubmission } from './types';
 import { auditSubmissionForm } from '../../utils/auditService';
+import { cn } from '@/lib/utils';
 import {
-  auditViewOf, headerOf, shouldAutoAudit, autoAuditKey, reviewNotesOf, COUNT_SOURCE_LABEL,
-  type AuditView,
+  auditViewOf, headerOf, shouldAutoAudit, autoAuditKey, COUNT_SOURCE_LABEL,
+  type AuditView, type AuditHeader,
 } from './auditView';
 
 /**
  * Kartu Pra-cek AI — BUKTI, bukan vonis. Semua keputusan tampilan ada di
  * `auditView.ts`; komponen ini hanya merender dan menjalankan audit.
  *
- * Kartu netral (slate). Warna hanya pada baris yang menyala: selisih pertanyaan
- * ke atas dan temuan data pribadi, keduanya amber. Tidak ada hijau/merah
- * keseluruhan — kartu tidak tahu apakah order ini layak disetujui.
+ * SATU BARIS secara bawaan: angka pertanyaan, selisihnya terhadap order, dan
+ * data pribadi — sebagai chip. Rincian (cuplikan PII, catatan AI, waktu pindai)
+ * di balik ⌄. Kartu netral (slate); warna hanya pada chip yang menyala:
+ * selisih ke atas & data pribadi (amber), angka hasil parser (biru, "terhitung").
+ * Tidak ada hijau/merah keseluruhan — kartu tidak tahu apakah order ini layak
+ * disetujui.
  */
 interface AuditScorecardProps {
   submission: SurveySubmission;
@@ -32,7 +36,6 @@ interface AuditScorecardProps {
 export function AuditScorecard({ submission, autoRun, onAuditComplete }: AuditScorecardProps) {
   const [isAuditing, setIsAuditing] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [localAudit, setLocalAudit] = useState<FormAuditResult | null | undefined>(
     submission.ai_prescreening
@@ -105,155 +108,199 @@ export function AuditScorecard({ submission, autoRun, onAuditComplete }: AuditSc
 
   const view = audit ? auditViewOf(audit, submission) : null;
   const header = headerOf(view, { isAuditing, failed });
-
-  const handleCopy = () => {
-    if (!view) return;
-    navigator.clipboard.writeText(reviewNotesOf(view, submission));
-    setCopied(true);
-    toast.success('Catatan revisi disalin ke clipboard!');
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  // Isi di bawah kepala: hanya untuk hasil yang masih milik link ini.
-  const showBody = view && !view.isStale && header.kind !== 'scanning' && header.kind !== 'rescanning_stale';
-  const bodyKind = !showBody ? null : view.readState === 'unreadable' ? 'unreadable' : view.isClean ? 'clean' : 'findings';
-  const canExpand = bodyKind === 'clean';
-  const showCopy = Boolean(showBody && view.readState === 'read' && view.hasEvidence);
+  const isOpen = expanded && header.expandable;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50/60 dark:border-slate-700 dark:bg-slate-900/40 px-3 py-2.5 space-y-2">
+    <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/40">
       <div className="flex items-center gap-2">
-        <Sparkles className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden />
-        <p className="min-w-0 flex-1 text-xs leading-snug text-slate-700 dark:text-slate-300">
-          <span className="font-semibold text-slate-900 dark:text-white">Pra-cek AI</span>
-          <span className="text-slate-400"> · </span>
-          <span className={header.kind === 'failed' ? 'text-amber-700 dark:text-amber-400' : undefined}>
-            {header.status}
-          </span>
-        </p>
+        <Sparkles className="h-3.5 w-3.5 shrink-0 text-indigo-500" aria-hidden />
 
-        {showCopy && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleCopy}
-            className="h-7 px-2 text-xs text-slate-700 border-slate-200 hover:bg-white shrink-0"
-            title="Salin template catatan revisi untuk dikirimkan ke peneliti"
-          >
-            {copied ? <Check className="w-3 h-3 mr-1" /> : <Copy className="w-3 h-3 mr-1" />}
-            {copied ? 'Tersalin' : 'Salin'}
-          </Button>
-        )}
+        <button
+          type="button"
+          onClick={() => header.expandable && setExpanded((v) => !v)}
+          disabled={!header.expandable}
+          aria-expanded={header.expandable ? isOpen : undefined}
+          aria-label={`Pra-cek AI: ${header.status}${header.failed ? ' (pindai terakhir gagal)' : ''}`}
+          className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1 text-left text-xs disabled:cursor-default"
+        >
+          <span className="font-semibold text-slate-900 dark:text-white">Pra-cek AI</span>
+          {header.failed && (
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-px text-[11px] font-medium text-amber-800">
+              gagal memindai
+            </span>
+          )}
+          <HeaderFacts header={header} view={view} />
+        </button>
 
         <Button
           variant="outline"
           size="sm"
           onClick={() => handleRunAudit(false)}
           disabled={header.buttonDisabled}
-          className="h-7 px-2 text-xs text-slate-700 border-slate-200 hover:bg-white shrink-0"
+          className="h-7 shrink-0 border-slate-200 px-2 text-xs text-slate-700 hover:bg-white"
           title="Pindai ulang kuesioner dari link order saat ini"
         >
-          <RotateCw className={`w-3 h-3 mr-1 ${isAuditing ? 'animate-spin' : ''}`} />
+          <RotateCw className={cn('mr-1 h-3 w-3', isAuditing && 'animate-spin')} />
           {header.buttonLabel}
         </Button>
 
-        {canExpand && (
+        {header.expandable && (
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-white shrink-0"
-            aria-label={expanded ? 'Sembunyikan ringkasan AI' : 'Tampilkan ringkasan AI'}
-            aria-expanded={expanded}
+            className="shrink-0 rounded p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+            aria-label={isOpen ? 'Sembunyikan rincian pra-cek' : 'Tampilkan rincian pra-cek'}
+            aria-expanded={isOpen}
           >
-            {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', isOpen && 'rotate-180')} />
           </button>
         )}
       </div>
 
-      {bodyKind === 'unreadable' && (
-        <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-          Form tidak bisa dibaca otomatis (login / tertutup). Cek manual lewat Buka Link.
-        </p>
-      )}
-
-      {bodyKind === 'findings' && view && <FindingsBody view={view} />}
-
-      {bodyKind === 'clean' && expanded && view && <SummaryBlock view={view} />}
+      {isOpen && view && <Details view={view} />}
     </div>
   );
 }
 
-function FindingsBody({ view }: { view: AuditView }) {
-  const { count, pii } = view;
-  const over = count.delta != null && count.delta > 0;
-  return (
-    <div className="space-y-1.5 text-xs">
-      <div className="flex items-baseline gap-2">
-        <span className="w-24 shrink-0 text-slate-500">Pertanyaan</span>
-        <span className="min-w-0 text-slate-800 dark:text-slate-200">
-          {count.detected == null ? (
-            <>tak terhitung · order {count.orderNow}</>
-          ) : (
-            <>
-              <strong className="font-semibold">{count.detected}</strong> {COUNT_SOURCE_LABEL[count.source]} · order {count.orderNow}
-              {over && (
-                <span className="ml-2 font-semibold text-amber-700 dark:text-amber-400">▲ +{count.delta}</span>
-              )}
-              {count.delta != null && count.delta < 0 && (
-                <span className="ml-2 text-slate-500">▼ {count.delta}</span>
-              )}
-            </>
-          )}
-          {count.maybePartial && (
-            <span className="block text-[11px] text-slate-400">mungkin terbaca sebagian — teks form terpotong</span>
-          )}
-        </span>
-      </div>
-
-      <div className="flex items-baseline gap-2">
-        <span className="w-24 shrink-0 text-slate-500">Data pribadi</span>
-        {pii.total === 0 ? (
-          <span className="text-slate-800 dark:text-slate-200">tidak ditemukan</span>
+/** Isi baris ringkas: chip fakta untuk hasil terbaca, kalimat pendek untuk sisanya. */
+function HeaderFacts({ header, view }: { header: AuditHeader; view: AuditView | null }) {
+  if ((header.kind === 'clean' || header.kind === 'findings') && view) {
+    const { count, pii } = view;
+    return (
+      <>
+        <Dot />
+        {count.detected == null ? (
+          <span className="text-slate-500">jumlah tak terhitung</span>
         ) : (
-          <div className="min-w-0 space-y-1">
-            <span className="font-semibold text-amber-700 dark:text-amber-400">
-              <AlertTriangle className="mr-1 inline w-3 h-3 -translate-y-px" aria-hidden />
-              {pii.total} pertanyaan perlu dicek
-            </span>
-            <div className="flex flex-wrap gap-1">
-              {pii.top.map((f, i) => (
-                <span
-                  key={i}
-                  title={f.context ? `Konteks: ${f.context}` : undefined}
-                  className="max-w-full truncate rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
-                >
-                  &quot;{f.snippet}&quot;
-                </span>
-              ))}
-              {pii.rest > 0 && <span className="px-1 py-0.5 text-[11px] text-slate-500">+{pii.rest} lainnya</span>}
-            </div>
-          </div>
+          <span className="inline-flex items-baseline gap-1">
+            <strong className="text-sm font-bold tabular-nums text-slate-900 dark:text-white">{count.detected}</strong>
+            <SourceChip source={count.source} />
+          </span>
         )}
-      </div>
+        <span className="text-slate-500">order <span className="font-semibold tabular-nums text-slate-700 dark:text-slate-300">{count.orderNow}</span></span>
+        <DeltaChip delta={count.delta} />
+        <Dot />
+        {pii.total > 0 ? (
+          <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-px text-[11px] font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+            <ShieldAlert className="h-3 w-3" aria-hidden />
+            {pii.total} data pribadi
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-slate-500">
+            <ShieldCheck className="h-3 w-3" aria-hidden />
+            tanpa data pribadi
+          </span>
+        )}
+      </>
+    );
+  }
 
-      {/* Tidak di-clamp: ini satu-satunya penjelasan saat ada temuan. */}
-      <SummaryBlock view={view} />
-    </div>
+  if (header.kind === 'unreadable') {
+    return (
+      <>
+        <Dot />
+        <span className="rounded-full border border-slate-300 bg-white px-1.5 py-px text-[11px] font-semibold text-slate-700">
+          tak terbaca
+        </span>
+        <span className="text-slate-500">cek manual lewat Buka Link</span>
+      </>
+    );
+  }
+
+  // Memindai / belum dicek / link lama / gagal tanpa hasil: kalimat pendek.
+  if (header.kind === 'failed') return null; // chip "gagal memindai" sudah tampil
+  return (
+    <>
+      <Dot />
+      <span className={cn('text-slate-500', header.kind === 'stale' && 'italic')}>{header.status}</span>
+    </>
   );
 }
 
-function SummaryBlock({ view }: { view: AuditView }) {
-  if (!view.summary && !view.auditedAt) return null;
+const Dot = () => <span className="text-slate-300" aria-hidden>·</span>;
+
+function SourceChip({ source }: { source: 'parser' | 'ai' }) {
   return (
-    <div className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-      {view.summary && (
-        <p>
-          <span className="font-semibold text-slate-700 dark:text-slate-300">AI: </span>
-          {view.summary}
-        </p>
+    <span
+      className={cn(
+        'rounded px-1 py-px text-[10px] font-medium',
+        source === 'parser'
+          ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+          : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
       )}
+      title={source === 'parser'
+        ? 'Dihitung dari struktur form (aturan yang sama dengan import Google Forms).'
+        : 'Ditebak AI dari teks form — bisa meleset.'}
+    >
+      {COUNT_SOURCE_LABEL[source]}
+    </span>
+  );
+}
+
+function DeltaChip({ delta }: { delta: number | null }) {
+  if (delta == null) return null;
+  if (delta > 0) {
+    return (
+      <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-px text-[11px] font-bold tabular-nums text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+        ▲ +{delta}
+      </span>
+    );
+  }
+  if (delta < 0) {
+    return <span className="text-[11px] font-medium tabular-nums text-slate-500">▼ {delta}</span>;
+  }
+  return <span className="text-[11px] text-slate-500">= sesuai</span>;
+}
+
+function Details({ view }: { view: AuditView }) {
+  const { count, pii } = view;
+  return (
+    <div className="mt-2 space-y-2 border-t border-slate-200 pt-2 text-xs dark:border-slate-700">
+      {view.readState === 'unreadable' ? (
+        <p className="leading-relaxed text-slate-600 dark:text-slate-400">
+          Form tidak bisa dibaca otomatis (login / tertutup). Jumlah pertanyaan dan data pribadi
+          tidak diperiksa — cek manual lewat <strong className="font-semibold text-slate-800">Buka Link</strong>.
+        </p>
+      ) : (
+        <>
+          {count.detected != null && (
+            <p className="leading-relaxed text-slate-600 dark:text-slate-400">
+              {count.source === 'parser'
+                ? 'Jumlah pertanyaan dihitung dari struktur form.'
+                : 'Jumlah pertanyaan ditebak AI dari teks form — bisa meleset.'}
+              {count.maybePartial && ' Teks form terpotong, jadi mungkin terbaca sebagian.'}
+            </p>
+          )}
+
+          {pii.total > 0 && (
+            <div className="space-y-1">
+              <p className="font-medium text-slate-700 dark:text-slate-300">Pertanyaan yang meminta data pribadi</p>
+              <div className="flex flex-wrap gap-1">
+                {pii.top.map((f, i) => (
+                  <span
+                    key={i}
+                    title={f.context ? `Konteks: ${f.context}` : undefined}
+                    className="max-w-full truncate rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+                  >
+                    &quot;{f.snippet}&quot;
+                  </span>
+                ))}
+                {pii.rest > 0 && <span className="px-1 py-0.5 text-[11px] text-slate-500">+{pii.rest} lainnya</span>}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {view.summary && (
+        <blockquote className="border-l-2 border-indigo-200 pl-2 leading-relaxed text-slate-600 dark:border-indigo-800 dark:text-slate-400">
+          <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-indigo-500">Catatan AI</span>
+          {view.summary}
+        </blockquote>
+      )}
+
       {view.auditedAt && (
-        <p className="mt-0.5 text-[11px] text-slate-400">
+        <p className="text-[11px] text-slate-400">
           Dipindai {new Date(view.auditedAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}
         </p>
       )}

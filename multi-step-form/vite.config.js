@@ -376,9 +376,64 @@ function chatDevPlugin() {
   };
 }
 
+// Dev-only bridge for functions/api/audit-submission.js (Pra-cek AI).
+// Tanpa ini "Cek Ulang" di `npm run dev` pulang 404 — endpoint-nya hanya ada di
+// runtime Pages. Lokal tidak punya binding MYBROWSER, jadi endpoint jatuh ke
+// jalur fetch + parser skema (Google/MS) — jalur yang sama dengan produksi untuk
+// kedua platform itu. Tanpa SUPABASE_SERVICE_ROLE_KEY di .env, penyimpanan ke
+// DB ditolak RLS (dicatat, tidak fatal); hasilnya tetap tampil di kartu.
+function auditSubmissionDevPlugin() {
+  return {
+    name: 'audit-submission-dev-plugin',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (!req.url || !/^\/api\/audit-submission(\?|$)/.test(req.url)) return next();
+
+        (async () => {
+          const modulePath = pathToFileURL(
+            path.resolve(__dirname, 'functions/api/audit-submission.js')
+          ).href;
+          const { onRequestPost, onRequestOptions } = await import(modulePath);
+
+          const env = loadEnv('', process.cwd(), '');
+          const url = `http://${req.headers.host || 'localhost'}${req.url}`;
+
+          let body;
+          if (req.method !== 'GET' && req.method !== 'HEAD') {
+            body = await new Promise((resolve, reject) => {
+              let data = '';
+              req.on('data', (chunk) => (data += chunk));
+              req.on('end', () => resolve(data));
+              req.on('error', reject);
+            });
+          }
+
+          const request = new Request(url, {
+            method: req.method,
+            headers: { 'content-type': req.headers['content-type'] || 'application/json' },
+            body: body || undefined,
+          });
+
+          const response = req.method === 'OPTIONS'
+            ? await onRequestOptions()
+            : await onRequestPost({ request, env });
+          res.statusCode = response.status;
+          response.headers.forEach((value, key) => res.setHeader(key, value));
+          res.end(Buffer.from(await response.arrayBuffer()));
+        })().catch((error) => {
+          console.error('💥 audit-submission dev bridge error:', error);
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: error.message }));
+        });
+      });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), dokuCheckoutDevPlugin(), dokuSacFunctionsDevPlugin(), dokuCreatePaymentDevPlugin(), authCheckEmailDevPlugin(), googleFormsProxyPlugin(), chatDevPlugin()],
+  plugins: [react(), dokuCheckoutDevPlugin(), dokuSacFunctionsDevPlugin(), dokuCreatePaymentDevPlugin(), authCheckEmailDevPlugin(), googleFormsProxyPlugin(), chatDevPlugin(), auditSubmissionDevPlugin()],
   base: '/',
   resolve: {
     alias: {

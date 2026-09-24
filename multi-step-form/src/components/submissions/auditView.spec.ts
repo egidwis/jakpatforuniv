@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  auditViewOf, headerOf, shouldAutoAudit, reviewNotesOf, autoAuditKey, type AuditHeader,
+  auditViewOf, headerOf, shouldAutoAudit, autoAuditKey, type AuditHeader,
 } from './auditView';
 import type { FormAuditResult } from './types';
 
@@ -45,7 +45,6 @@ describe('auditViewOf — bentuk dari 59 audit produksi', () => {
     const a = audit({ question_count: { reported: 36, actual_detected: 48, diff: 12, status: 'mismatch_over' } });
     const v = auditViewOf(a, sub({ questionCount: 48 }));
     expect(v.count.delta).toBe(0);
-    expect(v.hasEvidence).toBe(false);
     expect(v.isClean).toBe(true);
   });
 
@@ -60,7 +59,7 @@ describe('auditViewOf — bentuk dari 59 audit produksi', () => {
     }), sub());
     expect(v.pii.top.map((x) => x.snippet)).toEqual(['b', 'd', 'c']);
     expect(v.pii.rest).toBe(1);
-    expect(v.hasEvidence).toBe(true);
+    expect(v.pii.types).toEqual(['phone']);
   });
 
   it('kurang dari order + tebakan AI + teks terpotong → "mungkin terbaca sebagian", bukan alarm', () => {
@@ -69,7 +68,6 @@ describe('auditViewOf — bentuk dari 59 audit produksi', () => {
       question_count: { reported: 36, actual_detected: 30, diff: -6, status: 'mismatch_under' },
     }), sub());
     expect(v.count.maybePartial).toBe(true);
-    expect(v.hasEvidence).toBe(false);
   });
 
   it('cadangan tanpa LLM: terbaca, jumlah null — bukan cocok, bukan tak terbaca', () => {
@@ -134,24 +132,31 @@ describe('headerOf — label tombol terdefinisi di SETIAP keadaan', () => {
     });
   }
 
-  it('bersih diringkas satu baris dengan label sumber', () => {
-    expect(cases[0][1].status).toBe('36 terhitung = order 36 · tanpa data pribadi');
+  it('hasil terbaca diringkas satu baris dengan label sumber & selisih', () => {
+    expect(cases[0][1].status).toBe('36 terhitung · order 36 · tanpa data pribadi');
+    expect(cases[1][1].status).toBe('48 perkiraan AI · order 36 · +12 · tanpa data pribadi');
+  });
+
+  it('hasil terbaca & tak terbaca punya rincian di balik ⌄; belum dicek tidak', () => {
+    expect(cases[0][1].expandable).toBe(true);
+    expect(cases[2][1].expandable).toBe(true);
+    expect(cases[3][1].expandable).toBe(false);
   });
 
   it('memindai menonaktifkan tombol', () => {
     expect(cases[5][1].buttonDisabled).toBe(true);
   });
-});
 
-describe('reviewNotesOf', () => {
-  it('memakai delta hitung ulang, tanpa ringkasan & randomizer LLM', () => {
-    const v = auditViewOf(audit({
-      question_count: { reported: 30, actual_detected: 48, diff: 18, status: 'mismatch_over' },
-      randomizer: { detected: true, signals: ['acak'] },
-    }), sub({ questionCount: 36 }));
-    const t = reviewNotesOf(v, { researcherName: 'Budi', formTitle: 'Survei' });
-    expect(t).toContain('selisih +12');
-    expect(t).not.toContain('Ringkasan AI');
-    expect(t).not.toMatch(/randomizer/i);
+  it('gagal memindai TIDAK menyembunyikan hasil lama milik link ini', () => {
+    const h = headerOf(findings, { isAuditing: false, failed: true });
+    expect(h.kind).toBe('findings');
+    expect(h.failed).toBe(true);
+    expect(h.buttonLabel).toBe('Cek Ulang');
+  });
+
+  it('gagal tanpa hasil sama sekali → keadaan gagal, tombol "Cek"', () => {
+    const h = headerOf(null, { isAuditing: false, failed: true });
+    expect(h.kind).toBe('failed');
+    expect(h.buttonLabel).toBe('Cek');
   });
 });
