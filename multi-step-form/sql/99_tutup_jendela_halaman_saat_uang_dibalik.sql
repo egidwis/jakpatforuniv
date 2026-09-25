@@ -93,6 +93,23 @@
 --   Kode membaca kolom auto_closed_at; tanpa kolomnya kueri halaman dashboard
 --   gagal.
 -- ============================================================================
+--
+-- ── HASIL PENERAPAN — 2026-09-25 13:38 WIB ─────────────────────────────────
+--
+-- ⚠️ URUTANNYA TERBALIK: kodenya (28573b3..a4b94db) sudah live sejak 24 Sep
+-- ±13:44 WIB, karena push ke main = deploy otomatis. Selama ±24 jam:
+--   47 GET survey_pages 400 ... dashboard tanpa sumbu halaman
+--    3 PATCH 400 .............. sinkron tanggal updateScheduleDates; ketiga
+--                               order diperiksa, datanya tetap benar
+--    0 simpanan PageBuilder gagal
+-- Sesudah penerapan: nol 400. Terverifikasi lewat baca-saja:
+--   kolom ada · 3 trigger aktif · ACL keenam fungsi = postgres + service_role
+--   · ensure_survey_page punya cabang buka-ulang · cron tak lagi menulis
+--   survey_pages (di luar komentar) · 0 halaman ber-auto_closed_at · "asda"
+--   tidak tersentuh.
+-- Kasus 4 di Langkah 4 semula gagal PALSU: regex-nya membaca komentar
+-- "Dulu: UPDATE survey_pages" di badan fungsi. Diperbaiki 25 Sep.
+-- ============================================================================
 
 
 -- ============================================================================
@@ -656,7 +673,12 @@ COMMIT;
 --   END IF;
 --
 --   -- Kasus 4: cron pelepas tidak lagi menulis survey_pages.
---   IF pg_get_functiondef('public.release_expired_order_slots()'::regprocedure)
+--   -- Komentar dibuang dulu: catatan "Dulu: UPDATE survey_pages …" di badan
+--   -- fungsinya sendiri akan ikut cocok dan menggagalkan kasus ini palsu.
+--   IF regexp_replace(
+--        regexp_replace(pg_get_functiondef('public.release_expired_order_slots()'::regprocedure),
+--                       '/\*.*?\*/', '', 'g'),
+--        '--[^\n]*', '', 'g')
 --        ~* 'UPDATE\s+survey_pages' THEN
 --     RAISE EXCEPTION 'UJI_GAGAL kasus 4: release_expired_order_slots masih menulis survey_pages';
 --   END IF;
