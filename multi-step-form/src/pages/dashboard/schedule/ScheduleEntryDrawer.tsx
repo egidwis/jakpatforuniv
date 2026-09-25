@@ -210,7 +210,8 @@ export function ScheduleEntryDrawer({
 
   const kind = agendaChipOf(entry, Date.now());
   const token = tokenForChip(kind);
-  const bannerTodo = !isKilat && entry.status !== 'completed' && Boolean(page?.is_published && isPlaceholderBannerUrl(page?.banner_url));
+  const unscheduled = isUnscheduled(entry);
+  const bannerTodo =!isKilat && entry.status !== 'completed' && Boolean(page?.is_published && isPlaceholderBannerUrl(page?.banner_url));
   // ⚠️ `isSettled`, bukan "ada yang pernah lunas". Satu jadwal boleh punya
   // beberapa tagihan sejak Task 13; memakai `.some(paid)` di sini akan
   // mengumumkan "Lunas" pada jadwal yang masih menyisakan tagihan susulan.
