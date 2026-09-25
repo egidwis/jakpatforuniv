@@ -109,6 +109,9 @@
 --   tidak tersentuh.
 -- Kasus 4 di Langkah 4 semula gagal PALSU: regex-nya membaca komentar
 -- "Dulu: UPDATE survey_pages" di badan fungsi. Diperbaiki 25 Sep.
+-- Langkah 4 dijalankan 25 Sep (dengan SET LOCAL ROLE postgres): UJI_LULUS,
+-- 7/7 kasus. Sesudahnya diverifikasi: "asda" tetap in_review/expired, halaman
+-- tetap NULL + tersembunyi, 0 halaman ber-auto_closed_at, order Kilat utuh.
 -- ============================================================================
 
 
