@@ -631,6 +631,11 @@ COMMIT;
 -- otomatis. Keduanya kembali persis seperti semula karena seluruhnya di-rollback.
 --
 -- BEGIN;
+-- -- WAJIB: protect_form_submissions() menolak "tandai lunas" kecuali
+-- -- current_setting('role') = postgres/service_role — dan di SQL Editor nilainya
+-- -- kosong. Tanpa baris ini kasus 1 gagal "Not allowed to mark payment as paid
+-- -- manually" (terjadi 25 Sep). LOCAL = hanya untuk transaksi uji ini.
+-- SET LOCAL ROLE postgres;
 -- DO $uji$
 -- DECLARE
 --   c_asda    CONSTANT uuid := '08ef25ac-6fe3-4df1-b62c-9562446c6635';
