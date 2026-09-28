@@ -19,11 +19,8 @@ import {
   BrainCircuit, 
   Sliders, 
   BookOpen, 
-  Sparkles, 
-  ExternalLink, 
-  Tag, 
-  CheckCircle2, 
-  AlertCircle 
+  Sparkles,
+  Globe
 } from 'lucide-react';
 import MDEditor, { commands } from '@uiw/react-md-editor';
 
@@ -106,10 +103,19 @@ const MiminAISetup: React.FC = () => {
     fetchData();
   }, []);
 
+  // Auto-Scrape URL State
+  const [scrapeUrl, setScrapeUrl] = useState('');
+  const [isScraping, setIsScraping] = useState(false);
+  const [scrapeError, setScrapeError] = useState<string | null>(null);
+  const [scrapeSuccess, setScrapeSuccess] = useState(false);
+
   // --- SKILL ACTIONS ---
   const handleOpenNewSkill = () => {
     setIsAddingSkill(true);
     setEditingSkillId(null);
+    setScrapeUrl('');
+    setScrapeError(null);
+    setScrapeSuccess(false);
     setSkillForm({
       name: '',
       description: '',
@@ -128,10 +134,68 @@ const MiminAISetup: React.FC = () => {
   const handleEditSkill = (skill: AISkill) => {
     setIsAddingSkill(false);
     setEditingSkillId(skill.id);
+    setScrapeUrl('');
+    setScrapeError(null);
+    setScrapeSuccess(false);
     setSkillForm({
       ...skill,
-      suggested_actions: skill.suggested_actions || []
+      suggested_actions: (skill.suggested_actions || []).map(a => {
+        if (a.action === 'chat_prompt') {
+          return { label: a.label, action: a.action, prompt: a.prompt || a.url || '', url: '' };
+        }
+        return { label: a.label, action: a.action, url: a.url || a.prompt || '', prompt: '' };
+      })
     });
+  };
+
+  const handleScrapeUrl = async () => {
+    if (!scrapeUrl.trim()) return;
+    setIsScraping(true);
+    setScrapeError(null);
+    setScrapeSuccess(false);
+
+    try {
+      const res = await fetch('/api/scrape-knowledge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: scrapeUrl.trim() })
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Gagal mengekstrak materi dari website');
+      }
+
+      const { knowledge } = data;
+      if (knowledge) {
+        setSkillForm(prev => {
+          const newName = prev.name?.trim() ? prev.name : (knowledge.title || prev.name);
+          const newDesc = prev.description?.trim() ? prev.description : (knowledge.description || prev.description);
+          const newTrigger = prev.trigger_context?.trim()
+            ? `${prev.trigger_context}\n${knowledge.trigger_context || ''}`.trim()
+            : (knowledge.trigger_context || prev.trigger_context);
+
+          const hostname = new URL(scrapeUrl.trim()).hostname;
+          const extractedHeader = `=== MATERI DISINKRONISASI DARI ${hostname} ===\n`;
+          const newSop = prev.sop_instructions?.trim()
+            ? `${prev.sop_instructions}\n\n${extractedHeader}${knowledge.sop_instructions}`.trim()
+            : `${extractedHeader}${knowledge.sop_instructions}`.trim();
+
+          return {
+            ...prev,
+            name: newName,
+            description: newDesc,
+            trigger_context: newTrigger,
+            sop_instructions: newSop
+          };
+        });
+        setScrapeSuccess(true);
+      }
+    } catch (err: any) {
+      setScrapeError(err.message || 'Gagal memproses URL');
+    } finally {
+      setIsScraping(false);
+    }
   };
 
   const handleAddActionField = () => {
@@ -139,7 +203,7 @@ const MiminAISetup: React.FC = () => {
       ...prev,
       suggested_actions: [
         ...(prev.suggested_actions || []),
-        { label: 'Tombol Aksi Baru', action: 'navigate', url: '/dashboard' }
+        { label: '', action: 'navigate', url: '/dashboard', prompt: '' }
       ]
     }));
   };
@@ -154,7 +218,25 @@ const MiminAISetup: React.FC = () => {
   const handleActionChange = (index: number, field: string, val: string) => {
     setSkillForm(prev => {
       const actions = [...(prev.suggested_actions || [])];
-      actions[index] = { ...actions[index], [field]: val };
+      const current = actions[index];
+      if (!current) return prev;
+
+      if (field === 'action') {
+        const currentTarget = current.action === 'chat_prompt' ? (current.prompt || '') : (current.url || '');
+        if (val === 'chat_prompt') {
+          actions[index] = { ...current, action: val as any, prompt: currentTarget, url: '' };
+        } else {
+          actions[index] = { ...current, action: val as any, url: currentTarget, prompt: '' };
+        }
+      } else if (field === 'target') {
+        if (current.action === 'chat_prompt') {
+          actions[index] = { ...current, prompt: val, url: '' };
+        } else {
+          actions[index] = { ...current, url: val, prompt: '' };
+        }
+      } else {
+        actions[index] = { ...current, [field]: val };
+      }
       return { ...prev, suggested_actions: actions };
     });
   };
@@ -167,7 +249,19 @@ const MiminAISetup: React.FC = () => {
 
     setSavingSkill(true);
     try {
-      const saved = await saveAISkill(skillForm);
+      const cleanedSkill = {
+        ...skillForm,
+        suggested_actions: (skillForm.suggested_actions || [])
+          .filter(a => a.label?.trim())
+          .map(a => {
+            if (a.action === 'chat_prompt') {
+              return { label: a.label.trim(), action: a.action, prompt: (a.prompt || a.url || '').trim() };
+            }
+            return { label: a.label.trim(), action: a.action, url: (a.url || a.prompt || '').trim() };
+          })
+      };
+
+      const saved = await saveAISkill(cleanedSkill);
       if (saved) {
         if (isAddingSkill) {
           setSkills(prev => [...prev, saved]);
@@ -395,170 +489,256 @@ const MiminAISetup: React.FC = () => {
             )}
           </div>
 
-          {/* Add / Edit Skill Drawer / Form */}
+          {/* Add / Edit Skill Modal Popup */}
           {(isAddingSkill || editingSkillId) && (
-            <div className="bg-white rounded-xl shadow-sm border border-indigo-200 overflow-hidden">
-              <div className="p-5 bg-indigo-50/70 border-b border-indigo-100 flex items-center justify-between">
-                <div>
-                  <h3 className="font-bold text-indigo-950 text-base flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-indigo-600" />
-                    {isAddingSkill ? 'Tambah Skill & SOP Baru' : 'Edit Skill & SOP'}
-                  </h3>
-                  <p className="text-xs text-indigo-700 mt-0.5">
-                    Tentukan nama, trigger kapan skill ini aktif, langkah berpikir SOP, dan tombol aksi yang dihasilkan.
-                  </p>
+            <div 
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
+              onClick={() => { setIsAddingSkill(false); setEditingSkillId(null); }}
+            >
+              <div 
+                className="bg-white rounded-2xl shadow-2xl border border-indigo-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+                onClick={e => e.stopPropagation()}
+              >
+                {/* Header (Sticky) */}
+                <div className="p-5 bg-gradient-to-r from-indigo-50/90 to-purple-50/90 border-b border-indigo-100 flex items-center justify-between shrink-0">
+                  <div>
+                    <h3 className="font-bold text-indigo-950 text-base flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-indigo-600" />
+                      {isAddingSkill ? 'Tambah Skill & SOP Baru' : 'Edit Skill & SOP'}
+                    </h3>
+                    <p className="text-xs text-indigo-700 mt-0.5">
+                      Tentukan nama, trigger kapan skill ini aktif, langkah berpikir SOP, dan tombol aksi yang dihasilkan.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setIsAddingSkill(false); setEditingSkillId(null); }}
+                    className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-white/80 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => { setIsAddingSkill(false); setEditingSkillId(null); }}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-white"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
 
-              <div className="p-6 space-y-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Form Body (Scrollable) */}
+                <div className="p-6 space-y-5 overflow-y-auto flex-1">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Nama Skill <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={skillForm.name || ''}
+                        onChange={e => setSkillForm({ ...skillForm, name: e.target.value })}
+                        placeholder="Contoh: Diagnosa Responden Kurang & Upsell Extend"
+                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Kategori Intent & Tag
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <select
+                          value={skillForm.tag || 'request'}
+                          onChange={e => setSkillForm({ ...skillForm, tag: e.target.value })}
+                          className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                        >
+                          <option value="request">🚀 Request / Upsell</option>
+                          <option value="issue">🔴 Kendala / Issue</option>
+                          <option value="feedback">💡 Saran / Feedback</option>
+                          <option value="faq">💬 FAQ Umum</option>
+                        </select>
+                        <input
+                          type="text"
+                          value={skillForm.tag_label || ''}
+                          onChange={e => setSkillForm({ ...skillForm, tag_label: e.target.value })}
+                          placeholder="Label tag, misal: Request Extend"
+                          className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Nama Skill <span className="text-rose-500">*</span>
+                      Deskripsi Singkat Skill
                     </label>
                     <input
                       type="text"
-                      value={skillForm.name || ''}
-                      onChange={e => setSkillForm({ ...skillForm, name: e.target.value })}
-                      placeholder="Contoh: Diagnosa Responden Kurang & Upsell Extend"
+                      value={skillForm.description || ''}
+                      onChange={e => setSkillForm({ ...skillForm, description: e.target.value })}
+                      placeholder="Contoh: Menangani keluhan responden sepi dan menawarkan slot extend"
                       className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
                     />
                   </div>
+
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Kategori Intent & Tag
+                      Trigger Context (Kapan Skill Ini Harus Dipicu oleh AI?) <span className="text-rose-500">*</span>
                     </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <select
-                        value={skillForm.tag || 'request'}
-                        onChange={e => setSkillForm({ ...skillForm, tag: e.target.value })}
-                        className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                    <textarea
+                      rows={2}
+                      value={skillForm.trigger_context || ''}
+                      onChange={e => setSkillForm({ ...skillForm, trigger_context: e.target.value })}
+                      placeholder="Contoh: Ketika user mengeluh respondennya sepi, lambat, progres kuesioner belum selesai, atau ingin menambah durasi penayangan."
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-0.5">Jelaskan situasi atau kata-kata kunci user yang mengaktifkan skill ini.</p>
+                  </div>
+
+                  {/* Auto-Extract Knowledge from URL Box */}
+                  <div className="p-3.5 bg-gradient-to-r from-indigo-50/70 via-purple-50/40 to-slate-50 border border-indigo-100/90 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="flex items-center gap-1.5 text-xs font-bold text-indigo-950">
+                        <Globe className="w-3.5 h-3.5 text-indigo-600" />
+                        Tarik & Ekstrak Knowledge Otomatis dari URL Web (Opsional)
+                      </label>
+                      <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-100/80 px-2 py-0.5 rounded-full">
+                        ✨ Auto-Scrape & AI Summarize
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="url"
+                          value={scrapeUrl}
+                          onChange={e => setScrapeUrl(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleScrapeUrl();
+                            }
+                          }}
+                          placeholder="Tempel link URL web di sini (misal: https://jakpat.net/pricing atau artikel FAQ)..."
+                          className="w-full pl-3 pr-8 py-2 text-xs bg-white border border-indigo-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none placeholder:text-slate-400"
+                        />
+                        {scrapeUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setScrapeUrl('')}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleScrapeUrl}
+                        disabled={isScraping || !scrapeUrl.trim()}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-sm transition-all shrink-0 cursor-pointer active:scale-95"
                       >
-                        <option value="request">🚀 Request / Upsell</option>
-                        <option value="issue">🔴 Kendala / Issue</option>
-                        <option value="feedback">💡 Saran / Feedback</option>
-                        <option value="faq">💬 FAQ Umum</option>
-                      </select>
-                      <input
-                        type="text"
-                        value={skillForm.tag_label || ''}
-                        onChange={e => setSkillForm({ ...skillForm, tag_label: e.target.value })}
-                        placeholder="Label tag, misal: Request Extend"
-                        className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                      />
+                        {isScraping ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Mengekstrak...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-3.5 h-3.5" />
+                            <span>Tarik & Ekstrak Web</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    {scrapeError && (
+                      <p className="text-[11px] text-rose-600 font-medium">⚠️ {scrapeError}</p>
+                    )}
+                    {scrapeSuccess && (
+                      <p className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
+                        <Check className="w-3 h-3 text-emerald-600" />
+                        Berhasil mengekstrak materi dari website ke dalam kotak Prosedur SOP di bawah!
+                      </p>
+                    )}
+                    <p className="text-[10px] text-slate-500 leading-normal">
+                      Cukup tempel URL halaman web lalu klik tombol di atas. AI akan membaca isi halaman web dan mengekstrak poin penting, harga, dan ketentuan langsung ke dalam SOP.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Prosedur SOP / Langkah Berpikir AI <span className="text-rose-500">*</span>
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={skillForm.sop_instructions || ''}
+                      onChange={e => setSkillForm({ ...skillForm, sop_instructions: e.target.value })}
+                      placeholder="1. Tunjukkan empati dan cek tanggal selesai jadwal order user.&#10;2. Jelaskan potensi penyebab (misal: kriteria demografi spesifik).&#10;3. Tawarkan opsi extend perpanjangan seharga Rp 50.000/hari tambahan.&#10;4. Sertakan action button untuk membuka perpanjangan."
+                      className="w-full px-3 py-2 text-sm font-mono border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-0.5">Tulis instruksi langkah demi langkah yang harus dipatuhi AI dalam merespon.</p>
+                  </div>
+
+                  {/* Dynamic Actions (CTAs) Builder */}
+                  <div className="border-t border-slate-100 pt-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-xs font-semibold text-slate-700">
+                        Rekomendasi Tombol Aksi (Dynamic CTAs)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleAddActionField}
+                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Tambah Tombol Aksi
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      {(skillForm.suggested_actions || []).length === 0 ? (
+                        <div className="p-3 rounded-lg border border-dashed border-slate-200 text-center text-xs text-slate-400">
+                          Belum ada tombol aksi. Klik "+ Tambah Tombol Aksi" untuk menambahkan CTA yang akan muncul di chat.
+                        </div>
+                      ) : (
+                        skillForm.suggested_actions?.map((act, idx) => (
+                          <div key={idx} className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 border border-slate-200">
+                            <input
+                              type="text"
+                              value={act.label}
+                              onChange={e => handleActionChange(idx, 'label', e.target.value)}
+                              placeholder="Label tombol (misal: 🚀 Perpanjang Tayang)"
+                              className="flex-1 px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded outline-none"
+                            />
+                            <select
+                              value={act.action}
+                              onChange={e => handleActionChange(idx, 'action', e.target.value)}
+                              className="px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded outline-none"
+                            >
+                              <option value="navigate">Pindah Halaman (navigate)</option>
+                              <option value="open_url">Buka Link Eksternal (open_url)</option>
+                              <option value="chat_prompt">Auto Kirim Chat (chat_prompt)</option>
+                            </select>
+                            <input
+                              type="text"
+                              value={act.action === 'chat_prompt' ? (act.prompt ?? '') : (act.url ?? '')}
+                              onChange={e => handleActionChange(idx, 'target', e.target.value)}
+                              placeholder={
+                                act.action === 'chat_prompt'
+                                  ? 'Teks prompt...'
+                                  : act.action === 'open_url'
+                                    ? 'https://wa.me/... atau https://...'
+                                    : '/dashboard, /faq, dsb'
+                              }
+                              className="flex-1 px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveActionField(idx)}
+                              className="p-1.5 text-rose-500 hover:bg-rose-50 rounded"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Deskripsi Singkat Skill
-                  </label>
-                  <input
-                    type="text"
-                    value={skillForm.description || ''}
-                    onChange={e => setSkillForm({ ...skillForm, description: e.target.value })}
-                    placeholder="Contoh: Menangani keluhan responden sepi dan menawarkan slot extend"
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Trigger Context (Kapan Skill Ini Harus Dipicu oleh AI?) <span className="text-rose-500">*</span>
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={skillForm.trigger_context || ''}
-                    onChange={e => setSkillForm({ ...skillForm, trigger_context: e.target.value })}
-                    placeholder="Contoh: Ketika user mengeluh respondennya sepi, lambat, progres kuesioner belum selesai, atau ingin menambah durasi penayangan."
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                  />
-                  <p className="text-[11px] text-slate-400 mt-0.5">Jelaskan situasi atau kata-kata kunci user yang mengaktifkan skill ini.</p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Prosedur SOP / Langkah Berpikir AI <span className="text-rose-500">*</span>
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={skillForm.sop_instructions || ''}
-                    onChange={e => setSkillForm({ ...skillForm, sop_instructions: e.target.value })}
-                    placeholder="1. Tunjukkan empati dan cek tanggal selesai jadwal order user.&#10;2. Jelaskan potensi penyebab (misal: kriteria demografi spesifik).&#10;3. Tawarkan opsi extend perpanjangan seharga Rp 50.000/hari tambahan.&#10;4. Sertakan action button untuk membuka perpanjangan."
-                    className="w-full px-3 py-2 text-sm font-mono border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                  />
-                  <p className="text-[11px] text-slate-400 mt-0.5">Tulis instruksi langkah demi langkah yang harus dipatuhi AI dalam merespon.</p>
-                </div>
-
-                {/* Dynamic Actions (CTAs) Builder */}
-                <div className="border-t border-slate-100 pt-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-xs font-semibold text-slate-700">
-                      Rekomendasi Tombol Aksi (Dynamic CTAs)
-                    </label>
-                    <button
-                      type="button"
-                      onClick={handleAddActionField}
-                      className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Tambah Tombol Aksi
-                    </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    {(skillForm.suggested_actions || []).length === 0 ? (
-                      <div className="p-3 rounded-lg border border-dashed border-slate-200 text-center text-xs text-slate-400">
-                        Belum ada tombol aksi. Klik "+ Tambah Tombol Aksi" untuk menambahkan CTA yang akan muncul di chat.
-                      </div>
-                    ) : (
-                      skillForm.suggested_actions?.map((act, idx) => (
-                        <div key={idx} className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 border border-slate-200">
-                          <input
-                            type="text"
-                            value={act.label}
-                            onChange={e => handleActionChange(idx, 'label', e.target.value)}
-                            placeholder="Label tombol (misal: 🚀 Perpanjang Tayang)"
-                            className="flex-1 px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded outline-none"
-                          />
-                          <select
-                            value={act.action}
-                            onChange={e => handleActionChange(idx, 'action', e.target.value)}
-                            className="px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded outline-none"
-                          >
-                            <option value="navigate">Pindah Halaman (navigate)</option>
-                            <option value="open_url">Buka Link Eksternal (open_url)</option>
-                            <option value="chat_prompt">Auto Kirim Chat (chat_prompt)</option>
-                          </select>
-                          <input
-                            type="text"
-                            value={act.url || act.prompt || ''}
-                            onChange={e => handleActionChange(idx, act.action === 'chat_prompt' ? 'prompt' : 'url', e.target.value)}
-                            placeholder={act.action === 'chat_prompt' ? 'Teks prompt...' : '/dashboard atau https://wa.me/...'}
-                            className="flex-1 px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveActionField(idx)}
-                            className="p-1.5 text-rose-500 hover:bg-rose-50 rounded"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Footer Controls */}
-                <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                {/* Footer Controls (Sticky) */}
+                <div className="flex items-center justify-between p-4 px-6 border-t border-slate-100 bg-slate-50/90 shrink-0">
                   <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
                     <input
                       type="checkbox"
@@ -573,7 +753,7 @@ const MiminAISetup: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => { setIsAddingSkill(false); setEditingSkillId(null); }}
-                      className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
+                      className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
                     >
                       Batal
                     </button>
@@ -581,7 +761,7 @@ const MiminAISetup: React.FC = () => {
                       type="button"
                       onClick={handleSaveSkill}
                       disabled={savingSkill}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 shadow-xs disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 shadow-xs disabled:opacity-50 transition-all"
                     >
                       {savingSkill ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                       Simpan Skill

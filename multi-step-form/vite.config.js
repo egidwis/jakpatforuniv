@@ -431,9 +431,57 @@ function auditSubmissionDevPlugin() {
   };
 }
 
+// Dev-only bridge for functions/api/scrape-knowledge.js
+function scrapeKnowledgeDevPlugin() {
+  return {
+    name: 'scrape-knowledge-dev-plugin',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (!req.url || !/^\/api\/scrape-knowledge(\?|$)/.test(req.url)) return next();
+
+        (async () => {
+          const modulePath = pathToFileURL(
+            path.resolve(__dirname, 'functions/api/scrape-knowledge.js')
+          ).href;
+          const { onRequestPost } = await import(modulePath);
+
+          const env = loadEnv('', process.cwd(), '');
+          const url = `http://${req.headers.host || 'localhost'}${req.url}`;
+
+          let body;
+          if (req.method !== 'GET' && req.method !== 'HEAD') {
+            body = await new Promise((resolve, reject) => {
+              let data = '';
+              req.on('data', (chunk) => (data += chunk));
+              req.on('end', () => resolve(data));
+              req.on('error', reject);
+            });
+          }
+
+          const request = new Request(url, {
+            method: req.method,
+            headers: { 'content-type': req.headers['content-type'] || 'application/json' },
+            body: body || undefined,
+          });
+
+          const response = await onRequestPost({ request, env });
+          res.statusCode = response.status;
+          response.headers.forEach((value, key) => res.setHeader(key, value));
+          res.end(Buffer.from(await response.arrayBuffer()));
+        })().catch((error) => {
+          console.error('💥 scrape-knowledge dev bridge error:', error);
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: error.message }));
+        });
+      });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), dokuCheckoutDevPlugin(), dokuSacFunctionsDevPlugin(), dokuCreatePaymentDevPlugin(), authCheckEmailDevPlugin(), googleFormsProxyPlugin(), chatDevPlugin(), auditSubmissionDevPlugin()],
+  plugins: [react(), dokuCheckoutDevPlugin(), dokuSacFunctionsDevPlugin(), dokuCreatePaymentDevPlugin(), authCheckEmailDevPlugin(), googleFormsProxyPlugin(), chatDevPlugin(), auditSubmissionDevPlugin(), scrapeKnowledgeDevPlugin()],
   base: '/',
   resolve: {
     alias: {
