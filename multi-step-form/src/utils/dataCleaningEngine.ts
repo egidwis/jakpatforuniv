@@ -63,6 +63,7 @@ export function buildRulesFromAiComprehension(
   goals: AnalysisGoalOption[];
   topic: string;
   summaryText: string;
+  defaultObjective: string;
 } {
   const rules: CleaningRule[] = [];
 

@@ -10,7 +10,7 @@ import type {
   AnalyzerAiAction
 } from '../../components/analyzer/types';
 import { calculateCrossTab } from '../../utils/surveyCrossTab';
-import { generateDeepSurveyStory, generateInitialCanvasBlocks, generateAiDataComprehension } from '../../utils/analyzerAiAgent';
+import { generateDeepSurveyStory, generateAiDataComprehension } from '../../utils/analyzerAiAgent';
 import { profileSurveyDataset } from '../../utils/surveyDataProfiler';
 import {
   detectSmartCleaningRules,
@@ -34,9 +34,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   BrainCircuit,
-  CheckCircle2,
-  Search,
-  BarChart3
+  CheckCircle2
 } from 'lucide-react';
 import { toast } from 'sonner';
 
