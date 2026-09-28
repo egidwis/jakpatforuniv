@@ -35,6 +35,10 @@ import { buildScheduleCards } from '@/components/status/airingPeriods';
 import { groupInfoFor } from '@/components/status/invoiceGroups';
 import { CreateOrderCards, ProductCardGrid } from '@/components/CreateOrderCards';
 import { deriveOrderUiState, getActiveDashboardPhase, type OrderGroup } from '@/components/status/deriveOrderUiState';
+import { AdsEntryModal } from '@/components/AdsEntryModal';
+import { CustomMissionModal } from '@/components/CustomMissionModal';
+import { ProfileCompletionSheet } from '@/components/ProfileCompletionSheet';
+import { isProfileGateSatisfied } from '@/components/ProfileForm';
 
 type FilterValue = 'all' | OrderGroup;
 
@@ -127,6 +131,30 @@ export function StatusPage() {
     const [surveyPages, setSurveyPages] = useState<Record<string, { views: number; slug: string | null }>>({});
     const [searchParams, setSearchParams] = useSearchParams();
     const [showScrollTop, setShowScrollTop] = useState(false);
+
+    // Modal Pintu Masuk Iklan Survei (2-Step Modal)
+    const [isAdsModalOpen, setIsAdsModalOpen] = useState(false);
+    const [isCustomMissionOpen, setIsCustomMissionOpen] = useState(false);
+    const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false);
+    const [pendingMethod, setPendingMethod] = useState<'google' | 'manual' | null>(null);
+
+    const handleSelectAdsMethod = async (method: 'google' | 'manual') => {
+        setIsAdsModalOpen(false);
+        const isProfileSatisfied = await isProfileGateSatisfied();
+        if (!isProfileSatisfied) {
+            setPendingMethod(method);
+            setIsProfileSheetOpen(true);
+            return;
+        }
+        navigate(`/dashboard/submit-iklan?method=${method}`);
+    };
+
+    const handleProfileCompleted = () => {
+        setIsProfileSheetOpen(false);
+        const method = pendingMethod || 'google';
+        setPendingMethod(null);
+        navigate(`/dashboard/submit-iklan?method=${method}`);
+    };
 
     useEffect(() => {
         const handleScroll = () => {
@@ -708,7 +736,7 @@ export function StatusPage() {
         <div>
             <div className="max-w-4xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-10 space-y-6">
                 {/* Hub produk — jalur masuk Buat Order selalu konsisten terlihat di atas */}
-                <CreateOrderCards />
+                <CreateOrderCards onOpenAdsModal={() => setIsAdsModalOpen(true)} />
 
                 {/* Header bagian Dashboard beserta filter dan refresh */}
                 <div className="flex items-center justify-between gap-3 pt-2 pb-1">
@@ -785,13 +813,14 @@ export function StatusPage() {
 
                             {/* Secondary Action Links */}
                             <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3">
-                                <Link
-                                    to="/dashboard/submit-iklan"
-                                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-jfu-primary text-white text-xs sm:text-sm font-semibold shadow-xs hover:bg-jfu-dark transition-all"
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAdsModalOpen(true)}
+                                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-jfu-primary text-white text-xs sm:text-sm font-semibold shadow-xs hover:bg-jfu-dark transition-all cursor-pointer"
                                 >
                                     <span>Pasang Iklan Survei</span>
                                     <ChevronRight className="w-4 h-4" />
-                                </Link>
+                                </button>
                                 <Link
                                     to="/dashboard/forms/new"
                                     className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs sm:text-sm font-semibold transition-all"
@@ -1014,6 +1043,27 @@ export function StatusPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Modal Pintu Masuk Iklan Survei (Awareness + Review Method) */}
+            <AdsEntryModal
+                isOpen={isAdsModalOpen}
+                onClose={() => setIsAdsModalOpen(false)}
+                onSelectMethod={handleSelectAdsMethod}
+                onOpenCustomMission={() => setIsCustomMissionOpen(true)}
+            />
+
+            {/* Modal Riset Non-Survei (Cross-sell / Escape Hatch) */}
+            <CustomMissionModal
+                isOpen={isCustomMissionOpen}
+                onClose={() => setIsCustomMissionOpen(false)}
+            />
+
+            {/* Sheet Kelengkapan Profil */}
+            <ProfileCompletionSheet
+                open={isProfileSheetOpen}
+                onOpenChange={setIsProfileSheetOpen}
+                onCompleted={handleProfileCompleted}
+            />
         </div>
     );
 }

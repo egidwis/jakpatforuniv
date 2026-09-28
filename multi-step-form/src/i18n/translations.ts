@@ -656,6 +656,24 @@ export const translations = {
     profileSheetTitle: "Complete your profile first",
     profileSheetDesc: "One time only — your order and invoice details are taken from this profile.",
 
+    // Modal Pintu Masuk Iklan Survei (Ads Entry Modal)
+    adsAwarenessModalTitle: "Survey Ads",
+    adsAwarenessModalSubtitle: "Overview of survey publishing mechanism",
+    adsAwarenessPoint1Title: "Random Respondent Profiles",
+    adsAwarenessPoint1Desc: "Surveys are broadcast to active general users with random profiles. Include screening questions in your questionnaire if you require specific respondent criteria.",
+    adsAwarenessPoint2Title: "Duration-Based Publishing",
+    adsAwarenessPoint2Desc: "This service is a duration-based ad broadcast (without guaranteed respondent quotas). The number of responses received is strongly influenced by your target criteria (more specific criteria are harder to match) and the reward you offer.",
+    adsAwarenessPoint3Title: "Review Prior to Publishing",
+    adsAwarenessPoint3Desc: "Each questionnaire will be reviewed beforehand to ensure the survey opens and runs smoothly on the Jakpat app.",
+    adsAwarenessTermsLink: "Learn more in our",
+    adsAwarenessCheckboxLabel: "I understand the publishing mechanism and review process for this survey.",
+    adsAwarenessContinueBtn: "Continue to Select Review Method",
+    adsAwarenessNeedSpecificCta: "Need verified or specific respondent criteria?",
+    adsAwarenessConsultMission: "Consult via Non-Survey Research",
+    adsEntrySelectMethodTitle: "Select Review Method",
+    adsEntrySelectMethodSubtitle: "Choose how your questionnaire will be verified",
+    adsEntryBackToAwareness: "Back to Terms",
+
     // Dashboard revamp — order list & filters
     filterAll: "All",
     filterNeedsAction: "Action Needed",
@@ -1763,6 +1781,24 @@ export const translations = {
     kilatStartWithAds: "Mulai dengan Iklan Survei",
     profileSheetTitle: "Lengkapi profil dulu",
     profileSheetDesc: "Cukup sekali — data order dan invoice kamu diambil dari profil ini.",
+
+    // Modal Pintu Masuk Iklan Survei (Ads Entry Modal)
+    adsAwarenessModalTitle: "Iklan Survei",
+    adsAwarenessModalSubtitle: "Informasi mekanisme penayangan survei",
+    adsAwarenessPoint1Title: "Profil Responden Acak",
+    adsAwarenessPoint1Desc: "Survei disiarkan ke pengguna aktif umum dengan profil acak. Gunakan pertanyaan penyaring (screening) di kuesionermu jika memerlukan kriteria responden tertentu.",
+    adsAwarenessPoint2Title: "Penayangan Berbasis Durasi",
+    adsAwarenessPoint2Desc: "Layanan ini berupa penayangan durasi hari (tanpa kuota pasti responden). Jumlah responden yang didapat sangat dipengaruhi oleh kriteria target (semakin spesifik semakin sulit) dan reward yang kamu tawarkan.",
+    adsAwarenessPoint3Title: "Review Sebelum Penayangan",
+    adsAwarenessPoint3Desc: "Setiap kuesioner akan diverifikasi terlebih dahulu untuk memastikan survei dapat dibuka dan berjalan lancar di aplikasi Jakpat.",
+    adsAwarenessTermsLink: "Pelajari selengkapnya di",
+    adsAwarenessCheckboxLabel: "Saya memahami mekanisme penayangan dan review survei ini.",
+    adsAwarenessContinueBtn: "Lanjut Pilih Jalur Review",
+    adsAwarenessNeedSpecificCta: "Membutuhkan kriteria responden khusus yang terverifikasi?",
+    adsAwarenessConsultMission: "Konsultasikan via Riset Non-Survei",
+    adsEntrySelectMethodTitle: "Pilih Jalur Review",
+    adsEntrySelectMethodSubtitle: "Tentukan cara verifikasi kuesionermu",
+    adsEntryBackToAwareness: "Kembali ke Ketentuan",
 
     // Dashboard revamp — daftar order & filter
     filterAll: "Semua",

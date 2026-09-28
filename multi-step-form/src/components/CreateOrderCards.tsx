@@ -18,7 +18,7 @@ interface Product {
 }
 
 const PRODUCTS: Product[] = [
-    { id: 'ads', icon: BarChart3, titleKey: 'productAdsTitle', hookKey: 'productAdsHook', descKey: 'productAdsDesc', to: '/dashboard/submit-iklan' },
+    { id: 'ads', icon: BarChart3, titleKey: 'productAdsTitle', hookKey: 'productAdsHook', descKey: 'productAdsDesc', isActionModal: true },
     { id: 'kilat', icon: Zap, titleKey: 'productKilatTitle', hookKey: 'productKilatHook', descKey: 'productKilatDesc', comingSoon: true },
 ];
 
@@ -27,7 +27,7 @@ const PRODUCTS: Product[] = [
  * hub "Buat Order" (saat user punya order) dan empty state Order Saya (saat
  * belum ada order, sebagai pengganti tombol generik "Buat Order Pertama").
  */
-export function ProductCardGrid() {
+export function ProductCardGrid({ onOpenAdsModal }: { onOpenAdsModal?: () => void }) {
     const { t } = useLanguage();
     const visible = PRODUCTS.filter((p) => !p.hidden);
 
@@ -81,6 +81,19 @@ export function ProductCardGrid() {
             </div>
         );
 
+        if (product.isActionModal) {
+            return (
+                <button
+                    key={product.id}
+                    type="button"
+                    onClick={onOpenAdsModal}
+                    className="h-full rounded-2xl bg-gradient-to-r from-jfu-primary to-jfu-light text-white p-4 sm:p-5 shadow-md shadow-jfu-primary/20 hover:shadow-lg hover:shadow-jfu-primary/30 hover:-translate-y-0.5 transition-all duration-200 group flex flex-col border-0 text-left cursor-pointer w-full"
+                >
+                    {inner}
+                </button>
+            );
+        }
+
         if (!product.to || isComingSoon) {
             return (
                 <div
@@ -114,7 +127,7 @@ export function ProductCardGrid() {
 /**
  * Hub produk di homepage — Versi A: Clean card dengan heading sejajar My Order
  */
-export function CreateOrderCards() {
+export function CreateOrderCards({ onOpenAdsModal }: { onOpenAdsModal?: () => void }) {
     const { t } = useLanguage();
 
     return (
@@ -124,7 +137,7 @@ export function CreateOrderCards() {
                     {t('createNewOrder')}
                 </h2>
             </div>
-            <ProductCardGrid />
+            <ProductCardGrid onOpenAdsModal={onOpenAdsModal} />
         </div>
     );
 }

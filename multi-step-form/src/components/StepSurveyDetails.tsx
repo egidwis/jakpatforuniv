@@ -7,7 +7,7 @@ import { StepOneGoogleForm } from './StepOneGoogleForm';
 import { StepOneFormFields, ReviewInfoBanner } from './StepOneFormFields';
 import { ProfileCompletionSheet } from './ProfileCompletionSheet';
 import { isProfileGateSatisfied } from './ProfileForm';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -23,8 +23,19 @@ type FlowState = 'method-selection' | 'google-form' | 'manual' | 'form-fields';
 export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeaderVisibilityChange }: StepSurveyDetailsProps) {
   const { t } = useLanguage();
 
-  // Initialize flowState based on existing formData
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  // Initialize flowState based on existing formData or query param ?method=
   const getInitialFlowState = (): FlowState => {
+    const queryMethod = searchParams.get('method');
+    if (queryMethod === 'google') {
+      return 'google-form';
+    }
+    if (queryMethod === 'manual') {
+      return 'manual';
+    }
+
     // If there's already data filled, determine the flow state
     if (formData.title || formData.description || formData.questionCount > 0) {
       // If manual entry or no Google Forms URL
@@ -34,8 +45,8 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
       // If it's a Google Form
       return 'form-fields';
     }
-    // No data yet, show method selection
-    return 'method-selection';
+    // Default to manual form if no data
+    return 'manual';
   };
 
   const [flowState, setFlowState] = useState<FlowState>(getInitialFlowState());
@@ -68,8 +79,8 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
   // Notify parent about header visibility
   useEffect(() => {
     if (onHeaderVisibilityChange) {
-      // Hide header in method-selection AND google-form flow
-      const shouldShowHeader = flowState !== 'method-selection' && flowState !== 'google-form';
+      // Show header in all active form flows (google-form, manual, form-fields)
+      const shouldShowHeader = flowState !== 'method-selection';
       onHeaderVisibilityChange(shouldShowHeader);
     }
   }, [flowState, onHeaderVisibilityChange]);
@@ -138,9 +149,9 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
     />
   );
 
-  // Handle back to method selection
+  // Handle back to dashboard
   const handleBackToMethodSelection = () => {
-    setFlowState('method-selection');
+    navigate('/dashboard');
   };
 
   // Handle switch between methods
@@ -205,13 +216,12 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
     }
   };
 
-  // Render based on flow state
-  if (flowState === 'method-selection' || flowState === 'google-form') {
-    const isImport = flowState === 'google-form';
+  // Google Form import flow
+  if (flowState === 'google-form') {
     return (
       <>
-        <AdsFlowCard step={isImport ? 'import' : 'method'}>
-          {isImport ? (
+        <div className="mx-auto w-full max-w-xl">
+          <div className="rounded-2xl border border-slate-200/90 bg-white px-5 md:px-7 py-5 md:py-6 shadow-xs">
             <StepOneGoogleForm
               formData={formData}
               updateFormData={updateFormData}
@@ -219,13 +229,22 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
               onSwitchMethod={handleSwitchToManual}
               onFormReady={handleFormReady}
             />
-          ) : (
-            <StepOneMethodSelection onSelectMethod={handleMethodSelection} />
-          )}
-        </AdsFlowCard>
+          </div>
+        </div>
+        {profileSheet}
+      </>
+    );
+  }
 
-        {!isImport && (
-          <div className="mt-4 w-full max-w-xl mx-auto flex flex-col items-center gap-3.5 text-center">
+  // Fallback for method-selection if ever reached directly
+  if (flowState === 'method-selection') {
+    return (
+      <>
+        <div className="mx-auto w-full max-w-xl">
+          <div className="rounded-2xl border border-slate-200/90 bg-white px-5 md:px-7 py-5 md:py-6 shadow-xs">
+            <StepOneMethodSelection onSelectMethod={handleMethodSelection} />
+          </div>
+          <div className="mt-4 w-full flex flex-col items-center gap-3.5 text-center">
             <Link
               to="/dashboard"
               className="w-full flex items-center justify-center gap-2 py-3.5 px-5 rounded-xl border border-slate-200/90 bg-white/95 backdrop-blur-xs text-sm font-bold text-slate-700 hover:bg-white hover:border-slate-300 hover:text-slate-900 transition-all shadow-xs group"
@@ -234,8 +253,7 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
               <span>{t('backToOrders')}</span>
             </Link>
           </div>
-        )}
-
+        </div>
         {profileSheet}
       </>
     );
