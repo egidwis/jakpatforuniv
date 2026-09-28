@@ -901,7 +901,9 @@ export function StatusPage() {
                                                         entries={[ui.first, ...ui.later]}
                                                         onReschedule={() => handleReschedule(submission)}
                                                         onDataUpdated={fetchSubmissions}
-                                                        active={activePhase === 2}
+                                                        // Kredit (sql/102) ada di fase ③ menurut sumbu tayang,
+                                                        // tapi tombol bayarnya di sini — buka kartunya.
+                                                        active={activePhase === 2 || ui.owesOnCredit}
                                                     />
                                                 </Phase>
 

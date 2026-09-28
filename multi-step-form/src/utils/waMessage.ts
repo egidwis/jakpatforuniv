@@ -184,6 +184,12 @@ export interface InvoiceReadyInput {
   /** Default: dihitung dari `bundles` lewat `paymentDeadline`. */
   deadline?: Date;
   issuedAt?: Date;
+  /**
+   * Tagihan tempo (sql/102): iklannya tayang sesuai jadwal, pembayaran
+   * menyusul, TANPA tenggat (K3). `deadline` diabaikan — menjanjikan tenggat
+   * yang tidak ditegakkan apa pun lebih buruk daripada tidak menyebutnya.
+   */
+  tempo?: boolean;
 }
 
 const bundleLine = (b: InvoiceBundleSummary) =>
@@ -216,7 +222,9 @@ export function invoiceReadyMessage(input: InvoiceReadyInput): string {
     `Total: ${rupiah(amount)}${bundles.length > 1 ? ' (dibayar sekaligus dalam satu link)' : ''}`,
     `Link pembayaran: ${invoiceUrl}`,
     '',
-    `Mohon diselesaikan paling lambat ${formatDeadline(deadline)} agar jadwal tayangnya tidak bergeser.`,
+    input.tempo
+      ? 'Iklan Anda tetap tayang sesuai jadwal — pembayarannya boleh menyusul. Link di atas selalu bisa dipakai, kapan pun Anda siap membayar.'
+      : `Mohon diselesaikan paling lambat ${formatDeadline(deadline)} agar jadwal tayangnya tidak bergeser.`,
     '',
     SIGNATURE,
   ].join('\n');

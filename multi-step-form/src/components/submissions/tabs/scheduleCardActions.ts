@@ -22,6 +22,10 @@ import { holdStateOf, isUnscheduled, chipKindOf, CANCELLED_CHIPS } from '@/pages
  */
 export function isEntryHoldLapsed(entry: AdScheduleEntry, now: number = Date.now()): boolean {
   if (entry.paymentStatus === 'paid' || entry.paymentStatus === 'completed') return false;
+  // Tayang sebelum lunas (sql/102): tidak ada hold yang bisa gugur dan tidak
+  // ada batas bayar 14.00 — iklannya tayang sesuai jadwal, utangnya ditagih
+  // tempo. Tanpa ini kartunya berbadge «lewat batas bayar» tepat di hari tayang.
+  if (entry.airOnCreditAt) return false;
   if (CANCELLED_CHIPS.includes(chipKindOf(entry, now))) return false;
   return (
     holdStateOf(entry, now) === 'lapsed' ||
@@ -54,11 +58,17 @@ export type CardState =
   | 'hold_lapsed'
   | 'waiting_payment'
   | 'partially_paid'
+  /**
+   * Tayang sebelum lunas (sql/102) dan uangnya belum masuk. Tanpa tanggal
+   * jatuh tempo — yang ditampilkan umur utangnya, bukan tenggat.
+   */
+  | 'airing_on_credit'
   | 'paid';
 
 export type ActionId =
   | 'schedule'        // Tentukan Jadwal / Ganti Tanggal
   | 'invoice'         // Buat Tagihan
+  | 'tempo_invoice'   // Tayangkan Dulu / Buat Tagihan (tempo) — dialog tagihan dengan tempo menyala
   | 'top_up'          // Tagih Susulan
   | 'mark_paid'
   | 'unmark_paid'
@@ -102,6 +112,8 @@ export function isLateForSchedule(entry: AdScheduleEntry, state: CardState, now?
   // Lunas maupun dibatalkan: tanggal ini sudah tidak dikejar siapa pun. Tanggal
   // jadwal batal adalah riwayat (sql/62), bukan tenggat.
   if (state === 'paid' || state === 'cancelled') return false;
+  // Kredit: batas bayar 14.00 tidak berlaku — iklannya tayang apa pun (sql/102).
+  if (state === 'airing_on_credit' || entry.airOnCreditAt) return false;
   if (!entry.startDate) return false;
   return isPaymentTooLateForDate(toWibYmd(new Date(entry.startDate)), now);
 }
@@ -120,10 +132,6 @@ export function cardStateOf(
   billing: ScheduleBilling | undefined,
   opts: { holdLapsed?: boolean } = {},
 ): CardState {
-  if (entry.reviewStatus === 'rejected' || entry.reviewStatus === 'spam' || entry.status === 'cancelled') {
-    return 'cancelled';
-  }
-
   // Uang yang sudah masuk mengalahkan sumbu review — order yang lunas tidak
   // pernah mundur jadi "menunggu review", betapapun kolom statusnya tertinggal.
   const isPaidSomehow =
@@ -131,6 +139,24 @@ export function cardStateOf(
     (!billing?.invoices.length &&
       (['paid', 'completed'].includes(entry.paymentStatus || '') ||
        ['paid', 'completed'].includes(entry.status || '')));
+
+  /*
+    ⚠️ SEBELUM CABANG `cancelled`, DAN ITU DISENGAJA (K6).
+    Iklan kredit yang dihentikan di tengah tayang TETAP berutang penuh — jadwalnya
+    berstatus batal tapi tagihan temponya masih hidup. Kalau cabang `cancelled`
+    menang, kartunya diam soal uang dan utangnya hilang dari header tab.
+    Dibatalkan SEBELUM tayang, tagihannya ikut ditutup (`cancelSchedule`), jadi
+    `openInvoice` kosong dan kartunya jatuh ke `cancelled` seperti biasa.
+  */
+  if (entry.airOnCreditAt && !isPaidSomehow
+      && !['paid', 'completed'].includes(entry.paymentStatus || '')
+      && (entry.status !== 'cancelled' || billing?.openInvoice)) {
+    return 'airing_on_credit';
+  }
+
+  if (entry.reviewStatus === 'rejected' || entry.reviewStatus === 'spam' || entry.status === 'cancelled') {
+    return 'cancelled';
+  }
 
   // ── Gerbang aturan 2 ──
   // Fase ② tidak punya hak bertindak selama Fase ① belum lolos.
@@ -184,6 +210,11 @@ export function planCardActions(input: {
     cancelSchedule: boolean;
     createInvoice: boolean;
     notifySlot?: boolean;
+    /**
+     * Pemanggil menyediakan jalur tagihan tempo (sql/102). Opsional supaya
+     * permukaan lain yang memakai model ini tidak ikut menawarkannya.
+     */
+    tempoInvoice?: boolean;
   };
   /**
    * Berapa pesanan yang ditanggung `billing.openInvoice`. 1 (atau tak diisi)
@@ -287,6 +318,20 @@ export function planCardActions(input: {
   const canNotifySlot = Boolean(can.notifySlot) && Boolean(entry.slotBookedBy) && Boolean(entry.startDate);
   const notifySlot: CardAction = { id: 'notify_slot', label: 'Kabari via WA' };
 
+  /**
+   * "Tayangkan Dulu" — satu-satunya pintu masuk kredit (sql/102).
+   *
+   * ⚠️ IA MEMBUKA DIALOG TAGIHAN, BUKAN MENANDAI LANGSUNG. Kredit tanpa tagihan
+   * adalah iklan yang tayang tanpa satu pun catatan utang; jadi izin tayang dan
+   * tagihan temponya lahir dari satu tindakan, dengan tagihan lebih dulu.
+   *
+   * Syaratnya: bertanggal dan sudah lolos review. Review TIDAK boleh dilompati
+   * — RPC-nya menolak juga, tapi aksi yang pasti gagal tidak boleh ditawarkan.
+   */
+  const canTempo = Boolean(can.tempoInvoice) && Boolean(entry.startDate) && entry.reviewStatus === 'approved';
+  const airOnCredit: CardAction = { id: 'tempo_invoice', label: 'Tayangkan Dulu' };
+  const withTempo = (menu: CardAction[]) => (canTempo ? [airOnCredit, ...menu] : menu);
+
   switch (state) {
     // Nol aksi penagihan — bolanya di Fase ①. Satu-satunya afordansi adalah
     // penunjuk ke tempat kerjanya yang benar.
@@ -302,34 +347,69 @@ export function planCardActions(input: {
     case 'awaiting_invoice':
       return {
         primary: can.createInvoice ? { id: 'invoice', label: 'Buat Tagihan' } : schedule(),
-        menu: withCancel([
+        menu: withCancel(withTempo([
           ...(can.createInvoice ? [schedule()] : []),
           ...(canNotifySlot ? [notifySlot] : []),
           ...(can.markPaid ? [markPaid] : []),
-        ]),
+        ])),
       };
 
     // Slotnya sudah lepas / tanggalnya tak bisa dikejar: yang utama tanggal
     // baru. Buat Tagihan tetap ada di menu bila admin ingin menerbitkan langsung.
+    // "Tayangkan Dulu" justru paling berguna DI SINI: batas bayar lewat, tapi
+    // admin yakin penelitinya akan membayar (kasus JFU-INV-15f4ac, 28 Sep).
     case 'hold_lapsed':
       return {
         primary: schedule(),
-        menu: withCancel([
+        menu: withCancel(withTempo([
           ...(can.createInvoice ? [{ id: 'invoice', label: 'Buat Tagihan' } as CardAction] : []),
           ...(can.markPaid ? [markPaid] : []),
-        ]),
+        ])),
       };
 
     case 'waiting_payment':
       return isLate
-        ? { primary: schedule(), menu: withCancel(can.markPaid ? [markPaid] : []) }
+        ? { primary: schedule(), menu: withCancel(withTempo(can.markPaid ? [markPaid] : [])) }
         : {
             primary: can.markPaid ? markPaid : schedule(),
-            menu: withCancel([
+            menu: withCancel(withTempo([
               ...(can.markPaid ? [schedule()] : []),
               ...(canTopUp ? [topUp] : []),
-            ]),
+            ])),
           };
+
+    /*
+      Tayang sebelum lunas. Tanpa tanggal jatuh tempo, jadi tidak ada yang
+      "terlambat" — yang tersisa cuma dua pertanyaan: sudah ada tagihan
+      temponya? dan sudah masuk uangnya?
+
+      ⚠️ TIDAK ADA "Ganti Tanggal". Memindah tanggal membuat tagihan temponya
+      basi (`is_stale`) dan utangnya lenyap dari hitungan; untuk iklan yang
+      sudah tayang itu bahkan tidak bermakna. Jalannya: hentikan, lalu pesan
+      jadwal baru.
+
+      ⚠️ "Batalkan tagihan" TIDAK di sini — ia hidup di baris tagihan, dan
+      disembunyikan di sana begitu ada anggota yang mulai tayang (K8).
+    */
+    case 'airing_on_credit': {
+      const hasBill = billing?.openInvoice != null;
+      const tempoBill: CardAction = { id: 'tempo_invoice', label: 'Buat Tagihan (tempo)' };
+      const stop: CardAction = {
+        id: 'cancel_schedule',
+        label: 'Hentikan Tayang',
+        destructive: true,
+        warns: true,
+      };
+      const canStop = can.cancelSchedule && entry.status !== 'cancelled';
+      const primary = !hasBill && can.createInvoice ? tempoBill : (can.markPaid ? markPaid : null);
+      return {
+        primary,
+        menu: [
+          ...(primary?.id === 'tempo_invoice' && can.markPaid ? [markPaid] : []),
+          ...(canStop ? [stop] : []),
+        ],
+      };
+    }
 
     case 'partially_paid':
       return {
@@ -376,6 +456,7 @@ export function pickTargetSchedule<T extends AdScheduleEntry>(
 ): T | undefined {
   const pending: CardState[] = [
     'choose_schedule', 'awaiting_invoice', 'hold_lapsed', 'waiting_payment', 'partially_paid',
+    'airing_on_credit',
   ];
   return entries.find((e) => pending.includes(stateOf(e))) ?? entries[0];
 }
@@ -457,11 +538,14 @@ export function cardMoneyOf(
   billing: ScheduleBilling | undefined,
   now: number = Date.now(),
 ): { billed: number; paid: number } {
-  const canStillBeBilled =
+  // Kredit: utangnya berlaku apa pun tanggalnya, juga sesudah jadwalnya
+  // dihentikan (K6). `isLiveInvoice` sudah memuat tagihan tempo yang link-nya
+  // sedang habis — DB tidak pernah menandainya kedaluwarsa (sql/102).
+  const canStillBeBilled = state === 'airing_on_credit' || (
     state !== 'cancelled' &&
     state !== 'hold_lapsed' &&
     !isEntryHoldLapsed(entry, now) &&
-    !isLateForSchedule(entry, state, new Date(now));
+    !isLateForSchedule(entry, state, new Date(now)));
   const counted = (billing?.invoices ?? []).filter((i) => i.isPaid || (canStillBeBilled && isLiveInvoice(i)));
   return {
     billed: counted.reduce((sum, i) => sum + i.amount, 0),

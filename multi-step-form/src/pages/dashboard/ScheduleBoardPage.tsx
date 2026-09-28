@@ -14,7 +14,7 @@ import {
 import { cn } from '@/lib/utils';
 import { AlertPill } from '@/components/ui/alert-pill';
 import { KilatScheduleBoard } from '@/components/KilatScheduleBoard';
-import { fetchAdSchedules, supabase, type AdScheduleEntry } from '@/utils/supabase';
+import { fetchAdSchedules, isOnCredit, supabase, type AdScheduleEntry } from '@/utils/supabase';
 import { toWibYmd } from '@/utils/airing-window';
 import { ScheduleAgenda, dayGroupDomId } from './schedule/ScheduleAgenda';
 import { AdsWeekBoard } from './schedule/AdsWeekBoard';
@@ -26,7 +26,13 @@ import {
 } from './schedule/scheduleModel';
 import { PageBuilderModal } from '@/components/PageBuilder/PageBuilderModal';
 
-export type AlertFilterKind = 'lateForPayment' | 'paidWithoutPage' | 'placeholderBanner' | 'unscheduled';
+/**
+ * `onCredit` (sql/102) — tayang sebelum lunas, utang tertua dulu. SATU-SATUNYA
+ * alert yang TIDAK dibatasi periode: utang tempo tidak punya tanggal jatuh
+ * tempo, jadi utang dari bulan lalu justru yang paling perlu ditagih — dan ia
+ * akan hilang dari pandangan kalau pilnya hanya menghitung bulan yang dilihat.
+ */
+export type AlertFilterKind = 'lateForPayment' | 'paidWithoutPage' | 'placeholderBanner' | 'unscheduled' | 'onCredit';
 
 // ─────────────────────────────────────────────────────────────
 // Papan Schedule — PAPAN PANTAU, BUKAN TEMPAT KERJA.
@@ -207,6 +213,8 @@ export function ScheduleBoardPage({
 
   /** Angka alert dihitung HANYA dari periode yang sedang dilihat */
   const alerts = useMemo(() => computeAlerts(periodEntries, now), [periodEntries, now]);
+  // Lintas periode — lihat `AlertFilterKind`.
+  const onCreditCount = useMemo(() => entries.filter(isOnCredit).length, [entries]);
 
   /**
    * Ketika salah satu chip indikator diklik, saring dan sortir entri
@@ -214,7 +222,8 @@ export function ScheduleBoardPage({
    */
   const alertFilteredEntries = useMemo(() => {
     if (!activeAlert) return null;
-    const base = periodEntries.filter((e) => {
+    const source = activeAlert === 'onCredit' ? entries : periodEntries;
+    const base = source.filter((e) => {
       if (service !== 'all' && (e.distributionType || 'regular') !== service) return false;
       if (!matchesQuery(e, query)) return false;
       const kind = chipKindOf(e, now);
@@ -229,6 +238,8 @@ export function ScheduleBoardPage({
           return needsBannerSwap(e);
         case 'unscheduled':
           return isUnscheduled(e);
+        case 'onCredit':
+          return isOnCredit(e);
         default:
           return true;
       }
@@ -242,10 +253,14 @@ export function ScheduleBoardPage({
         return base.sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
       case 'unscheduled':
         return base.sort((a, b) => (b.submissionCreatedAt || b.createdAt || '').localeCompare(a.submissionCreatedAt || a.createdAt || ''));
+      case 'onCredit':
+        // Utang tertua dulu — tanggal tayang paling awal, bukan tanggal kredit
+        // diberikan: umur utang dihitung sejak iklannya mulai tayang.
+        return base.sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
       default:
         return base;
     }
-  }, [activeAlert, periodEntries, service, query, showCancelled, now]);
+  }, [activeAlert, entries, periodEntries, service, query, showCancelled, now]);
 
   const alertTitle = useMemo(() => {
     switch (activeAlert) {
@@ -257,6 +272,8 @@ export function ScheduleBoardPage({
         return '⚠ Banner Perlu Diupdate';
       case 'unscheduled':
         return '⚠ Belum Dijadwalkan';
+      case 'onCredit':
+        return 'Tayang Sebelum Lunas — utang tertua dulu (semua periode)';
       default:
         return '';
     }
@@ -575,6 +592,21 @@ export function ScheduleBoardPage({
                     activeAlert === 'placeholderBanner'
                       ? 'Hapus filter banner perlu diupdate'
                       : 'Filter halaman terbit yang masih memakai banner bawaan'
+                  }
+                />
+              )}
+              {(onCreditCount > 0 || activeAlert === 'onCredit') && (
+                <AlertPill
+                  icon={Clock}
+                  count={onCreditCount}
+                  label="tayang sebelum lunas"
+                  tone="amber"
+                  active={activeAlert === 'onCredit'}
+                  onClick={() => toggleAlert('onCredit')}
+                  title={
+                    activeAlert === 'onCredit'
+                      ? 'Hapus filter tayang sebelum lunas'
+                      : 'Filter iklan yang tayang dengan tagihan tempo belum dibayar — semua periode, utang tertua dulu'
                   }
                 />
               )}

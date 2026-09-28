@@ -29,6 +29,8 @@ const groupOf = (members: InvoiceGroupMember[]): Map<string, InvoiceGroup> =>
     memberCount: members.length,
     total: members.reduce((s, m) => s + m.amount, 0),
     allPaid: members.length > 0 && members.every((m) => m.isPaid),
+    isTempo: false,
+    supersededBy: null,
   }]]);
 
 const TIGA = [

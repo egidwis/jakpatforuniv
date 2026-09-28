@@ -48,6 +48,8 @@
  * tombol dashboard — tanpa nominal, judul survei, nama, atau email.
  */
 
+import { renewTempoBill } from '../api/doku/_tempo.js';
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const DASHBOARD_PATH = '/dashboard';
@@ -94,6 +96,26 @@ const COPY = {
   expired: {
     id: ['Batas waktu pembayaran jadwal ini sudah lewat.', 'Silakan buka dashboard untuk menjadwalkan ulang atau meminta tagihan baru.'],
     en: ['The payment deadline for this schedule has passed.', 'Please open your dashboard to reschedule or request a new invoice.'],
+  },
+  /*
+    sql/102 — link-nya mati, tapi jadwal ini SENDIRI belum lewat batas bayarnya.
+    Kasus JFU-INV-15f4ac: tagihan gabungan mati karena cutoff anggota PALING
+    AWAL, dan anggota yang tayang lusa dibaca "kedaluwarsa, jadwalkan ulang".
+    Arah tindakannya MENUNGGU, sama dengan `bill_cancelled`.
+  */
+  bill_expired: {
+    id: ['Link pembayaran ini sudah tidak berlaku.', 'Jadwal tayangmu masih aman — tagihan baru akan dikirimkan. Tidak perlu menjadwalkan ulang.'],
+    en: ['This payment link is no longer valid.', 'Your airing schedule is still on — a new invoice will follow. There is no need to reschedule.'],
+  },
+  /*
+    Tagihan tempo yang link-nya sedang diperbarui GAGAL diperbarui (DOKU atau
+    database menolak). Iklannya tetap tayang dan utangnya tetap ada — yang
+    diminta cuma mencoba lagi. Tidak pernah "kedaluwarsa": tagihan tempo tidak
+    punya tanggal jatuh tempo (K3).
+  */
+  tempo_retry: {
+    id: ['Link pembayaranmu sedang disiapkan ulang.', 'Coba buka tautan ini lagi dalam beberapa menit. Iklanmu tetap tayang seperti biasa.'],
+    en: ['Your payment link is being refreshed.', 'Please open this link again in a few minutes. Your ad keeps airing as scheduled.'],
   },
   none: {
     id: ['Tagihan untuk jadwal ini belum terbit.', 'Kami akan mengirimkannya begitu siap. Statusnya bisa dilihat di dashboard.'],
@@ -186,8 +208,7 @@ export async function onRequest(context) {
     return page('error', 500);
   }
 
-  let row;
-  try {
+  const resolve = async () => {
     const res = await fetch(`${supabaseUrl}/rest/v1/rpc/authoritative_payment_url`, {
       method: 'POST',
       headers: {
@@ -202,7 +223,30 @@ export async function onRequest(context) {
       throw new Error(`HTTP ${res.status}: ${body.slice(0, 300)}`);
     }
     const rows = await res.json();
-    row = Array.isArray(rows) ? rows[0] : rows;
+    return Array.isArray(rows) ? rows[0] : rows;
+  };
+
+  let row;
+  try {
+    row = await resolve();
+
+    /*
+      ── TAGIHAN TEMPO YANG LINK-NYA HABIS (sql/102) ──────────────────────────
+      Diperbarui DI SINI, tanpa login, lalu resolver ditanya lagi — jadi aturan
+      lead/follower dan redirect di bawah dipakai ulang, bukan ditulis kedua
+      kalinya. Peneliti tidak pernah melihat "kedaluwarsa": tagihan tempo tidak
+      punya tanggal jatuh tempo (K3). Gagal = minta coba lagi, bukan galat.
+    */
+    if (row && String(row.reason) === 'tempo_renewable') {
+      // Tanpa `request` (mis. harness uji), `_tempo.js` jatuh ke host kanonik.
+      const origin = context.request?.url ? new URL(context.request.url).origin : undefined;
+      const renewal = await renewTempoBill(env, id, { origin });
+      if (!renewal.ok) {
+        console.error(`[bayar] pembaruan tempo ${id} gagal: ${renewal.reason}`);
+        return page('tempo_retry', 503);
+      }
+      row = await resolve();
+    }
   } catch (e) {
     /*
       ⚠️ KEGAGALANNYA TIDAK BOLEH SUNYI. Resolver ini menambah satu lompatan di
@@ -217,6 +261,9 @@ export async function onRequest(context) {
   if (!row) return page('error', 502);
 
   const reason = String(row.reason || 'error');
+  // Pembaruan sukses tapi resolver MASIH meminta pembaruan = sesuatu yang lebih
+  // dalam rusak. Jangan berputar; katakan coba lagi.
+  if (reason === 'tempo_renewable') return page('tempo_retry', 503);
 
   if (reason !== 'live') return page(reason, reason === 'not_found' ? 404 : 200);
 

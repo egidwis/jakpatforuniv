@@ -11,7 +11,7 @@ import { voucherInstantOf } from '@/utils/cost-calculator';
 import { createManualInvoice } from '@/utils/payment';
 import { leadOf, payLinkUrl } from '@/utils/payLink';
 import {
-  fetchAdSchedules, fetchScheduleBilling, supabase,
+  fetchAdSchedules, fetchScheduleBilling, supabase, markSchedulesOnCredit, creditOutcomeReason,
   type AdScheduleEntry, type ScheduleBilling,
 } from '@/utils/supabase';
 import { formatWibShort, toWibYmd } from '@/utils/airing-window';
@@ -64,6 +64,13 @@ export function BulkInvoiceDialog({
 
   const [voucher, setVoucher] = useState('');
   const [appliedVoucher, setAppliedVoucher] = useState('');
+  /**
+   * Tagihan tempo (sql/102) — "tayang sesuai jadwal, bayar menyusul". Mengubah
+   * himpunan yang layak (`planBulkInvoice({ tempo })`), jadi toggle-nya memuat
+   * ulang rencana.
+   */
+  const [tempo, setTempo] = useState(false);
+  const [creditNote, setCreditNote] = useState('');
 
   const accounts = distinctAccounts(submissions);
   const buyer = submissions[0];
@@ -96,10 +103,11 @@ export function BulkInvoiceDialog({
       for (const [scheduleId, billing] of map) billings.set(scheduleId, billing);
     }
 
-    return planBulkInvoice({ submissions, entries, billings });
+    return planBulkInvoice({ submissions, entries, billings, tempo });
     // Alasan dependensi `targetKey`-saja sama dengan `resolve` di bawah.
+    // `tempo` ikut karena ia MENGUBAH siapa yang layak — kebijakan, bukan tampilan.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetKey]);
+  }, [targetKey, tempo]);
 
   const resolve = useCallback(async () => {
     setIsLoading(true);
@@ -128,7 +136,7 @@ export function BulkInvoiceDialog({
     // `appliedVoucher` juga sengaja bukan dependensi: mengubah voucher menyusun
     // ulang item lewat `applyVoucher`, tanpa menyentuh jaringan.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetKey]);
+  }, [targetKey, loadPlan]);
 
   useEffect(() => {
     if (open) void resolve();
@@ -226,6 +234,8 @@ export function BulkInvoiceDialog({
           .filter((d): d is string => !!d)
           .map((d) => toWibYmd(new Date(d)))
           .sort()[0],
+        // Tempo: 7 hari, tanpa batas bayar anggota paling awal (sql/102).
+        tempo,
       });
 
       // Menulis DAN membuktikan jumlahnya. Kalau melempar, seluruh barisnya
@@ -235,7 +245,33 @@ export function BulkInvoiceDialog({
         invoiceUrl: paymentResponse.invoice_url,
         expiresAt: paymentResponse.expires_at,
         dokuRequestId: paymentResponse.doku_request_id,
+        isTempo: tempo,
       }, amount);
+
+      /*
+        ⚠️ KREDIT SESUDAH TAGIHAN, per anggota — lihat `markSchedulesOnCredit`.
+        Yang gagal DISEBUT; toast hijau borongan untuk hasil separuh adalah
+        kebohongan kelas yang sama dengan "Tandai Lunas" sebelum sql/59.
+      */
+      if (tempo) {
+        try {
+          const outcomes = await markSchedulesOnCredit(payload.map((b) => b.entry.id), creditNote);
+          const failed = bundles.filter((b) => outcomes.get(b.entry.id) !== 'ok');
+          if (failed.length > 0) {
+            toast.error(
+              `Tagihan tempo terbit, tapi ${failed.length} dari ${bundles.length} jadwal TIDAK ditayangkan: `
+              + failed.map((b) => `#${b.entry.bookingId} (${creditOutcomeReason(outcomes.get(b.entry.id) ?? 'not_eligible')})`).join('; '),
+              { duration: 15000 },
+            );
+          }
+        } catch (err: any) {
+          toast.error(
+            `Tagihan tempo terbit, tapi penandaan tayang gagal: ${err?.message || err}. `
+            + 'Iklannya BELUM dijadwalkan tayang — pakai "Tayangkan Dulu" di kartu tiap jadwal.',
+            { duration: Infinity },
+          );
+        }
+      }
 
       /*
         ⚠️ Tagihan yang lahir tanpa `doku_request_id` TIDAK BISA dicabut lewat
@@ -306,6 +342,7 @@ export function BulkInvoiceDialog({
               bookingId: b.entry.bookingId,
               amount: bundleTotals(b.items).amount,
             })),
+            tempo,
           }),
         }).catch((err) => console.error('Failed to send invoice-ready email:', err));
       }
@@ -317,6 +354,7 @@ export function BulkInvoiceDialog({
           bundles: bundles.map((b) => ({ title: b.title, startDate: b.entry.startDate })),
           amount,
           invoiceUrl: bundlePayUrl,
+          tempo,
         }));
       }
 
@@ -392,6 +430,40 @@ export function BulkInvoiceDialog({
               </Button>
             </div>
           </Callout>
+        )}
+
+        {/*
+          Tagihan tempo (sql/102) — di ATAS daftar karena ia MENGUBAH daftarnya:
+          jadwal yang lewat batas bayar ikut layak begitu toggle ini menyala.
+        */}
+        {!loadError && (
+          <div className={`rounded-lg border px-3 py-2.5 space-y-2 ${tempo ? 'border-violet-300 bg-violet-50/70' : 'border-gray-200 bg-white'}`}>
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={tempo}
+                disabled={isSaving}
+                onChange={(e) => setTempo(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-violet-600"
+              />
+              <span className="text-xs leading-snug">
+                <span className="font-semibold text-gray-900">Tagihan tempo — tayang sesuai jadwal, bayar menyusul</span>
+                <span className="block text-[11px] text-gray-600 mt-0.5">
+                  Semua pesanan di bawah tayang tanpa menunggu pembayaran. Tanpa tanggal jatuh tempo;
+                  link bayarnya diperbarui otomatis. Sekali tayang, tagihannya tidak bisa dibatalkan.
+                </span>
+              </span>
+            </label>
+            {tempo && (
+              <Input
+                value={creditNote}
+                onChange={(e) => setCreditNote(e.target.value)}
+                placeholder="Catatan (opsional) — mis. pelanggan rutin, dana kampus cair akhir bulan"
+                maxLength={200}
+                className="h-8 text-xs bg-white"
+              />
+            )}
+          </div>
         )}
 
         {!isLoading && !loadError && (

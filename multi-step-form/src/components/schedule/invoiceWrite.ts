@@ -85,6 +85,11 @@ export interface RowContext {
    * Order, karena link-nya seharusnya tidak pernah ada.
    */
   dokuRequestId?: string | null;
+  /**
+   * Tagihan tempo (sql/102). Hanya ditulis ke baris INVOICE — lihat catatan
+   * `expires_at` di `buildInvoiceRows`: `transactions` tidak punya kolom ini.
+   */
+  isTempo?: boolean;
 }
 
 export interface BuiltRows {
@@ -151,7 +156,13 @@ export function buildInvoiceRows(bundles: InvoiceBundle[], ctx: RowContext): Bui
      * terbit padahal link DOKU-nya sudah hidup menagih. Godaannya besar karena
      * setiap kolom lain di sini memang milik berdua.
      */
-    invoices.push({ ...shared, invoice_url: ctx.invoiceUrl, expires_at: ctx.expiresAt ?? null });
+    invoices.push({
+      ...shared,
+      invoice_url: ctx.invoiceUrl,
+      expires_at: ctx.expiresAt ?? null,
+      // Sama seperti `expires_at`: HANYA baris invoice (sql/102).
+      ...(ctx.isTempo ? { is_tempo: true } : {}),
+    });
     transactions.push({
       ...shared,
       payment_method: 'doku',

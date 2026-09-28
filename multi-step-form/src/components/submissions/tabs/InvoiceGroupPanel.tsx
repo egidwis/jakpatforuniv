@@ -33,7 +33,7 @@ export function InvoiceGroupPanel({ group, currentScheduleId, expiresAt }: {
       <div className="flex items-center gap-1.5 flex-wrap">
         <Layers className="w-3.5 h-3.5 shrink-0 text-blue-600" />
         <span className="text-[11px] font-bold text-blue-900 uppercase tracking-wide">
-          Tagihan gabungan · {group.memberCount} pesanan
+          Tagihan gabungan{group.isTempo ? ' tempo' : ''} · {group.memberCount} pesanan
         </span>
       </div>
 

@@ -101,6 +101,18 @@ function bookingStatusLabel(card: ScheduleCard, t: (key: TranslationKey) => stri
     // memetakannya ke 'cancelled' akan berbunyi "Dibatalkan" untuk pesanan
     // yang justru masih hidup — yang batal cuma tanggalnya.
     if (state === 'slot_cancelled') return t('bookingStatusSlotCancelled');
+    // sql/102 — di luar enum shared; `extendStatusLabelKey` akan menyebutnya
+    // "Terjadwal"/"Tayang" dan menyembunyikan bahwa uangnya belum masuk.
+    // Kata depannya mengikuti posisi iklan (`creditPhaseOf`), bukan selalu
+    // "Tayang": iklan minggu depan belum tayang, yang dihentikan sudah tidak.
+    if (state === 'airing_on_credit') {
+        switch (card.booking.creditPhase) {
+            case 'upcoming': return t('bookingStatusCreditUpcoming');
+            case 'ended': return t('bookingStatusCreditEnded');
+            case 'stopped': return t('bookingStatusCreditStopped');
+            default: return t('bookingStatusAiringOnCredit');
+        }
+    }
     return t(extendStatusLabelKey(state));
 }
 
@@ -131,6 +143,8 @@ function bookingStatusStyle(state: ScheduleCard['booking']['state']): { bg: stri
     // Giliran peneliti: tanggalnya harus diganti. Amber, bukan rose.
     if (state === 'too_late_today') return TONE_AMBER;
     if (state === 'expired') return TONE_AMBER;
+    // Tayang sebelum lunas: giliran peneliti membayar, tanpa tenggat — amber.
+    if (state === 'airing_on_credit') return TONE_AMBER;
     // Tidak ada yang gagal dan tidak ada yang perlu peneliti kerjakan —
     // bolanya di tim.
     if (state === 'slot_cancelled') return TONE_SLATE;
@@ -402,7 +416,7 @@ function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
                 <ExternalLink className="w-3 h-3 ml-0.5" />
             </a>
         );
-    } else if (b.state === 'waiting_payment' && b.invoicePaymentId) {
+    } else if ((b.state === 'waiting_payment' || b.state === 'airing_on_credit') && b.invoicePaymentId) {
         invoiceValue = (
             <a
                 href={`/invoices/${b.invoicePaymentId}`}
@@ -699,7 +713,14 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
         );
     }
 
-    if (b.state === 'waiting_payment') {
+    /*
+      `airing_on_credit` (sql/102) memakai cabang yang SAMA: grup lead/follower,
+      tombol bayar, dan bayar-sebagian semuanya berlaku apa adanya. Yang beda
+      cuma judulnya dan — ini intinya — TIDAK ADA kalimat tenggat: tagihan tempo
+      tidak punya tanggal jatuh tempo, dan link-nya diperbarui `/bayar/`.
+    */
+    const onCredit = b.state === 'airing_on_credit';
+    if (b.state === 'waiting_payment' || onCredit) {
         const isExternal = card.kind === 'original' ? b.isExternalLink : true;
         /*
           ⚠️ AKIBAT TENGGATNYA BEDA, JADI KALIMATNYA HARUS BEDA.
@@ -740,7 +761,12 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
         const deadlineTime = b.deadline
             ? b.deadline.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: WIB }).replace(':', '.') + ' WIB'
             : null;
-        const deadlineLine = deadlineTime && b.deadlineCause === 'slot'
+        const creditStopped = onCredit && b.creditPhase === 'stopped';
+        const deadlineLine = onCredit
+            ? (creditStopped
+                ? t('bannerSubCreditStopped')
+                : b.payUrl ? t('bannerSubAiringOnCredit') : t('bannerSubAiringOnCreditNoBill'))
+            : deadlineTime && b.deadlineCause === 'slot'
             ? t('bannerSubWaitingPaymentSlot', { time: deadlineTime })
             : deadlineTime && b.deadlineCause === 'cutoff'
                 ? t('bannerSubWaitingPaymentCutoff', { time: deadlineTime })
@@ -805,7 +831,13 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
             <Banner
                 tone="amber"
                 icon={<CreditCard className={bannerIcon} />}
-                title={isPartial ? t('bannerTitleWaitingPaymentPartial') : t('bannerTitleWaitingPayment')}
+                title={onCredit
+                    ? (creditStopped
+                        ? t('bannerTitleCreditStopped')
+                        : b.creditPhase === 'ended'
+                            ? t('bannerTitleCreditEnded')
+                            : t('bannerTitleAiringOnCredit'))
+                    : isPartial ? t('bannerTitleWaitingPaymentPartial') : t('bannerTitleWaitingPayment')}
                 lines={[
                     b.group && <GroupBillBlock key="grp" group={b.group} portion={b.amount} t={t} />,
                     isPartial && t('bannerSubPartiallyPaid', {

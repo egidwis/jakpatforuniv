@@ -1,7 +1,9 @@
 import type { AdScheduleEntry, FormSubmission } from '@/utils/supabase';
 import {
+    creditPhaseOf,
     effectiveAiringOf,
     firstScheduleOf,
+    isOwedOnCredit,
     isSchedulePaid,
     laterSchedulesOf,
     orderStepOf,
@@ -77,6 +79,18 @@ export interface OrderUiState {
     /** Jadwalnya hari ini tapi batas bayar 14.00 WIB sudah lewat — admin tidak
      * lagi punya waktu membangun halaman iklan sebelum 15.00. */
     isTooLateToday: boolean;
+    /**
+     * Ada jadwal yang tayang sebelum lunas (sql/102) dan belum dibayar.
+     *
+     * ⚠️ `isPaid` MENYALA untuk jadwal kredit — `isSchedulePaid` membaca
+     * `scheduled`/`live` sebagai sudah bayar, dan itu sengaja dipertahankan
+     * karena sumbu TAYANG-nya memang benar (iklannya tayang). Yang tidak boleh
+     * ikut adalah kalimat UANG: tanpa flag ini Mimin memberi tahu peneliti
+     * "Pembayaran: lunas" untuk tagihan yang belum dibayar sepeser pun.
+     */
+    owesOnCredit: boolean;
+    /** Jadwal PERTAMA adalah kredit yang penayangannya dihentikan tim (K6). */
+    firstCreditStopped: boolean;
     callout: OrderCalloutState;
     needsAction: boolean;
     group: OrderGroup;
@@ -291,13 +305,20 @@ export function deriveOrderUiState(
         callout = isLive ? 'live' : 'ready_to_launch';
     }
 
+    // Tagihan tempo: tanpa tenggat, tapi tetap satu-satunya yang harus
+    // dikerjakan peneliti di order ini — jadi ia duduk di "Butuh Aksi".
+    const owesOnCredit = [first, ...later].some((s) => isOwedOnCredit(s, payments[s.sourceId]));
+    const firstCreditStopped = isOwedOnCredit(first, payments[first.sourceId])
+        && creditPhaseOf(first, now) === 'stopped';
+
     const needsAction =
         callout === 'revision' ||
         callout === 'expired' ||
         callout === 'too_late_today' ||
         callout === 'extend_payment' ||
         callout === 'choose_schedule' ||
-        (callout === 'payment' && !!finalPaymentLink);
+        (callout === 'payment' && !!finalPaymentLink) ||
+        (owesOnCredit && callout !== 'cancelled');
 
     // `awaiting_admin_schedule` sengaja TIDAK masuk `needsAction`: bolanya di
     // admin, jadi ordernya duduk di "Berjalan", bukan berteriak di "Butuh Aksi".
@@ -323,6 +344,8 @@ export function deriveOrderUiState(
         paymentDeadline,
         paymentDeadlineCause,
         isTooLateToday,
+        owesOnCredit,
+        firstCreditStopped,
         callout,
         needsAction,
         group,
@@ -382,7 +405,19 @@ export function describeOrderForChat(submission: FormSubmission, ui: OrderUiStat
     if (submission.id) {
         lines.push(`- ID Survei: ${submission.id}`);
     }
-    lines.push(`- Status: ${statusText[ui.callout]}`);
+    /*
+      ⚠️ DUA KALIMAT DI ATAS BERBOHONG UNTUK JADWAL KREDIT (sql/102), dan Mimin
+      mengulanginya ke peneliti:
+        ready_to_launch → "pembayaran diterima" — padahal belum.
+        slot_cancelled  → "tim akan menjadwalkan ulang" — padahal iklannya
+                          DIHENTIKAN sesudah tayang dan utangnya tetap penuh (K6).
+    */
+    const status = ui.firstCreditStopped
+        ? 'penayangan iklannya DIHENTIKAN oleh tim Jakpat setelah sempat tayang. Iklan ini ditayangkan sebelum lunas, jadi tagihannya tetap berlaku penuh. Tidak otomatis dijadwalkan ulang. Kalau user butuh penjelasan kenapa dihentikan, eskalasikan ke tim'
+        : ui.owesOnCredit && ui.callout === 'ready_to_launch'
+            ? 'jadwal tayang sudah dikunci; iklan ini ditayangkan sebelum lunas atas persetujuan tim Jakpat'
+            : statusText[ui.callout];
+    lines.push(`- Status: ${status}`);
 
     const start = fmt(ui.eff.activeStart);
     const end = fmt(ui.eff.activeEnd);
@@ -398,7 +433,11 @@ export function describeOrderForChat(submission: FormSubmission, ui: OrderUiStat
         lines.push(`- Order ini punya ${ui.later.length + 1} jadwal iklan; yang disebut di atas adalah jadwal yang sedang berlaku`);
     }
 
-    if (ui.callout === 'payment' && ui.paymentDeadline) {
+    // Kredit DULUAN — `ui.isPaid` menyala untuk jadwal kredit (lihat
+    // `owesOnCredit`), jadi cabang "lunas" di bawah akan menangkapnya.
+    if (ui.owesOnCredit) {
+        lines.push('- Pembayaran: BELUM dibayar. Ini tagihan tempo: iklan ditayangkan sesuai jadwal lebih dulu, tagihannya TIDAK punya batas waktu, dan tombol bayarnya ada di halaman Order Saya. Jangan pernah menyebut order ini lunas');
+    } else if (ui.callout === 'payment' && ui.paymentDeadline) {
         // Akibatnya beda, jadi jangan satu kalimat: batas 14.00 WIB TIDAK
         // melepas slot, ia hanya membuat tanggalnya tidak terkejar.
         const akibat = ui.paymentDeadlineCause === 'slot'

@@ -72,7 +72,9 @@ function PublicationRow({ card }: { card: ScheduleCard }) {
  */
 export function PublicationPhase({ cards, pageInfo, isCancelled }: PublicationPhaseProps) {
     const { t } = useLanguage();
-    const paidCards = cards.filter((c) => c.booking.state === 'paid');
+    // "Yang boleh tayang", bukan cuma "yang lunas": iklan tayang-sebelum-lunas
+    // (sql/102) MEMANG tayang, dan peneliti berhak melihat halaman iklannya.
+    const paidCards = cards.filter((c) => c.booking.state === 'paid' || c.booking.state === 'airing_on_credit');
     const hasCompleted = paidCards.some((c) => c.publication.state === 'completed');
     const hasLive = paidCards.some((c) => c.publication.state === 'live');
     const hasScheduledOnly = !hasCompleted && !hasLive && paidCards.some((c) => c.publication.state === 'scheduled');

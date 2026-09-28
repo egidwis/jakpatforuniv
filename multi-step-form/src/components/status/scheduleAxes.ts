@@ -203,6 +203,10 @@ export function scheduleFromSubmission(submission: FormSubmission): AdScheduleEn
         // dilaporkan", bukan "sudah diganti" — dan itu jawaban yang benar di sini:
         // penanda banner cuma dirender di papan admin, yang selalu membaca cermin.
         pageBannerIsPlaceholder: false,
+        // Cadangan tanpa cermin = tidak tahu soal kredit (sql/102). `null` =
+        // "bukan kredit", perilaku sebelum fitur itu ada.
+        airOnCreditAt: null,
+        airOnCreditNote: null,
     };
 }
 
@@ -238,6 +242,53 @@ export function scheduleFromSubmission(submission: FormSubmission): AdScheduleEn
  */
 export function isSlotCancelledSchedule(entry: AdScheduleEntry): boolean {
     return airingOf(entry) === 'cancelled' && entry.reviewStatus === 'approved';
+}
+
+/**
+ * Jadwal ini tayang sebelum lunas (sql/102) DAN masih berutang.
+ *
+ * Tinggal di sini, bukan di `airingPeriods`, karena DUA pembaca memerlukannya:
+ * kartu jadwal (`buildScheduleCards`) dan keadaan order (`deriveOrderUiState`,
+ * yang juga menjadi konteks Mimin AI). Dua salinan = dua jawaban.
+ *
+ * ⚠️ `scheduled`+`pending` SAJA BUKAN TANDANYA — order lama yang dibayar di
+ * luar sistem punya bentuk yang sama. Hanya `airOnCreditAt` yang menjawabnya.
+ * Jadwal kredit yang dibatalkan SEBELUM tayang tidak berutang (tagihannya ikut
+ * ditutup), jadi tanpa tagihan terbuka ia jatuh ke cabang `cancelled` biasa.
+ * Ordinal 1 yang dihentikan tercermin sebagai `cancelled` juga (dari
+ * `slot_cancelled` di form_submissions) — lihat `isSlotCancelledSchedule`.
+ */
+export function isOwedOnCredit(
+    s: Pick<AdScheduleEntry, 'airOnCreditAt' | 'paymentStatus' | 'status'>,
+    pay: Pick<SchedulePaymentInfo, 'paymentUrl' | 'paid' | 'outstanding'> | null | undefined,
+): boolean {
+    if (!s.airOnCreditAt) return false;
+    if (['paid', 'completed'].includes((s.paymentStatus || '').toLowerCase())) return false;
+    if (pay && pay.paid > 0 && pay.outstanding <= 0) return false;
+    if ((s.status || '').toLowerCase() === 'cancelled' && !pay?.paymentUrl) return false;
+    return true;
+}
+
+/**
+ * Di mana penayangan jadwal kredit berada — supaya kalimatnya tidak berbohong.
+ *
+ * "Tayang — menunggu pembayaran" untuk iklan yang baru mulai minggu depan, atau
+ * yang penayangannya sudah DIHENTIKAN tim, dua-duanya salah. Jam dinding yang
+ * menang atas kolom `status` (lihat `publicationStateOf`), kecuali `cancelled`:
+ * itu keputusan tim, bukan jam.
+ */
+export type CreditPhase = 'upcoming' | 'live' | 'ended' | 'stopped';
+
+export function creditPhaseOf(
+    s: Pick<AdScheduleEntry, 'status' | 'startDate' | 'endDate'>,
+    now: Date = new Date(),
+): CreditPhase {
+    if ((s.status || '').toLowerCase() === 'cancelled') return 'stopped';
+    const start = s.startDate ? new Date(s.startDate) : null;
+    const end = s.endDate ? new Date(s.endDate) : null;
+    if (!start || start > now) return 'upcoming';
+    if (end && end <= now) return 'ended';
+    return 'live';
 }
 
 /**

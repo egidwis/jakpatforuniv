@@ -61,6 +61,30 @@ export interface InvoiceData {
    * warisan, bukan default yang diinginkan.
    */
   airingStartYmd?: string;
+  /**
+   * Tagihan tempo (sql/102) — tanpa tanggal jatuh tempo.
+   *
+   * Umur link-nya SELALU `MAX_INVOICE_MINUTES` dan `airingStartYmd` diabaikan:
+   * iklannya tayang sesuai jadwal apa pun yang terjadi pada tagihannya, jadi
+   * batas bayar 14.00 tidak berlaku, dan tanggal yang sudah lewat justru kasus
+   * utamanya (iklan sedang/sudah tayang). Link yang habis diperbarui `/bayar/`.
+   */
+  tempo?: boolean;
+}
+
+/**
+ * Umur link tagihan ini dalam menit, atau `null` kalau TIDAK BOLEH terbit.
+ *
+ * Tempo: selalu 7 hari — lihat `InvoiceData.tempo`. Selain itu:
+ * `invoiceLifetimeMinutes`, termasuk penolakannya untuk jadwal yang batas
+ * bayarnya tinggal <60 menit.
+ */
+export function manualInvoiceLifetimeMinutes(
+  data: Pick<InvoiceData, 'airingStartYmd' | 'tempo'>,
+  now: Date = new Date(),
+): number | null {
+  if (data.tempo) return MAX_INVOICE_MINUTES;
+  return invoiceLifetimeMinutes(data.airingStartYmd, now);
 }
 
 /**
@@ -248,6 +272,17 @@ export const createPayment = async (paymentData: PaymentData) => {
     const status = err?.response?.status;
 
     /*
+      409 + `tempo` = jadwal ini tayang sebelum lunas dan ditagih lewat tagihan
+      tempo (sql/102). Bukan kegagalan: jalan bayarnya `/bayar/<jadwal>`, yang
+      memperbarui link temponya kalau perlu. Dipulangkan SEBAGAI URL bayar,
+      jadi setiap pemanggil yang mengarahkan peneliti ke hasil fungsi ini
+      langsung benar tanpa diubah.
+    */
+    if (status === 409 && err?.response?.data?.tempo && err?.response?.data?.pay_link) {
+      return String(err.response.data.pay_link);
+    }
+
+    /*
       409 + `group_bill` = pesanan ini sudah ditanggung tagihan gabungan.
       Bukan kegagalan yang bisa diulang: endpoint-nya sengaja MENOLAK mencetak
       tagihan kedua (lihat catatan A3 di `create-payment.js`), karena dua link
@@ -282,16 +317,20 @@ export const createPayment = async (paymentData: PaymentData) => {
 // ==============================================================================
 export const createManualInvoice = async (invoiceData: InvoiceData) => {
   try {
-    const { formSubmissionId, amount, description, customerInfo, bundleCount = 1, airingStartYmd, scheduleId } = invoiceData;
+    const { formSubmissionId, amount, description, customerInfo, bundleCount = 1, scheduleId } = invoiceData;
 
     // Umur link mengikuti batas bayar jadwal yang dibiayainya. `null` = cutoff
     // sudah kurang dari 60 menit lagi → TOLAK, jangan terbitkan link sekarat.
-    const dueMinutes = invoiceLifetimeMinutes(airingStartYmd);
+    // Tagihan tempo tidak punya batas bayar: selalu 7 hari (sql/102).
+    const dueMinutes = manualInvoiceLifetimeMinutes(invoiceData);
     if (dueMinutes === null) {
       throw new Error(
         'Tagihan tidak diterbitkan: batas pelunasan jadwal ini (14.00 WIB) kurang dari 60 menit lagi, '
-        + 'jadi link bayarnya akan mati sebelum sempat dipakai. Jadwalkan ulang ke tanggal berikutnya '
-        + 'atau tandai lunas secara manual.',
+        + 'jadi link bayarnya akan mati sebelum sempat dipakai. Jadwalkan ulang ke tanggal berikutnya, '
+        + 'atau centang "Tagihan tempo" kalau iklannya boleh tayang dulu dan dibayar menyusul. '
+        // ⚠️ BUKAN lagi "tandai lunas secara manual": itu menandai uang yang
+        // belum diterima sebagai pendapatan (audit JFU-INV-15f4ac, 28 Sep 2026).
+        + '"Tandai Lunas" hanya untuk uang yang sudah diterima.',
       );
     }
     const origin = window.location.origin || "https://submit.jakpatforuniv.com";

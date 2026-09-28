@@ -52,8 +52,9 @@ const REASONS: Record<CardState | 'no_schedule', { text: string; fixable: boolea
   choose_schedule: { text: 'Belum ada tanggal tayang', fixable: true },
   awaiting_review: { text: 'Belum lolos review', fixable: false },
   waiting_payment: { text: 'Sudah punya tagihan aktif', fixable: false },
-  hold_lapsed: { text: 'Slot lewat batas bayar 14.00', fixable: false },
+  hold_lapsed: { text: 'Slot lewat batas bayar 14.00 — centang "Tagihan tempo" kalau boleh tayang dulu', fixable: false },
   partially_paid: { text: 'Sudah dibayar sebagian', fixable: false },
+  airing_on_credit: { text: 'Sudah tayang sebelum lunas dengan tagihan tempo aktif', fixable: false },
   paid: { text: 'Sudah lunas', fixable: false },
   cancelled: { text: 'Dibatalkan', fixable: false },
   no_schedule: { text: 'Belum punya jadwal sama sekali', fixable: true },
@@ -68,8 +69,31 @@ const REASONS: Record<CardState | 'no_schedule', { text: string; fixable: boolea
  */
 const REJECTION_PRIORITY: Array<CardState | 'no_schedule'> = [
   'choose_schedule', 'no_schedule', 'waiting_payment', 'hold_lapsed',
-  'awaiting_review', 'partially_paid', 'paid', 'cancelled',
+  'awaiting_review', 'partially_paid', 'airing_on_credit', 'paid', 'cancelled',
 ];
+
+/**
+ * Keadaan kartu yang boleh ikut tagihan gabungan.
+ *
+ * Tagihan biasa: hanya `awaiting_invoice` — persis sebelum sql/102.
+ *
+ * Tagihan TEMPO (sql/102) membuka tiga lagi, karena batas bayar 14.00 tidak
+ * berlaku baginya:
+ *   `hold_lapsed`       — lewat batas bayar, tapi admin yakin penelitinya
+ *                         akan membayar (kasus JFU-INV-15f4ac). Hanya yang
+ *                         MASIH bertanggal; slot yang benar-benar lepas tidak.
+ *   `waiting_payment`   — tagihan biasanya DIGANTI tagihan tempo;
+ *                         `writeInvoiceRows` mematikan yang lama lebih dulu.
+ *   `airing_on_credit`  — sudah kredit tapi belum punya tagihan tempo yang
+ *                         berlaku (mis. tagihannya dibatalkan sebelum tayang).
+ */
+function isBillable(state: CardState, entry: AdScheduleEntry, billing: ScheduleBilling | undefined, tempo: boolean): boolean {
+  if (state === 'awaiting_invoice') return true;
+  if (!tempo || !entry.startDate || entry.reviewStatus !== 'approved') return false;
+  if (state === 'hold_lapsed' || state === 'waiting_payment') return true;
+  if (state === 'airing_on_credit') return !billing?.openInvoice;
+  return false;
+}
 
 export interface PlanInput {
   submissions: Array<{
@@ -83,10 +107,13 @@ export interface PlanInput {
   /** `schedule.id` → billing. Digabung dari `fetchScheduleBilling` per order. */
   billings: Map<string, ScheduleBilling>;
   now?: Date;
+  /** Tagihan tempo — lihat `isBillable`. */
+  tempo?: boolean;
 }
 
 export function planBulkInvoice(input: PlanInput): BulkPlan {
   const { submissions, entries, billings } = input;
+  const tempo = !!input.tempo;
   const candidates: BulkCandidate[] = [];
   const rejected: BulkRejection[] = [];
 
@@ -107,7 +134,7 @@ export function planBulkInvoice(input: PlanInput): BulkPlan {
     }
 
     const billable = own.filter(
-      (e) => cardStateOf(e, billings.get(e.id)) === 'awaiting_invoice',
+      (e) => isBillable(cardStateOf(e, billings.get(e.id)), e, billings.get(e.id), tempo),
     );
 
     if (billable.length > 0) {

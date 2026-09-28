@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { fetchInvoiceGroups, supabase } from '../utils/supabase'; // Adjust path if needed, check structure
 import { payLinkPath } from '../utils/payLink';
 import { Loader2, Download, CheckCircle2, Clock, ExternalLink, ShieldCheck } from 'lucide-react';
@@ -49,6 +49,12 @@ interface InvoiceData {
 interface InvoiceMeta {
     paid_at: string | null;
     expires_at: string | null;
+    /**
+     * Tagihan tempo (sql/102): TANPA jatuh tempo. `expires_at`-nya hanya umur
+     * link DOKU, dan `/bayar/` memperbaruinya — jadi ia tidak boleh tercetak
+     * sebagai "Jatuh Tempo" dan tidak boleh mematikan tombol bayar.
+     */
+    is_tempo: boolean;
 }
 
 // Derive a clean, short, professional document code from a messy payment_id.
@@ -82,13 +88,14 @@ function shortDocCode(paymentId?: string | null): string {
 
 export function InvoicePage() {
     const { paymentId } = useParams();
+    const navigate = useNavigate();
     // `data` = baris PERTAMA (blok pembeli & metode bayar); `rows` = seluruh
     // grup, yang jadi sumber setiap angka uang di dokumen ini.
     const [data, setData] = useState<InvoiceData | null>(null);
     const [rows, setRows] = useState<InvoiceData[]>([]);
     /** Cermin `rows` untuk interval polling — lihat efek penyegaran di bawah. */
     const rowsRef = useRef<InvoiceData[]>([]);
-    const [meta, setMeta] = useState<InvoiceMeta>({ paid_at: null, expires_at: null });
+    const [meta, setMeta] = useState<InvoiceMeta>({ paid_at: null, expires_at: null, is_tempo: false });
     /**
      * `ad_schedules.id` milik anggota LEAD — kunci resolver `/bayar/<id>`.
      *
@@ -266,10 +273,28 @@ export function InvoicePage() {
                 // mati saat baris pertamanya kedaluwarsa.
                 const { data: invoiceRows } = await supabase
                     .from('invoices')
-                    .select('paid_at, expires_at')
+                    .select('paid_at, expires_at, status, is_tempo, superseded_by')
                     .eq('payment_id', paymentId);
                 if (invoiceRows && invoiceRows.length > 0) {
-                    setMeta(groupMeta(invoiceRows));
+                    /*
+                      ⚠️ TAGIHAN TEMPO YANG SUDAH DIPERBARUI (sql/102).
+                      `/bayar/` mengganti link tempo tiap 7 hari: baris lama jadi
+                      `cancelled` + `superseded_by`. Dokumen lama yang disimpan
+                      peneliti akan tetap "BELUM LUNAS" SELAMANYA — juga sesudah ia
+                      membayar lewat link penggantinya. Ikuti rantainya ke dokumen
+                      yang berlaku; tiap lompatan memuat halaman ini lagi.
+                    */
+                    const successor = invoiceRows.every((r) => r.status === 'cancelled' && !!r.superseded_by)
+                        ? invoiceRows[0].superseded_by
+                        : null;
+                    if (successor && successor !== paymentId) {
+                        navigate(`/invoices/${encodeURIComponent(successor)}`, { replace: true });
+                        return;
+                    }
+                    setMeta({
+                        ...groupMeta(invoiceRows),
+                        is_tempo: invoiceRows.some((r) => !!r.is_tempo),
+                    });
                 }
             } catch (metaErr) {
                 console.warn('Invoice meta (paid_at/expires_at) unavailable:', metaErr);
@@ -360,7 +385,10 @@ export function InvoicePage() {
       Uang yang sudah masuk tidak pernah "kedaluwarsa" (aturan yang sama dengan
       sql/83), jadi `isPaid` tidak pernah lewat sini.
     */
+    // Tagihan tempo tidak pernah kedaluwarsa (K3) — link-nya diperbarui `/bayar/`.
+    const isTempo = meta.is_tempo;
     const isExpired = !isPaid
+        && !isTempo
         && !!meta.expires_at
         && new Date(meta.expires_at).getTime() < Date.now();
 
@@ -624,7 +652,10 @@ export function InvoicePage() {
                                         <tr>
                                             <td className="text-gray-400 text-xs text-left">Jatuh Tempo</td>
                                             <td className="text-gray-400 text-xs px-2 text-center">:</td>
-                                            <td className="font-medium text-gray-800 tabular text-left">{formatDate(meta.expires_at)}</td>
+                                            <td className="font-medium text-gray-800 tabular text-left">
+                                                {/* Tempo: `expires_at` cuma umur link DOKU, bukan tenggat utang. */}
+                                                {isTempo ? 'Tidak ada (tagihan tempo)' : formatDate(meta.expires_at)}
+                                            </td>
                                         </tr>
                                     )}
                                     <tr>
@@ -905,6 +936,9 @@ export function InvoicePage() {
                                         {isPartial
                                             ? `${doc.bundles.filter((b) => b.isPaid).length} dari ${doc.bundles.length} pesanan pada tagihan ini sudah lunas. `
                                               + 'Sisa pembayarannya diurus tim kami — jangan membayar lewat link lama, karena link itu menagih total penuh.'
+                                            : isTempo
+                                                ? 'Iklan pada tagihan ini ditayangkan sesuai jadwal lebih dulu, dan tagihannya tidak memiliki batas waktu. '
+                                                  + 'Tautan pembayaran di bawah selalu membuka link pembayaran yang berlaku.'
                                             : isExpired
                                                 ? 'Batas waktu pembayaran tagihan ini sudah lewat, jadi tautan pembayarannya tidak lagi berlaku. '
                                                   + 'Hubungi tim kami untuk mendapatkan tagihan baru — dokumen ini tetap bisa disimpan sebagai catatan.'

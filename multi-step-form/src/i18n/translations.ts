@@ -910,6 +910,21 @@ export const translations = {
     // "automatically" here; that sends the researcher looking for a mistake
     // they did not make.
     bookingStatusSlotCancelled: "Cancelled",
+    // sql/102 — aired before payment on a tempo invoice. No deadline, ever:
+    // the payment link refreshes itself when opened.
+    // The chip follows where the ad actually is — "Airing" for an ad that
+    // starts next week, or one our team stopped, would both be untrue.
+    bookingStatusCreditUpcoming: "Scheduled · pay later",
+    bookingStatusAiringOnCredit: "Airing · pay later",
+    bookingStatusCreditEnded: "Aired · unpaid",
+    bookingStatusCreditStopped: "Stopped · unpaid",
+    bannerTitleAiringOnCredit: "Your ad airs on schedule — payment can follow",
+    bannerTitleCreditEnded: "Your ad has finished airing — its invoice is still unpaid",
+    bannerTitleCreditStopped: "Our team stopped this ad",
+    creditPageTitle: "Payment to follow",
+    bannerSubCreditStopped: "The ad already aired, so its invoice still stands in full. There is no deadline for it. Need an explanation? Chat with Mimin below.",
+    bannerSubAiringOnCredit: "There is no deadline for this invoice. The payment button always works; the link refreshes itself when opened.",
+    bannerSubAiringOnCreditNoBill: "Your ad airs on schedule. The invoice will be sent to you shortly.",
     bannerTitleSlotCancelled: "Airing date cancelled",
     bannerSubSlotCancelled: "The Jakpat team cancelled this order's airing date. Your questionnaire is still approved. Need an explanation? Chat with Mimin below.",
     scheduleEmptyRejected: "No airing schedule for this order yet.",
@@ -2020,6 +2035,21 @@ export const translations = {
     calloutCancelledSchedule: "Jadwal ini dibatalkan tim kami. Butuh penjelasan? Chat Mimin di bawah.",
     rescheduleHandledByTeam: "Tim kami yang akan menjadwalkan ulang iklanmu. Butuh penjelasan? Chat Mimin di bawah.",
     bookingStatusSlotCancelled: "Dibatalkan",
+    // sql/102 — tayang sebelum lunas dengan tagihan tempo. TANPA tenggat: link
+    // bayarnya diperbarui otomatis saat dibuka.
+    // Chip mengikuti posisi iklan yang sebenarnya — "Tayang" untuk iklan yang
+    // baru mulai minggu depan, atau yang dihentikan tim, dua-duanya bohong.
+    bookingStatusCreditUpcoming: "Terjadwal · bayar menyusul",
+    bookingStatusAiringOnCredit: "Tayang · bayar menyusul",
+    bookingStatusCreditEnded: "Selesai tayang · belum dibayar",
+    bookingStatusCreditStopped: "Dihentikan · belum dibayar",
+    bannerTitleAiringOnCredit: "Iklanmu tayang sesuai jadwal — pembayaran boleh menyusul",
+    bannerTitleCreditEnded: "Iklanmu sudah selesai tayang — tagihannya belum dibayar",
+    bannerTitleCreditStopped: "Penayangan iklan ini dihentikan tim kami",
+    creditPageTitle: "Pembayaran menyusul",
+    bannerSubCreditStopped: "Iklan ini sudah sempat tayang, jadi tagihannya tetap berlaku penuh dan tidak punya batas waktu. Butuh penjelasan? Chat Mimin di bawah.",
+    bannerSubAiringOnCredit: "Tagihan ini tidak punya batas waktu. Tombol bayar selalu bisa dipakai; link-nya diperbarui otomatis saat dibuka.",
+    bannerSubAiringOnCreditNoBill: "Iklanmu tayang sesuai jadwal. Tagihannya akan segera kami kirimkan.",
     bannerTitleSlotCancelled: "Jadwal tayang dibatalkan",
     bannerSubSlotCancelled: "Tim Jakpat membatalkan tanggal tayang pesanan ini. Kuesionermu tetap lolos review. Butuh penjelasan? Chat Mimin di bawah.",
     scheduleEmptyRejected: "Belum ada jadwal iklan untuk pesanan ini.",

@@ -128,7 +128,7 @@ export async function assertCallerMayCancel(env, caller, invoiceNumber) {
 
   const url = `${supabaseUrl}/rest/v1/invoices`
     + `?payment_id=eq.${encodeURIComponent(invoiceNumber)}`
-    + '&select=form_submission_id,form_submissions(auth_user_id,email)';
+    + '&select=form_submission_id,is_tempo,form_submissions(auth_user_id,email)';
 
   let rows;
   try {
@@ -167,6 +167,19 @@ export async function assertCallerMayCancel(env, caller, invoiceNumber) {
   if (!ownsAll) {
     console.warn(`[cancel-order] ${email || userId} mencoba membatalkan ${invoiceNumber} yang bukan (sepenuhnya) miliknya.`);
     return 'Tagihan ini tidak ditemukan atau bukan milikmu.';
+  }
+
+  /*
+    ⚠️ TAGIHAN TEMPO BUKAN MILIK PENELITI UNTUK DIBATALKAN (sql/102, K8).
+    Iklannya tayang atas dasar tagihan itu. Trigger `guard_invoice_columns_for_owner`
+    sudah menolak perubahan status barisnya — tapi endpoint ini mematikan link
+    DOKU LEBIH DULU, jadi tanpa penjaga di sini hasilnya link mati di DOKU
+    sementara baris kita tetap `pending` dan resolver menyerahkannya sebagai
+    link hidup.
+  */
+  if (rows.some((r) => r?.is_tempo)) {
+    console.warn(`[cancel-order] ${email || userId} mencoba membatalkan tagihan tempo ${invoiceNumber}.`);
+    return 'Tagihan tempo hanya bisa diubah tim Jakpat.';
   }
 
   return null;

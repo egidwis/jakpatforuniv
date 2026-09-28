@@ -449,7 +449,8 @@ async function groupPaymentState(supabaseUrl, sbHeaders, paymentId) {
  * gagal.
  *
  * Langkah tanda tangannya WAJIB identik dengan `cancel-order.js`
- * (digest -> component string -> HMAC). Kalau satu berubah, ubah keduanya.
+ * (digest -> component string -> HMAC). Kalau satu berubah, ubah keduanya —
+ * DAN `./_doku-cancel.js` (sql/102, dipakai `/bayar/` dan webhook).
  *
  * TIDAK PERNAH MELEMPAR: pemanggilnya sedang di tengah menerbitkan tagihan
  * baru, dan kegagalan mematikan yang lama tidak boleh menggagalkan itu.
@@ -686,6 +687,37 @@ export async function onRequest(context) {
       if (Date.now() > slotExpiredAt) {
         return json({ error: 'Payment slot has expired. Please rebook from the dashboard.' }, 409);
       }
+    }
+
+    /*
+      ── JADWAL KREDIT DITAGIH LEWAT TAGIHAN TEMPO, BUKAN DI SINI (sql/102) ──
+      Tanpa penjaga ini halaman bayar peneliti bisa mencetak tagihan KEDUA
+      dengan harga hari ini (bukan nominal beku, K10) untuk utang yang sama —
+      dua link hidup, dua-duanya bisa dibayar. Jawabannya 409 + link `/bayar/`,
+      yang memperbarui link temponya kalau perlu.
+
+      Query TERPISAH dan GAGAL-TERBUKA, sengaja tidak ditempel ke SELECT jadwal
+      di atas: kalau sql/102 belum diterapkan, kolomnya tidak ada dan SELECT itu
+      akan menolak SETIAP checkout swalayan.
+    */
+    try {
+      const creditUrl = schedule
+        ? `${supabaseUrl}/rest/v1/ad_schedules?id=eq.${encodeURIComponent(schedule.id)}&select=id,air_on_credit_at&limit=1`
+        : `${supabaseUrl}/rest/v1/ad_schedules?source_table=eq.form_submissions&source_id=eq.${encodeURIComponent(formSubmissionId)}&select=id,air_on_credit_at&limit=1`;
+      const creditRes = await fetch(creditUrl, { headers: sbHeaders });
+      if (creditRes.ok) {
+        const creditRows = await creditRes.json();
+        const credit = Array.isArray(creditRows) ? creditRows[0] : null;
+        if (credit?.air_on_credit_at) {
+          return json({
+            error: 'Jadwal ini ditagih lewat tagihan tempo. Buka link bayarnya untuk membayar.',
+            tempo: true,
+            pay_link: `/bayar/${credit.id}`,
+          }, 409);
+        }
+      }
+    } catch (e) {
+      console.warn('[create-payment] Pemeriksaan kredit gagal — dilanjutkan seperti biasa:', e);
     }
 
     // ── TAGIHAN YANG SUDAH ADA — dibaca SEKALI, dipakai dua kali ──────────

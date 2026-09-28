@@ -43,6 +43,10 @@ export async function onRequestPost(context) {
             airingEnd,
             bookingId,
             items,
+            // Tagihan tempo (sql/102): iklannya tayang sesuai jadwal, bayar
+            // menyusul, TANPA tenggat. Kalimat "slot kembali terbuka kalau lewat
+            // batas waktu" salah untuknya, dan menakut-nakuti pelanggan tepercaya.
+            tempo,
         } = await request.json();
 
         if (!email || !name || !invoiceUrl) {
@@ -116,7 +120,7 @@ export async function onRequestPost(context) {
             introHtml = `
                 <p>Halo Kak <strong>${name}</strong>,</p>
                 <p>Jadwal iklan tambahan${surveyLine}${airingStartText ? ` untuk tayang mulai <strong>${airingStartText}</strong>` : ''} sudah kami siapkan.</p>
-                <p>Tagihannya siap dibayar${amountText ? ` senilai <strong>${amountText}</strong>` : ''}. Tanggal itu kami tahan untukmu sampai pembayarannya masuk — kalau lewat batas waktu, slotnya kembali terbuka untuk peneliti lain.</p>
+                <p>Tagihannya siap dibayar${amountText ? ` senilai <strong>${amountText}</strong>` : ''}.${tempo ? '' : ' Tanggal itu kami tahan untukmu sampai pembayarannya masuk — kalau lewat batas waktu, slotnya kembali terbuka untuk peneliti lain.'}</p>
             `;
 
             detailsHtml = `
@@ -156,6 +160,13 @@ export async function onRequestPost(context) {
             `;
         }
 
+        // Tagihan tempo: satu kalimat yang menggantikan semua janji tenggat.
+        const tempoNoteHtml = tempo ? `
+            <div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 10px 14px; margin: 20px 0; font-size: 13px; color: #4c1d95; line-height: 1.5;">
+              Iklanmu <strong>tetap tayang sesuai jadwal</strong> — pembayarannya boleh menyusul, tanpa batas waktu. Tombol di bawah selalu bisa dipakai kapan pun Kakak siap membayar.
+            </div>
+        ` : '';
+
         const paymentDisclaimerHtml = `
             <div style="background: #f1f5f9; border-left: 4px solid #94a3b8; border-radius: 4px; padding: 10px 14px; margin: 20px 0; font-size: 12px; color: #475569; line-height: 1.5;">
               💡 <strong>Catatan:</strong> Jika Kakak sudah menyelesaikan pembayaran untuk tagihan ini, silakan abaikan email ini. Status pembayaran dan jadwal tayang Kakak akan terverifikasi secara otomatis oleh sistem.
@@ -169,6 +180,7 @@ export async function onRequestPost(context) {
           <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto;">
             ${introHtml}
             ${detailsHtml}
+            ${tempoNoteHtml}
             <p style="margin: 24px 0 16px;">
               <a href="${invoiceUrl}" style="display: inline-block; background: #2563eb; color: #fff; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px;">
                 Bayar Sekarang &rarr;

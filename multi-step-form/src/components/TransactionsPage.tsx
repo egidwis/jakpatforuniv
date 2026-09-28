@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { supabase, cancelInvoice, fetchInvoiceGroups } from '../utils/supabase';
+import { supabase, cancelInvoice, fetchInvoiceGroups, tempoCancelBlockReason } from '../utils/supabase';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -242,6 +242,24 @@ export function TransactionsPage() {
    */
   const handleCancelInvoice = async (transaction: Transaction) => {
     const paymentId = transaction.payment_id;
+
+    /*
+      K8 (sql/102) — tagihan tempo yang anggotanya sudah mulai tayang TIDAK
+      bisa dibatalkan: utangnya tetap penuh. Penjaga yang sama dengan tab Jadwal
+      & Bayar; halaman ini jalan kedua menuju `cancelInvoice()`, jadi tanpa ini
+      aturannya bisa dilompati dari sini.
+    */
+    try {
+      const blocked = await tempoCancelBlockReason(paymentId);
+      if (blocked) {
+        toast.error(blocked, { duration: 10000 });
+        return;
+      }
+    } catch (err: any) {
+      toast.error(`Tidak bisa memeriksa tagihan ini: ${err?.message || err}`);
+      return;
+    }
+
     const group = (await fetchInvoiceGroups([paymentId])).get(paymentId);
     const isGroup = !!group && group.memberCount > 1;
 

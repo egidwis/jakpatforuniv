@@ -13,8 +13,10 @@ import { payLinkUrl } from '@/utils/payLink';
 import { toWibYmd } from '@/utils/airing-window';
 import {
   getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, supabase,
-  type AdScheduleEntry,
+  markSchedulesOnCredit, creditOutcomeReason, fetchOpenTempoDebt,
+  type AdScheduleEntry, type OpenTempoDebt,
 } from '@/utils/supabase';
+import { formatIDR } from '@/utils/currency';
 import {
   closeTab, invoiceReadyMessage, openBlankTab, sendToTab,
 } from '@/utils/waMessage';
@@ -85,6 +87,11 @@ function belongsToSchedule(row: any, entry: AdScheduleEntry): boolean {
 
 export interface InvoiceFormProps {
   entry: AdScheduleEntry;
+  /**
+   * Dibuka dari "Tayangkan Dulu" — tagihan tempo sudah menyala (sql/102).
+   * Admin tetap bisa mematikannya sebelum menerbitkan.
+   */
+  initialTempo?: boolean;
   submission: {
     id: string;
     researcherName?: string | null;
@@ -122,8 +129,16 @@ export interface InvoiceFormProps {
 }
 
 export function InvoiceForm({
-  entry, submission, onCancel, onDone, actionsSlot, renderActions,
+  entry, initialTempo = false, submission, onCancel, onDone, actionsSlot, renderActions,
 }: InvoiceFormProps) {
+  /**
+   * Tagihan tempo — "tayang sesuai jadwal, bayar menyusul" (sql/102).
+   * Menyala: link-nya 7 hari tanpa batas bayar 14.00, dan SESUDAH tagihan
+   * tertulis jadwalnya ditandai kredit (`markSchedulesOnCredit`).
+   */
+  const [tempo, setTempo] = useState(initialTempo);
+  const [creditNote, setCreditNote] = useState('');
+  const [openDebt, setOpenDebt] = useState<OpenTempoDebt | null>(null);
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [note, setNote] = useState('');
   const [existing, setExisting] = useState<ExistingInvoice[]>([]);
@@ -237,6 +252,16 @@ export function InvoiceForm({
       new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
     setExisting(merged);
   }, [submission.id, entry]);
+
+  // Utang tempo lain milik peneliti ini — peringatan, bukan blokir (K2).
+  useEffect(() => {
+    if (!tempo) return;
+    let cancelled = false;
+    void fetchOpenTempoDebt(submission.id, [entry.id]).then((d) => {
+      if (!cancelled) setOpenDebt(d);
+    });
+    return () => { cancelled = true; };
+  }, [tempo, submission.id, entry.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -352,6 +377,7 @@ export function InvoiceForm({
         // yang boleh ordinal >=2; tanpa ini halaman sukses menyebut jendela
         // jadwal ke-1 milik ordernya.
         scheduleId: entry.id,
+        tempo,
       });
 
       // Menulis DAN membuktikan jumlahnya. Kalau ini melempar, barisnya sudah
@@ -361,7 +387,35 @@ export function InvoiceForm({
         invoiceUrl: paymentResponse.invoice_url,
         expiresAt: paymentResponse.expires_at,
         dokuRequestId: paymentResponse.doku_request_id,
+        isTempo: tempo,
       }, grandTotal);
+
+      /*
+        ⚠️ KREDIT SESUDAH TAGIHAN, TIDAK PERNAH SEBALIKNYA (sql/102).
+        Tagihannya sudah terbukti tertulis; baru sekarang izin tayangnya boleh
+        lahir. Kalau langkah ini gagal, yang tersisa tagihan tempo biasa yang
+        bisa dibayar — admin cukup menekan "Tayangkan Dulu" lagi. Urutan
+        sebaliknya bisa meninggalkan iklan yang tayang tanpa catatan utang.
+      */
+      if (tempo) {
+        try {
+          const outcomes = await markSchedulesOnCredit([entry.id], creditNote);
+          const outcome = outcomes.get(entry.id) ?? 'not_eligible';
+          if (outcome !== 'ok') {
+            toast.error(
+              `Tagihan tempo terbit, tapi jadwal #${entry.bookingId} TIDAK ditayangkan: `
+              + `${creditOutcomeReason(outcome)}.`,
+              { duration: 15000 },
+            );
+          }
+        } catch (err: any) {
+          toast.error(
+            `Tagihan tempo terbit, tapi penandaan tayang gagal: ${err?.message || err}. `
+            + 'Iklannya BELUM dijadwalkan tayang — coba "Tayangkan Dulu" lagi.',
+            { duration: Infinity },
+          );
+        }
+      }
 
       /*
         ⚠️ Tagihan yang lahir tanpa `doku_request_id` TIDAK BISA dicabut lewat
@@ -414,6 +468,8 @@ export function InvoiceForm({
             */
             invoiceUrl: payLinkUrl(entry.id),
             amount: grandTotal,
+            // Tagihan tempo: email TANPA tenggat bayar (K3).
+            tempo,
           }),
         }).catch((err) => console.error('Failed to send invoice-ready email:', err));
       }
@@ -427,8 +483,13 @@ export function InvoiceForm({
             total_cost: grandTotal,
             subtotal,
             ppn_amount: ppn,
-            status: 'waiting_payment',
-            payment_status: 'pending',
+            /*
+              ⚠️ TEMPO: HANYA NOMINALNYA. Blok ini berjalan SESUDAH
+              `markSchedulesOnCredit` di atas; menulis `waiting_payment` di sini
+              menimpa `scheduled`/`live` yang baru saja diberikan, dan
+              `cron_activate_extends` tidak akan pernah menayangkannya.
+            */
+            ...(tempo ? {} : { status: 'waiting_payment', payment_status: 'pending' }),
           })
           .eq('source_table', 'form_submissions_extend')
           .eq('source_id', entry.sourceId);
@@ -443,6 +504,7 @@ export function InvoiceForm({
           // Link perantara, alasan sama dengan email di atas — dan WhatsApp
           // lebih sulit ditarik daripada email.
           invoiceUrl: payLinkUrl(entry.id),
+          tempo,
         }));
       }
 
@@ -554,6 +616,54 @@ export function InvoiceForm({
             {submission.researcherName}
             {submission.researcherEmail ? ` · ${submission.researcherEmail}` : ''}
           </p>
+        </div>
+
+        {/*
+          Tagihan tempo (sql/102). SATU toggle, tanpa pilihan durasi: tagihan
+          tempo memang tidak punya tanggal jatuh tempo (K3). Yang dijelaskan di
+          sini adalah akibatnya, karena itulah yang admin putuskan: iklannya
+          tayang TANPA menunggu uang, dan tidak bisa ditarik lewat jalur tagihan.
+        */}
+        <div className={cn(
+          'rounded-lg border px-3 py-2.5 space-y-2',
+          tempo ? 'border-violet-300 bg-violet-50/70' : 'border-gray-200 bg-white',
+        )}>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={tempo}
+              onChange={(e) => setTempo(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-violet-600"
+            />
+            <span className="text-xs leading-snug">
+              <span className="font-semibold text-gray-900">Tagihan tempo — tayang sesuai jadwal, bayar menyusul</span>
+              <span className="block text-[11px] text-gray-600 mt-0.5">
+                Iklan tayang tanpa menunggu pembayaran. Tagihannya tidak punya tanggal jatuh tempo;
+                link bayarnya diperbarui otomatis saat peneliti membukanya.
+              </span>
+            </span>
+          </label>
+          {tempo && (
+            <>
+              <Input
+                value={creditNote}
+                onChange={(e) => setCreditNote(e.target.value)}
+                placeholder="Catatan (opsional) — mis. pelanggan rutin, dana kampus cair akhir bulan"
+                maxLength={200}
+                className="h-8 text-xs bg-white"
+              />
+              <p className="text-[11px] text-violet-900 leading-snug">
+                Sekali tayang, utangnya tetap penuh — tagihan tempo tidak bisa dibatalkan setelah iklannya mulai tayang.
+              </p>
+              {openDebt && openDebt.bills > 0 && (
+                <p className="rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900 leading-snug">
+                  ⚠️ Peneliti ini masih punya {openDebt.bills} tagihan tempo belum dibayar
+                  senilai <strong className="tabular-nums">{formatIDR(openDebt.total)}</strong>
+                  {openDebt.oldestAt ? <>, yang tertua sejak {formatWibShort(openDebt.oldestAt)}</> : null}.
+                </p>
+              )}
+            </>
+          )}
         </div>
 
         {/* Item — bertumpuk, bukan sebaris. Baris horizontal tidak muat di 480px. */}

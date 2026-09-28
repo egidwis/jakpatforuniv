@@ -3,9 +3,13 @@ import type { TranslationKey } from '@/i18n/translations';
 import { deriveScheduleMoney, type ScheduleMoney } from '@/utils/scheduleMoney';
 import {
     isSchedulePaid,
+    creditPhaseOf,
+    isOwedOnCredit,
     orderStepOf,
     scheduleEnd,
     scheduleStart,
+    type CreditPhase,
+    type SchedulePaymentInfo,
     type SchedulePaymentMap,
 } from './scheduleAxes';
 import { airingWindowState } from '@/utils/airing-window';
@@ -75,6 +79,12 @@ export type BookingState =
      * dipisah dari `expired` — sebabnya beda (slot tidak dilepas, yang habis
      * adalah waktu admin menyiapkan halaman iklan), jadi copy-nya beda. */
     | 'too_late_today'
+    /** Tayang sebelum lunas (sql/102) — iklannya tayang, utangnya ditagih lewat
+     * tagihan tempo TANPA tenggat. Menang atas `expired`/`too_late_today`/`paid`:
+     * statusnya `scheduled`/`live`, jadi tanpa cabang ini kartunya berbunyi
+     * "Lunas" untuk uang yang belum masuk, atau "kedaluwarsa" untuk iklan yang
+     * justru sedang tayang. */
+    | 'airing_on_credit'
     | 'paid'
     | 'cancelled';
 
@@ -168,6 +178,9 @@ export interface ScheduleCard {
          */
         deadlineCause: 'slot' | 'cutoff' | 'bill' | null;
         invoicePaymentId: string | null;
+        /** Hanya untuk `airing_on_credit`: terjadwal / tayang / selesai /
+         * dihentikan. Menentukan chip & judul banner — lihat `creditPhaseOf`. */
+        creditPhase?: CreditPhase | null;
         isPaidForLabel: boolean; // menentukan label "Invoice" vs "Kwitansi"
         /**
          * Tanggal tayang yang ditagihkan tagihan BASI terakhir — atau null.
@@ -258,6 +271,14 @@ const subtotalOf = (s: AdScheduleEntry) => (s.ppnAmount != null ? s.subtotal ?? 
 export const isKilatSchedule = (e: AdScheduleEntry, submission: FormSubmission): boolean =>
     e.distributionType === 'kilat' || submission.distribution_type === 'kilat';
 
+// Predikat kredit tinggal di `scheduleAxes` (dipakai juga `deriveOrderUiState`);
+// diekspor ulang supaya pemanggil lama tidak berubah.
+export { isOwedOnCredit };
+
+/** Ada tagihan terbuka — untuk tempo, termasuk yang link DOKU-nya sedang habis. */
+const hasOpenBill = (pay: Pick<SchedulePaymentInfo, 'paymentUrl'> | null | undefined): boolean =>
+    !!pay?.paymentUrl;
+
 /** Tanggal yang ditagihkan tagihan basi terakhir, siap dirender. */
 function staleDateOf(pay: { staleBilledFor?: string | null } | null | undefined): Date | null {
     if (!pay?.staleBilledFor) return null;
@@ -296,9 +317,13 @@ export function buildScheduleCards(
         const oEnd = scheduleEnd(first);
 
         let bookingState: BookingState;
+        // Kredit (sql/102) DI ATAS SEMUANYA — termasuk `slot_cancelled`: iklan
+        // yang dihentikan sesudah tayang tetap berutang penuh (K6), dan tombol
+        // bayarnya harus tetap ada. Yang sudah lunas jatuh ke cabang biasa.
+        if (isOwedOnCredit(first, payments[first.sourceId])) bookingState = 'airing_on_credit';
         // Sebelum `isExpired` — keduanya cocok untuk baris yang sama, dan
         // `deriveOrderUiState` sudah memastikan hanya satu yang bisa true.
-        if (ui.isSlotCancelled) bookingState = 'slot_cancelled';
+        else if (ui.isSlotCancelled) bookingState = 'slot_cancelled';
         else if (ui.isExpired) bookingState = 'expired';
         else if (step === 0) bookingState = 'in_review';
         else if (step === 1) {
@@ -373,7 +398,8 @@ export function buildScheduleCards(
                   jadi cabang `null` di bawah praktis tak terjangkau; ia ditulis
                   supaya string kosong pun gagal MENUTUP, bukan gagal membuka.
                 */
-                payUrl: bookingState === 'waiting_payment' && (firstGroup?.isLead ?? true) && first.id
+                payUrl: (bookingState === 'waiting_payment' || (bookingState === 'airing_on_credit' && hasOpenBill(payments[first.sourceId])))
+                    && (firstGroup?.isLead ?? true) && first.id
                     ? payLinkPath(first.id)
                     : null,
                 /*
@@ -392,12 +418,21 @@ export function buildScheduleCards(
                   jujur. Tapi tenggat MEMBAYAR tetap ada — `expires_at` sudah
                   diangkut sampai ke sini lalu tidak pernah dirender.
                 */
-                ...billDeadline(ui.paymentDeadline, ui.paymentDeadlineCause,
-                                payments[first.sourceId]?.expiresAt ?? null),
+                // Tagihan tempo TIDAK punya tenggat (K3) — `expires_at`-nya umur
+                // link DOKU, yang diperbarui `/bayar/`. Menyebutnya sebagai tenggat
+                // berarti menakut-nakuti pelanggan tepercaya dengan tanggal palsu.
+                ...(bookingState === 'airing_on_credit'
+                    ? { deadline: null, deadlineCause: null }
+                    : billDeadline(ui.paymentDeadline, ui.paymentDeadlineCause,
+                                   payments[first.sourceId]?.expiresAt ?? null)),
                 // Belum lolos review = belum ada tagihan; jangan tampilkan baris
                 // Invoice walau ada baris nyasar di tabel transactions.
                 invoicePaymentId: bookingState === 'in_review' ? null : invoiceId,
-                isPaidForLabel: bookingState === 'paid' || ui.isPaid,
+                creditPhase: bookingState === 'airing_on_credit' ? creditPhaseOf(first, now) : null,
+                // ⚠️ `ui.isPaid` MENYALA UNTUK KREDIT: `isSchedulePaid` membaca
+                // `scheduled`/`live` sebagai sudah-bayar. Tanpa pengecualian ini
+                // kartunya berlabel "Kwitansi" untuk uang yang belum masuk.
+                isPaidForLabel: bookingState !== 'airing_on_credit' && (bookingState === 'paid' || ui.isPaid),
                 staleBilledFor: staleDateOf(payments[first.sourceId]),
                 paid: payments[first.sourceId]?.paid ?? 0,
                 outstanding: payments[first.sourceId]?.outstanding ?? 0,
@@ -423,7 +458,9 @@ export function buildScheduleCards(
         const end = scheduleEnd(s);
 
         let bookingState: BookingState;
-        if (status === 'cancelled') bookingState = 'cancelled';
+        // Kredit (sql/102) di atas semuanya — alasan sama dengan ordinal 1.
+        if (isOwedOnCredit(s, pay)) bookingState = 'airing_on_credit';
+        else if (status === 'cancelled') bookingState = 'cancelled';
         else if (status === 'waiting_payment') {
             /*
               ⚠️ `pending` BUKAN BUKTI LINK MASIH HIDUP. Tidak ada cron yang
@@ -467,7 +504,8 @@ export function buildScheduleCards(
                 subtotal: subtotalOf(s),
                 // Lihat catatan di cabang ordinal 1: hanya lead yang memegang
                 // link, dan link-nya perantara (`/bayar/<ad_schedules.id>`).
-                payUrl: bookingState === 'waiting_payment' && (group?.isLead ?? true) && s.id
+                payUrl: (bookingState === 'waiting_payment' || (bookingState === 'airing_on_credit' && hasOpenBill(pay)))
+                    && (group?.isLead ?? true) && s.id
                     ? payLinkPath(s.id)
                     : null,
                 isExternalLink: true,
@@ -489,6 +527,10 @@ export function buildScheduleCards(
                   lepas sendiri" — bukan "sudah lepas".
                 */
                 ...(() => {
+                    // Tagihan tempo tanpa tenggat (K3) — lihat cabang ordinal 1.
+                    if (bookingState === 'airing_on_credit') {
+                        return { deadline: null, deadlineCause: null };
+                    }
                     const holdAt = slotReleaseDeadline({
                         slotBookedBy: s.slotBookedBy,
                         slotReservedAt: s.slotReservedAt,
@@ -499,6 +541,7 @@ export function buildScheduleCards(
                     return billDeadline(null, null, pay?.expiresAt ?? null);
                 })(),
                 invoicePaymentId: pay?.paymentId || null,
+                creditPhase: bookingState === 'airing_on_credit' ? creditPhaseOf(s, now) : null,
                 isPaidForLabel: bookingState === 'paid',
                 staleBilledFor: staleDateOf(pay),
                 paid: pay?.paid ?? 0,
@@ -528,6 +571,8 @@ export function pickDefaultExpandedKey(cards: ScheduleCard[]): string {
     const needsPay = cards.find(
         (c) =>
             c.booking.state === 'waiting_payment' ||
+            // Utang tempo (sql/102) — tanpa tenggat, tapi tetap yang harus dibayar.
+            c.booking.state === 'airing_on_credit' ||
             c.booking.state === 'expired' ||
             c.booking.state === 'too_late_today'
     );

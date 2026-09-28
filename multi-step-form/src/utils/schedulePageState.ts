@@ -26,6 +26,12 @@ export interface PageSubject {
   /** Sumbu tayang `ad_schedules.status`. */
   status: string | null | undefined;
   slotReservedAt: string | null | undefined;
+  /**
+   * Tayang sebelum lunas (sql/102) dan masih berutang — `isOwedOnCredit`.
+   * Pemanggil yang menghitungnya, karena jawabannya butuh tagihan terbuka,
+   * dan modul ini sengaja tidak menyentuh tagihan.
+   */
+  owedOnCredit?: boolean;
 }
 
 export type PageScreen =
@@ -65,6 +71,17 @@ export function schedulePageState(subject: PageSubject): PageState {
   // tagihan untuk dibayar.
   if (PAID.includes(subject.paymentStatus || '')) {
     return { screen: 'settled', ...diam };
+  }
+
+  /*
+    Kredit (sql/102) SEBELUM `released`: iklan kredit yang penayangannya
+    dihentikan tim berstatus `cancelled`, tapi utangnya tetap penuh (K6).
+    Layar "reservasi dilepas" untuknya bohong ganda — tidak ada yang dilepas,
+    dan tagihannya masih harus dibayar. Tanpa hitung mundur, tanpa tombol
+    batal: jadwal kredit selalu milik admin.
+  */
+  if (subject.owedOnCredit) {
+    return { screen: 'awaiting_payment', ...diam };
   }
 
   /*

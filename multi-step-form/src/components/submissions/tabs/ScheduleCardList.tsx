@@ -11,6 +11,7 @@ import {
 import { Skeleton } from '../../ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { AdScheduleEntry, InvoiceGroup, ScheduleBilling, ScheduleInvoice } from '@/utils/supabase';
+import { isTempoBillLocked } from '@/utils/supabase';
 import { InvoiceGroupPanel } from './InvoiceGroupPanel';
 import { formatIDR } from '@/utils/currency';
 import { copyToClipboard } from '../types';
@@ -58,7 +59,21 @@ function isCancelledByOrder(e: AdScheduleEntry): boolean {
 function needsWork(e: AdScheduleEntry, b: ScheduleBilling | undefined): boolean {
   const state = cardStateOf(e, b);
   return state === 'choose_schedule' || state === 'awaiting_invoice'
-      || state === 'waiting_payment' || state === 'partially_paid';
+      || state === 'waiting_payment' || state === 'partially_paid'
+      || state === 'airing_on_credit';
+}
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Umur utang jadwal kredit, dalam hari sejak tayang — pengganti tanggal jatuh
+ * tempo yang sengaja tidak ada (K3). `null` = belum tayang.
+ */
+function creditAgeDays(entry: AdScheduleEntry, now: number = Date.now()): number | null {
+  if (!entry.startDate) return null;
+  const start = new Date(entry.startDate).getTime();
+  if (Number.isNaN(start) || start > now) return null;
+  return Math.floor((now - start) / DAY_MS);
 }
 
 /**
@@ -103,6 +118,11 @@ function ScheduleDateTitle({ entry }: { entry: AdScheduleEntry }) {
 interface CardActions {
   onEditSchedule: (entry: AdScheduleEntry) => void;
   onCreateInvoice: (entry: AdScheduleEntry) => void;
+  /**
+   * "Tayangkan Dulu" / "Buat Tagihan (tempo)" — formulir tagihan dengan tempo
+   * menyala (sql/102). Tanpa handler ini aksinya tidak ditawarkan.
+   */
+  onCreateTempoInvoice?: (entry: AdScheduleEntry) => void;
   /** Menerima `entry`: pelunasan berlingkup SATU jadwal sejak sql/51. */
   onMarkPaid: ((entry: AdScheduleEntry) => void) | null;
   /** Batalkan pelunasan manual. Tombolnya hanya tampil kalau `billing.paymentChannel === 'MANUAL_VERIFIED'` — lihat gerbang di `unmarkScheduleAsPaid`. */
@@ -149,14 +169,19 @@ function InvoiceRow({
   group?: InvoiceGroup;
 }) {
   const ymd = entry.startDate ? toWibYmd(new Date(entry.startDate)) : null;
-  const isLate = !inv.isPaid && ymd ? isPaymentTooLateForDate(ymd) : false;
-  const isHoldExpired = !inv.isPaid && (
+  // Tagihan tempo tidak punya batas bayar (sql/102) — tanggal tayang yang sudah
+  // lewat justru keadaan normalnya, bukan alasan mencoret.
+  const tempo = inv.isTempo;
+  const isLate = !inv.isPaid && !tempo && ymd ? isPaymentTooLateForDate(ymd) : false;
+  const isHoldExpired = !inv.isPaid && !tempo && (
     Boolean(isHoldLapsed) ||
     entry.paymentStatus === 'expired' ||
     isEntryHoldLapsed(entry) ||
     isLate
   );
-  const cutoff = ymd ? paymentCutoffInstant(ymd) : null;
+  const cutoff = ymd && !tempo ? paymentCutoffInstant(ymd) : null;
+  /** Dibatalkan KARENA DIPERBARUI `/bayar/`, bukan oleh admin. */
+  const renewedTo = inv.status.toLowerCase() === 'cancelled' ? group?.supersededBy ?? null : null;
 
   // Checkout yang ditinggalkan: baris `transactions` pending tanpa invoice.
   // Ia BUKAN tagihan — nol rupiah pernah ditagihkan — tapi tetap ditampilkan
@@ -195,10 +220,20 @@ function InvoiceRow({
    * (dari `invoices`), belum dibayar, dan belum mati. Terlewat dan tersusul
    * TETAP boleh dibatalkan.
    */
-  const canCancel = !inv.isPaid && !inv.isDead && inv.source === 'invoice' && !!inv.paymentId;
+  /*
+    ⚠️ K8: tagihan tempo TIDAK bisa dibatalkan begitu ada anggota yang mulai
+    tayang — utangnya tetap penuh. Tombolnya tidak dirender (kontrak berkas ini:
+    dihilangkan, bukan disabled), dan handler dialognya mengulang pemeriksaan
+    yang sama dari DB (`tempoCancelBlockReason`).
+  */
+  const tempoLocked = tempo && (group
+    ? isTempoBillLocked(group)
+    : !!entry.startDate && new Date(entry.startDate).getTime() <= Date.now());
+  const canCancel = !inv.isPaid && !inv.isDead && inv.source === 'invoice' && !!inv.paymentId && !tempoLocked;
 
   const label =
     inv.isPaid ? null
+    : renewedTo ? 'Diperbarui otomatis'
     : inv.status.toLowerCase() === 'cancelled' ? 'Tagihan dibatalkan'
     : inv.isDead ? 'Kedaluwarsa'
     // Slot LEPAS dan tanggal TAK TERKEJAR dua keadaan — `lapseKindOf`.
@@ -276,6 +311,20 @@ function InvoiceRow({
             </span>
           )}
           {label && <span className="font-medium text-slate-500">{label}</span>}
+          {/* Tagihan tempo: TANPA tanggal jatuh tempo (K3). Yang dikatakan hanya
+              keadaannya — dan, kalau link DOKU-nya sedang habis, bahwa itu
+              bukan masalah: `/bayar/` mencetak yang baru saat dibuka. */}
+          {tempo && !inv.isPaid && !inv.isDead && (
+            <span
+              className="inline-flex items-center px-1.5 py-0.5 rounded font-bold bg-violet-50 text-violet-800 border border-violet-200"
+              title="Tagihan tempo — tanpa tanggal jatuh tempo. Link bayarnya diperbarui otomatis saat dibuka."
+            >
+              Tagihan tempo · belum dibayar
+            </span>
+          )}
+          {tempo && inv.tempoLinkLapsed && !inv.isPaid && (
+            <span className="text-slate-500">link diperbarui otomatis saat dibuka</span>
+          )}
           {!inv.isPaid && !isStruck && cutoff && (
             <span className="text-slate-500">
               Batas: <strong className="font-semibold text-slate-700">{formatWibShort(cutoff.toISOString())}</strong>
@@ -535,19 +584,46 @@ function BillingSection({
   const { billed: billedAmount, paid: paidAmount } = cardMoneyOf(entry, state, billing);
   const outstandingAmount = billedAmount - paidAmount;
 
-  // Tagihan gabungan yang menyentuh jadwal ini, tanpa duplikat.
+  // Tagihan gabungan yang menyentuh jadwal ini, tanpa duplikat. Grup yang sudah
+  // DIPERBARUI `/bayar/` dilewati: itu riwayat, dan panelnya akan membaca
+  // "belum" untuk utang yang kini ditagih grup penggantinya (sql/102).
   const groupPanels = Array.from(
     new Map(
       invoices
         .map((i) => (i.paymentId ? groups.get(i.paymentId) : undefined))
-        .filter((g): g is InvoiceGroup => !!g && g.memberCount > 1)
+        .filter((g): g is InvoiceGroup => !!g && g.memberCount > 1 && !g.supersededBy)
         .map((g) => [g.paymentId, g] as const),
     ).values(),
   );
 
+  const ageDays = state === 'airing_on_credit' ? creditAgeDays(entry) : null;
+
   return (
     <div className="space-y-2 pt-1 border-t border-slate-200">
       <SectionHeader count={invoices.length} />
+
+      {/*
+        Tayang sebelum lunas — kenapa iklannya tayang tanpa uang, sejak kapan
+        utangnya berjalan, dan catatan admin. SENGAJA tanpa tanggal jatuh tempo
+        (K3): yang admin butuhkan umur utangnya, untuk memutuskan kapan
+        menagih lewat WhatsApp.
+      */}
+      {state === 'airing_on_credit' && (
+        <div className="rounded-lg border border-violet-200 bg-violet-50/70 px-3 py-2 space-y-0.5">
+          <p className="text-[11px] font-semibold text-violet-900 leading-snug">
+            Tayang sebelum lunas
+            {ageDays != null ? ` · utang berjalan ${ageDays} hari` : ' · belum mulai tayang'}
+          </p>
+          <p className="text-[11px] text-violet-800 leading-snug">
+            {billing?.openInvoice
+              ? 'Tagihan tempo menunggu dibayar. Link bayarnya tidak pernah kedaluwarsa bagi peneliti — diperbarui otomatis saat dibuka.'
+              : 'Belum ada tagihan tempo yang berlaku — terbitkan supaya peneliti bisa membayar.'}
+          </p>
+          {entry.airOnCreditNote && (
+            <p className="text-[11px] text-violet-800 leading-snug">Catatan: {entry.airOnCreditNote}</p>
+          )}
+        </div>
+      )}
 
       {billedAmount > 0 && (
         <div className="flex items-center justify-between gap-2 text-[11px] px-0.5">
@@ -591,7 +667,8 @@ function BillingSection({
           key={g.paymentId}
           group={g}
           currentScheduleId={entry.id}
-          expiresAt={invoices.find((i) => i.paymentId === g.paymentId)?.expiresAt ?? null}
+          // Tagihan tempo tidak punya "hidup s/d" (K3) — umur link-nya detail teknis.
+          expiresAt={g.isTempo ? null : invoices.find((i) => i.paymentId === g.paymentId)?.expiresAt ?? null}
         />
       ))}
 
@@ -633,7 +710,13 @@ function ResearcherSeesLine({
 }) {
   let text: string | null = null;
 
-  if (state === 'cancelled') {
+  if (state === 'airing_on_credit') {
+    // Tanpa tenggat di sisi peneliti juga (K3): link bayarnya diperbarui
+    // otomatis, jadi tidak ada layar "kedaluwarsa" yang bisa ia temui.
+    text = billing?.openInvoice
+      ? 'Iklan tayang sesuai jadwal — pembayaran menyusul lewat tagihan tempo, tanpa batas waktu.'
+      : 'Iklan tayang sesuai jadwal — tagihannya menyusul.';
+  } else if (state === 'cancelled') {
     // ⚠️ SENGAJA DI ATAS SEMUA CABANG. Dulu keadaan ini tidak punya cabang, dan
     // `isLate` — yang membaca tanggal riwayat jadwal batal sebagai tenggat —
     // mencetak «Batas bayar terlewat — perlu tanggal tayang baru» tepat di
@@ -687,6 +770,7 @@ function CardActionBar({
       case 'schedule':        return actions.onEditSchedule(entry);
       case 'invoice':
       case 'top_up':          return actions.onCreateInvoice(entry);
+      case 'tempo_invoice':   return actions.onCreateTempoInvoice?.(entry);
       case 'mark_paid':       return actions.onMarkPaid?.(entry);
       case 'unmark_paid':     return actions.onUnmarkPaid?.(entry);
       case 'cancel_schedule': return actions.onCancelSchedule?.(entry);
@@ -839,6 +923,7 @@ function ScheduleCard({
        */
       unmarkPaid: !!actions.onUnmarkPaid && billing?.paymentChannel === 'MANUAL_VERIFIED',
       notifySlot: !!actions.onNotifySlot,
+      tempoInvoice: !!actions.onCreateTempoInvoice,
     },
     /*
       Cakupan "Tandai Lunas". Diambil dari tagihan yang MASIH TERBUKA — itu
@@ -917,7 +1002,20 @@ function ScheduleCard({
             <Copy className="w-3 h-3" />
           </button>
         </span>
-        {isCancelled ? (
+        {state === 'airing_on_credit' ? (
+          /* Chip di kartu TERTUTUP juga — tanpanya utang kredit hanya terlihat
+             bagi yang membuka kartunya. Umur utang, bukan tenggat (K3). */
+          <span
+            className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1"
+            title="Tayang sebelum lunas — ditagih lewat tagihan tempo, tanpa tanggal jatuh tempo."
+          >
+            <Clock className="w-2.5 h-2.5" /> tayang sebelum lunas
+            {(() => {
+              const d = creditAgeDays(entry);
+              return d != null ? ` · ${d} hari` : '';
+            })()}
+          </span>
+        ) : isCancelled ? (
           <span
             className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 rounded px-1"
             title={isCancelledByOrder(entry)
@@ -1040,8 +1138,10 @@ function ScheduleCard({
 }
 
 export function ScheduleCardList({
-  entries, billings, submission, groups = new Map(), onEditSchedule, onCreateSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onNotifySlot, onOpenReview,
+  entries, billings, submission, groups = new Map(), onEditSchedule, onCreateSchedule, onCreateInvoice, onCreateTempoInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onNotifySlot, onOpenReview,
 }: {
+  /** "Tayangkan Dulu" — lihat `CardActions.onCreateTempoInvoice`. */
+  onCreateTempoInvoice?: (entry: AdScheduleEntry) => void;
   entries: AdScheduleEntry[];
   billings: Map<string, ScheduleBilling>;
   /**
@@ -1175,7 +1275,7 @@ export function ScheduleCardList({
           isOnly={isOnly}
           isOpen={openId === e.id}
           onToggle={() => setOpenId((prev) => (prev === e.id ? null : e.id))}
-          actions={{ onEditSchedule, onCreateInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onNotifySlot, onOpenReview }}
+          actions={{ onEditSchedule, onCreateInvoice, onCreateTempoInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onNotifySlot, onOpenReview }}
           groups={groups}
         />
       ))}

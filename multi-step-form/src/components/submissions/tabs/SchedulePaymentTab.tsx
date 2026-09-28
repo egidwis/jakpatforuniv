@@ -7,7 +7,7 @@ import { ConfirmDialog, type ConfirmRequest } from '../../ui/confirm-dialog';
 import { DetailSheetSection } from '../../data-list/DetailSheet';
 import {
   fetchAdSchedules, fetchScheduleBilling, fetchInvoiceGroups, markScheduleAsPaid, settleGroupAsPaid,
-  unmarkScheduleAsPaid, unsettleGroupAsPaid, cancelInvoice, cancelSchedule,
+  unmarkScheduleAsPaid, unsettleGroupAsPaid, cancelInvoice, cancelSchedule, tempoCancelBlockReason,
   type AdScheduleEntry, type InvoiceGroup, type ScheduleBilling, type ScheduleInvoice,
 } from '@/utils/supabase';
 import { formatIDR } from '@/utils/currency';
@@ -44,6 +44,7 @@ export function SchedulePaymentTab({
   lifecycle,
   onEditSchedule,
   onCreateInvoice,
+  onCreateTempoInvoice,
   onCreateSchedule,
   onExtendCreated,
   onOpenReview,
@@ -58,6 +59,11 @@ export function SchedulePaymentTab({
   lifecycle: ReturnType<typeof deriveLifecycle>;
   onEditSchedule: (entry: AdScheduleEntry) => void;
   onCreateInvoice: (entry: AdScheduleEntry) => void;
+  /**
+   * "Tayangkan Dulu" — formulir tagihan dengan tempo menyala (sql/102). Tidak
+   * diisi = aksinya tidak ditawarkan.
+   */
+  onCreateTempoInvoice?: (entry: AdScheduleEntry) => void;
   /**
    * `isExtraAd` = status iklan tambahan ORDER ini, bukan pilihan admin. Jadwal
    * baru mewarisinya (flag-nya hidup di `survey_pages`, satu baris per order),
@@ -187,10 +193,48 @@ export function SchedulePaymentTab({
           day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta',
         })
       : 'tanggal ini';
+
+    /*
+      Tayang sebelum lunas (sql/102) — dua akibat yang berbeda dari jalur biasa,
+      dan dialognya WAJIB menyebutnya karena keduanya menyangkut uang:
+        sudah tayang → yang dihentikan penayangannya, utangnya TETAP penuh (K6);
+        belum tayang → porsinya keluar dari tagihan tempo, dan anggota lain
+                       ditagih ulang otomatis dengan nominal sisanya.
+    */
+    const aired = !!entry.airOnCreditAt && !!entry.startDate
+      && new Date(entry.startDate).getTime() <= Date.now();
+    if (aired) {
+      setPendingConfirm({
+        title: `Hentikan tayang #${entry.bookingId}?`,
+        highlight: when,
+        lines: [
+          'Halaman iklannya ditutup sekarang, dan kuota tanggal itu bebas lagi.',
+          'Utangnya TETAP PENUH: iklan ini sudah tayang. Tagihan temponya tidak dibatalkan dan masih bisa dibayar peneliti lewat link bayar yang sama.',
+          'Penelitinya akan menerima email bahwa jadwal tayangnya dihentikan.',
+        ],
+        confirmLabel: 'Ya, Hentikan Tayang',
+        tone: 'danger',
+        onConfirm: async () => {
+          try {
+            await cancelSchedule(entry);
+            toast.success(`Tayang #${entry.bookingId} dihentikan. Utang temponya tetap tercatat.`);
+            void notifyScheduleChange({ scheduleId: entry.id, event: 'cancelled' });
+            reload();
+            onExtendCreated();
+          } catch (err: any) {
+            toast.error(err?.message || 'Gagal menghentikan tayang');
+          }
+        },
+      });
+      return;
+    }
+
     setPendingConfirm({
       title: `Batalkan jadwal #${entry.bookingId}?`,
       highlight: when,
       lines: [
+        entry.airOnCreditAt
+          && 'Jadwal ini belum tayang, jadi porsinya keluar dari tagihan tempo. Anggota lain tagihan itu ditagih ulang otomatis dengan nominal sisanya saat link bayarnya dibuka.',
         /*
           Klausa "tagihan yang masih menggantung ikut dimatikan" pernah DIBUANG
           dari sini karena tidak benar: `cancelSchedule()` tidak memanggil API
@@ -303,6 +347,24 @@ export function SchedulePaymentTab({
    * Grup yang lunas tidak punya `openInvoice` lagi, jadi `openGroupOf` di atas
    * akan menjawab null tepat di kartu yang menawarkan "Tandai Belum Lunas".
    */
+  /**
+   * Tagihan gabungan yang SUDAH MATI dan masih menaungi jadwal ini — atau null.
+   *
+   * ⚠️ AUDIT JFU-INV-15f4ac (28 Sep 2026). Begitu link grupnya lewat,
+   * `openInvoice` kosong, `openGroupOf` menjawab null, dan "Tandai Lunas" diam-diam
+   * jatuh ke pelunasan SATU jadwal — tanpa sepatah kata pun bahwa jadwal ini
+   * bagian dari grup yang anggota lainnya masih harus ditagih. Admin yang cuma
+   * ingin iklannya tayang dulu mengira ia menandai "satu dari empat"; yang
+   * terjadi porsinya lenyap dari tagihan ulang. Dialognya kini menyebutnya.
+   */
+  const deadGroupOf = useCallback((entry: AdScheduleEntry): InvoiceGroup | null => {
+    const b = billings.get(entry.id);
+    if (!b || b.openInvoice) return null;
+    const pid = b.invoices.find((i) => i.isPending && i.source === 'invoice' && i.isExpired)?.paymentId;
+    const g = pid ? groups.get(pid) : undefined;
+    return g && g.memberCount > 1 ? g : null;
+  }, [billings, groups]);
+
   const paidGroupOf = useCallback((entry: AdScheduleEntry): InvoiceGroup | null => {
     const pid = billings.get(entry.id)?.invoices.find((i) => i.isPaid)?.paymentId;
     const g = pid ? groups.get(pid) : undefined;
@@ -396,8 +458,12 @@ export function SchedulePaymentTab({
           // Yang paling mudah disalahpahami: pembalikan TIDAK menghidupkan
           // kembali link bayarnya. Ia sudah dimatikan saat grup dilunasi, dan
           // DOKU tidak punya "batalkan pembatalan".
-          `⚠️ Link bayar lamanya TIDAK hidup kembali — ia sudah dimatikan di DOKU saat grup ini dilunasi. `
-            + `Kalau memang harus ditagih ulang, terbitkan tagihan BARU.`,
+          group.isTempo
+            // Tagihan tempo diperbarui sendiri oleh `/bayar/` — `unmarkScheduleAsPaid`
+            // memundurkan umur link-nya supaya itu terjadi (sql/102).
+            ? 'Ini tagihan tempo: iklannya TETAP tayang, dan link bayarnya diperbarui otomatis saat peneliti membukanya — tidak perlu menerbitkan tagihan baru.'
+            : `⚠️ Link bayar lamanya TIDAK hidup kembali — ia sudah dimatikan di DOKU saat grup ini dilunasi. `
+              + `Kalau memang harus ditagih ulang, terbitkan tagihan BARU.`,
         ],
         confirmLabel: `Ya, Batalkan Status Lunas ${group.memberCount} Pesanan`,
         tone: 'danger',
@@ -427,6 +493,10 @@ export function SchedulePaymentTab({
       title: `Batalkan status lunas jadwal #${entry.bookingId}?`,
       lines: [
         'Tagihan jadwal ini kembali jadi "menunggu bayar".',
+        // sql/102: izin tayang tidak ikut dicabut — `unmarkScheduleAsPaid`
+        // mengembalikannya ke kredit, bukan ke `waiting_payment`.
+        entry.airOnCreditAt
+          && 'Iklannya TETAP tayang (tayang sebelum lunas). Tagihan temponya terbuka lagi, dan link bayarnya diperbarui otomatis saat dibuka.',
         'Ini hanya membalik pelunasan yang ditandai MANUAL — bukan pembayaran lewat DOKU, dan bukan rekonsiliasi warisan (kanal MANUAL_RECONCILED, sql/71).',
       ],
       confirmLabel: 'Ya, Batalkan Status Lunas',
@@ -472,6 +542,22 @@ export function SchedulePaymentTab({
   const handleCancelInvoice = useCallback(async (inv: ScheduleInvoice) => {
     if (!inv.paymentId) return;
     const paymentId = inv.paymentId;
+
+    /*
+      K8 — diperiksa ULANG dari DB, bukan dipercaya dari kartu: tombolnya sudah
+      disembunyikan untuk tagihan tempo yang anggotanya mulai tayang, tapi kartu
+      bisa basi (tab terbuka sejak kemarin, tanggal tayangnya lewat tengah malam).
+    */
+    try {
+      const blocked = await tempoCancelBlockReason(paymentId);
+      if (blocked) {
+        toast.error(blocked, { duration: 10000 });
+        return;
+      }
+    } catch (err: any) {
+      toast.error(`Tidak bisa memeriksa tagihan ini: ${err?.message || err}`);
+      return;
+    }
     /*
       Sampai kapan link itu hidup. `expiresAt` baru terisi untuk tagihan yang
       terbit sesudah Bagian 3; untuk baris lama kita hanya tahu aturannya
@@ -599,6 +685,7 @@ export function SchedulePaymentTab({
    * memakai cakupan yang berbeda.
    */
   const pendingGroup = pendingPaid ? openGroupOf(pendingPaid) : null;
+  const pendingDeadGroup = pendingPaid && !pendingGroup ? deadGroupOf(pendingPaid) : null;
 
   const canAddSchedule =
     submission.distribution_type !== 'kilat' &&
@@ -634,6 +721,7 @@ export function SchedulePaymentTab({
             onEditSchedule={onEditSchedule}
             onCreateSchedule={onCreateSchedule}
             onCreateInvoice={onCreateInvoice}
+            onCreateTempoInvoice={onCreateTempoInvoice}
             onMarkPaid={lifecycle.isPaid ? null : (entry) => setPendingPaid(entry)}
             onUnmarkPaid={(entry) => void handleUnmarkPaid(entry)}
             onCancelInvoice={(inv) => void handleCancelInvoice(inv)}
@@ -724,6 +812,15 @@ export function SchedulePaymentTab({
               </p>
               {pendingPaid && pendingPaid.totalCost > 0 && (
                 <p className="font-semibold text-gray-700">{formatIDR(pendingPaid.totalCost)}</p>
+              )}
+              {pendingDeadGroup && (
+                <p className="text-amber-800 border-t border-slate-200 pt-1.5 text-left">
+                  Jadwal ini bagian dari tagihan gabungan{' '}
+                  <span className="font-mono font-semibold">{pendingDeadGroup.paymentId}</span>{' '}
+                  ({pendingDeadGroup.memberCount} pesanan) yang link-nya sudah mati. Tagihan ulang untuk
+                  anggota lain akan terbit TANPA porsi ini. Kalau uangnya belum diterima dan iklan ini
+                  hanya perlu tayang dulu, batalkan dan pakai <strong>Tayangkan Dulu</strong> di menu kartu.
+                </p>
               )}
             </div>
           )}

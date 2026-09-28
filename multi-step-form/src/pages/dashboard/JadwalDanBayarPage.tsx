@@ -24,6 +24,7 @@ import { segmentTitleOf } from '../../utils/segmentTitle';
 import { deriveScheduleMoney } from '../../utils/scheduleMoney';
 import { slotReleaseDeadline } from '../../utils/slotHold';
 import { payLinkPath } from '../../utils/payLink';
+import { creditPhaseOf } from '../../components/status/scheduleAxes';
 
 /**
  * Halaman terpusat "Jadwal & Bayar" — berkunci JADWAL, bukan order.
@@ -114,6 +115,17 @@ export function JadwalDanBayarPage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  /*
+    Tayang sebelum lunas (sql/102) dan masih berutang — aturan yang sama dengan
+    `isOwedOnCredit` (scheduleAxes), dibaca dari `hasOpenBill` karena komponen
+    ini sengaja tidak menyimpan URL tagihan: kredit yang DIHENTIKAN (`cancelled`)
+    hanya berutang selama tagihan temponya masih terbuka.
+  */
+  const owedOnCredit = !!entry?.airOnCreditAt
+    && !['paid', 'completed'].includes((entry.paymentStatus || '').toLowerCase())
+    && (hasOpenBill || (entry.status || '').toLowerCase() !== 'cancelled');
+  const creditPhase = entry && owedOnCredit ? creditPhaseOf(entry) : null;
+
   const state = entry
     ? schedulePageState({
         startDate: entry.startDate,
@@ -121,6 +133,7 @@ export function JadwalDanBayarPage() {
         paymentStatus: entry.paymentStatus,
         status: entry.status,
         slotReservedAt: entry.slotReservedAt,
+        owedOnCredit,
       })
     : null;
 
@@ -494,11 +507,29 @@ export function JadwalDanBayarPage() {
         onBack={() => navigate('/dashboard')}
         backLabel={t('backToOrders')}
         orderLabel={`${entry.title} · #${entry.bookingId}`}
-        title={t('paymentPhaseTitle')}
-        subtitle={t('paymentPhaseSubtitle')}
+        title={creditPhase ? t('creditPageTitle') : t('paymentPhaseTitle')}
+        /*
+          ⚠️ Kredit TIDAK boleh membaca "Bayar sebelum batas waktu untuk
+          mengamankan jadwal tayang" — tagihan tempo tanpa tenggat (K3), dan
+          jadwalnya sudah aman (bahkan mungkin sudah tayang).
+        */
+        subtitle={creditPhase === 'stopped'
+          ? t('bannerSubCreditStopped')
+          : creditPhase ? t('bannerSubAiringOnCredit') : t('paymentPhaseSubtitle')}
         calendar={
           <div className="space-y-4">
-            {state.showCountdown && timeLeft !== null ? (
+            {creditPhase ? (
+              <div className="flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <CreditCard className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                <p className="text-sm font-medium text-amber-950">
+                  {creditPhase === 'stopped'
+                    ? t('bannerTitleCreditStopped')
+                    : creditPhase === 'ended'
+                      ? t('bannerTitleCreditEnded')
+                      : t('bannerTitleAiringOnCredit')}
+                </p>
+              </div>
+            ) : state.showCountdown && timeLeft !== null ? (
               <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-5 text-center space-y-1.5 shadow-2xs">
                 <div className="inline-flex items-center gap-2 text-2xl md:text-3xl font-bold text-jfu-primary tabular-nums">
                   <Clock className="w-6 h-6 text-jfu-primary" /> {mmss(timeLeft)}
@@ -550,9 +581,13 @@ export function JadwalDanBayarPage() {
           />
         }
         bottomNotice={
-          <p className="text-xs text-slate-500 text-center leading-relaxed">
-            {state.showCountdown ? t('timerConsequenceNote') : t('slotHeldByAdminNote')}
-          </p>
+          // Kredit: "tim kami akan mengonfirmasi jadwalnya" salah — jadwalnya
+          // sudah pasti. Subjudul di atas sudah menyebut yang berlaku.
+          creditPhase ? null : (
+            <p className="text-xs text-slate-500 text-center leading-relaxed">
+              {state.showCountdown ? t('timerConsequenceNote') : t('slotHeldByAdminNote')}
+            </p>
+          )
         }
         cta={
           <div className="space-y-2.5 pt-1">

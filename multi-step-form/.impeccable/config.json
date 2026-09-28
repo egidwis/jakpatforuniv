@@ -16,6 +16,11 @@
         "rule": "gray-on-color",
         "value": "text-slate-600",
         "createdAt": "2026-09-16T20:38:36.322Z"
+      },
+      {
+        "rule": "overused-font",
+        "value": "arial",
+        "createdAt": "2026-09-28T23:12:16.359Z"
       }
     ]
   }

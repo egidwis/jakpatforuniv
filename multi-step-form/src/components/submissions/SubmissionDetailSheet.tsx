@@ -102,7 +102,8 @@ const TABS: { id: DetailTab; label: string; icon: typeof FileText }[] = [
  */
 type SubView =
   | { kind: 'edit'; entry: AdScheduleEntry }
-  | { kind: 'invoice'; entry: AdScheduleEntry }
+  /** `tempo` = dibuka dari "Tayangkan Dulu" / "Buat Tagihan (tempo)" (sql/102). */
+  | { kind: 'invoice'; entry: AdScheduleEntry; tempo?: boolean }
   | { kind: 'create'; isExtraAd: boolean }
   | null;
 
@@ -452,6 +453,7 @@ export function SubmissionDetailSheet({
           lifecycle={lifecycle}
           onEditSchedule={(entry) => setSubView({ kind: 'edit', entry })}
           onCreateInvoice={(entry) => setSubView({ kind: 'invoice', entry })}
+          onCreateTempoInvoice={(entry) => setSubView({ kind: 'invoice', entry, tempo: true })}
           onCreateSchedule={(isExtraAd) => setSubView({ kind: 'create', isExtraAd })}
           onEditFormDetails={onEditFormDetails}
           onConvertDistribution={onConvertDistribution}
@@ -486,7 +488,9 @@ export function SubmissionDetailSheet({
       subView.kind === 'create' ? 'Jadwal iklan baru'
         : subView.kind === 'edit'
           ? `Atur jadwal${subView.entry.ordinal > 1 ? ` #${subView.entry.ordinal}` : ''}`
-          : `Buat tagihan · jadwal #${subView.entry.ordinal}`;
+          : subView.tempo
+            ? `Tayangkan dulu · jadwal #${subView.entry.ordinal}`
+            : `Buat tagihan · jadwal #${subView.entry.ordinal}`;
 
     subViewNav = (
       <div className="flex items-center gap-2 py-2">
@@ -505,7 +509,11 @@ export function SubmissionDetailSheet({
 
     subViewBody = subView.kind === 'invoice' ? (
       <InvoiceForm
+        // `key` menyertakan niatnya: berpindah dari "Buat Tagihan" ke "Tayangkan
+        // Dulu" untuk jadwal yang sama harus memulai formulir dari nol.
+        key={`${subView.entry.id}:${subView.tempo ? 'tempo' : 'biasa'}`}
         entry={subView.entry}
+        initialTempo={!!subView.tempo}
         submission={submission}
         onCancel={closeSubView}
         onDone={finishSubView}

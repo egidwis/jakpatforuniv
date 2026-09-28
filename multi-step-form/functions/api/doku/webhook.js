@@ -28,6 +28,7 @@
 
 import { sendWebhookAlert } from './_webhook-alert.js';
 import { sendPaymentReceipt } from './_payment-receipt.js';
+import { cancelDokuOrder } from './_doku-cancel.js';
 
 // Setelah sekian kali percobaan gagal untuk satu invoice, berhenti meminta DOKU
 // retry (balas 200) — kegagalannya jelas bukan transien lagi. Baris audit dan
@@ -839,6 +840,74 @@ async function fetchStaleVerdicts(sb, billRows, invoiceNumber) {
   return verdicts;
 }
 
+/**
+ * STEP 0t — apakah `payment_id` ini tagihan tempo (sql/102)?
+ *
+ * Query TERPISAH dan GAGAL-TERBUKA ke `false` (= perilaku sebelum sql/102),
+ * alasan yang sama dengan STEP 0a: kolom sql/102 tidak boleh bisa menjatuhkan
+ * jalur panas.
+ */
+async function isTempoBill(sb, encodedInvoice) {
+  try {
+    const res = await sbFetch(
+      `${sb.url}/rest/v1/invoices?payment_id=eq.${encodedInvoice}&select=is_tempo`,
+      { headers: sb.headers },
+      'STEP 0t SELECT invoices.is_tempo'
+    );
+    const rows = await res.json();
+    return Array.isArray(rows) && rows.some((row) => row?.is_tempo === true);
+  } catch (e) {
+    console.warn(`[Webhook] STEP 0t tidak bisa membaca is_tempo — diperlakukan bukan tempo:`, e?.message || e);
+    return false;
+  }
+}
+
+/**
+ * STEP 0a — ambil alih kembali tagihan tempo lama yang dibayar SESUDAH
+ * diperbarui (sql/102). `true` = baris lama sudah `pending` lagi dan link
+ * penggantinya sudah dicoba dimatikan; lanjutkan jalur normal.
+ *
+ * ⚠️ GAGAL-TERBUKA KE PERILAKU LAMA, BUKAN KE 500. Apa pun yang salah di sini
+ * (sql/102 belum diterapkan, RPC menolak) berujung `false`, dan STEP 0b
+ * mencatatnya sebagai `paid_on_dead_bill` + alert — persis perilaku sebelum
+ * fitur ini ada. Tidak ada satu pun tulisan uang yang terjadi di jalur gagal.
+ */
+async function adoptSupersededTempoPayment(env, sb, invoiceNumber) {
+  let row;
+  try {
+    const res = await sbFetch(
+      `${sb.url}/rest/v1/rpc/adopt_superseded_tempo_payment`,
+      { method: 'POST', headers: sb.headers, body: JSON.stringify({ p_old_payment_id: invoiceNumber }) },
+      'STEP 0a RPC adopt_superseded_tempo_payment'
+    );
+    const rows = await res.json();
+    row = Array.isArray(rows) ? rows[0] : rows;
+  } catch (e) {
+    console.error(`[Webhook] STEP 0a adopsi ${invoiceNumber} gagal — jatuh ke paid_on_dead_bill:`, e);
+    return false;
+  }
+
+  if (row?.outcome !== 'adopted') {
+    if (row?.outcome === 'not_adoptable') {
+      console.error(`[Webhook] ${invoiceNumber} dibayar sesudah diperbarui, tapi penggantinya ${row?.successor_payment_id} tidak bisa diambil alih (sudah lunas atau anggotanya berubah).`);
+    }
+    return false;
+  }
+
+  // Link pengganti kini tidak menagih utang apa pun — matikan supaya tidak
+  // terbayar kedua kalinya. Gagal = dicatat; STEP 0b menahan uang yang
+  // mendarat ke sana karena barisnya sudah `cancelled`.
+  const cancel = await cancelDokuOrder(
+    env, row.successor_payment_id, row.successor_request_id,
+    'Utang dibayar lewat link tagihan tempo sebelumnya',
+  );
+  if (!cancel.cancelled) {
+    console.error(`[Webhook] link pengganti ${row.successor_payment_id} gagal dimatikan: ${cancel.reason}`);
+  }
+  console.log(`[Webhook] ${invoiceNumber} diambil alih kembali dari ${row.successor_payment_id} (sql/102).`);
+  return true;
+}
+
 // ============================================================================
 // Fase tulis DB — STEP 0..5
 //
@@ -932,6 +1001,57 @@ async function processPaymentUpdate(env, { invoiceNumber, amount, appStatus, pay
   // sampai admin bertindak. Karena itu errorMessage di bawah WAJIB membawa
   // nominal dan status per baris: banner admin adalah satu-satunya yang
   // menanggungnya sekarang.
+  // ====================================================================
+  // STEP 0t (sql/102): NOTIFIKASI NON-SUKSES TIDAK MENYENTUH TAGIHAN TEMPO
+  // ====================================================================
+  // Link tempo berumur 7 hari lalu diperbarui `/bayar/`; utangnya TIDAK ikut
+  // mati (K3). Jalur normal menulis `failed` ke baris tagihan untuk notifikasi
+  // FAILED/EXPIRED — untuk tagihan tempo itu menghapus utang dari
+  // `schedule_billing`, dan `/bayar/` berhenti memperbaruinya lalu menyuruh
+  // peneliti "jadwalkan ulang" iklan yang sedang tayang. Tidak ada yang perlu
+  // ditulis: kegagalan satu percobaan bayar tidak mengubah utangnya.
+  //
+  // Terukur 29 Sep 2026: 100/100 notifikasi DOKU sejak 18 Agu berstatus
+  // SUCCESS — penjaga ini untuk hari DOKU mulai mengirim yang lain.
+  if (appStatus !== 'completed' && billTable === 'invoices' && billRows.length > 0
+      && await isTempoBill(sb, encodedInvoice)) {
+    console.warn(`[Webhook] ${invoiceNumber} adalah tagihan tempo; notifikasi ${appStatus} diabaikan — utangnya tetap.`);
+    return { outcome: 'ok' };
+  }
+
+  // ====================================================================
+  // STEP 0a (sql/102): BAYAR TELAT KE LINK TEMPO YANG SUDAH DIPERBARUI
+  // ====================================================================
+  // Peneliti membuka link tempo, `/bayar/` sempat memperbaruinya, lalu uangnya
+  // masuk ke link LAMA. Tanpa ini STEP 0b menahannya sebagai `paid_on_dead_bill`
+  // sementara link pengganti masih menagih — peneliti bisa membayar dua kali.
+  // Uangnya sah untuk utang yang SAMA, jadi yang lama diambil alih kembali
+  // (atomik di `adopt_superseded_tempo_payment`) dan link penggantinya dimatikan.
+  //
+  // Sengaja di LUAR SELECT utama STEP 0 dan hanya pada kasus "semua baris
+  // dibatalkan": kolom sql/102 tidak boleh ikut ke jalur panas — kalau berkas
+  // itu belum diterapkan, SELECT-nya gagal dan SETIAP pembayaran jadi 500.
+  //
+  // ⚠️ HANYA UNTUK UANG YANG BENAR-BENAR MASUK (`completed`). Notifikasi
+  // FAILED/EXPIRED untuk link lama akan mematikan link pengganti yang masih
+  // menagih, menghidupkan baris lama, lalu STEP 1/2 menulisnya `failed` —
+  // utangnya lenyap. STEP 0t di atas sudah menahan notifikasi itu untuk
+  // tagihan tempo; syarat ini lapis keduanya kalau pembacaan `is_tempo` gagal.
+  if (appStatus === 'completed'
+      && billTable === 'invoices' && billRows.length > 0
+      && billRows.every((row) => String(row?.status ?? '').toLowerCase() === 'cancelled')) {
+    const adopted = await adoptSupersededTempoPayment(env, sb, invoiceNumber);
+    if (adopted) {
+      const refreshed = await sbFetch(
+        `${sb.url}/rest/v1/invoices?payment_id=eq.${encodedInvoice}&select=amount,status,schedule_id`,
+        { headers: sb.headers },
+        'STEP 0a SELECT invoices sesudah adopsi'
+      );
+      const rows = await refreshed.json();
+      billRows = Array.isArray(rows) ? rows : billRows;
+    }
+  }
+
   const deadBill = deadBillOutcome({ billRows, billTable, invoiceNumber, amount });
   if (deadBill) {
     console.error(`[Webhook] PAID ON DEAD BILL for ${invoiceNumber}: ${deadBill.errorMessage} No DB writes performed.`);
@@ -1211,6 +1331,32 @@ async function applyPaidSchedule(sb, target, appStatus) {
   }
 
   // ====================================================================
+  // STEP 4b (sql/102): jadwal KREDIT hanya menerima uang, tidak bergerak tahap
+  // ====================================================================
+  // Iklannya sudah dijadwalkan sejak ditandai tayang-sebelum-lunas — mungkin
+  // sudah `live`, bahkan `completed`. Menulis `submission_status: 'paid'` /
+  // `status: 'scheduled'` di atasnya memundurkan tahapnya; untuk perpanjangan
+  // yang jendelanya lewat, `cron_activate_extends` tidak akan pernah menutupnya
+  // lagi (ia hanya menutup yang `live`). Cermin `markScheduleAsPaid`.
+  //
+  // GAGAL-TERBUKA ke perilaku lama: tidak terbaca (mis. sql/102 belum
+  // diterapkan) = bukan kredit = persis perilaku sebelum fitur ini.
+  let isCredit = false;
+  if (paidScheduleId) {
+    try {
+      const creditRes = await sbFetch(
+        `${sb.url}/rest/v1/ad_schedules?id=eq.${encodeURIComponent(paidScheduleId)}&select=air_on_credit_at`,
+        { headers: sb.headers },
+        'STEP 4b SELECT ad_schedules.air_on_credit_at'
+      );
+      const creditRows = await creditRes.json();
+      isCredit = Array.isArray(creditRows) && !!creditRows[0]?.air_on_credit_at;
+    } catch (e) {
+      console.warn(`[Webhook] STEP 4b tidak bisa membaca status kredit ${paidScheduleId} — diperlakukan bukan kredit:`, e?.message || e);
+    }
+  }
+
+  // ====================================================================
   // STEP 5: Route update based on entity_type (extend vs submission)
   // ====================================================================
   const txn = target;
@@ -1236,7 +1382,7 @@ async function applyPaidSchedule(sb, target, appStatus) {
       `ad_schedules?source_table=eq.form_submissions_extend&source_id=eq.${txn.extend_id}`,
       {
         payment_status: formPaymentStatus,
-        ...(formSubmissionStatus === 'paid' ? { status: 'scheduled' } : {})
+        ...(formSubmissionStatus === 'paid' && !isCredit ? { status: 'scheduled' } : {})
       },
       'STEP 5 PATCH ad_schedules (jadwal ke-2 dst.)'
     );
@@ -1294,7 +1440,7 @@ async function applyPaidSchedule(sb, target, appStatus) {
       `form_submissions?id=eq.${formSubmissionId}`,
       {
         payment_status: formPaymentStatus,
-        ...(formSubmissionStatus ? { submission_status: formSubmissionStatus } : {})
+        ...(formSubmissionStatus && !isCredit ? { submission_status: formSubmissionStatus } : {})
       },
       'STEP 5 PATCH form_submissions'
     );

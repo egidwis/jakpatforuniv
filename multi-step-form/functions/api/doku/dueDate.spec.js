@@ -43,7 +43,17 @@ const CHECKOUT_TARGET = '/checkout/v1/payment';
  * penerbit baru jadi tindakan SADAR — orang yang menambahkannya harus lewat
  * berkas ini, dan karena itu membaca catatan di atas.
  */
-const KNOWN_ISSUERS = ['checkout.js', 'create-payment.js'];
+const KNOWN_ISSUERS = ['_tempo.js', 'checkout.js', 'create-payment.js'];
+
+/**
+ * Penerbit yang umur link-nya KONSTANTA, bukan masukan pemanggil — jadi tidak
+ * punya "default" yang bisa jatuh ke nilai lain.
+ *
+ * `_tempo.js` (sql/102): pembaruan tagihan tempo. Tagihan tempo tidak punya
+ * tanggal jatuh tempo, jadi link-nya selalu umur maksimal (7 hari) dan
+ * diperbarui lagi oleh `/bayar/` saat habis. Umurnya dikunci tes di bawah.
+ */
+const FIXED_LIFETIME_ISSUERS = ['_tempo.js'];
 
 const sourceFiles = readdirSync(DIR)
   .filter((f) => f.endsWith('.js') && !f.endsWith('.spec.js'))
@@ -87,10 +97,20 @@ describe('umur link DOKU — jaring pengaman pengganti setelan dashboard', () =>
     // Dua bentuk fallback yang dipakai kedua berkas, dan keduanya sah:
     //   checkout.js        `requestData.payment_due_date || 60`
     //   create-payment.js  `... > 0 ? Math.round(...) : 60`
-    for (const f of issuers) {
+    for (const f of issuers.filter((i) => !FIXED_LIFETIME_ISSUERS.includes(i.name))) {
       expect(f.body, `${f.name}: default umur link bukan 60 menit`)
         .toMatch(/(\|\||:)\s*60\b/);
     }
+  });
+
+  it('pembaruan tagihan tempo selalu 7 hari — sama dengan MAX_INVOICE_MINUTES', async () => {
+    const { TEMPO_LINK_MINUTES, buildTempoCheckoutPayload } = await import('./_tempo.js');
+    expect(TEMPO_LINK_MINUTES).toBe(60 * 24 * 7);
+    const payload = buildTempoCheckoutPayload({
+      amount: 1110, invoiceNumber: 'JFU-INV-abc123-1', callbackUrl: 'https://x/y',
+      customer: { name: 'A', email: 'a@b.c' },
+    });
+    expect(payload.payment.payment_due_date).toBe(TEMPO_LINK_MINUTES);
   });
 });
 

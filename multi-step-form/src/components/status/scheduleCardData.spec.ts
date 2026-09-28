@@ -51,6 +51,8 @@ const scheduleOf = (over: Partial<AdScheduleEntry> = {}): AdScheduleEntry => ({
     pageStatus: 'none',
     isExtraAd: false,
     pageBannerIsPlaceholder: false,
+    airOnCreditAt: null,
+    airOnCreditNote: null,
     ...over,
 });
 
@@ -82,6 +84,8 @@ const uiOf = (first: AdScheduleEntry, later: AdScheduleEntry[] = []): OrderUiSta
     paymentDeadline: new Date('2026-09-02T02:00:00.000Z'),
     paymentDeadlineCause: 'slot',
     isTooLateToday: false,
+    owesOnCredit: false,
+    firstCreditStopped: false,
     callout: 'payment',
     needsAction: true,
     group: 'butuh-aksi',

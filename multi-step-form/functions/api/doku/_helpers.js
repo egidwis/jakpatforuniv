@@ -75,7 +75,11 @@ export function getDokuCredentials(env) {
  * @param {string} method - HTTP method (GET, POST)
  * @param {string} requestTarget - API path
  * @param {object|null} body - Request body (null for GET)
- * @returns {Promise<{ok: boolean, status: number, data: object}>}
+ * @returns {Promise<{ok: boolean, status: number, data: object, requestId: string}>}
+ *
+ * `requestId` dipulangkan karena Cancel Order API menuntutnya sebagai
+ * `original_request_id` (sql/84) — link yang dibuat tanpa menyimpannya tidak
+ * bisa dimatikan lagi, selamanya. Aditif: pemanggil lama tidak membacanya.
  */
 export async function dokuRequest(env, method, requestTarget, body = null) {
   const { clientId, secretKey } = getDokuCredentials(env);
@@ -120,5 +124,5 @@ export async function dokuRequest(env, method, requestTarget, body = null) {
     data = { raw: resultText };
   }
 
-  return { ok: response.ok, status: response.status, data };
+  return { ok: response.ok, status: response.status, data, requestId };
 }

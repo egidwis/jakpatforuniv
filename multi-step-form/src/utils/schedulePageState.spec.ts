@@ -109,3 +109,20 @@ describe('schedulePageState — pembatalan mandiri', () => {
     expect(schedulePageState(subjectOf({ paymentStatus: 'paid' })).canCancel).toBe(false);
   });
 });
+
+describe('schedulePageState — tayang sebelum lunas (sql/102)', () => {
+  it('kredit yang DIHENTIKAN (cancelled) tapi masih berutang → MENUNGGU BAYAR, bukan "dilepas"', () => {
+    const s = schedulePageState(subjectOf({ status: 'cancelled', slotBookedBy: 'admin', owedOnCredit: true }));
+    expect(s).toEqual({ screen: 'awaiting_payment', showCountdown: false, canCancel: false });
+  });
+
+  it('kredit tetap tanpa hitung mundur & tanpa tombol batal walau slot_booked_by bocor jadi user', () => {
+    const s = schedulePageState(subjectOf({ owedOnCredit: true }));
+    expect(s.showCountdown).toBe(false);
+    expect(s.canCancel).toBe(false);
+  });
+
+  it('kredit yang sudah lunas → SELESAI', () => {
+    expect(schedulePageState(subjectOf({ paymentStatus: 'paid', owedOnCredit: true })).screen).toBe('settled');
+  });
+});
