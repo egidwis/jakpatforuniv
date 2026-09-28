@@ -19,6 +19,7 @@ Sistem memiliki satu gerbang pengiriman email transaksional terpusat (`functions
 | 3a | **Tagihan Siap: Order Utama** | Peneliti | Admin mereservasi jadwal dan menerbitkan tagihan order pertama | [`InvoiceForm.tsx`](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/src/components/schedule/InvoiceForm.tsx) → [`send-invoice-ready-email.js`](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/functions/api/send-invoice-ready-email.js) | `Pesananmu disetujui, tagihan siap dibayar — Jakpat for Universities` |
 | 3b | **Tagihan Siap: Perpanjangan** | Peneliti | Admin menerbitkan invoice perpanjangan jadwal (`variant: 'extension'`) | [`InvoiceForm.tsx`](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/src/components/schedule/InvoiceForm.tsx) → [`send-invoice-ready-email.js`](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/functions/api/send-invoice-ready-email.js) | `Tagihan jadwal iklan barumu siap dibayar — Jakpat for Universities` |
 | 3c | **Tagihan Siap: Tagihan Gabungan (Bulk)** | Peneliti | Admin menerbitkan invoice borongan beberapa survei (`variant: 'bulk'`) | [`BulkInvoiceDialog.tsx`](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/src/components/schedule/BulkInvoiceDialog.tsx) → [`send-invoice-ready-email.js`](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/functions/api/send-invoice-ready-email.js) | `Tagihan gabungan iklan surveimu siap dibayar — Jakpat for Universities` |
+| 3·T | **Tagihan Siap: Modifier Tempo** (menempel pada 3a/3b/3c) | Peneliti | Admin menerbitkan tagihan dengan toggle "Tagihan tempo" menyala (`tempo: true`, sql/102) | [`InvoiceForm.tsx`](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/src/components/schedule/InvoiceForm.tsx) / [`BulkInvoiceDialog.tsx`](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/src/components/schedule/BulkInvoiceDialog.tsx) → [`send-invoice-ready-email.js`](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/functions/api/send-invoice-ready-email.js) | Sama dengan varian dasarnya |
 | 4a | **Jadwal Tayang: Dibatalkan Tim** | Peneliti | Admin membatalkan slot jadwal tayang (`event: 'cancelled'`) | [`ScheduleForm.tsx`](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/src/components/schedule/ScheduleForm.tsx) / [`SchedulePaymentTab.tsx`](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/src/components/submissions/tabs/SchedulePaymentTab.tsx) → [`notify-schedule-change.js`](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/functions/api/notify-schedule-change.js) | `Jadwal tayang iklanmu dibatalkan — Jakpat for Universities` |
 | 4b | **Jadwal Tayang: Digeser Tim** | Peneliti | Admin menggeser tanggal mulai tayang (`event: 'moved'`) | [`ScheduleForm.tsx`](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/src/components/schedule/ScheduleForm.tsx) → [`notify-schedule-change.js`](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/functions/api/notify-schedule-change.js) | `Jadwal tayang iklanmu berubah — Jakpat for Universities` |
 | 5 | **Iklan Mulai Ditayangkan (Live / Extension)** | Peneliti | `pg_cron` mendeteksi jam tayang tiba (per-jadwal: ordinal 1 & perpanjangan) | Supabase `pg_cron` (`sql/95`) → [`notify-ad-live.js`](file:///Users/jakpat/GarCode/jakpatforuniv/multi-step-form/functions/api/notify-ad-live.js) | `[Jakpat for Univ] Iklan surveimu mulai tayang hari ini 🚀` / `[Jakpat for Univ] Iklan perpanjangan surveimu mulai tayang hari ini 🚀` |
@@ -254,6 +255,28 @@ Sistem memiliki satu gerbang pengiriman email transaksional terpusat (`functions
   <p><strong>Tim Jakpat for Universities</strong></p>
 </div>
 ```
+
+#### Modifier Tempo (`tempo: true`, sql/102) — berlaku untuk 3a, 3b, dan 3c
+- **Pemicu**: admin menerbitkan tagihan dengan toggle **"Tagihan tempo — tayang sesuai
+  jadwal, bayar menyusul"** menyala, dari menu kartu "Tayangkan Dulu" atau langsung dari
+  dialog tagihan.
+- **Yang berubah**:
+  - Kotak ungu baru disisipkan di atas tombol bayar:
+    *"Iklanmu **tetap tayang sesuai jadwal** — pembayarannya boleh menyusul, tanpa batas
+    waktu. Tombol di bawah selalu bisa dipakai kapan pun Kakak siap membayar."*
+  - Varian 3b: kalimat *"Tanggal itu kami tahan untukmu sampai pembayarannya masuk — kalau
+    lewat batas waktu, slotnya kembali terbuka untuk peneliti lain"* **dihapus**. Kalimat
+    itu salah untuk tagihan tempo, dan menakut-nakuti pelanggan tepercaya.
+  - Pesan WhatsApp pendampingnya (`waMessage.ts`) mengganti *"Mohon diselesaikan paling
+    lambat …"* dengan kalimat yang sama: tayang sesuai jadwal, tanpa tenggat.
+- **Kenapa tanpa tenggat**: keputusan K3. Tagihan tempo tidak punya tanggal jatuh tempo.
+  Link DOKU 7 hari di baliknya diperbarui otomatis oleh `/bayar/<jadwal>`, jadi tautan di
+  email tidak pernah mati.
+- **Email DOKU sendiri** (per 2026-09-29): hanya **"Pesanan Gagal"** yang menyala.
+  - "Pesanan Kedaluwarsa" mati. Kalau menyala, peneliti tempo akan menerima email
+    "kedaluwarsa" tiap 7 hari.
+  - "Pesanan Berhasil" juga mati, karena kuitansi dikirim email no. 9, termasuk untuk
+    pembayaran tagihan tempo.
 
 
 ---
@@ -689,3 +712,18 @@ Semua temuan kritis dan perbaikan yang teridentifikasi dalam audit sistem email 
   - Migrasi `sql/95_ad_schedules_notifications.sql` menambahkan kolom pelacak `live_notified_at` dan `completed_notified_at` pada `ad_schedules`, backfill data ordinal 1, dan memperbarui fungsi cron `notify_primary_ads_live()` & `notify_primary_ads_completed()` agar memindai seluruh jadwal (`ordinal 1..n`).
   - `notify-ad-live.js` dan `notify-ad-completed.js` kini menerima parameter `ordinal` dan menyesuaikan subjek serta copywriting khusus perpanjangan saat `ordinal > 1`.
 - **Hasil**: Seluruh jadwal iklan (baik jadwal awal maupun perpanjangan yang tayang dengan jeda hari) mendapatkan notifikasi tayang dan selesai secara tepat waktu.
+
+### 7. ✅ Tagihan Tempo — Email Tanpa Tenggat & Notifikasi Tayang untuk Jadwal Kredit (2026-09-29, sql/102)
+- **Perubahan**:
+  - `send-invoice-ready-email.js` menerima `tempo`. Janji tenggat diganti kotak "tetap
+    tayang sesuai jadwal, bayar menyusul" (lihat Modifier Tempo di §3).
+  - `notify_primary_ads_live()` dan `notify_primary_ads_completed()` kini juga memilih jadwal
+    **tayang sebelum lunas** (`air_on_credit_at IS NOT NULL`), bukan hanya
+    `payment_status = 'paid'`.
+    - Tanpa ini, iklan tempo tayang tanpa email.
+    - Email "iklan tayang" juga akan hilang selamanya kalau pembayarannya baru masuk
+      setelah iklannya selesai.
+    - Kedua email itu tidak menyebut pembayaran sama sekali (diperiksa 2026-09-29), jadi
+      aman dikirim ke jadwal yang belum lunas.
+- **Hasil**: Peneliti tepercaya menerima tagihan yang jujur (tanpa ancaman slot hangus) dan
+  notifikasi tayang/selesai yang sama dengan peneliti yang sudah lunas.

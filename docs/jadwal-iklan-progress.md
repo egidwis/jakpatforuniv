@@ -123,6 +123,55 @@ branch itu. Lihat §2.
 
 ## Yang menunggu tindakan
 
+### 00AE. 🟡 Tayang sebelum lunas + tagihan tempo (`sql/101` + `sql/102`, 2026-09-29)
+
+**Rencana:** [2026-09-28-tayang-sebelum-lunas-tagihan-tempo](superpowers/plans/2026-09-28-tayang-sebelum-lunas-tagihan-tempo.md).
+Kotak status di kepalanya mencatat apa saja yang menyimpang dari rancangan.
+
+| Langkah | Status |
+|---|---|
+| `sql/101` (ops) — menutup 4 invoice + 4 transaksi tagihan gabungan lama JFU-INV-15f4ac sebagai `cancelled` | ✅ diterapkan 29 Sep |
+| `sql/102` — kolom kredit, `is_tempo`/`superseded_by`, resolver, pembaruan & adopsi tempo | ✅ diterapkan & diverifikasi 29 Sep |
+| Email DOKU | ✅ hanya "Pesanan Gagal" yang menyala; kuitansi dari webhook kita sendiri |
+| Kode | 🟡 di-commit di `feat/tagihan-tempo`, **belum di-push/deploy** |
+| Uji browser | ⬜ wajib lewat `wrangler pages dev dist` (`npm run dev` tidak menjembatani `/bayar/`) |
+
+**Inti desain.** Kredit adalah `ad_schedules.air_on_credit_at` + `slot_booked_by='admin'`.
+Tulisan kedua itu yang membebaskan jadwal dari:
+- cron pelepas slot;
+- penjaga kuota;
+- hitung mundur;
+- tombol batal peneliti.
+
+Tagihan tempo = `invoices.is_tempo`. Barisnya tidak pernah `is_expired`, karena utang ≠ link
+hidup. Link-nya diperbarui `/bayar/` lewat RPC `renew_tempo_bill`, dan baris lamanya ditutup
+`cancelled` + `superseded_by`.
+
+**Verifikasi produksi 29 Sep (SELECT):**
+- nol jadwal kredit dan nol tagihan tempo;
+- resolver menjawab `bill_cancelled` untuk J8AXQVCF/QE8KND8B/RWJJAARF dan `live` untuk
+  WH265TVZ;
+- tagihan hidup Rp 2.031.300 masih `pending`, link-nya hidup sampai 30 Sep 13.59 WIB.
+
+**Tindakan manusia yang masih terbuka:**
+
+- ⚠️ **Periksa QE8KND8B dan RWJJAARF.** Keduanya tayang 29 Sep 15.00 WIB tapi per pagi itu
+  masih `slot_reserved`/`pending`. Satu-satunya baris tagihan mereka sudah `cancelled`
+  (`sql/101`), jadi "Tandai Lunas" tidak lagi menciptakan pendapatan fiktif. ⛔ Jangan
+  "Tandai Lunas" WH265TVZ, karena tagihan gabungan Rp 2.031.300 menempel di sana.
+- Sesudah deploy, jalankan 6 langkah uji browser di §Verifikasi rencana. Yang terpenting:
+  `/bayar/` lead dibuka **tanpa login** setelah `expires_at` dipaksa lewat.
+
+**Pelajaran review sebelum commit:**
+
+- **Dashboard peneliti.** `isSchedulePaid()` membaca `scheduled`/`live` sebagai lunas. Jadi
+  semua kalimat uang untuk jadwal kredit harus lewat `ui.owesOnCredit`, bukan `ui.isPaid`.
+- **Webhook STEP 0t.** Notifikasi selain SUCCESS tidak pernah menulis ke tagihan tempo. Hari
+  ini masih laten (100/100 notifikasi sejak 18 Agu = SUCCESS), tapi tanpanya satu FAILED
+  menghapus utang.
+- **`cancelSchedule` jalur belum-tayang sudah menutup barisnya sendiri.** Jangan
+  "memperbaiki" pemanggilan `killDokuLinksForSchedule` tanpa `markCancelled` di sana.
+
 ### 00AC. 🟡 Kuitansi & halaman sukses menyebut jadwal yang BENAR (2026-09-21)
 
 **Nol migrasi SQL. Seluruhnya frontend + satu Pages Function.**
