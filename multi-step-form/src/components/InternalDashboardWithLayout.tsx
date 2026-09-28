@@ -38,25 +38,34 @@ export function InternalDashboardWithLayout() {
   const [storageStats, setStorageStats] = useState({ proofCount: 0, bannerCount: 0, contentImageCount: 0 });
   const STORAGE_LIMIT_MB = 102400; // 100 GB Supabase Pro Plan storage limit
 
-  // Function to calculate unread conversations
+  // Function to calculate unread conversations that actually require attention
   const checkUnreadConversations = async () => {
     try {
       const sessions = await getAllChatSessions();
       let unread = 0;
+      const now = Date.now();
+      const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
       sessions.forEach(session => {
+        // Abaikan percakapan yang sudah Selesai (resolved)
+        if (session.is_resolved) return;
+
+        // Abaikan percakapan tanpa pesan riil (session kosong)
+        if (!session.last_message_snippet) return;
+
+        // 1. Prioritas utama: Percakapan yang butuh perhatian atau ada kendala
+        if (session.needs_attention || session.tag === 'issue') {
+          unread++;
+          return;
+        }
+
+        // 2. Percakapan aktif belum selesai yang ada pesan baru dalam 3 hari terakhir dan belum dibuka
         const lastViewed = localStorage.getItem(`chat_viewed_${session.id}`);
         const lastMessageTime = new Date(session.last_message_at).getTime();
-        const createdTime = new Date(session.created_at).getTime();
         const lastViewedTime = lastViewed ? parseInt(lastViewed) : 0;
+        const isRecent = (now - lastMessageTime) < THREE_DAYS_MS;
 
-        // Heuristic: If last_message_at is very close to created_at (e.g. within 2 seconds), 
-        // it means the session was just created and likely has no messages yet.
-        // We only want to notify if there is *activity* (messages sent).
-        const isJustCreated = Math.abs(lastMessageTime - createdTime) < 2000;
-
-        // If message is newer than last view AND it's not just an empty session creation
-        if (lastMessageTime > lastViewedTime && !isJustCreated) {
+        if (isRecent && lastMessageTime > lastViewedTime) {
           unread++;
         }
       });

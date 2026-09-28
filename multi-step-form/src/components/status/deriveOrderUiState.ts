@@ -379,6 +379,9 @@ export function describeOrderForChat(submission: FormSubmission, ui: OrderUiStat
 
     const lines: string[] = [];
     lines.push(`Order "${submission.title}" (layanan ${submission.distribution_type === 'kilat' ? 'Kilat' : 'Regular'})`);
+    if (submission.id) {
+        lines.push(`- ID Survei: ${submission.id}`);
+    }
     lines.push(`- Status: ${statusText[ui.callout]}`);
 
     const start = fmt(ui.eff.activeStart);

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { HelpCircle, Send, Bot, Sparkles, ArrowRight, ExternalLink, Calendar, Plus, RefreshCw, AlertCircle } from 'lucide-react';
+import { HelpCircle, Send, Bot, ArrowRight } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/context/AuthContext';
@@ -25,12 +25,12 @@ import {
     AccordionTrigger,
 } from "@/components/ui/accordion";
 import ReactMarkdown from 'react-markdown';
-
+import { GenerativeUiRenderer, type GenerativeUiData } from '@/components/chat/generative/GenerativeUiRenderer';
 
 interface ChatCta {
     id: string;
     label: string;
-    action: 'navigate' | 'chat_prompt' | 'open_modal';
+    action: 'navigate' | 'chat_prompt' | 'open_modal' | 'open_url';
     target?: string;
     variant?: 'primary' | 'secondary' | 'warning' | 'outline';
 }
@@ -39,6 +39,7 @@ interface ChatMessageItem {
     role: 'user' | 'assistant';
     content: string;
     ctas?: ChatCta[];
+    generative_ui?: GenerativeUiData;
 }
 
 export function ChatPage() {
@@ -159,17 +160,18 @@ export function ChatPage() {
                         setMessages(savedMessages.map(m => ({ 
                             role: m.role as 'user' | 'assistant', 
                             content: m.content,
-                            ctas: (m as any).ctas || []
+                            ctas: (m as any).ctas || [],
+                            generative_ui: (m as any).generative_ui
                         })));
                     }
                 }
             }
 
-            // 3. Fetch order user untuk ORDER CONTEXT (maks. 3 terbaru)
+            // 3. Fetch order user untuk ORDER CONTEXT & Generative UI (hingga 50 survei)
             if (user?.id) {
                 try {
                     const subs = await getFormSubmissionsByUser(user.id, user.email);
-                    const recent = subs.slice(0, 3);
+                    const recent = subs.slice(0, 50);
                     const ids = recent.map((s) => s.id).filter((id): id is string => !!id);
                     const allSchedules = await fetchAdSchedules(ids);
                     setUserOrders(recent.map((submission) => ({
@@ -199,9 +201,9 @@ export function ChatPage() {
         [userOrders]
     );
 
-    // Build system prompt with Comprehensive Product Knowledge & Action Capabilities
+    // Build system prompt with Comprehensive Product Knowledge, Agentic Skills & Action Capabilities
     const buildSystemPrompt = useCallback(() => {
-        const basePrompt = systemPrompt || `You are Mimin AI, the Agentic AI Assistant & Virtual Admin for Jakpat for Universities (JFU).
+        const basePersona = systemPrompt || `You are Mimin AI, the Agentic AI Assistant & Virtual Admin for Jakpat for Universities (JFU).
 You are politely professional, proactive, and solution-oriented.
 
 === IDENTITY & PURPOSE ===
@@ -240,68 +242,211 @@ You are politely professional, proactive, and solution-oriented.
 - >70 pertanyaan: Rp 500.000 / hari
 - **Aturan Grid/Likert/Matrix**: Setiap baris pernyataan dihitung sebagai 1 pertanyaan (bukan 1 blok).
 - **Insentif Responden**: Ditentukan sendiri oleh peneliti, rekomendasi minimal Rp 25.000 untuk 2 pemenang undian.
-- **Add-on Randomizer**: Rp 20.000 per link.
+- **Add-on Randomizer**: Rp 20.000 per link.`;
 
+        const currentFaqs = faqs.length > 0 ? faqs : defaultFaqs;
+
+        // Contextual SOPs from ai_skills (managed in /internal-dash)
+        const skillsContext = skills.length > 0
+            ? `\n\n=== PANDUAN SOP INTERNAL TIM (AGENTIC SKILLS DARI /internal-dash) ===\n` +
+              `Jika konteks obrolan user berkaitan dengan salah satu situasi SOP di bawah ini, ikuti langkah SOP dan WAJIB sertakan Action Buttons (CTAs) yang ditentukan:\n\n` +
+              skills.map(s => {
+                let block = `[SOP: ${s.name}]\n- Situasi / Trigger: ${s.trigger_context}\n- Langkah Panduan Jawaban:\n${s.sop_instructions}\n`;
+                if (s.tag) block += `- Tag Kategori: ${s.tag} (${s.tag_label || ''})\n`;
+                if (s.suggested_actions && s.suggested_actions.length > 0) {
+                  block += `- Action Buttons (CTAs) yang WAJIB dimasukkan ke array JSON "ctas":\n` +
+                    JSON.stringify(s.suggested_actions.map(a => ({
+                      id: a.label.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+                      label: a.label,
+                      action: a.action,
+                      target: a.url || a.prompt || ''
+                    }))) + '\n';
+                }
+                return block;
+              }).join('\n\n')
+            : '';
+
+        const orderContext = orderStates.length > 0
+            ? `\n\n=== ORDER CONTEXT (DATA ORDER MILIK USER SAAT INI) ===
+Berikut daftar order survei milik user yang sedang chat denganmu:
+
+${orderStates.map(({ submission, ui }) => describeOrderForChat(submission, ui)).join('\n\n')}
+
+=== PANDUAN TOMBOL AKSI MANDIRI (SELF-SERVICE CTAS) ===
+Gunakan data ORDER CONTEXT di atas untuk membuatkan tombol aksi (CTA) yang kontekstual bagi user:
+1. Jika user menanyakan atau bermaksud untuk PERPANJANG DURASI SURVEI / TAMBAH HARI TAYANG / RESPON BELUM CUKUP:
+   - Buatkan tombol aksi (CTA) tipe "navigate" langsung mengarah ke formulir tambah jadwal survei tersebut:
+     "action": "navigate"
+     "target": "/dashboard/jadwal/baru/<ID_SURVEI>"
+     "label": "➕ Tambah Jadwal Baru" (atau sertakan judul singkat survei jika user punya lebih dari 1 survei)
+   - Jika user memiliki lebih dari 1 survei, buatkan tombol untuk masing-masing survei agar user tinggal pilih survei mana yang ingin ditambah jadwalnya.
+   - Jika user belum punya survei di ORDER CONTEXT, gunakan "target": "/dashboard".
+2. Jika user menanyakan status atau ingin melihat detail survei:
+   - "action": "navigate", "target": "/dashboard", "label": "📊 Buka Dashboard Survei"`
+            : `\n\n=== ORDER CONTEXT ===
+User saat ini belum memiliki data survei aktif di akunnya. Jika user bertanya cara perpanjang survei, jelaskan langkahnya dan beri tombol "target": "/dashboard".`;
+
+        const jsonContract = `
 === CRITICAL BEHAVIOR & OUTPUT FORMAT ===
 Balaslah dalam Bahasa Indonesia yang ramah, sopan, bersahabat, dan jelas.
 PENTING:
 - Teks obrolanmu ('reply') harus 100% percakapan alami manusiawi yang hangat, solutif, dan mengalir.
 - JANGAN PERNAH menampilkan format teknis seperti "Label: ... -> Action: ...", "Action Buttons", atau mencantumkan kode teknis di dalam teks 'reply'.
-- Tombol aksi (CTA) HANYA dimasukkan ke dalam array JSON "ctas", TIDAK boleh dituliskan sebagai bullet points di teks 'reply'.
+- Tombol aksi (CTA) HANYA dimasukkan ke dalam array JSON "ctas".
+
+=== GENERATIVE UI CAPABILITIES (@json-render) ===
+Kamu memiliki kemampuan Generative UI dengan komponen standar @json-render!
+Sertakan field "generative_ui" di JSON output kapan pun relevan:
+1. Saat user meminta daftar survei, status survei, atau ingin mengedit:
+   Sertakan Card dengan SurveyItem:
+   {
+     "component": "Card",
+     "props": { "title": "Daftar Survei Anda", "description": "...", "badge": "..." },
+     "children": [
+       {
+         "component": "SurveyItem",
+         "props": {
+           "title": "Judul Survei",
+           "badge": "Perlu Revisi" | "Live" | "Review" | "Selesai",
+           "badgeVariant": "warning" | "success" | "info" | "danger",
+           "description": "Keterangan status / alasan revisi",
+           "schedule": "Jadwal tayang jika ada",
+           "actionLabel": "✏️ Edit Survei" | "📋 Buka Dashboard",
+           "actionUrl": "/dashboard"
+         }
+       }
+     ]
+   }
+2. Saat user bertanya estimasi biaya atau simulasi harga:
+   Sertakan { "type": "price_calculator" }
+3. Saat user ingin menambah jadwal / extend survei:
+   Sertakan { "type": "survey_picker", "props": { "action": "extend_schedule", "action_label": "➕ Tambah Jadwal Baru" } }
 
 Format responmu WAJIB menggunakan JSON dengan struktur:
 {
-  "reply": "Teks markdown jawaban ramah dan informatif tanpa format teknis...",
+  "reply": "Teks pengantar alami tanpa format teknis...",
   "intent": "issue" | "feedback" | "request_extend" | "request_upsell" | "faq",
-  "tag_label": "Label ringkas maks 3 kata (cth: Kendala Bayar / Saran Fitur / Tanya Jadwal / Request Extend)",
-  "needs_attention": true | false (isi true jika user mengalami kendala teknis, pembayaran gagal, atau butuh bantuan manual admin),
+  "tag_label": "Label ringkas maks 3 kata",
+  "needs_attention": true | false,
   "ctas": [
     {
-      "id": "track_ads" | "extend_ads" | "calendar" | "kilat" | "audit_form" | "report_issue",
-      "label": "Teks tombol (cth: 🚀 Perpanjang Durasi Tayang / ➕ Perpanjang Iklan / 📅 Buka Kalender / ⚡ Info JFU Kilat)",
-      "action": "navigate" | "chat_prompt",
-      "target": "/dashboard" (untuk navigate) ATAU teks pertanyaan cepat (untuk chat_prompt)
+      "id": "string",
+      "label": "Teks tombol",
+      "action": "navigate" | "open_url" | "chat_prompt",
+      "target": "URL atau prompt"
     }
-  ]
+  ],
+  "generative_ui": { ... } // Opsional: gunakan untuk merender Card/SurveyItem/PriceCalculator/SurveyPicker
 }`;
 
-        const currentFaqs = faqs.length > 0 ? faqs : defaultFaqs;
-
-        const skillsContext = skills.length > 0
-            ? `\n\n=== PANDUAN SOP INTERNAL TIM (HANYA REFERENSI INTERNAL AI, JANGAN TULIS FORMAT TEKNIS KE USER) ===\n` +
-              `Jika konteks obrolan user berkaitan dengan situasi berikut, ikuti SOP ini dalam menjawab secara natural:\n\n` +
-              skills.map(s => 
-                `[SOP: ${s.name}]\n` +
-                `- Situasi: ${s.trigger_context}\n` +
-                `- Langkah Panduan Jawaban:\n${s.sop_instructions}\n`
-              ).join('\n\n')
-            : '';
-
-        const orderContext = orderStates.length > 0
-            ? `\n\n=== ORDER CONTEXT (DATA ORDER MILIK USER SAAT INI) ===\nBerikut order survei milik user yang sedang chat denganmu:\n\n${orderStates.map(({ submission, ui }) => describeOrderForChat(submission, ui)).join('\n\n')}\n\nGunakan data di atas untuk menjawab status survei user secara akurat dan sertakan CTA yang relevan!`
-            : '';
-
-        return `${basePrompt}
+        return `${basePersona}
 ${skillsContext}
 
 === KNOWLEDGE BASE (FAQ) ===
 ${currentFaqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
 ${orderContext}
+${jsonContract}
 `;
     }, [systemPrompt, skills, faqs, orderStates]);
 
+function extractJsonObject(text: string): Record<string, any> | null {
+    if (!text) return null;
+
+    // 1. Try direct parse if whole string is valid JSON
+    const trimmed = text.trim();
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+        try {
+            return JSON.parse(trimmed);
+        } catch (_) {}
+    }
+
+    // 2. Scan for first '{' and find matching '}' via balanced brace counter
+    const firstBrace = text.indexOf('{');
+    if (firstBrace === -1) return null;
+
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let endIdx = -1;
+
+    for (let i = firstBrace; i < text.length; i++) {
+        const char = text[i];
+
+        if (escape) {
+            escape = false;
+            continue;
+        }
+
+        if (char === '\\') {
+            escape = true;
+            continue;
+        }
+
+        if (char === '"') {
+            inString = !inString;
+            continue;
+        }
+
+        if (!inString) {
+            if (char === '{') {
+                depth++;
+            } else if (char === '}') {
+                depth--;
+                if (depth === 0) {
+                    endIdx = i;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (endIdx !== -1) {
+        const jsonStr = text.slice(firstBrace, endIdx + 1);
+        try {
+            return JSON.parse(jsonStr);
+        } catch (_) {}
+    }
+
+    // 3. Fallback regex match for code blocks
+    const match = text.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
+    if (match) {
+        try {
+            return JSON.parse(match[1]);
+        } catch (_) {}
+    }
+
+    return null;
+}
+
 function cleanRawReply(text: string): string {
     if (!text) return '';
-    return text
+
+    // Remove any ```json ... ``` blocks
+    let cleaned = text.replace(/```(?:json)?[\s\S]*?```/g, '').trim();
+
+    // Remove trailing/standalone JSON array (e.g. [{"id":...}] or [ { ... } ])
+    cleaned = cleaned.replace(/\[\s*\{[\s\S]*\}\s*\]/g, '').trim();
+
+    // Remove standalone JSON objects if leaked
+    cleaned = cleaned.replace(/\{\s*["'](?:reply|component|intent|ctas|generative_ui|type)["'][\s\S]*\}/g, '').trim();
+
+    return cleaned
         .split('\n')
         .filter(line => {
             const trimmed = line.trim();
+            // Filter technical action syntax
             if (/^(?:[-*•]\s*)?label:\s*["'].*["']\s*->\s*action:/i.test(trimmed)) return false;
             if (/^(?:[-*•]\s*)?label:\s*["'].*["']/i.test(trimmed) && /action:/i.test(trimmed)) return false;
             if (/^(?:[-*•]\s*)?action:\s*(?:navigate|open_url|chat_prompt)/i.test(trimmed)) return false;
             if (/^silakan pilih salah satu opsi di bawah ini/i.test(trimmed)) return false;
             if (/^(?:[-*•]\s*)?pilih opsi berikut/i.test(trimmed)) return false;
             if (/^(?:[-*•]\s*)?action buttons?:/i.test(trimmed)) return false;
+
+            // Filter raw JSON syntax lines (e.g. "actionUrl": "/dashboard", or closing brackets)
+            if (/^\s*["'][a-zA-Z0-9_-]+["']\s*:\s*/.test(trimmed)) return false;
+            if (/^\s*[{}\[\],]\s*$/.test(trimmed)) return false;
+            if (trimmed.startsWith('"') && (trimmed.endsWith('",') || trimmed.endsWith('"'))) return false;
+
             return true;
         })
         .join('\n')
@@ -318,31 +463,43 @@ function parseMiminResponse(
     tag_label: string;
     needs_attention: boolean;
     ctas: ChatCta[];
+    generative_ui?: GenerativeUiData;
 } {
-    let reply = cleanRawReply(rawText);
+    let reply = '';
     let intent: 'issue' | 'feedback' | 'request_extend' | 'request_upsell' | 'faq' = 'faq';
     let tag_label = 'FAQ Umum';
     let needs_attention = false;
     let ctas: ChatCta[] = [];
+    let generative_ui: GenerativeUiData | undefined = undefined;
 
-    // 1. Try parsing JSON block from AI output
-    try {
-        const jsonMatch = rawText.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/) || rawText.match(/(\{[\s\S]*"reply"[\s\S]*\})/);
-        if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[1]);
-            if (parsed.reply || parsed.message) reply = cleanRawReply(parsed.reply || parsed.message);
-            if (parsed.intent) intent = parsed.intent;
-            if (parsed.tag_label) tag_label = parsed.tag_label;
-            if (typeof parsed.needs_attention === 'boolean') needs_attention = parsed.needs_attention;
-            if (Array.isArray(parsed.ctas)) ctas = parsed.ctas;
+    // 1. Try parsing JSON object from AI output with robust brace scanning
+    const parsed = extractJsonObject(rawText);
+    if (parsed) {
+        if (parsed.reply || parsed.message) {
+            reply = cleanRawReply(parsed.reply || parsed.message);
         }
-    } catch (_) {}
+        if (parsed.intent) intent = parsed.intent;
+        if (parsed.tag_label) tag_label = parsed.tag_label;
+        if (typeof parsed.needs_attention === 'boolean') needs_attention = parsed.needs_attention;
+        if (Array.isArray(parsed.ctas)) ctas = parsed.ctas;
+        const rawUi = parsed.generative_ui || parsed.ui;
+        if (rawUi && typeof rawUi === 'object') {
+            generative_ui = rawUi;
+        }
+    } else {
+        // Fallback: If rawText looks like JSON or leaked code, don't show raw brackets
+        if (rawText.trim().startsWith('{')) {
+            reply = cleanRawReply(rawText);
+        } else {
+            reply = cleanRawReply(rawText);
+        }
+    }
 
     // 2. Fallback Heuristic intent & Dynamic CTAs
     const lowerPrompt = userPrompt.toLowerCase();
-    const lowerReply = reply.toLowerCase();
+    const lowerReply = (reply || rawText).toLowerCase();
 
-    // Issue / Bug detection
+    // Issue / Bug detection (for tagging/needs_attention only if not already specified by AI)
     if (
         lowerPrompt.includes('kendala') ||
         lowerPrompt.includes('gagal') ||
@@ -352,17 +509,10 @@ function parseMiminResponse(
         lowerPrompt.includes('belum masuk') ||
         lowerPrompt.includes('kenapa belum')
     ) {
-        intent = 'issue';
-        tag_label = lowerPrompt.includes('bayar') || lowerPrompt.includes('saldo') ? 'Kendala Pembayaran' : 'Kendala Sistem';
-        needs_attention = true;
-        if (ctas.length === 0) {
-            ctas.push({
-                id: 'report_admin',
-                label: '🚨 Lapor Kendala ke Admin',
-                action: 'chat_prompt',
-                target: 'Min, saya ada kendala pada pesanan saya dan butuh bantuan admin.',
-                variant: 'warning'
-            });
+        if (intent === 'faq') {
+            intent = 'issue';
+            tag_label = lowerPrompt.includes('bayar') || lowerPrompt.includes('saldo') ? 'Kendala Pembayaran' : 'Kendala Sistem';
+            needs_attention = true;
         }
     }
     // Feedback / Saran
@@ -372,27 +522,27 @@ function parseMiminResponse(
         lowerPrompt.includes('usul') ||
         lowerPrompt.includes('rekomendasi fitur')
     ) {
-        intent = 'feedback';
-        tag_label = 'Saran / Masukan';
-        needs_attention = false;
+        if (intent === 'faq') {
+            intent = 'feedback';
+            tag_label = 'Saran / Masukan';
+            needs_attention = false;
+        }
     }
-    // Request Extend / Tambah Hari
+    // Request Extend / Tambah Hari / Kurang Responden
     else if (
         lowerPrompt.includes('perpanjang') ||
         lowerPrompt.includes('extend') ||
         lowerPrompt.includes('tambah hari') ||
-        lowerPrompt.includes('tambah durasi')
+        lowerPrompt.includes('tambah durasi') ||
+        lowerPrompt.includes('responden belum') ||
+        lowerPrompt.includes('responden tidak') ||
+        lowerPrompt.includes('kurang responden') ||
+        lowerPrompt.includes('tambah responden')
     ) {
-        intent = 'request_extend';
-        tag_label = 'Request Extend';
-        needs_attention = true;
-        if (ctas.length === 0) {
-            ctas.push({
-                id: 'extend_action',
-                label: '➕ Ajukan Perpanjangan Iklan',
-                action: 'chat_prompt',
-                target: 'Min, saya mau ajukan perpanjangan durasi penayangan survei saya.'
-            });
+        if (intent === 'faq') {
+            intent = 'request_extend';
+            tag_label = 'Request Extend';
+            needs_attention = true;
         }
     }
     // Request JFU Kilat
@@ -403,20 +553,98 @@ function parseMiminResponse(
         lowerPrompt.includes('deadline') ||
         lowerPrompt.includes('hari ini juga')
     ) {
-        intent = 'request_upsell';
-        tag_label = 'Tanya JFU Kilat';
-        if (ctas.length === 0) {
-            ctas.push({
-                id: 'kilat_info',
-                label: '⚡ Buka Layanan JFU Kilat',
-                action: 'chat_prompt',
-                target: 'Min, tolong jelaskan detail dan biaya JFU Kilat untuk survei saya.'
-            });
+        if (intent === 'faq') {
+            intent = 'request_upsell';
+            tag_label = 'Tanya JFU Kilat';
         }
     }
 
+    // 3. Generative UI Smart Assignment
+    const isExtendTopic = intent === 'request_extend' ||
+        lowerPrompt.includes('perpanjang') ||
+        lowerPrompt.includes('extend') ||
+        lowerPrompt.includes('tambah hari') ||
+        lowerPrompt.includes('tambah durasi') ||
+        lowerPrompt.includes('responden belum') ||
+        lowerPrompt.includes('kurang responden') ||
+        lowerReply.includes('perpanjang');
+
+    const isListOrEditSurveyTopic =
+        lowerPrompt.includes('list survey') ||
+        lowerPrompt.includes('list survei') ||
+        lowerPrompt.includes('daftar survey') ||
+        lowerPrompt.includes('daftar survei') ||
+        lowerPrompt.includes('survey ku') ||
+        lowerPrompt.includes('survei ku') ||
+        lowerPrompt.includes('mau edit') ||
+        lowerPrompt.includes('edit survey') ||
+        lowerPrompt.includes('edit survei') ||
+        lowerPrompt.includes('order saya') ||
+        lowerPrompt.includes('pesanan saya') ||
+        (lowerPrompt.includes('survei') && (lowerPrompt.includes('apa aja') || lowerPrompt.includes('yang mana')));
+
+    // Generative UI: Survey Picker jika user ingin perpanjang dan punya survei terdaftar
+    if (!generative_ui && isExtendTopic && userOrderStates.length > 0) {
+        generative_ui = {
+            type: 'survey_picker',
+            props: { action: 'extend_schedule', action_label: '➕ Tambah Jadwal untuk Survei Terpilih' }
+        };
+        // Bersihkan direct CTAs repetitif agar digantikan oleh SurveyPickerWidget yang interaktif
+        ctas = ctas.filter(c => !c.target || !c.target.includes('jadwal/baru'));
+    }
+    // Generative UI (@json-render pure): Card & SurveyItem jika user ingin melihat atau mengedit daftar survei mereka
+    else if (!generative_ui && isListOrEditSurveyTopic && userOrderStates.length > 0) {
+        const isEditAction = lowerPrompt.includes('edit');
+        generative_ui = {
+            component: 'Card',
+            props: {
+                title: isEditAction ? '✏️ Pilih Survei untuk Diedit' : '📋 Daftar Survei Anda',
+                description: `${userOrderStates.length} survei terdaftar di akun Anda. Klik tombol untuk menuju halaman survei:`,
+                badge: `${userOrderStates.length} Survei`,
+            },
+            children: userOrderStates.slice(0, 5).map(({ submission, ui }) => ({
+                component: 'SurveyItem',
+                props: {
+                    title: submission.title || 'Survei Tanpa Judul',
+                    badge: ui?.badgeText || (submission.status === 'approved' ? 'Disetujui' : 'Perlu Tindakan'),
+                    badgeVariant: ui?.callout === 'live' ? 'success' : ui?.callout === 'payment' ? 'info' : 'warning',
+                    description: ui?.body || (submission as any).rejection_reason || (submission.distribution_type === 'kilat' ? '⚡ Layanan JFU Kilat' : 'Layanan Regular'),
+                    schedule: (submission as any).ad_schedules?.[0] ? `${new Date((submission as any).ad_schedules[0].start_date).toLocaleDateString('id-ID')} - ${new Date((submission as any).ad_schedules[0].end_date).toLocaleDateString('id-ID')}` : undefined,
+                    actionLabel: isEditAction ? '✏️ Buka Halaman Edit' : '📋 Lihat Status Survei',
+                    actionUrl: '/dashboard'
+                }
+            }))
+        };
+        ctas = ctas.filter(c => !c.target || c.target !== '/dashboard');
+    }
+    // Generative UI: Price Calculator jika user bertanya estimasi biaya atau harga
+    else if (
+        !generative_ui && (
+            lowerPrompt.includes('biaya') ||
+            lowerPrompt.includes('harga') ||
+            lowerPrompt.includes('tarif') ||
+            lowerPrompt.includes('kalkulator') ||
+            (lowerPrompt.includes('berapa') && (lowerPrompt.includes('responden') || lowerPrompt.includes('hari') || lowerPrompt.includes('paket')))
+        )
+    ) {
+        generative_ui = {
+            type: 'price_calculator'
+        };
+    }
+
+    // Fallback direct extend CTA jika user belum punya survei terdaftar
+    if (isExtendTopic && userOrderStates.length === 0 && !ctas.some(c => c.target && c.target.includes('dashboard'))) {
+        ctas.push({
+            id: 'extend_order_generic',
+            label: '➕ Buka Dashboard Survei',
+            action: 'navigate',
+            target: '/dashboard',
+            variant: 'primary'
+        });
+    }
+
     // Contextual order CTAs if relevant order exists and no CTAs yet
-    if (ctas.length === 0) {
+    if (ctas.length === 0 && !generative_ui) {
         const liveOrder = userOrderStates.find(o => o.ui.callout === 'live');
         const paymentOrder = userOrderStates.find(o => o.ui.callout === 'payment' || o.ui.callout === 'ready_to_launch');
         if (liveOrder && (lowerReply.includes('tayang') || lowerReply.includes('live') || lowerPrompt.includes('status'))) {
@@ -426,12 +654,14 @@ function parseMiminResponse(
                 action: 'navigate',
                 target: '/dashboard'
             });
-            ctas.push({
-                id: 'extend_ads',
-                label: '➕ Perpanjang Iklan',
-                action: 'chat_prompt',
-                target: 'Min, survei saya yang sedang live ini bisa diperpanjang 1 hari lagi?'
-            });
+            if (liveOrder.submission.id) {
+                ctas.push({
+                    id: `extend_ads_${liveOrder.submission.id}`,
+                    label: '➕ Tambah Hari Tayang',
+                    action: 'navigate',
+                    target: `/dashboard/jadwal/baru/${liveOrder.submission.id}`
+                });
+            }
         } else if (paymentOrder && (lowerReply.includes('jadwal') || lowerReply.includes('bayar') || lowerPrompt.includes('kapan'))) {
             ctas.push({
                 id: 'calendar_pay',
@@ -442,7 +672,11 @@ function parseMiminResponse(
         }
     }
 
-    return { reply, intent, tag_label, needs_attention, ctas };
+    if (!reply.trim() && generative_ui) {
+        reply = 'Berikut adalah data survei Anda:';
+    }
+
+    return { reply, intent, tag_label, needs_attention, ctas, generative_ui };
 }
 
     // Auto-send message from query param or user input
@@ -468,6 +702,7 @@ function parseMiminResponse(
                 },
                 body: JSON.stringify({
                     "model": "google/gemini-2.5-flash-lite",
+                    "response_format": { "type": "json_object" },
                     "sessionId": sessionId,
                     "messages": [
                         { "role": "system", "content": systemPrompt },
@@ -488,7 +723,8 @@ function parseMiminResponse(
             setMessages(prev => [...prev, { 
                 role: 'assistant', 
                 content: parsed.reply,
-                ctas: parsed.ctas
+                ctas: parsed.ctas,
+                generative_ui: parsed.generative_ui
             }]);
 
             if (sessionId) {
@@ -496,7 +732,7 @@ function parseMiminResponse(
                     tag: parsed.intent,
                     tag_label: parsed.tag_label,
                     needs_attention: parsed.needs_attention
-                });
+                }, parsed.ctas, parsed.generative_ui);
             }
         } catch {
             setMessages(prev => [...prev, { role: 'assistant', content: 'Maaf, terjadi kesalahan koneksi. Silakan coba lagi.' }]);
@@ -528,10 +764,37 @@ function parseMiminResponse(
     };
 
     const handleCtaClick = (cta: ChatCta) => {
-        if (cta.action === 'navigate' && cta.target) {
-            navigate(cta.target);
-        } else if (cta.action === 'chat_prompt' && cta.target) {
-            sendMessageDirect(cta.target);
+        let target = (cta.target || '').trim();
+
+        // Jika target berupa full URL yang menuju ke domain aplikasi sendiri, ubah jadi relative path untuk React Router navigate
+        if (target.startsWith('http://') || target.startsWith('https://')) {
+            try {
+                const parsedUrl = new URL(target);
+                if (
+                    parsedUrl.hostname.includes('jakpatforuniv.com') ||
+                    parsedUrl.hostname === 'localhost' ||
+                    parsedUrl.hostname === '127.0.0.1'
+                ) {
+                    target = parsedUrl.pathname + parsedUrl.search + parsedUrl.hash;
+                }
+            } catch (_) {}
+        }
+
+        if ((cta.action === 'navigate' || target.startsWith('/')) && target) {
+            navigate(target);
+        } else if (cta.action === 'open_url' && target) {
+            // Automatically support email address even if user didn't write mailto:
+            if (target.includes('@') && !target.startsWith('http') && !target.startsWith('mailto:')) {
+                target = `mailto:${target}`;
+            }
+
+            if (target.startsWith('mailto:') || target.startsWith('tel:')) {
+                window.location.href = target;
+            } else {
+                window.open(target, '_blank', 'noopener,noreferrer');
+            }
+        } else if (cta.action === 'chat_prompt' && target) {
+            sendMessageDirect(target);
         } else {
             sendMessageDirect(cta.label);
         }
@@ -541,10 +804,10 @@ function parseMiminResponse(
     return (
         <div className="h-[calc(100dvh-3.5rem)] md:h-auto">
             <div className="max-w-6xl xl:max-w-7xl mx-auto h-full px-0 md:px-6 md:py-4">
-                <div className="h-full md:h-[calc(100vh-7.5rem)] md:grid md:grid-cols-[380px_1fr] lg:grid-cols-[430px_1fr] xl:grid-cols-[460px_1fr] md:gap-6 md:items-stretch">
+                <div className="h-full md:h-[calc(100vh-7.5rem)] md:grid md:grid-cols-[360px_minmax(0,1fr)] lg:grid-cols-[400px_minmax(0,1fr)] xl:grid-cols-[420px_minmax(0,1fr)] md:gap-6 md:items-stretch overflow-hidden">
                     {/* FAQ — desktop saja */}
-                    <div className="hidden md:block h-full min-h-0">
-                        <Card className="h-full flex flex-col overflow-hidden border border-jfu-primary/[0.08] shadow-card bg-white transition-all duration-300" style={{ borderRadius: '24px' }}>
+                    <div className="hidden md:block h-full min-h-0 min-w-0">
+                        <Card className="h-full flex flex-col overflow-hidden border border-jfu-primary/[0.08] shadow-card bg-white transition-all duration-300 min-w-0" style={{ borderRadius: '24px' }}>
                             <CardHeader className="pb-3.5 pt-5 px-5 border-b border-gray-100 bg-slate-50/40">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 bg-jfu-primary/[0.08] text-jfu-primary rounded-2xl flex items-center justify-center shrink-0 shadow-2xs">
@@ -556,7 +819,7 @@ function parseMiminResponse(
                                     </div>
                                 </div>
                             </CardHeader>
-                            <CardContent className="flex-1 overflow-y-auto p-4 md:p-5 custom-scrollbar">
+                            <CardContent className="flex-1 overflow-y-auto p-4 md:p-5 custom-scrollbar min-w-0">
                                 <Accordion type="single" collapsible className="w-full space-y-2.5">
                                     {faqs.map((faq, i) => (
                                         <AccordionItem 
@@ -578,9 +841,9 @@ function parseMiminResponse(
                     </div>
 
                     {/* Chat Mimin AI — tampilan utama tab Bantuan */}
-                    <div className="h-full min-h-0">
-                        <Card className="border-0 md:border md:border-jfu-primary/[0.08] bg-white h-full flex flex-col rounded-none md:rounded-[24px] shadow-none md:shadow-card overflow-hidden">
-                            <CardHeader className="relative bg-white border-b border-gray-100 py-3 md:pb-4">
+                    <div className="h-full min-h-0 min-w-0">
+                        <Card className="border-0 md:border md:border-jfu-primary/[0.08] bg-white h-full flex flex-col rounded-none md:rounded-[24px] shadow-none md:shadow-card overflow-hidden min-w-0">
+                            <CardHeader className="relative bg-white border-b border-gray-100 py-3 md:pb-4 shrink-0">
                                 <div className="flex items-center gap-3 md:gap-4">
                                     <div className="relative">
                                         <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-jfu-primary to-jfu-light rounded-full flex items-center justify-center shadow-glow">
@@ -588,22 +851,22 @@ function parseMiminResponse(
                                         </div>
                                         <span className="absolute bottom-0 right-0 w-3 h-3 md:w-3.5 md:h-3.5 bg-green-500 border-2 border-white rounded-full"></span>
                                     </div>
-                                    <div>
-                                        <CardTitle className="text-lg md:text-xl font-bold text-[#1a1a1a]">Mimin AI</CardTitle>
+                                    <div className="min-w-0 flex-1">
+                                        <CardTitle className="text-lg md:text-xl font-bold text-[#1a1a1a] truncate">Mimin AI</CardTitle>
                                         <CardDescription className="flex items-center gap-1.5 text-xs font-medium text-[#666] mt-0.5">
-                                            <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-                                            Asisten Admin Cerdas - Siap Membantu
+                                            <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse shrink-0" />
+                                            <span className="truncate">Asisten Admin Cerdas - Siap Membantu</span>
                                         </CardDescription>
                                     </div>
                                 </div>
                             </CardHeader>
 
                             {/* Chat Messages Area */}
-                            <CardContent className="flex-1 overflow-y-auto p-4 md:p-5 space-y-5 md:space-y-6 bg-jfu-bg" ref={scrollRef}>
+                            <CardContent className="flex-1 overflow-y-auto overflow-x-hidden p-3.5 sm:p-4 md:p-5 space-y-4 md:space-y-5 bg-jfu-bg min-w-0" ref={scrollRef}>
                                 {messages.map((msg, idx) => (
-                                    <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
+                                    <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} w-full min-w-0 animate-in slide-in-from-bottom-2 duration-300`}>
                                         <div className={`
-                                            max-w-[88%] px-4 py-3 md:px-5 md:py-3.5 text-[15px] shadow-sm
+                                            max-w-[94%] sm:max-w-[85%] px-3.5 py-3 md:px-5 md:py-3.5 text-[14px] sm:text-[15px] shadow-sm min-w-0 break-words overflow-hidden box-border
                                             ${msg.role === 'user'
                                                 ? 'bg-gradient-to-br from-jfu-primary to-jfu-light text-white rounded-2xl rounded-tr-sm'
                                                 : 'bg-white text-[#1a1a1a] border border-gray-200 rounded-2xl rounded-tl-sm shadow-sm'
@@ -621,6 +884,14 @@ function parseMiminResponse(
                                             >
                                                 {msg.content}
                                             </ReactMarkdown>
+
+                                            {/* Generative UI Component Widget (@json-render / Custom) */}
+                                            {msg.generative_ui && (
+                                                <GenerativeUiRenderer
+                                                    data={msg.generative_ui}
+                                                    userOrders={userOrders}
+                                                />
+                                            )}
 
                                             {/* Dynamic Action Buttons / CTAs in Assistant Message */}
                                             {msg.ctas && msg.ctas.length > 0 && (

@@ -15,7 +15,6 @@ import {
     AlertCircle, 
     Sparkles, 
     Lightbulb, 
-    HelpCircle, 
     CheckCircle2, 
     RotateCcw, 
     Search, 
@@ -23,7 +22,7 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
-type FilterType = 'all' | 'needs_attention' | 'request' | 'feedback' | 'faq' | 'resolved';
+type FilterType = 'all' | 'needs_attention' | 'request' | 'feedback' | 'resolved';
 
 export function ConversationsPage() {
     const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -86,6 +85,7 @@ export function ConversationsPage() {
                 }
                 return s;
             }));
+            window.dispatchEvent(new Event('chat-session-viewed'));
         } catch (error) {
             console.error('Failed to toggle session resolution status:', error);
         } finally {
@@ -98,9 +98,8 @@ export function ConversationsPage() {
         return {
             all: sessions.length,
             needs_attention: sessions.filter(s => (s.needs_attention || s.tag === 'issue') && !s.is_resolved).length,
-            request: sessions.filter(s => s.tag === 'request' && !s.is_resolved).length,
+            request: sessions.filter(s => (s.tag === 'request' || s.tag === 'request_extend' || s.tag === 'request_upsell') && !s.is_resolved).length,
             feedback: sessions.filter(s => s.tag === 'feedback' && !s.is_resolved).length,
-            faq: sessions.filter(s => s.tag === 'faq' && !s.is_resolved).length,
             resolved: sessions.filter(s => s.is_resolved).length
         };
     }, [sessions]);
@@ -112,11 +111,9 @@ export function ConversationsPage() {
             if (activeFilter === 'needs_attention') {
                 if (s.is_resolved || (!s.needs_attention && s.tag !== 'issue')) return false;
             } else if (activeFilter === 'request') {
-                if (s.is_resolved || s.tag !== 'request') return false;
+                if (s.is_resolved || (s.tag !== 'request' && s.tag !== 'request_extend' && s.tag !== 'request_upsell')) return false;
             } else if (activeFilter === 'feedback') {
                 if (s.is_resolved || s.tag !== 'feedback') return false;
-            } else if (activeFilter === 'faq') {
-                if (s.is_resolved || s.tag !== 'faq') return false;
             } else if (activeFilter === 'resolved') {
                 if (!s.is_resolved) return false;
             }
@@ -153,7 +150,7 @@ export function ConversationsPage() {
             );
         }
 
-        if (session.tag === 'request') {
+        if (session.tag === 'request' || session.tag === 'request_extend' || session.tag === 'request_upsell') {
             return (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
                     <Sparkles className="w-3 h-3 text-amber-600" />
@@ -167,15 +164,6 @@ export function ConversationsPage() {
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-50 text-purple-700 border border-purple-200">
                     <Lightbulb className="w-3 h-3 text-purple-600" />
                     {session.tag_label || 'Saran'}
-                </span>
-            );
-        }
-
-        if (session.tag === 'faq') {
-            return (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                    <HelpCircle className="w-3 h-3 text-blue-600" />
-                    {session.tag_label || 'Pertanyaan'}
                 </span>
             );
         }
@@ -256,16 +244,6 @@ export function ConversationsPage() {
                         >
                             <Lightbulb className="w-3 h-3" />
                             Saran ({counts.feedback})
-                        </button>
-                        <button
-                            onClick={() => setActiveFilter('faq')}
-                            className={`px-2.5 py-1 rounded-md whitespace-nowrap font-medium transition-all flex items-center gap-1 ${
-                                activeFilter === 'faq'
-                                    ? 'bg-blue-600 text-white shadow-xs'
-                                    : 'bg-white text-blue-700 hover:bg-blue-50 border border-blue-200'
-                            }`}
-                        >
-                            FAQ ({counts.faq})
                         </button>
                         <button
                             onClick={() => setActiveFilter('resolved')}

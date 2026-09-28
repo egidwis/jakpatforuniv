@@ -2569,7 +2569,7 @@ export interface ChatSession {
   user_email: string;
   last_message_at: string;
   created_at: string;
-  tag?: 'issue' | 'feedback' | 'request_extend' | 'request_upsell' | 'faq' | null;
+  tag?: 'issue' | 'feedback' | 'request' | 'request_extend' | 'request_upsell' | 'faq' | string | null;
   tag_label?: string | null;
   needs_attention?: boolean;
   last_message_snippet?: string | null;
@@ -2641,6 +2641,64 @@ export const getOrCreateChatSession = async (userEmail: string) => {
   }
 };
 
+export interface ChatCta {
+  id: string;
+  label: string;
+  action: 'navigate' | 'chat_prompt' | 'open_modal' | 'open_url';
+  target?: string;
+  variant?: 'primary' | 'secondary' | 'warning' | 'outline';
+}
+
+export interface GenerativeUiData {
+  type?: 'survey_picker' | 'price_calculator' | string;
+  props?: Record<string, any>;
+  spec?: any;
+  root?: string;
+  elements?: Record<string, any>;
+  component?: string;
+  children?: any[];
+}
+
+// Helper to extract embedded CTAs and Generative UI from content comment
+export const parseEmbeddedCtas = (content: string): { 
+  cleanContent: string; 
+  ctas: ChatCta[];
+  generativeUi?: GenerativeUiData;
+} => {
+  let cleanContent = content || '';
+  let ctas: ChatCta[] = [];
+  let generativeUi: GenerativeUiData | undefined = undefined;
+
+  // Extract CTAs
+  if (cleanContent.includes('<!--ctas:')) {
+    const match = cleanContent.match(/<!--ctas:([\s\S]*?)-->/);
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[1]);
+        if (Array.isArray(parsed)) ctas = parsed;
+        cleanContent = cleanContent.replace(/<!--ctas:[\s\S]*?-->/, '').trimEnd();
+      } catch (err) {
+        console.error('Failed to parse embedded ctas:', err);
+      }
+    }
+  }
+
+  // Extract Generative UI
+  if (cleanContent.includes('<!--genui:')) {
+    const match = cleanContent.match(/<!--genui:([\s\S]*?)-->/);
+    if (match) {
+      try {
+        generativeUi = JSON.parse(match[1]);
+        cleanContent = cleanContent.replace(/<!--genui:[\s\S]*?-->/, '').trimEnd();
+      } catch (err) {
+        console.error('Failed to parse embedded genui:', err);
+      }
+    }
+  }
+
+  return { cleanContent, ctas, generativeUi };
+};
+
 // Get messages for a session
 export const getChatMessages = async (sessionId: string) => {
   try {
@@ -2651,7 +2709,27 @@ export const getChatMessages = async (sessionId: string) => {
       .order('created_at', { ascending: true });
 
     if (error) throw error;
-    return data || [];
+    
+    return (data || []).map((row: any) => {
+      let ctas: ChatCta[] = Array.isArray(row.ctas) ? row.ctas : [];
+      let generative_ui: GenerativeUiData | undefined = row.generative_ui || undefined;
+      let content: string = row.content || '';
+
+      // Fallback: If ctas or genui embedded in content, extract them
+      if (content.includes('<!--ctas:') || content.includes('<!--genui:')) {
+        const parsed = parseEmbeddedCtas(content);
+        if (ctas.length === 0) ctas = parsed.ctas;
+        if (!generative_ui) generative_ui = parsed.generativeUi;
+        content = parsed.cleanContent;
+      }
+
+      return {
+        ...row,
+        content,
+        ctas,
+        generative_ui
+      };
+    });
   } catch (error) {
     console.error('Error getting chat messages:', error);
     return [];
@@ -2667,21 +2745,69 @@ export const saveChatMessage = async (
     tag?: string;
     tag_label?: string;
     needs_attention?: boolean;
-  }
+  },
+  ctas?: ChatCta[],
+  generativeUi?: GenerativeUiData
 ) => {
   try {
-    const { data, error } = await supabase
-      .from('chat_messages')
-      .insert([{ session_id: sessionId, role, content }])
-      .select()
-      .single();
+    const hasCtas = Array.isArray(ctas) && ctas.length > 0;
+    let data = null;
 
-    if (error) throw error;
+    let embeddedSuffix = '';
+    if (hasCtas) {
+      embeddedSuffix += `\n\n<!--ctas:${JSON.stringify(ctas)}-->`;
+    }
+    if (generativeUi) {
+      embeddedSuffix += `\n\n<!--genui:${JSON.stringify(generativeUi)}-->`;
+    }
+
+    if (hasCtas) {
+      // 1. Try inserting directly with ctas column
+      const { data: insertedData, error: insertError } = await supabase
+        .from('chat_messages')
+        .insert([{ 
+          session_id: sessionId, 
+          role, 
+          content: generativeUi ? `${content}\n\n<!--genui:${JSON.stringify(generativeUi)}-->` : content, 
+          ctas 
+        }])
+        .select()
+        .single();
+
+      if (!insertError) {
+        data = insertedData;
+      } else {
+        // Fallback: If column 'ctas' does not exist yet in DB, embed securely in content
+        const embeddedContent = `${content}${embeddedSuffix}`;
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('chat_messages')
+          .insert([{ session_id: sessionId, role, content: embeddedContent }])
+          .select()
+          .single();
+
+        if (fallbackError) throw fallbackError;
+        data = fallbackData;
+      }
+    } else {
+      const finalContent = generativeUi ? `${content}\n\n<!--genui:${JSON.stringify(generativeUi)}-->` : content;
+      const { data: normalData, error: normalError } = await supabase
+        .from('chat_messages')
+        .insert([{ session_id: sessionId, role, content: finalContent }])
+        .select()
+        .single();
+
+      if (normalError) throw normalError;
+      data = normalData;
+    }
 
     // Update last_message_at and snippet in session
+    const cleanSnippet = content
+      .replace(/<!--ctas:[\s\S]*?-->/, '')
+      .replace(/<!--genui:[\s\S]*?-->/, '')
+      .slice(0, 150);
     const updatePayload: Record<string, any> = {
       last_message_at: new Date().toISOString(),
-      last_message_snippet: content.slice(0, 150)
+      last_message_snippet: cleanSnippet
     };
 
     if (metadata?.tag) {
