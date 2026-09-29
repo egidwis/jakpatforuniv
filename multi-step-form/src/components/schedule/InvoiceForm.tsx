@@ -137,6 +137,15 @@ export function InvoiceForm({
    * tertulis jadwalnya ditandai kredit (`markSchedulesOnCredit`).
    */
   const [tempo, setTempo] = useState(initialTempo);
+  /**
+   * SUSULAN — jadwalnya sudah lunas saat tagihan ini terbit ("Tagih Susulan").
+   *
+   * Aturannya sama dengan cabang `already_paid` di `mark_schedules_on_credit`
+   * (sql/102). Tempo di sini cuma berarti "tanpa tenggat": iklannya sudah
+   * dibayar, jadi tidak ada izin tayang yang diberikan dan tidak ada kredit
+   * yang ditandai.
+   */
+  const isTopUp = ['paid', 'completed'].includes((entry.paymentStatus || '').toLowerCase());
   const [creditNote, setCreditNote] = useState('');
   const [openDebt, setOpenDebt] = useState<OpenTempoDebt | null>(null);
   const [items, setItems] = useState<InvoiceItem[]>([]);
@@ -396,8 +405,12 @@ export function InvoiceForm({
         lahir. Kalau langkah ini gagal, yang tersisa tagihan tempo biasa yang
         bisa dibayar — admin cukup menekan "Tayangkan Dulu" lagi. Urutan
         sebaliknya bisa meninggalkan iklan yang tayang tanpa catatan utang.
+
+        Susulan dilewati: jadwalnya sudah lunas, RPC-nya akan menjawab
+        `already_paid`, dan toast "TIDAK ditayangkan" untuk iklan yang memang
+        sudah tayang adalah kebohongan.
       */
-      if (tempo) {
+      if (tempo && !isTopUp) {
         try {
           const outcomes = await markSchedulesOnCredit([entry.id], creditNote);
           const outcome = outcomes.get(entry.id) ?? 'not_eligible';
@@ -470,13 +483,23 @@ export function InvoiceForm({
             amount: grandTotal,
             // Tagihan tempo: email TANPA tenggat bayar (K3).
             tempo,
+            // Susulan: bukan "pesananmu disetujui" — ordernya sudah lama lunas.
+            topUp: isTopUp,
           }),
         }).catch((err) => console.error('Failed to send invoice-ready email:', err));
       }
 
       // Hanya jalur perpanjangan yang menyimpan totalnya sendiri. Jadwal pertama
       // sengaja tidak — lihat catatan `total_cost` di kepala berkas.
-      if (entry.isExtension) {
+      /*
+        ⚠️ SUSULAN TIDAK MENULIS APA PUN KE BARIS JADWAL — tempo maupun bukan.
+        `status: 'waiting_payment'` / `payment_status: 'pending'` di atas
+        perpanjangan yang SUDAH LUNAS memicu `trg_close_page_on_extend_unpaid`
+        (sql/99): halaman iklan yang sedang tayang ditutup saat itu juga. Dan
+        `grandTotal` di sini cuma SELISIHNYA — menulisnya ke `total_cost`
+        menimpa harga tercatat dengan angka susulan.
+      */
+      if (entry.isExtension && !isTopUp) {
         await supabase
           .from('ad_schedules')
           .update({
@@ -505,6 +528,7 @@ export function InvoiceForm({
           // lebih sulit ditarik daripada email.
           invoiceUrl: payLinkUrl(entry.id),
           tempo,
+          topUp: isTopUp,
         }));
       }
 
@@ -635,26 +659,41 @@ export function InvoiceForm({
               onChange={(e) => setTempo(e.target.checked)}
               className="mt-0.5 h-4 w-4 accent-violet-600"
             />
+            {/*
+              Susulan: iklannya SUDAH lunas, jadi tidak ada izin tayang yang
+              diberikan di sini — yang tersisa cuma "tanpa tenggat". Kalimat K8
+              dan catatan kredit ikut hilang: tempo susulan boleh dibatalkan
+              (salah nominal), dan tidak ada kredit yang ditandai.
+            */}
             <span className="text-xs leading-snug">
-              <span className="font-semibold text-gray-900">Tagihan tempo — tayang sesuai jadwal, bayar menyusul</span>
+              <span className="font-semibold text-gray-900">
+                {isTopUp
+                  ? 'Tagihan tempo — bayar menyusul tanpa tenggat'
+                  : 'Tagihan tempo — tayang sesuai jadwal, bayar menyusul'}
+              </span>
               <span className="block text-[11px] text-gray-600 mt-0.5">
-                Iklan tayang tanpa menunggu pembayaran. Tagihannya tidak punya tanggal jatuh tempo;
-                link bayarnya diperbarui otomatis saat peneliti membukanya.
+                {isTopUp
+                  ? 'Iklan ini sudah lunas. Tagihan susulan ini tidak punya tanggal jatuh tempo; link bayarnya diperbarui otomatis saat peneliti membukanya.'
+                  : 'Iklan tayang tanpa menunggu pembayaran. Tagihannya tidak punya tanggal jatuh tempo; link bayarnya diperbarui otomatis saat peneliti membukanya.'}
               </span>
             </span>
           </label>
           {tempo && (
             <>
-              <Input
-                value={creditNote}
-                onChange={(e) => setCreditNote(e.target.value)}
-                placeholder="Catatan (opsional) — mis. pelanggan rutin, dana kampus cair akhir bulan"
-                maxLength={200}
-                className="h-8 text-xs bg-white"
-              />
-              <p className="text-[11px] text-violet-900 leading-snug">
-                Sekali tayang, utangnya tetap penuh — tagihan tempo tidak bisa dibatalkan setelah iklannya mulai tayang.
-              </p>
+              {!isTopUp && (
+                <>
+                  <Input
+                    value={creditNote}
+                    onChange={(e) => setCreditNote(e.target.value)}
+                    placeholder="Catatan (opsional) — mis. pelanggan rutin, dana kampus cair akhir bulan"
+                    maxLength={200}
+                    className="h-8 text-xs bg-white"
+                  />
+                  <p className="text-[11px] text-violet-900 leading-snug">
+                    Sekali tayang, utangnya tetap penuh — tagihan tempo tidak bisa dibatalkan setelah iklannya mulai tayang.
+                  </p>
+                </>
+              )}
               {openDebt && openDebt.bills > 0 && (
                 <p className="rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900 leading-snug">
                   ⚠️ Peneliti ini masih punya {openDebt.bills} tagihan tempo belum dibayar

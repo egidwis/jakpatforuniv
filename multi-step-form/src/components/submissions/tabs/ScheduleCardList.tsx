@@ -225,10 +225,14 @@ function InvoiceRow({
     tayang — utangnya tetap penuh. Tombolnya tidak dirender (kontrak berkas ini:
     dihilangkan, bukan disabled), dan handler dialognya mengulang pemeriksaan
     yang sama dari DB (`tempoCancelBlockReason`).
+
+    K8 lahir untuk IZIN TAYANG tanpa bayar, jadi ia hanya mengunci jadwal
+    kredit. Tempo SUSULAN (jadwalnya sudah lunas) tetap boleh dibatalkan —
+    iklannya dibayar tagihan lain, dan salah nominal harus bisa dibetulkan.
   */
   const tempoLocked = tempo && (group
     ? isTempoBillLocked(group)
-    : !!entry.startDate && new Date(entry.startDate).getTime() <= Date.now());
+    : !!entry.airOnCreditAt && !!entry.startDate && new Date(entry.startDate).getTime() <= Date.now());
   const canCancel = !inv.isPaid && !inv.isDead && inv.source === 'invoice' && !!inv.paymentId && !tempoLocked;
 
   const label =
@@ -521,7 +525,7 @@ function BillingSection({
   // perhitungannya sendiri yang berbeda dari baris aksi di kartu yang SAMA
   // (yang satu mengecualikan `partially_paid`, yang satu tidak), jadi satu kartu
   // bisa mencoret tagihannya sambil tombolnya berkata tanggalnya masih hidup.
-  const isLate = isLateForSchedule(entry, state);
+  const isLate = isLateForSchedule(entry, state, undefined, billing);
   const isHoldExpired = state === 'hold_lapsed' || isEntryHoldLapsed(entry);
   const lapse = lapseKindOf(entry);
 
@@ -885,7 +889,7 @@ function ScheduleCard({
   const isCancelled = state === 'cancelled';
   const lapse = visibleLapseOf(entry, state);
   const isKilat = entry.distributionType === 'kilat';
-  const isLate = isLateForSchedule(entry, state);
+  const isLate = isLateForSchedule(entry, state, undefined, billing);
 
   /**
    * Siapa yang memesan slotnya — dan "tidak ada" adalah jawaban yang sah.

@@ -4,7 +4,8 @@ import {
 } from './scheduleCardActions';
 import { planBulkInvoice } from '@/components/schedule/bulkInvoiceCandidates';
 import { manualInvoiceLifetimeMinutes, MAX_INVOICE_MINUTES } from '@/utils/payment';
-import { isOwedOnCredit } from '@/components/status/airingPeriods';
+import { isOwedOnCredit, holdsPayButton } from '@/components/status/airingPeriods';
+import { invoiceReadyMessage } from '@/utils/waMessage';
 import { creditPhaseOf } from '@/components/status/scheduleAxes';
 import { deriveOrderUiState, describeOrderForChat } from '@/components/status/deriveOrderUiState';
 import type { FormSubmission } from '@/utils/supabase';
@@ -289,5 +290,106 @@ describe('dashboard peneliti — deriveOrderUiState & konteks Mimin untuk kredit
     const ui = deriveOrderUiState(sub, [entry({ ...upcoming, airOnCreditAt: null })], payOpen);
     expect(ui.owesOnCredit).toBe(false);
     expect(ui.firstCreditStopped).toBe(false);
+  });
+});
+
+/*
+  ═══════════════════════════════════════════════════════════════════════════
+  TEMPO SUSULAN — tagihan tempo pada jadwal yang SUDAH lunas ("Tagih Susulan")
+  ═══════════════════════════════════════════════════════════════════════════
+  Bukan kredit: tidak ada izin tayang yang diberikan, cuma "tanpa tenggat".
+  Semua jalur tempo dulu menganggap tempo = kredit; yang dikunci di sini:
+    • utangnya tidak hilang dari kartu sesudah tanggal tayang lewat;
+    • ada jalan pelunasan manual;
+    • K8 tidak menguncinya (salah nominal harus bisa dibatalkan);
+    • peneliti mendapat tombol bayar di kartu yang sudah lunas.
+*/
+describe('tempo susulan — kartu admin', () => {
+  const paidEntry = entry({ airOnCreditAt: null, paymentStatus: 'paid', status: 'completed' });
+  const paidBefore: ScheduleInvoice = tempoInvoice({
+    paymentId: 'JFU-INV-a-1', status: 'paid', isPaid: true, isPending: false, isTempo: false, tempoLinkLapsed: false,
+  });
+  const topUpBilling = (open: ScheduleInvoice): ScheduleBilling => ({
+    ...billingWith(open),
+    invoices: [open, paidBefore],
+    billed: open.amount + paidBefore.amount,
+    paid: paidBefore.amount,
+    outstanding: open.amount,
+  });
+  const tempoTopUp = tempoInvoice({ paymentId: 'JFU-INV-s-1', amount: 61_050 });
+  const plainTopUp = tempoInvoice({ paymentId: 'JFU-INV-s-2', amount: 61_050, isTempo: false, tempoLinkLapsed: false });
+
+  it('keadaannya tetap partially_paid (bukan kredit)', () => {
+    expect(cardStateOf(paidEntry, topUpBilling(tempoTopUp))).toBe('partially_paid');
+  });
+
+  it('tanggal tayang lewat TIDAK membuatnya terlambat — susulan biasa tetap terlambat', () => {
+    expect(isLateForSchedule(paidEntry, 'partially_paid', new Date(NOW), topUpBilling(tempoTopUp))).toBe(false);
+    expect(isLateForSchedule(paidEntry, 'partially_paid', new Date(NOW), topUpBilling(plainTopUp))).toBe(true);
+  });
+
+  it('utangnya tetap terhitung di kartu sesudah tanggal tayang lewat', () => {
+    expect(cardMoneyOf(paidEntry, 'partially_paid', topUpBilling(tempoTopUp), NOW))
+      .toEqual({ billed: 527_250 + 61_050, paid: 527_250 });
+  });
+
+  it('aksi utama "Tandai Lunas" — hanya untuk tempo susulan', () => {
+    const plan = (b: ScheduleBilling) =>
+      planCardActions({ state: 'partially_paid', entry: paidEntry, billing: b, isLate: false, can: ALL });
+    expect(plan(topUpBilling(tempoTopUp)).primary?.id).toBe('mark_paid');
+    const plain = plan(topUpBilling(plainTopUp));
+    expect([plain.primary?.id, ...plain.menu.map((a) => a.id)]).not.toContain('mark_paid');
+  });
+
+  it('K8 tidak mengunci anggota yang terbukti BUKAN kredit — tidak terbaca tetap mengunci', () => {
+    const g = (airOnCredit?: boolean) => ({ isTempo: true, members: [{ startDate: past, airOnCredit }] as any });
+    expect(isTempoBillLocked(g(false), NOW)).toBe(false);
+    expect(isTempoBillLocked(g(true), NOW)).toBe(true);
+    expect(isTempoBillLocked(g(undefined), NOW)).toBe(true);
+  });
+});
+
+describe('tempo susulan — tombol bayar peneliti', () => {
+  const pay = (o: Partial<{ paymentUrl: string | null; outstanding: number }> = {}) =>
+    ({ paymentUrl: '/bayar/s1', outstanding: 61_050, ...o });
+
+  it('kartu lunas dengan sisa & tagihan terbuka memegang tombol bayar', () => {
+    expect(holdsPayButton('paid', pay())).toBe(true);
+  });
+
+  it('kartu lunas tanpa sisa, atau tanpa tagihan terbuka → tanpa tombol', () => {
+    expect(holdsPayButton('paid', pay({ outstanding: 0 }))).toBe(false);
+    expect(holdsPayButton('paid', pay({ paymentUrl: null }))).toBe(false);
+  });
+
+  it('keadaan lama tidak berubah', () => {
+    expect(holdsPayButton('waiting_payment', pay({ paymentUrl: null }))).toBe(true);
+    expect(holdsPayButton('airing_on_credit', pay({ paymentUrl: null }))).toBe(false);
+    expect(holdsPayButton('expired', pay())).toBe(false);
+  });
+});
+
+describe('tempo susulan — pesan WhatsApp', () => {
+  const base = {
+    researcherName: 'R', bundles: [{ title: 'Survei T', startDate: past }], amount: 61_050,
+    invoiceUrl: 'https://submit.jakpatforuniv.com/bayar/s1', issuedAt: new Date(NOW),
+  };
+
+  it('tempo susulan: menyebut susulan, tanpa tenggat, tanpa "tetap tayang"', () => {
+    const msg = invoiceReadyMessage({ ...base, tempo: true, topUp: true });
+    expect(msg).toMatch(/Tagihan susulan/);
+    expect(msg).toMatch(/tidak punya batas waktu/);
+    expect(msg).not.toMatch(/tetap tayang/);
+    expect(msg).not.toMatch(/paling lambat/);
+  });
+
+  it('susulan biasa: tenggat tetap disebut, tanpa "agar jadwal tayangnya tidak bergeser"', () => {
+    const msg = invoiceReadyMessage({ ...base, topUp: true, deadline: new Date(NOW + DAY) });
+    expect(msg).toMatch(/paling lambat/);
+    expect(msg).not.toMatch(/tidak bergeser/);
+  });
+
+  it('tagihan pertama tidak berubah', () => {
+    expect(invoiceReadyMessage({ ...base, tempo: true })).toMatch(/tetap tayang sesuai jadwal/);
   });
 });

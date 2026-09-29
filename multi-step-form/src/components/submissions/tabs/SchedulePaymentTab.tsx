@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ConfirmDialog, type ConfirmRequest } from '../../ui/confirm-dialog';
 import { DetailSheetSection } from '../../data-list/DetailSheet';
 import {
-  fetchAdSchedules, fetchScheduleBilling, fetchInvoiceGroups, markScheduleAsPaid, settleGroupAsPaid,
+  fetchAdSchedules, fetchScheduleBilling, fetchInvoiceGroups, settleScheduleAsPaid, settleGroupAsPaid,
   unmarkScheduleAsPaid, unsettleGroupAsPaid, cancelInvoice, cancelSchedule, tempoCancelBlockReason,
   type AdScheduleEntry, type InvoiceGroup, type ScheduleBilling, type ScheduleInvoice,
 } from '@/utils/supabase';
@@ -411,12 +411,18 @@ export function SchedulePaymentTab({
 
   const handleMarkPaid = useCallback(async (entry: AdScheduleEntry) => {
     try {
-      const touched = await markScheduleAsPaid(entry);
+      // DOKU dulu, baru database — kontrak yang sama dengan `handleSettleGroup`.
+      const { touched, dokuCancelled, dokuReason } = await settleScheduleAsPaid(entry);
       // Nol tagihan tersentuh itu SAH — order yang dibayar di luar sistem tidak
       // punya catatan tagihan sama sekali. Yang tidak boleh adalah menyembunyikannya:
       // admin perlu tahu bahwa yang berubah cuma status jadwalnya, supaya ia tidak
       // mencari kuitansi yang memang tidak akan pernah ada.
-      if (touched.invoices === 0 && touched.transactions === 0) {
+      if (!dokuCancelled) {
+        // Uangnya sudah diterima, tapi link-nya mungkin masih bisa dibayar
+        // sekali lagi — dan bayar dobel ke tagihan `paid` tidak membunyikan apa pun.
+        const w = dokuLinkWarning('settled', `Jadwal #${entry.bookingId}`, dokuReason);
+        toast.warning(w.title, { description: w.description, duration: 12000 });
+      } else if (touched.invoices === 0 && touched.transactions === 0) {
         toast.success(
           `Jadwal #${entry.bookingId} ditandai lunas — tanpa catatan tagihan yang ikut ditandai.`
         );
@@ -477,7 +483,9 @@ export function SchedulePaymentTab({
                 { duration: 12000 },
               );
             } else {
-              toast.success(`${group.memberCount} pesanan kembali "menunggu bayar". Terbitkan tagihan baru kalau masih ditagih.`);
+              toast.success(group.isTempo
+                ? `${group.memberCount} pesanan kembali "menunggu bayar". Link bayar temponya diperbarui otomatis saat dibuka.`
+                : `${group.memberCount} pesanan kembali "menunggu bayar". Terbitkan tagihan baru kalau masih ditagih.`);
             }
             reload();
             onExtendCreated();
@@ -489,22 +497,43 @@ export function SchedulePaymentTab({
       return;
     }
 
+    /*
+      Ramalan untuk kalimat dialog saja — yang memutuskan tetap
+      `unmarkScheduleAsPaid` (dibaca segar dari DB), dan toast di bawah
+      melaporkan yang benar-benar terjadi. Susulan: ada tagihan lunas LAIN,
+      jadi jadwalnya tetap lunas dan halamannya tidak ditutup.
+    */
+    const billing = billings.get(entry.id);
+    const looksLikeTopUp = (billing?.invoices.filter((i) => i.isPaid).length ?? 0) > 1;
+    const manualBill = billing?.invoices.find((i) => i.isPaid && i.paymentChannel === 'MANUAL_VERIFIED');
+
     setPendingConfirm({
       title: `Batalkan status lunas jadwal #${entry.bookingId}?`,
       lines: [
-        'Tagihan jadwal ini kembali jadi "menunggu bayar".',
+        looksLikeTopUp
+          ? `Yang dibalik hanya tagihan ${manualBill?.paymentId ?? 'pelunasan manual terakhir'} — jadwalnya TETAP lunas dari tagihan lain, dan iklannya tidak terganggu.`
+          : 'Tagihan jadwal ini kembali jadi "menunggu bayar".',
         // sql/102: izin tayang tidak ikut dicabut — `unmarkScheduleAsPaid`
         // mengembalikannya ke kredit, bukan ke `waiting_payment`.
-        entry.airOnCreditAt
+        !looksLikeTopUp && entry.airOnCreditAt
           && 'Iklannya TETAP tayang (tayang sebelum lunas). Tagihan temponya terbuka lagi, dan link bayarnya diperbarui otomatis saat dibuka.',
+        // Link DOKU yang dimatikan saat dilunasi tidak bisa hidup lagi.
+        manualBill?.isTempo
+          ? (!entry.airOnCreditAt ? 'Ini tagihan tempo: link bayarnya diperbarui otomatis saat peneliti membukanya — tidak perlu menerbitkan tagihan baru.' : null)
+          // Pelunasan satuan SEBELUM 29 Sep tidak mematikan link-nya — kalimat
+          // ini tidak boleh mengklaim DOKU sudah mematikannya. Yang pasti:
+          // `/bayar/` tidak akan menyerahkannya lagi (`expires_at` dimundurkan).
+          : '⚠️ Link bayar lamanya TIDAK dipakai lagi — peneliti yang membukanya tidak akan diteruskan ke pembayaran. Kalau memang harus ditagih ulang, terbitkan tagihan BARU.',
         'Ini hanya membalik pelunasan yang ditandai MANUAL — bukan pembayaran lewat DOKU, dan bukan rekonsiliasi warisan (kanal MANUAL_RECONCILED, sql/71).',
       ],
       confirmLabel: 'Ya, Batalkan Status Lunas',
       tone: 'danger',
       onConfirm: async () => {
         try {
-          const touched = await unmarkScheduleAsPaid(entry);
-          if (touched.invoices === 0 && touched.transactions === 0) {
+          const res = await unmarkScheduleAsPaid(entry);
+          if (!res.scheduleReverted) {
+            toast.success(`Tagihan susulan jadwal #${entry.bookingId} kembali "menunggu bayar". Jadwalnya tetap lunas dari tagihan lain.`);
+          } else if (res.invoices === 0 && res.transactions === 0) {
             toast.success(`Jadwal #${entry.bookingId} kembali "menunggu bayar" — tanpa catatan tagihan yang ikut dibalik.`);
           } else {
             toast.success(`Jadwal #${entry.bookingId} kembali "menunggu bayar".`);
@@ -516,7 +545,7 @@ export function SchedulePaymentTab({
         }
       },
     });
-  }, [reload, onExtendCreated, paidGroupOf]);
+  }, [reload, onExtendCreated, paidGroupOf, billings]);
 
   /**
    * Batalkan SATU TAGIHAN yang belum dibayar — satu `payment_id`, dan untuk
@@ -686,6 +715,9 @@ export function SchedulePaymentTab({
    */
   const pendingGroup = pendingPaid ? openGroupOf(pendingPaid) : null;
   const pendingDeadGroup = pendingPaid && !pendingGroup ? deadGroupOf(pendingPaid) : null;
+  const pendingPaidAmount = pendingPaid
+    ? (billings.get(pendingPaid.id)?.openInvoice?.amount ?? pendingPaid.totalCost ?? 0)
+    : 0;
 
   const canAddSchedule =
     submission.distribution_type !== 'kilat' &&
@@ -722,7 +754,16 @@ export function SchedulePaymentTab({
             onCreateSchedule={onCreateSchedule}
             onCreateInvoice={onCreateInvoice}
             onCreateTempoInvoice={onCreateTempoInvoice}
-            onMarkPaid={lifecycle.isPaid ? null : (entry) => setPendingPaid(entry)}
+            /*
+              `lifecycle.isPaid` berlingkup ORDER dan dibaca dari transaksi
+              terbaru yang dimuat saat dashboard dibuka — tempo SUSULAN yang
+              baru terbit di drawer ini belum tentu terlihat olehnya. Tagihan
+              tempo terbuka (dibaca segar per jadwal) membuka gerbangnya;
+              `planCardActions` yang memutuskan kartu mana yang menawarkannya.
+            */
+            onMarkPaid={lifecycle.isPaid && ![...billings.values()].some((b) => b.openInvoice?.isTempo)
+              ? null
+              : (entry) => setPendingPaid(entry)}
             onUnmarkPaid={(entry) => void handleUnmarkPaid(entry)}
             onCancelInvoice={(inv) => void handleCancelInvoice(inv)}
             onCancelSchedule={(entry) => void handleCancelSchedule(entry)}
@@ -810,8 +851,17 @@ export function SchedulePaymentTab({
                 <span className="font-mono font-semibold text-gray-700">#{pendingPaid?.bookingId}</span>
                 {!isSingleSchedule && <> — jadwal lain pada order ini <span className="font-semibold text-gray-700">tidak ikut berubah</span></>}.
               </p>
-              {pendingPaid && pendingPaid.totalCost > 0 && (
-                <p className="font-semibold text-gray-700">{formatIDR(pendingPaid.totalCost)}</p>
+              {/* Nominal TAGIHAN yang dilunasi, bukan harga jadwal — pada
+                  susulan keduanya berbeda, dan admin mengadunya dengan bukti
+                  transfer. Tanpa tagihan terbuka, harga jadwal seperti dulu. */}
+              {pendingPaidAmount > 0 && (
+                <p className="font-semibold text-gray-700">{formatIDR(pendingPaidAmount)}</p>
+              )}
+              {pendingPaid && billings.get(pendingPaid.id)?.openInvoice && (
+                <p className="text-amber-700">
+                  Link bayarnya dimatikan di DOKU lebih dulu. Kalau DOKU menolak, kamu akan diberi tahu —
+                  link lama masih bisa dibayar dari sisi bank.
+                </p>
               )}
               {pendingDeadGroup && (
                 <p className="text-amber-800 border-t border-slate-200 pt-1.5 text-left">

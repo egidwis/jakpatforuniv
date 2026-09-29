@@ -44,9 +44,9 @@ function request(dokuStatus = 'SUCCESS') {
 }
 
 /**
- * @param {{credit?: boolean, billStatus?: string, adopt?: string, tempo?: boolean|'error'}} opts
+ * @param {{credit?: boolean, billStatus?: string, adopt?: string, tempo?: boolean|'error', schedPaid?: boolean}} opts
  */
-function network({ credit = false, billStatus = 'pending', adopt = null, tempo = false } = {}) {
+function network({ credit = false, billStatus = 'pending', adopt = null, tempo = false, schedPaid = false } = {}) {
   const writes = [];
   const calls = [];
   let adopted = false;
@@ -74,7 +74,10 @@ function network({ credit = false, billStatus = 'pending', adopt = null, tempo =
     }
     if (u.includes('/rest/v1/ad_schedules?id=in.')) return json([{ id: 'sched-1', booking_id: 'AAAA1111', start_date: null }]);
     if (u.includes('/rest/v1/ad_schedules?id=eq.') && u.includes('air_on_credit_at')) {
-      return json([{ air_on_credit_at: credit ? '2026-09-27T01:00:00Z' : null }]);
+      return json([{
+        air_on_credit_at: credit ? '2026-09-27T01:00:00Z' : null,
+        payment_status: schedPaid ? 'paid' : 'pending',
+      }]);
     }
     if (u.includes('/rest/v1/transactions?payment_id=eq.') && method === 'PATCH') {
       return json([{ form_submission_id: 'sub-1', schedule_id: 'sched-1', entity_type: null, extend_id: null }]);
@@ -113,6 +116,43 @@ describe('STEP 5 — jadwal kredit hanya menerima uang', () => {
     await onRequest(ctx());
     const patch = writes.find((w) => w.url.includes('/form_submissions?id=eq.sub-1'));
     expect(patch?.body).toEqual({ payment_status: 'paid', submission_status: 'paid' });
+  });
+});
+
+describe('STEP 4b — tempo SUSULAN (jadwal sudah lunas sebelum tagihan ini dibayar)', () => {
+  const fsPatch = (writes) => writes.find((w) => w.url.includes('/form_submissions?id=eq.sub-1'))?.body;
+
+  it('tempo + jadwal sudah lunas → hanya payment_status; tahapnya (mungkin completed) tidak mundur', async () => {
+    const { writes } = network({ tempo: true, schedPaid: true });
+    const res = await onRequest(ctx());
+    expect(res.status).toBe(200);
+    expect(fsPatch(writes)).toEqual({ payment_status: 'paid' });
+  });
+
+  it('tempo + jadwal BELUM lunas & bukan kredit (penandaan kredit gagal) → tahap TETAP bergerak', async () => {
+    const { writes } = network({ tempo: true, schedPaid: false });
+    await onRequest(ctx());
+    expect(fsPatch(writes)).toEqual({ payment_status: 'paid', submission_status: 'paid' });
+  });
+
+  it('susulan BIASA (bukan tempo) → persis seperti dulu', async () => {
+    const { writes, calls } = network({ tempo: false, schedPaid: true });
+    await onRequest(ctx());
+    expect(fsPatch(writes)).toEqual({ payment_status: 'paid', submission_status: 'paid' });
+    expect(calls.some((c) => c.url.includes('select=is_tempo'))).toBe(true);
+  });
+
+  it('jadwal belum lunas → is_tempo tidak dibaca sama sekali (jalur biasa nol kueri tambahan)', async () => {
+    const { calls } = network({ tempo: false, schedPaid: false });
+    await onRequest(ctx());
+    expect(calls.some((c) => c.url.includes('select=is_tempo'))).toBe(false);
+  });
+
+  it('is_tempo gagal dibaca → GAGAL-TERBUKA ke perilaku lama', async () => {
+    const { writes } = network({ tempo: 'error', schedPaid: true });
+    const res = await onRequest(ctx());
+    expect(res.status).toBe(200);
+    expect(fsPatch(writes)).toEqual({ payment_status: 'paid', submission_status: 'paid' });
   });
 });
 

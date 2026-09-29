@@ -279,6 +279,22 @@ export { isOwedOnCredit };
 const hasOpenBill = (pay: Pick<SchedulePaymentInfo, 'paymentUrl'> | null | undefined): boolean =>
     !!pay?.paymentUrl;
 
+/**
+ * Kartu ini memegang tombol bayar?
+ *
+ * Kartu `paid` ikut kalau masih ada SISA dan tagihannya terbuka — tagihan
+ * SUSULAN, termasuk tempo susulan yang tidak punya tenggat. Tanpa ini kartu
+ * lunas cuma menulis "Sisa tagihan" tanpa jalan untuk membayarnya, dan pembayar
+ * yang kehilangan emailnya terdampar.
+ */
+export const holdsPayButton = (
+    state: BookingState,
+    pay: Pick<SchedulePaymentInfo, 'paymentUrl' | 'outstanding'> | null | undefined,
+): boolean =>
+    state === 'waiting_payment'
+    || (state === 'airing_on_credit' && hasOpenBill(pay))
+    || (state === 'paid' && (pay?.outstanding ?? 0) > 0 && hasOpenBill(pay));
+
 /** Tanggal yang ditagihkan tagihan basi terakhir, siap dirender. */
 function staleDateOf(pay: { staleBilledFor?: string | null } | null | undefined): Date | null {
     if (!pay?.staleBilledFor) return null;
@@ -398,7 +414,7 @@ export function buildScheduleCards(
                   jadi cabang `null` di bawah praktis tak terjangkau; ia ditulis
                   supaya string kosong pun gagal MENUTUP, bukan gagal membuka.
                 */
-                payUrl: (bookingState === 'waiting_payment' || (bookingState === 'airing_on_credit' && hasOpenBill(payments[first.sourceId])))
+                payUrl: holdsPayButton(bookingState, payments[first.sourceId])
                     && (firstGroup?.isLead ?? true) && first.id
                     ? payLinkPath(first.id)
                     : null,
@@ -504,7 +520,7 @@ export function buildScheduleCards(
                 subtotal: subtotalOf(s),
                 // Lihat catatan di cabang ordinal 1: hanya lead yang memegang
                 // link, dan link-nya perantara (`/bayar/<ad_schedules.id>`).
-                payUrl: (bookingState === 'waiting_payment' || (bookingState === 'airing_on_credit' && hasOpenBill(pay)))
+                payUrl: holdsPayButton(bookingState, pay)
                     && (group?.isLead ?? true) && s.id
                     ? payLinkPath(s.id)
                     : null,

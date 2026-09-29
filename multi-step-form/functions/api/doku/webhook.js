@@ -1214,7 +1214,7 @@ async function processPaymentUpdate(env, { invoiceNumber, amount, appStatus, pay
     // idempoten, jadi mengulang jadwal yang sudah beres tidak merusak apa pun —
     // sementara menelan galat di sini akan meninggalkan jadwal `pending`
     // selamanya dengan uang yang sudah masuk.
-    await applyPaidSchedule(sb, target, appStatus);
+    await applyPaidSchedule(sb, target, appStatus, encodedInvoice);
   }
 
   return { outcome: 'ok' };
@@ -1275,7 +1275,7 @@ export function collectPaidTargets(txnRows, invRows, fallbackSubmissionId) {
  * pembayaran — yang berubah hanya bahwa ia sekarang dipanggil sekali per
  * jadwal.
  */
-async function applyPaidSchedule(sb, target, appStatus) {
+async function applyPaidSchedule(sb, target, appStatus, encodedInvoice) {
   const formSubmissionId = target.form_submission_id;
 
   // ====================================================================
@@ -1341,16 +1341,29 @@ async function applyPaidSchedule(sb, target, appStatus) {
   //
   // GAGAL-TERBUKA ke perilaku lama: tidak terbaca (mis. sql/102 belum
   // diterapkan) = bukan kredit = persis perilaku sebelum fitur ini.
-  let isCredit = false;
+  //
+  // Tempo SUSULAN juga (tagihan tempo pada jadwal yang SUDAH lunas sebelum
+  // tagihan ini dibayar): tahapnya sudah diputuskan pembayaran pertama, dan
+  // tanpa tenggat pembayaran susulan bisa datang sesudah `completed`. Syarat
+  // "sudah lunas" disengaja — tagihan tempo yang penandaan kreditnya GAGAL
+  // (jadwal belum lunas, belum kredit) harus tetap menggerakkan tahap, atau
+  // iklannya tidak pernah tayang. `is_tempo` hanya dibaca untuk jadwal yang
+  // sudah lunas, jadi jalur biasa tidak membayar satu kueri pun.
+  let holdStage = false;
   if (paidScheduleId) {
     try {
       const creditRes = await sbFetch(
-        `${sb.url}/rest/v1/ad_schedules?id=eq.${encodeURIComponent(paidScheduleId)}&select=air_on_credit_at`,
+        `${sb.url}/rest/v1/ad_schedules?id=eq.${encodeURIComponent(paidScheduleId)}&select=air_on_credit_at,payment_status`,
         { headers: sb.headers },
         'STEP 4b SELECT ad_schedules.air_on_credit_at'
       );
       const creditRows = await creditRes.json();
-      isCredit = Array.isArray(creditRows) && !!creditRows[0]?.air_on_credit_at;
+      const row = Array.isArray(creditRows) ? creditRows[0] : null;
+      holdStage = !!row?.air_on_credit_at;
+      const alreadyPaid = ['paid', 'completed'].includes(String(row?.payment_status || '').toLowerCase());
+      if (!holdStage && alreadyPaid && encodedInvoice) {
+        holdStage = await isTempoBill(sb, encodedInvoice);
+      }
     } catch (e) {
       console.warn(`[Webhook] STEP 4b tidak bisa membaca status kredit ${paidScheduleId} — diperlakukan bukan kredit:`, e?.message || e);
     }
@@ -1382,7 +1395,7 @@ async function applyPaidSchedule(sb, target, appStatus) {
       `ad_schedules?source_table=eq.form_submissions_extend&source_id=eq.${txn.extend_id}`,
       {
         payment_status: formPaymentStatus,
-        ...(formSubmissionStatus === 'paid' && !isCredit ? { status: 'scheduled' } : {})
+        ...(formSubmissionStatus === 'paid' && !holdStage ? { status: 'scheduled' } : {})
       },
       'STEP 5 PATCH ad_schedules (jadwal ke-2 dst.)'
     );
@@ -1440,7 +1453,7 @@ async function applyPaidSchedule(sb, target, appStatus) {
       `form_submissions?id=eq.${formSubmissionId}`,
       {
         payment_status: formPaymentStatus,
-        ...(formSubmissionStatus && !isCredit ? { submission_status: formSubmissionStatus } : {})
+        ...(formSubmissionStatus && !holdStage ? { submission_status: formSubmissionStatus } : {})
       },
       'STEP 5 PATCH form_submissions'
     );

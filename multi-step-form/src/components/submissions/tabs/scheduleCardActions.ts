@@ -108,12 +108,21 @@ export interface CardActionPlan {
  * Predikatnya `isPaymentTooLateForDate` — fungsi yang sama yang dipakai sisi
  * peneliti (`too_late_today`) dan penanda B5 di tabel Submissions.
  */
-export function isLateForSchedule(entry: AdScheduleEntry, state: CardState, now?: Date): boolean {
+export function isLateForSchedule(
+  entry: AdScheduleEntry,
+  state: CardState,
+  now?: Date,
+  billing?: ScheduleBilling,
+): boolean {
   // Lunas maupun dibatalkan: tanggal ini sudah tidak dikejar siapa pun. Tanggal
   // jadwal batal adalah riwayat (sql/62), bukan tenggat.
   if (state === 'paid' || state === 'cancelled') return false;
   // Kredit: batas bayar 14.00 tidak berlaku — iklannya tayang apa pun (sql/102).
   if (state === 'airing_on_credit' || entry.airOnCreditAt) return false;
+  // Tagihan terbukanya tempo — kasus nyatanya SUSULAN pada jadwal yang sudah
+  // lunas. Tanpa tenggat, jadi tanggal tayang yang lewat tidak membuatnya
+  // terlambat; tanpa ini `cardMoneyOf` membuang utangnya dari kartu.
+  if (billing?.openInvoice?.isTempo) return false;
   if (!entry.startDate) return false;
   return isPaymentTooLateForDate(toWibYmd(new Date(entry.startDate)), now);
 }
@@ -411,7 +420,24 @@ export function planCardActions(input: {
       };
     }
 
-    case 'partially_paid':
+    case 'partially_paid': {
+      /*
+        Tempo susulan: tagihan tanpa tenggat butuh jalan pelunasan manual —
+        pembayarnya bisa transfer di luar DOKU, dan tanpa ini satu-satunya cara
+        menghapusnya dari kartu adalah membatalkannya. Susulan biasa tidak ikut:
+        link-nya mati di 14.00 hari tayang, jadi pertanyaannya tidak pernah
+        bertahan cukup lama.
+      */
+      const settleTempo = billing?.openInvoice?.isTempo && can.markPaid;
+      if (settleTempo) {
+        return {
+          primary: markPaid,
+          menu: withCancel([
+            schedule(true),
+            ...(can.unmarkPaid ? [unmarkPaid] : []),
+          ]),
+        };
+      }
       return {
         primary: canTopUp ? topUp : schedule(),
         menu: withCancel([
@@ -419,6 +445,7 @@ export function planCardActions(input: {
           ...(can.unmarkPaid ? [unmarkPaid] : []),
         ]),
       };
+    }
 
     // Lunas tidak menunggu apa pun dari admin — nol aksi utama, sengaja.
     // "Ganti Tanggal" tetap ADA (keputusan produk: jalan buntu mendorong admin
@@ -545,7 +572,7 @@ export function cardMoneyOf(
     state !== 'cancelled' &&
     state !== 'hold_lapsed' &&
     !isEntryHoldLapsed(entry, now) &&
-    !isLateForSchedule(entry, state, new Date(now)));
+    !isLateForSchedule(entry, state, new Date(now), billing));
   const counted = (billing?.invoices ?? []).filter((i) => i.isPaid || (canStillBeBilled && isLiveInvoice(i)));
   return {
     billed: counted.reduce((sum, i) => sum + i.amount, 0),

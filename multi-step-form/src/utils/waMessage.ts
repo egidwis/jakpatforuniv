@@ -190,6 +190,12 @@ export interface InvoiceReadyInput {
    * yang tidak ditegakkan apa pun lebih buruk daripada tidak menyebutnya.
    */
   tempo?: boolean;
+  /**
+   * Tagihan SUSULAN — jadwalnya sudah lunas, ini tambahan di atasnya. Iklannya
+   * tidak menunggu tagihan ini, jadi "agar jadwal tayangnya tidak bergeser" dan
+   * "tetap tayang sesuai jadwal" dua-duanya salah alamat di sini.
+   */
+  topUp?: boolean;
 }
 
 const bundleLine = (b: InvoiceBundleSummary) =>
@@ -209,9 +215,19 @@ export function invoiceReadyMessage(input: InvoiceReadyInput): string {
   const deadline = input.deadline
     ?? paymentDeadline(bundles.map((b) => b.startDate), input.issuedAt);
 
-  const heading = bundles.length > 1
-    ? `Tagihan untuk ${bundles.length} pesanan Anda sudah kami terbitkan:`
-    : 'Tagihan untuk pesanan Anda sudah kami terbitkan:';
+  const heading = input.topUp
+    ? 'Tagihan susulan untuk pesanan Anda sudah kami terbitkan:'
+    : bundles.length > 1
+      ? `Tagihan untuk ${bundles.length} pesanan Anda sudah kami terbitkan:`
+      : 'Tagihan untuk pesanan Anda sudah kami terbitkan:';
+
+  const closing = input.topUp
+    ? (input.tempo
+        ? 'Tagihan susulan ini tidak punya batas waktu. Link di atas selalu bisa dipakai, kapan pun Anda siap membayar.'
+        : `Mohon diselesaikan paling lambat ${formatDeadline(deadline)}.`)
+    : input.tempo
+      ? 'Iklan Anda tetap tayang sesuai jadwal — pembayarannya boleh menyusul. Link di atas selalu bisa dipakai, kapan pun Anda siap membayar.'
+      : `Mohon diselesaikan paling lambat ${formatDeadline(deadline)} agar jadwal tayangnya tidak bergeser.`;
 
   return [
     greet(researcherName),
@@ -222,9 +238,7 @@ export function invoiceReadyMessage(input: InvoiceReadyInput): string {
     `Total: ${rupiah(amount)}${bundles.length > 1 ? ' (dibayar sekaligus dalam satu link)' : ''}`,
     `Link pembayaran: ${invoiceUrl}`,
     '',
-    input.tempo
-      ? 'Iklan Anda tetap tayang sesuai jadwal — pembayarannya boleh menyusul. Link di atas selalu bisa dipakai, kapan pun Anda siap membayar.'
-      : `Mohon diselesaikan paling lambat ${formatDeadline(deadline)} agar jadwal tayangnya tidak bergeser.`,
+    closing,
     '',
     SIGNATURE,
   ].join('\n');

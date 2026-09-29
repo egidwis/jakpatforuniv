@@ -398,7 +398,29 @@ function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
             key: 'outstanding',
             icon: <CreditCard className={iconCls} />,
             label: t('outstandingLabel'),
-            value: <span className="text-amber-800 font-bold">{formatIDR(b.outstanding)}</span>,
+            value: (
+                <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="text-amber-800 font-bold">{formatIDR(b.outstanding)}</span>
+                    {/*
+                      Kartu LUNAS dengan tagihan susulan terbuka (termasuk tempo
+                      susulan, tanpa tenggat) — satu-satunya tombol bayarnya.
+                      Kartu yang menunggu bayar sudah punya tombol di banner, jadi
+                      tidak digandakan di sini. `/bayar/` Pages Function →
+                      `<a href>`, bukan `<Link>`.
+                    */}
+                    {b.state === 'paid' && b.payUrl && (
+                        <a
+                            href={b.payUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline"
+                        >
+                            {t('payRemaining')}
+                            <ExternalLink className="w-3 h-3 opacity-70" />
+                        </a>
+                    )}
+                </span>
+            ),
         });
     }
 

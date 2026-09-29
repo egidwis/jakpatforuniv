@@ -962,6 +962,7 @@ export const markScheduleAsPaid = async (
 
   let invRows: { id: string }[] | null = [];
   let txnRows: { id: string }[] | null = [];
+  let billIsTempo = false;
 
   if (paymentId) {
     // `invoices` TIDAK punya kolom `payment_method` — hanya `transactions` yang
@@ -973,9 +974,10 @@ export const markScheduleAsPaid = async (
       .eq('schedule_id', entry.id)
       .eq('payment_id', paymentId)
       .in('status', ['pending', 'expired'])
-      .select('id');
+      .select('id, is_tempo');
     if (inv.error) throw inv.error;
     invRows = inv.data;
+    billIsTempo = (inv.data || []).some((r: any) => !!r.is_tempo);
 
     const txn = await supabase
       .from('transactions')
@@ -995,8 +997,15 @@ export const markScheduleAsPaid = async (
     memundurkan tahapnya; untuk perpanjangan yang jendelanya sudah lewat,
     `cron_activate_extends` tidak akan pernah menutupnya lagi (ia hanya
     menutup yang `live`). Cermin STEP 5 webhook.
+
+    Tempo SUSULAN sama: jadwalnya sudah lunas sebelum tagihan ini terbit, jadi
+    tahapnya sudah diputuskan pembayaran pertama — mungkin sudah `completed`.
+    Syarat "sudah lunas" disengaja: tagihan tempo yang penandaan kreditnya
+    GAGAL (jadwal belum lunas, belum kredit) harus tetap menggerakkan tahap,
+    atau iklannya tidak pernah tayang.
   */
-  const credit = !!entry.airOnCreditAt;
+  const alreadyPaid = ['paid', 'completed'].includes((entry.paymentStatus || '').toLowerCase());
+  const credit = !!entry.airOnCreditAt || (billIsTempo && alreadyPaid);
 
   if (entry.isExtension) {
     // ⚠️ `entry.sourceId` = `ad_schedules.source_id`, BUKAN `ad_schedules.id`.
@@ -1022,6 +1031,80 @@ export const markScheduleAsPaid = async (
   }
 
   return { invoices: invRows?.length || 0, transactions: txnRows?.length || 0 };
+};
+
+/**
+ * `invoices.expires_at` belum lewat? NULL = hidup (baris warisan, sql/83).
+ *
+ * ⚠️ KOLOMNYA `timestamp WITHOUT time zone`, berisi jam UTC, dan PostgREST
+ * memulangkannya TANPA penanda zona ("2026-09-30T06:59:00"). `new Date()`
+ * membaca string seperti itu sebagai jam LOKAL — di mesin admin ber-WIB itu
+ * meleset 7 jam. Jadi zonanya ditempelkan eksplisit kalau tidak ada.
+ */
+export function isLinkStillLive(expiresAt: string | null | undefined, now: number = Date.now()): boolean {
+  if (!expiresAt) return true;
+  const hasZone = /(Z|[+-]\d{2}:?\d{2})$/i.test(expiresAt.trim());
+  const ms = Date.parse(hasZone ? expiresAt : `${expiresAt}Z`);
+  // Tak terbaca → anggap hidup: mencoba mematikan link yang sudah mati cuma
+  // memancing peringatan; melewatkan link yang hidup membuka bayar dobel.
+  return Number.isNaN(ms) || ms > now;
+}
+
+/** Hasil "Tandai Lunas" SATU jadwal — uangnya, dan nasib link DOKU-nya. */
+export interface ScheduleSettleResult {
+  touched: ScheduleBillingTouch;
+  /** Link DOKU dikonfirmasi mati, ATAU memang tidak ada link hidup untuk dimatikan. */
+  dokuCancelled: boolean;
+  dokuReason: string | null;
+}
+
+/**
+ * "Tandai Lunas" berskala SATU JADWAL — padanan `settleGroupAsPaid()`.
+ *
+ * ⚠️ DULU JALUR INI TIDAK MEMATIKAN LINK DOKU, DAN ITU SOAL URUTAN SEJARAH,
+ * BUKAN KEPUTUSAN. `markScheduleAsPaid` lahir 18 Agu, sebelum `doku_request_id`
+ * disimpan (sql/84, 3 Sep); saat Cancel Order akhirnya bisa dipakai, yang
+ * dipasangi hanya jalur grup. Akibatnya link yang uangnya sudah diterima di luar
+ * DOKU tetap bisa dibayar sekali lagi — dan bayar dobel ke tagihan `paid` tidak
+ * membunyikan apa pun (`paid_on_dead_bill` hanya menyala untuk status mati).
+ * Tempo susulan membuat jendelanya 7 hari, bukan beberapa jam.
+ *
+ * Kontraknya SAMA PERSIS dengan `settleGroupAsPaid`: DOKU dulu, baru database;
+ * kegagalan mematikan link TIDAK menahan pelunasan — uangnya sudah diterima —
+ * tapi dilaporkan lewat `dokuCancelled`, dan sebabnya disimpan ke
+ * `doku_cancel_last_error` (sql/87).
+ *
+ * Hanya link yang MASIH HIDUP yang dicoba dimatikan: `pending` dan `expires_at`
+ * belum lewat — atau NULL, baris warisan yang justru bisa hidup tanpa batas
+ * (predikat `live` sql/83). Link yang sudah kedaluwarsa sendiri sudah mati di
+ * mata DOKU; menembakkan Cancel Order ke sana cuma memancing penolakan, dan
+ * admin menerima peringatan palsu "link DOKU-nya masih aktif" — pada alur yang
+ * paling sering: melunasi sesudah transfer, saat link-nya sudah lama habis.
+ */
+export const settleScheduleAsPaid = async (entry: AdScheduleEntry): Promise<ScheduleSettleResult> => {
+  const paymentId = await latestBillPaymentIdOf(entry.id);
+
+  let dokuCancelled = true;
+  let dokuReason: string | null = null;
+  if (paymentId) {
+    const { data: pending, error } = await supabase
+      .from('invoices')
+      .select('doku_request_id, expires_at')
+      .eq('payment_id', paymentId)
+      .eq('status', 'pending')
+      .limit(1);
+    if (error) throw error;
+    const row = (pending?.[0] ?? null) as { doku_request_id?: string | null; expires_at?: string | null } | null;
+    if (row && isLinkStillLive(row.expires_at)) {
+      const out = await killDokuLink(paymentId, row.doku_request_id ?? null);
+      dokuCancelled = out.ok;
+      dokuReason = out.reason;
+      if (!out.ok) await recordDokuCancelError(paymentId, out.detail);
+    }
+  }
+
+  const touched = await markScheduleAsPaid(entry, { paymentId });
+  return { touched, dokuCancelled, dokuReason };
 };
 
 /**
@@ -1105,11 +1188,48 @@ async function flagStaleBannerForExtend(entry: AdScheduleEntry): Promise<void> {
  * WAJIB tersentuh (`assertScheduleRowTouched`), baris tagihan boleh nol dan
  * jumlahnya dikembalikan untuk dilaporkan.
  */
-export const unmarkScheduleAsPaid = async (entry: AdScheduleEntry): Promise<ScheduleBillingTouch> => {
+export const unmarkScheduleAsPaid = async (
+  entry: AdScheduleEntry,
+  opts: {
+    /**
+     * Tagihan yang dibalik. Grup mengopernya sendiri (`unsettleGroupAsPaid`);
+     * tanpa ini dipakai pelunasan MANUAL terakhir jadwal ini.
+     */
+    paymentId?: string | null;
+  } = {},
+): Promise<UnmarkResult> => {
+  /*
+    ⚠️ SATU TAGIHAN, BUKAN SELURUH JADWAL — cermin `markScheduleAsPaid` (28 Sep).
+    Versi lama membalik SETIAP invoice `paid` milik jadwal ini, sementara
+    transaksinya disaring `MANUAL_VERIFIED`. Pada jadwal yang dibayar lewat DOKU
+    lalu punya SUSULAN yang ditandai lunas manual, invoice DOKU-nya ikut jadi
+    `pending`: kuitansi `/invoices/<id>` untuk uang yang benar-benar masuk
+    kembali tampil sebagai tagihan.
+  */
+  const paymentId = opts.paymentId ?? await latestManualPaymentIdOf(entry.id);
+  if (!paymentId) {
+    throw new Error(
+      `Jadwal #${entry.bookingId} tidak punya pelunasan manual yang bisa dibalik — `
+      + 'yang dibayar lewat DOKU tidak dibalik dari sini. Muat ulang lalu periksa riwayat tagihannya.',
+    );
+  }
+
+  /*
+    ⚠️ `expires_at` DIMUNDURKAN KE SEKARANG — tagihan tempo MAUPUN biasa.
+    Link DOKU-nya sudah dimatikan saat dilunasi (`settleScheduleAsPaid` /
+    `settleGroupAsPaid`), dan DOKU tidak punya "batalkan pembatalan". Tanpa ini
+    barisnya kembali `pending` dengan `expires_at` di masa depan: resolver
+    `/bayar/` menjawab `live` dan mengantar peneliti ke halaman DOKU yang sudah
+    dibatalkan, dan kartu admin menyembunyikan "Buat Tagihan" karena mengira
+    tagihannya masih terbuka. Dengan ini tagihan tempo terbaca
+    `tempo_renewable` (link baru dicetak), tagihan biasa terbaca kedaluwarsa.
+    `transactions` tidak punya kolom `expires_at` — jangan ditambahkan di sana.
+  */
   const { data: invRows, error: invErr } = await supabase
     .from('invoices')
-    .update({ status: 'pending', paid_at: null })
+    .update({ status: 'pending', paid_at: null, expires_at: new Date().toISOString() })
     .eq('schedule_id', entry.id)
+    .eq('payment_id', paymentId)
     .eq('status', 'paid')
     .select('id');
   if (invErr) throw invErr;
@@ -1118,31 +1238,32 @@ export const unmarkScheduleAsPaid = async (entry: AdScheduleEntry): Promise<Sche
     .from('transactions')
     .update({ status: 'pending', payment_method: null, payment_channel: null })
     .eq('schedule_id', entry.id)
+    .eq('payment_id', paymentId)
     .eq('payment_channel', 'MANUAL_VERIFIED')
     .select('id');
   if (txnErr) throw txnErr;
+
+  const touched = { invoices: invRows?.length || 0, transactions: txnRows?.length || 0 };
+
+  /*
+    ⚠️ JADWAL YANG MASIH LUNAS DARI TAGIHAN LAIN TIDAK DISENTUH.
+    Kasus nyatanya SUSULAN: tagihan pertama dibayar (DOKU atau manual), yang
+    dibalik cuma tambahannya. Menulis `waiting_payment` di sana mengeluarkan
+    iklan yang sudah dibayar penuh dari `order_is_airable()`, dan trigger
+    menutup halamannya saat itu juga (`trg_close_survey_page` /
+    `trg_close_page_on_extend_unpaid`). Yang dibalik hanya baris uang susulannya.
+  */
+  if (await hasOtherPaidBill(entry.id, paymentId)) {
+    return { ...touched, scheduleReverted: false };
+  }
 
   /*
     ⚠️ JADWAL KREDIT KEMBALI JADI KREDIT, BUKAN "MENUNGGU BAYAR" (sql/102).
     `waiting_payment` mengeluarkannya dari `order_is_airable()` dan
     `trg_close_survey_page` menutup halaman iklan yang sedang tayang — padahal
     izin tayangnya tidak pernah dicabut (K9). Yang dibalik hanya uangnya.
-
-    Link DOKU tagihan temponya sudah dimatikan saat dilunasi
-    (`settleGroupAsPaid`), dan DOKU tidak punya "batalkan pembatalan". Jadi
-    `expires_at`-nya dimundurkan ke sekarang: `/bayar/` akan menjawab
-    `tempo_renewable` dan mencetak link baru, alih-alih menyerahkan link mati.
   */
   const credit = !!entry.airOnCreditAt;
-  if (credit) {
-    const { error: expErr } = await supabase
-      .from('invoices')
-      .update({ expires_at: new Date().toISOString() })
-      .eq('schedule_id', entry.id)
-      .eq('is_tempo', true)
-      .eq('status', 'pending');
-    if (expErr) console.error('[unmarkScheduleAsPaid] gagal memundurkan umur link tempo:', expErr);
-  }
 
   if (entry.isExtension) {
     // Pemetaan sama seperti markScheduleAsPaid: source_id + filter source_table.
@@ -1164,8 +1285,75 @@ export const unmarkScheduleAsPaid = async (entry: AdScheduleEntry): Promise<Sche
     assertScheduleRowTouched(data, entry);
   }
 
-  return { invoices: invRows?.length || 0, transactions: txnRows?.length || 0 };
+  return { ...touched, scheduleReverted: true };
 };
+
+/** Hasil "Tandai Belum Lunas" — baris uang yang dibalik, dan nasib jadwalnya. */
+export interface UnmarkResult extends ScheduleBillingTouch {
+  /**
+   * `false` = jadwalnya TETAP lunas dari tagihan lain (susulan) — yang dibalik
+   * hanya baris uang tagihan ini. Pemanggil wajib mengatakannya ke admin.
+   */
+  scheduleReverted: boolean;
+}
+
+/**
+ * `payment_id` pelunasan MANUAL terakhir jadwal ini — satu-satunya yang boleh
+ * dibalik "Tandai Belum Lunas".
+ *
+ * Dibaca dari `transactions`, karena `MANUAL_VERIFIED` hanya hidup di sana
+ * (`invoices` tidak punya `payment_channel`). Gerbang tombolnya di kartu
+ * membaca kanal yang sama, jadi baris ini selalu ada saat tombolnya muncul.
+ */
+async function latestManualPaymentIdOf(scheduleId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('payment_id')
+    .eq('schedule_id', scheduleId)
+    .eq('payment_channel', 'MANUAL_VERIFIED')
+    .in('status', ['paid', 'completed'])
+    .not('payment_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.payment_id ?? null;
+}
+
+/**
+ * Masih ada tagihan LAIN yang lunas untuk jadwal ini?
+ *
+ * Dua tabel, karena 190 jadwal lama hanya punya baris di `transactions` dan
+ * sebagian tagihan admin lama hanya di `invoices` (Skenario B). Galat baca
+ * DILEMPAR: menebak "tidak ada" di sini berarti menutup halaman iklan yang
+ * sudah dibayar — kebalikan persis dari tujuan fungsi ini.
+ */
+async function hasOtherPaidBill(scheduleId: string, exceptPaymentId: string): Promise<boolean> {
+  const PAID = ['paid', 'completed', 'settled'];
+  // ⚠️ BUKAN `.neq('payment_id', …)`: di SQL `NULL <> x` bernilai NULL, jadi
+  // baris lunas warisan tanpa `payment_id` akan terbuang diam-diam — dan justru
+  // mereka bukti lunas yang paling tua.
+  const otherBill = `payment_id.is.null,payment_id.neq."${exceptPaymentId}"`;
+  const inv = await supabase
+    .from('invoices')
+    .select('id')
+    .eq('schedule_id', scheduleId)
+    .in('status', PAID)
+    .or(otherBill)
+    .limit(1);
+  if (inv.error) throw inv.error;
+  if ((inv.data || []).length > 0) return true;
+
+  const txn = await supabase
+    .from('transactions')
+    .select('id')
+    .eq('schedule_id', scheduleId)
+    .in('status', PAID)
+    .or(otherBill)
+    .limit(1);
+  if (txn.error) throw txn.error;
+  return (txn.data || []).length > 0;
+}
 
 /**
  * Batalkan SATU TAGIHAN (= satu `payment_id`, N pesanan kalau ia gabungan) —
@@ -1636,6 +1824,13 @@ export interface InvoiceGroupMember {
   isPaid: boolean;
   ordinal: number | null;
   startDate: string | null;
+  /**
+   * Jadwal ini tayang sebelum lunas (`ad_schedules.air_on_credit_at`, sql/102).
+   * `undefined` = tidak terbaca → dianggap kredit oleh `isTempoBillLocked`
+   * (gagal-TERTUTUP). `false` hanya untuk jadwal yang terbukti bukan kredit —
+   * kasus nyatanya tempo SUSULAN pada jadwal yang sudah lunas.
+   */
+  airOnCredit?: boolean;
 }
 
 export interface InvoiceGroup {
@@ -1695,7 +1890,7 @@ export const fetchInvoiceGroups = async (
     if (scheduleIds.length > 0) {
       const { data: scheds } = await supabase
         .from('ad_schedules')
-        .select('id, submission_id, source_id, ordinal, booking_id, start_date')
+        .select('id, submission_id, source_id, ordinal, booking_id, start_date, air_on_credit_at')
         .in('id', scheduleIds);
       for (const s of scheds || []) schedById.set(s.id, s);
     }
@@ -1730,6 +1925,7 @@ export const fetchInvoiceGroups = async (
         isPaid: PAID_ROW_STATUSES.includes(status.toLowerCase()),
         ordinal: sched?.ordinal ?? null,
         startDate: sched?.start_date ?? null,
+        airOnCredit: sched ? !!sched.air_on_credit_at : undefined,
       };
       const list = byPayment.get(member.paymentId);
       if (list) list.push(member);
@@ -1882,7 +2078,9 @@ export interface GroupUnsettleResult {
  * DOKU tidak punya "batalkan pembatalan". Membalik status di sisi kita TIDAK
  * menghidupkan kembali link bayarnya — pemanggil WAJIB mengatakan itu di dialog,
  * karena langkah berikutnya adalah menerbitkan tagihan BARU, bukan mengirim
- * ulang link lama.
+ * ulang link lama. `unmarkScheduleAsPaid` memundurkan `expires_at`-nya supaya
+ * database ikut jujur soal itu: `/bayar/` dan kartu admin membacanya mati
+ * (tempo: diperbarui otomatis), bukan `live`.
  *
  * Sama seperti settle: loopnya tidak transaksional, jadi laporannya per anggota.
  */
@@ -1916,7 +2114,9 @@ export const unsettleGroupAsPaid = async (paymentId: string): Promise<GroupUnset
       continue;
     }
     try {
-      const touched = await unmarkScheduleAsPaid(entry);
+      // `paymentId` grup, BUKAN "pelunasan manual terakhir" tiap anggota: anggota
+      // yang juga punya susulan lunas manual tidak boleh kehilangan susulannya.
+      const touched = await unmarkScheduleAsPaid(entry, { paymentId });
       result.touched.invoices += touched.invoices;
       result.touched.transactions += touched.transactions;
       result.reverted.push({ bookingId: entry.bookingId, title: member.title });
@@ -5391,10 +5591,13 @@ export const tempoCancelBlockReason = async (paymentId: string): Promise<string 
   const scheduleIds = (rows || []).map((r: any) => r.schedule_id).filter(Boolean);
   if (scheduleIds.length === 0) return null;
   const { data: scheds, error: sErr } = await supabase
-    .from('ad_schedules').select('booking_id, start_date').in('id', scheduleIds);
+    .from('ad_schedules').select('booking_id, start_date, air_on_credit_at').in('id', scheduleIds);
   if (sErr) throw sErr;
 
-  const aired = (scheds || []).filter((s: any) => s.start_date && new Date(s.start_date).getTime() <= Date.now());
+  // K8 hanya untuk jadwal KREDIT — izin tayang tanpa bayar itulah yang tidak
+  // boleh ditarik. Tempo SUSULAN (jadwalnya sudah lunas) tetap boleh dibatalkan.
+  const aired = (scheds || []).filter((s: any) =>
+    s.air_on_credit_at && s.start_date && new Date(s.start_date).getTime() <= Date.now());
   if (aired.length === 0) return null;
   return `Tagihan tempo ini tidak bisa dibatalkan: ${aired.map((s: any) => `#${s.booking_id}`).join(', ')} `
     + 'sudah mulai tayang, jadi utangnya tetap penuh. Tandai lunas kalau uangnya diterima di luar DOKU.';
@@ -5405,4 +5608,7 @@ export const isTempoBillLocked = (
   group: Pick<InvoiceGroup, 'isTempo' | 'members'> | null | undefined,
   now: number = Date.now(),
 ): boolean =>
-  !!group?.isTempo && group.members.some((m) => !!m.startDate && new Date(m.startDate).getTime() <= now);
+  !!group?.isTempo && group.members.some((m) =>
+    // `airOnCredit === false` = terbukti bukan kredit (tempo susulan). Tidak
+    // terbaca (`undefined`) tetap mengunci — gagal-tertutup.
+    m.airOnCredit !== false && !!m.startDate && new Date(m.startDate).getTime() <= now);

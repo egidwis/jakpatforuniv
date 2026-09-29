@@ -47,6 +47,9 @@ export async function onRequestPost(context) {
             // menyusul, TANPA tenggat. Kalimat "slot kembali terbuka kalau lewat
             // batas waktu" salah untuknya, dan menakut-nakuti pelanggan tepercaya.
             tempo,
+            // Tagihan SUSULAN: jadwalnya sudah lunas, ini tambahan di atasnya.
+            // "Pesananmu disetujui" dan "slot kami tahan" dua-duanya salah di sini.
+            topUp,
         } = await request.json();
 
         if (!email || !name || !invoiceUrl) {
@@ -67,7 +70,28 @@ export async function onRequestPost(context) {
         let introHtml;
         let detailsHtml = '';
 
-        if (isBulk) {
+        if (topUp) {
+            subject = 'Tagihan susulan iklanmu siap dibayar — Jakpat for Universities';
+            introHtml = `
+                <p>Halo Kak <strong>${name}</strong>,</p>
+                <p>Ada tagihan susulan${surveyLine}${amountText ? ` senilai <strong>${amountText}</strong>` : ''}, di luar pembayaran yang sudah Kakak selesaikan sebelumnya.</p>
+                <p>Jadwal tayang iklanmu tidak berubah karena tagihan ini.</p>
+            `;
+
+            detailsHtml = `
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 20px 0;">
+                    <h3 style="margin: 0 0 12px; font-size: 13px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; color: #475569;">
+                        Rincian Tagihan Susulan
+                    </h3>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                        ${title ? `<tr><td style="padding: 6px 0; color: #64748b; width: 140px;">Survei:</td><td style="padding: 6px 0; font-weight: 600; color: #1e293b;">${title}</td></tr>` : ''}
+                        ${airingStartText ? `<tr><td style="padding: 6px 0; color: #64748b;">Jadwal Tayang:</td><td style="padding: 6px 0; font-weight: 600; color: #1e293b;">${airingStartText}${airingEndText ? ` s.d. ${airingEndText}` : ''}</td></tr>` : ''}
+                        ${bookingText ? `<tr><td style="padding: 6px 0; color: #64748b;">Booking ID:</td><td style="padding: 6px 0; font-weight: 600; color: #1e293b; font-family: monospace;">${bookingText}</td></tr>` : ''}
+                        ${amountText ? `<tr><td style="padding: 6px 0; color: #64748b;">Tagihan Susulan:</td><td style="padding: 6px 0; font-weight: 700; color: #0284c7; font-size: 15px;">${amountText}</td></tr>` : ''}
+                    </table>
+                </div>
+            `;
+        } else if (isBulk) {
             subject = 'Tagihan gabungan jadwal iklanmu siap dibayar — Jakpat for Universities';
             introHtml = `
                 <p>Halo Kak <strong>${name}</strong>,</p>
@@ -163,7 +187,9 @@ export async function onRequestPost(context) {
         // Tagihan tempo: satu kalimat yang menggantikan semua janji tenggat.
         const tempoNoteHtml = tempo ? `
             <div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 10px 14px; margin: 20px 0; font-size: 13px; color: #4c1d95; line-height: 1.5;">
-              Iklanmu <strong>tetap tayang sesuai jadwal</strong> — pembayarannya boleh menyusul, tanpa batas waktu. Tombol di bawah selalu bisa dipakai kapan pun Kakak siap membayar.
+              ${topUp
+                ? 'Tagihan susulan ini <strong>tidak punya batas waktu</strong> pembayaran.'
+                : 'Iklanmu <strong>tetap tayang sesuai jadwal</strong> — pembayarannya boleh menyusul, tanpa batas waktu.'} Tombol di bawah selalu bisa dipakai kapan pun Kakak siap membayar.
             </div>
         ` : '';
 
