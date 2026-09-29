@@ -69,6 +69,75 @@
 > - **Koreksi review 29 Sep:** `cancelSchedule` jalur belum-tayang **sudah** menutup baris
 >   tagihannya sendiri (`expired`, per `schedule_id`, di `supabase.ts` bagian bawah fungsi).
 >   Memanggil `killDokuLinksForSchedule` tanpa `markCancelled` di sana **bukan** bug.
+>
+> **Tambahan 29 Sep — tempo SUSULAN** (keputusan pengguna: didukung, bukan disembunyikan).
+> Toggle tempo ikut muncul di "Tagih Susulan" karena `InvoiceForm`-nya sama. Semua jalur
+> tempo menganggap tempo = kredit, jadi pada jadwal yang **sudah lunas** lima hal patah.
+> Definisi yang dipakai: susulan = `payment_status` jadwal sudah `paid`/`completed` saat
+> tagihan terbit (sama dengan cabang `already_paid` di `mark_schedules_on_credit`).
+>
+> - **`InvoiceForm`:** tempo susulan tidak memanggil `markSchedulesOnCredit`, sehingga toast
+>   "TIDAK ditayangkan" tidak muncul. Kalimat toggle-nya sendiri. Kalimat K8 dan catatan
+>   kredit disembunyikan.
+> - **Blok tulis perpanjangan dilewati untuk SEMUA susulan**, tempo maupun bukan. Bug lama
+>   yang ikut tertutup: susulan biasa pada perpanjangan yang lunas menulis
+>   `waiting_payment`/`pending`, sehingga `trg_close_page_on_extend_unpaid` menutup halaman
+>   yang sedang tayang. Blok itu juga menimpa `total_cost` dengan selisihnya.
+> - **Kartu admin:**
+>   - `isLateForSchedule(…, billing)` bernilai false kalau tagihan terbukanya tempo, supaya
+>     utang tidak hilang dari `cardMoneyOf` sesudah tanggal lewat;
+>   - `partially_paid` dengan tempo terbuka mendapat aksi utama "Tandai Lunas";
+>   - gerbang `onMarkPaid` di `SchedulePaymentTab` kini juga terbuka kalau ada tempo
+>     terbuka, karena `lifecycle.isPaid` berlingkup order dan dimuat saat dashboard dibuka;
+>   - dialog Tandai Lunas menyebut nominal tagihan terbuka, bukan `totalCost`.
+> - **K8 hanya mengunci jadwal kredit.** `tempoCancelBlockReason` membaca `air_on_credit_at`.
+>   `InvoiceGroupMember.airOnCredit` bersifat gagal-tertutup: `undefined` tetap mengunci.
+> - **Tahap tidak mundur saat tempo susulan dilunasi**, baik lewat webhook STEP 4b maupun
+>   `markScheduleAsPaid`.
+>   - Syaratnya `tempo && jadwal sudah lunas`. Tagihan tempo yang penandaan kreditnya gagal
+>     tetap menggerakkan tahap.
+>   - Webhook membaca `is_tempo` hanya untuk jadwal yang sudah lunas, dan gagal-terbuka.
+>   - Variabelnya berganti nama dari `isCredit` menjadi `holdStage`.
+> - **Email:** varian `topUp` dengan subjek "Tagihan susulan…". **WA:** `topUp` di
+>   `invoiceReadyMessage`.
+> - **Dashboard peneliti:** kartu `paid` dengan sisa tagihan dan tagihan terbuka mendapat
+>   tautan "Bayar sisa" ke `/bayar/` (`holdsPayButton`).
+> - **Nol SQL.** Hibah `ad_schedules` untuk anon/authenticated berlaku di level tabel
+>   (diverifikasi 29 Sep), jadi kolom baru di select `fetchInvoiceGroups` aman untuk
+>   `StatusPage`.
+> - ~~Risiko sisa: "Tandai Lunas" satuan tidak mematikan link DOKU.~~ Ditutup di blok berikut.
+>
+> **Tambahan 29 Sep — Tandai Lunas / Tandai Belum Lunas** (ditemukan saat meninjau tempo susulan).
+>
+> - **Tandai Lunas satuan kini mematikan link DOKU lebih dulu** (`settleScheduleAsPaid`).
+>   - Dulu hanya jalur grup yang mematikannya. Penyebabnya urutan sejarah, bukan keputusan
+>     desain: `markScheduleAsPaid` lahir 18 Agu, sedangkan `doku_request_id` baru disimpan
+>     sejak sql/84 (3 Sep).
+>   - Bayar dobel ke tagihan `paid` tidak memicu penjaga apa pun, karena `paid_on_dead_bill`
+>     hanya menyala untuk status mati.
+>   - Hanya link yang **masih hidup** yang ditembak: `pending` dan `expires_at` belum lewat
+>     atau NULL. Link yang kedaluwarsa sendiri tidak ditembak, supaya tidak ada peringatan
+>     palsu.
+>   - `invoices.expires_at` bertipe `timestamp without time zone` berisi jam UTC.
+>     `isLinkStillLive` menempelkan `Z` secara eksplisit, karena tanpanya browser ber-WIB
+>     membacanya meleset 7 jam.
+> - **Tandai Belum Lunas dibatasi ke SATU tagihan** (`payment_id` pelunasan manual terakhir;
+>   untuk grup, `payment_id` grupnya).
+>   - Dulu setiap invoice `paid` milik jadwal itu ikut dibalik, termasuk invoice yang dibayar
+>     lewat DOKU. Transaksinya sudah disaring `MANUAL_VERIFIED`, invoice-nya tidak.
+> - **Tandai Belum Lunas tidak lagi menutup jadwal yang masih lunas dari tagihan lain**
+>   (susulan).
+>   - `hasOtherPaidBill` memeriksa kedua tabel dengan `or(payment_id.is.null,
+>     payment_id.neq."…")`. `neq` polos akan membuang baris warisan yang `payment_id`-nya NULL.
+>   - Sintaks dan maknanya dibuktikan di PostgREST produksi, dengan GET anon ke
+>     `survey_pages`.
+>   - Kalau pembacaannya gagal, fungsi **melempar**, bukan menebak.
+> - **Tandai Belum Lunas memundurkan `expires_at` ke sekarang**, untuk tempo maupun tagihan
+>   biasa.
+>   - Link DOKU tidak bisa hidup lagi, karena DOKU tidak punya "batalkan pembatalan".
+>   - Tanpa ini, `/bayar/` menjawab `live` dan mengantar peneliti ke halaman DOKU yang sudah
+>     dibatalkan. Kartu admin juga menyembunyikan "Buat Tagihan".
+>   - Sekarang tempo terbaca `tempo_renewable`, dan tagihan biasa terbaca kedaluwarsa.
 
 ## Context
 

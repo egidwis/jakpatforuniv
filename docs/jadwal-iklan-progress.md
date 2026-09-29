@@ -172,6 +172,34 @@ hidup. Link-nya diperbarui `/bayar/` lewat RPC `renew_tempo_bill`, dan baris lam
 - **`cancelSchedule` jalur belum-tayang sudah menutup barisnya sendiri.** Jangan
   "memperbaiki" pemanggilan `killDokuLinksForSchedule` tanpa `markCancelled` di sana.
 
+**Tempo susulan (29 Sep, belum di-commit).** "Tagih Susulan" pada jadwal yang sudah lunas
+kini bisa diterbitkan sebagai tagihan tempo, tanpa tenggat, termasuk untuk iklan yang sudah
+selesai tayang. Tanpa tempo, susulan setelah tanggal tayang memang tidak bisa terbit. Detailnya
+di kotak status rencana. Tiga hal yang wajib diingat:
+
+- **Tempo ≠ kredit.** Penjaga "tahap tidak mundur" (webhook STEP 4b, `markScheduleAsPaid`)
+  dan kunci K8 sekarang membaca `air_on_credit_at` **atau** "tempo + jadwal sudah lunas".
+- **Bug lama ikut tertutup:** susulan biasa pada perpanjangan yang lunas dulu menutup
+  halaman iklan yang sedang tayang (`trg_close_page_on_extend_unpaid`) dan menimpa
+  `total_cost` dengan selisihnya.
+- **Uji browser tambahan:**
+  - jadwal lunas bertanggal lampau → Tagih Susulan dengan tempo → tidak ada toast merah,
+    nominalnya terhitung di kartu, "Batalkan tagihan" terlihat;
+  - bayar lewat sandbox → tahap tidak mundur;
+  - perpanjangan lunas → Tagih Susulan biasa → halamannya tetap terbuka.
+
+**Tandai Lunas / Tandai Belum Lunas (29 Sep, belum di-commit).**
+- Tandai Lunas satuan kini mematikan link DOKU lebih dulu, kalau link-nya masih hidup.
+- Tandai Belum Lunas:
+  - hanya membalik satu `payment_id`;
+  - tidak menulis status jadwal kalau jadwalnya masih lunas dari tagihan lain;
+  - memundurkan `expires_at`, supaya `/bayar/` tidak pernah menyerahkan link yang sudah
+    dibatalkan di DOKU.
+
+Detailnya di kotak status rencana. Uji browser tambahan: jadwal lunas DOKU + susulan lunas
+manual → "Tandai Belum Lunas" → kuitansi pertama tetap RECEIPT, dan halaman iklan tetap
+terbuka.
+
 ### 00AC. 🟡 Kuitansi & halaman sukses menyebut jadwal yang BENAR (2026-09-21)
 
 **Nol migrasi SQL. Seluruhnya frontend + satu Pages Function.**
