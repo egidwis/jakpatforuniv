@@ -119,23 +119,25 @@ function BreakdownLine({ line }: { line: MoneyLine }) {
        merangkum baris sebelumnya, bukan menambah biaya baru. Tanpa pemisah
        itu kolomnya terbaca seperti daftar yang bisa dijumlah — dan
        menjumlahkannya menghitung ganda. */
-    <div className={`flex justify-between items-center gap-3 ${
-      line.isSubtotal ? 'border-t border-slate-200/80 pt-2 mt-1' : ''
+    <div className={`flex justify-between items-center gap-3 text-sm ${
+      line.isSubtotal ? 'border-t border-slate-200/90 pt-2.5 mt-1.5' : ''
     }`}>
-      <span className="min-w-0">
+      <span className="min-w-0 text-slate-700">
         {line.tone === 'addon' ? (
-          <span className="inline-flex items-center gap-1">
-            <Zap className="w-3.5 h-3.5 fill-amber-500 text-amber-500" /> {label}
+          <span className="inline-flex items-center gap-1 font-medium">
+            <Zap className="w-4 h-4 fill-amber-500 text-amber-500 shrink-0" /> {label}
           </span>
-        ) : label}
+        ) : (
+          <span className="font-medium">{label}</span>
+        )}
         {hint && (
-          <span className="text-xs text-slate-500 font-normal"> ({hint})</span>
+          <span className="text-xs sm:text-[13px] text-slate-500 font-normal"> ({hint})</span>
         )}
       </span>
       {/* ⚠️ -700, bukan -600. Pada latar `slate-50/70` varian 600 terukur
           3,60:1 (emerald) dan 3,04:1 (amber) — gagal ambang teks 4,5:1, dan ini
           justru angka yang paling penting dibaca benar. */}
-      <span className={`font-semibold shrink-0 tabular-nums ${
+      <span className={`font-semibold shrink-0 tabular-nums text-sm sm:text-base ${
         line.tone === 'discount' ? 'text-emerald-700'
           : line.tone === 'addon' ? 'text-amber-700'
             : 'text-slate-900'
@@ -200,10 +202,10 @@ export function CostBreakdown({
   const showDetail = isDetailVisible(variant, isOpen);
 
   const detail = hasDetail && showDetail && (
-    <div id={detailId} className="rounded-lg border border-slate-200/80 bg-slate-50/70 p-3 space-y-2 text-xs font-normal text-slate-600">
+    <div id={detailId} className="rounded-xl border border-slate-200/90 bg-white sm:bg-slate-50/80 p-3.5 sm:p-4 space-y-2.5 sm:space-y-3 text-sm font-normal text-slate-700 shadow-2xs">
       {lines
         ? lines.map((line, i) => <BreakdownLine key={`${line.label}-${i}`} line={line} />)
-        : <p className="leading-relaxed">{note}</p>}
+        : <p className="leading-relaxed text-sm text-slate-600">{note}</p>}
     </div>
   );
 

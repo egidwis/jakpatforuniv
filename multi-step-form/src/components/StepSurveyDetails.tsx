@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { AdsFlowCard } from './AdsFlowCard';
 import { StepOneMethodSelection } from './StepOneMethodSelection';
 import { StepOneGoogleForm } from './StepOneGoogleForm';
-import { StepOneFormFields, ReviewInfoBanner } from './StepOneFormFields';
+import { StepOneFormFields } from './StepOneFormFields';
 import { ProfileCompletionSheet } from './ProfileCompletionSheet';
 import { isProfileGateSatisfied } from './ProfileForm';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
@@ -16,11 +16,18 @@ interface StepSurveyDetailsProps {
   updateFormData: (data: Partial<SurveyFormData>) => void;
   nextStep: () => void;
   onHeaderVisibilityChange?: (isVisible: boolean) => void;
+  onCancelOrder?: () => void;
 }
 
 type FlowState = 'method-selection' | 'google-form' | 'manual' | 'form-fields';
 
-export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeaderVisibilityChange }: StepSurveyDetailsProps) {
+export function StepSurveyDetails({
+  formData,
+  updateFormData,
+  nextStep,
+  onHeaderVisibilityChange,
+  onCancelOrder,
+}: StepSurveyDetailsProps) {
   const { t } = useLanguage();
 
   const [searchParams] = useSearchParams();
@@ -30,7 +37,11 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
   const getInitialFlowState = (): FlowState => {
     const queryMethod = searchParams.get('method');
     if (queryMethod === 'google') {
-      return 'google-form';
+      // Modal pintu masuk (AdsEntryModal) kini mengimpor Google Form DI DALAM
+      // modal lalu baru menavigasi ke sini. Draf yang sudah berisi Google Form
+      // langsung ke isian — tanpa ini peneliti disodori layar impor lagi.
+      const imported = !!formData.title && formData.surveyUrl.includes('docs.google.com/forms');
+      return imported ? 'form-fields' : 'google-form';
     }
     if (queryMethod === 'manual') {
       return 'manual';
@@ -263,7 +274,6 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
   if (flowState === 'manual') {
     return (
       <>
-        <ReviewInfoBanner formData={formData} />
         <AdsFlowCard step="fields">
           <StepOneFormFields
             formData={formData}
@@ -277,6 +287,7 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
             // handler-nya. Untuk impor JFU tautan itu memang harus hilang:
             // beralih metode membuang data yang sudah dikunci dari form JFU.
             onSwitchToGoogle={isJfuImport ? undefined : handleSwitchToGoogle}
+            onCancelOrder={onCancelOrder}
           />
         </AdsFlowCard>
 
@@ -321,7 +332,6 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
   if (flowState === 'form-fields') {
     return (
       <>
-        <ReviewInfoBanner formData={formData} />
         <AdsFlowCard step="fields">
           <StepOneFormFields
             formData={formData}
@@ -329,6 +339,7 @@ export function StepSurveyDetails({ formData, updateFormData, nextStep, onHeader
             onSubmit={handleSubmit}
             onBack={handleBackToMethodSelection}
             isGoogleImport={true}
+            onCancelOrder={onCancelOrder}
           />
         </AdsFlowCard>
         {profileSheet}

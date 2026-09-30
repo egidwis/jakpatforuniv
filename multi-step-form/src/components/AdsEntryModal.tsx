@@ -12,9 +12,27 @@ import {
   UserCheck,
   ChevronRight,
   Zap,
+  Check,
+  Sparkles,
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { RateNoticeBlock } from './RateNotice';
+import { GoogleDriveImportSimple } from './GoogleDriveImportSimple';
+import { SURVEY_DRAFT_KEY } from '../utils/constants';
+import { DEFAULT_SURVEY_FORM_DATA, formDataForImportedSurvey } from '../utils/defaultFormData';
+import type { SurveyFormData } from '../types';
+
+/** Draf wizard di atas nilai awal — bentuk yang sama dengan `MultiStepForm`. */
+function readDraftFormData(): SurveyFormData {
+  try {
+    const saved = localStorage.getItem(SURVEY_DRAFT_KEY);
+    const parsed = saved ? JSON.parse(saved) : null;
+    if (parsed?.formData) return { ...DEFAULT_SURVEY_FORM_DATA, ...parsed.formData };
+  } catch {
+    // localStorage tak tersedia / JSON rusak → mulai dari nilai awal
+  }
+  return DEFAULT_SURVEY_FORM_DATA;
+}
 
 export interface AdsEntryModalProps {
   isOpen: boolean;
@@ -30,8 +48,21 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
   onOpenCustomMission,
 }) => {
   const { t } = useLanguage();
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [hasAcknowledged, setHasAcknowledged] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [transitionKind, setTransitionKind] = useState<'manual' | 'google'>('manual');
+
+  /*
+    Draf wizard dibaca ULANG setiap modal dibuka, bukan sekali saat mount —
+    modal ini hidup sepanjang umur dashboard, jadi pembacaan sekali-mount
+    menyimpan draf basi (order yang sudah terkirim/dibatalkan sejak itu).
+  */
+  const [formData, setFormData] = useState<SurveyFormData>(DEFAULT_SURVEY_FORM_DATA);
+  useEffect(() => {
+    if (!isOpen) return;
+    setFormData(readDraftFormData());
+  }, [isOpen]);
 
   // Lock body scroll saat modal terbuka
   useEffect(() => {
@@ -49,17 +80,56 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && !isTransitioning) onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, isTransitioning]);
 
   // Reset state saat modal ditutup
   const handleClose = () => {
     setStep(1);
     setHasAcknowledged(false);
+    setIsTransitioning(false);
     onClose();
+  };
+
+  /*
+    Hasil impor Google Form → draf wizard. Aturan "survei baru = order baru"
+    ada di `formDataForImportedSurvey`. Draf DIGANTI utuh, bukan digabung
+    dengan `formData` lama di storage — penggabungan itulah yang dulu
+    menghidupkan lagi voucher/Kilat order sebelumnya.
+  */
+  const handleImportedFormData = (imported: Partial<SurveyFormData>) => {
+    const next = formDataForImportedSurvey(readDraftFormData(), imported);
+    setFormData(next);
+    try {
+      localStorage.setItem(SURVEY_DRAFT_KEY, JSON.stringify({ formData: next, currentStep: 1 }));
+    } catch (e) {
+      console.error('Failed to sync draft in AdsEntryModal', e);
+    }
+  };
+
+  // Transisi halus saat user memilih Review Manual
+  const handleSelectManual = () => {
+    setIsTransitioning(true);
+    setTransitionKind('manual');
+    setTimeout(() => {
+      setIsTransitioning(false);
+      handleClose();
+      onSelectMethod('manual');
+    }, 450);
+  };
+
+  // Transisi halus saat Google Form berhasil dipilih dan diekstrak
+  const handleGoogleFormLoaded = () => {
+    setIsTransitioning(true);
+    setTransitionKind('google');
+    setTimeout(() => {
+      setIsTransitioning(false);
+      handleClose();
+      onSelectMethod('google');
+    }, 600);
   };
 
   if (!isOpen) return null;
@@ -68,7 +138,7 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
     <div
       className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-6 md:p-8 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
       onClick={(e) => {
-        if (e.target === e.currentTarget) handleClose();
+        if (e.target === e.currentTarget && !isTransitioning) handleClose();
       }}
     >
       <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-gray-100 shadow-2xl w-full sm:max-w-xl max-h-[92vh] sm:max-h-[86vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
@@ -77,15 +147,15 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
           <div className="w-10 h-1 bg-slate-300 rounded-full" />
         </div>
 
-        {/* Header */}
+        {/* Header (sembunyikan tombol tutup/mundur saat sedang transisi) */}
         <div className="px-5 sm:px-7 py-4 sm:py-4.5 border-b border-gray-100 bg-gradient-to-r from-blue-50/80 via-indigo-50/40 to-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            {step === 2 ? (
+            {step > 1 && !isTransitioning ? (
               <button
                 type="button"
-                onClick={() => setStep(1)}
+                onClick={() => setStep(step === 3 ? 2 : 1)}
                 className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white border border-slate-200/90 text-slate-600 hover:text-jfu-primary hover:border-blue-200 flex items-center justify-center transition-colors cursor-pointer shrink-0 shadow-2xs group"
-                title={t('adsEntryBackToAwareness')}
+                title={step === 3 ? t('adsEntrySelectMethodTitle') : t('adsEntryBackToAwareness')}
               >
                 <ArrowLeft className="w-4.5 h-4.5 group-hover:-translate-x-0.5 transition-transform" />
               </button>
@@ -96,27 +166,64 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
             )}
             <div className="min-w-0">
               <h2 className="text-sm sm:text-base font-extrabold text-gray-900 leading-tight truncate">
-                {step === 1 ? t('adsAwarenessModalTitle') : t('adsEntrySelectMethodTitle')}
+                {isTransitioning
+                  ? t('adsEntryPreparingTitle')
+                  : step === 1
+                  ? t('adsAwarenessModalTitle')
+                  : step === 2
+                  ? t('adsEntrySelectMethodTitle')
+                  : t('googleFormImportTitle')}
               </h2>
               <p className="text-[11px] sm:text-xs text-gray-500 truncate mt-0.5">
-                {step === 1 ? t('adsAwarenessModalSubtitle') : t('adsEntrySelectMethodSubtitle')}
+                {isTransitioning
+                  ? t('adsEntryPreparingSubtitle')
+                  : step === 1
+                  ? t('adsAwarenessModalSubtitle')
+                  : step === 2
+                  ? t('adsEntrySelectMethodSubtitle')
+                  : t('adsEntryGoogleImportSubtitle')}
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleClose}
-            aria-label={t('closePopup')}
-            className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 transition-colors cursor-pointer shrink-0 ml-3"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          {!isTransitioning && (
+            <button
+              type="button"
+              onClick={handleClose}
+              aria-label={t('closePopup')}
+              className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 transition-colors cursor-pointer shrink-0 ml-3"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         {/* Modal Body */}
         <div className="overflow-y-auto p-5 sm:p-7 flex-1 overscroll-contain">
-          {step === 1 ? (
+          {isTransitioning ? (
+            /* ================= STATE TRANSISI MIKRO HALUS ================= */
+            <div className="py-12 px-6 flex flex-col items-center justify-center text-center animate-in fade-in zoom-in-95 duration-200">
+              <div className="relative mb-5">
+                <div className="w-16 h-16 rounded-2xl bg-blue-50 text-jfu-primary flex items-center justify-center shadow-md shadow-jfu-primary/10 border border-blue-100">
+                  <Sparkles className="w-8 h-8 animate-pulse text-jfu-primary" />
+                </div>
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-xs">
+                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                </div>
+              </div>
+              <h3 className="text-base sm:text-lg font-extrabold text-slate-900 leading-snug">
+                {transitionKind === 'google' ? t('adsEntryTransitionGoogleTitle') : t('adsEntryTransitionManualTitle')}
+              </h3>
+              <p className="mt-1 text-xs sm:text-sm text-slate-500 max-w-xs leading-relaxed">
+                {transitionKind === 'google' ? t('adsEntryTransitionGoogleSubtitle') : t('adsEntryTransitionManualSubtitle')}
+              </p>
+              <div className="mt-6 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-jfu-primary animate-ping" />
+                <span className="w-2 h-2 rounded-full bg-jfu-primary/60" />
+                <span className="w-2 h-2 rounded-full bg-jfu-primary/30" />
+              </div>
+            </div>
+          ) : step === 1 ? (
             /* ================= STEP 1: INFORMASI MEKANISME ================= */
             <div className="space-y-5 animate-in fade-in duration-200">
               <div className="space-y-3.5">
@@ -129,13 +236,13 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
                     <h3 className="text-xs sm:text-sm font-bold text-slate-900">
                       {t('adsAwarenessPoint1Title')}
                     </h3>
-                    <p className="text-xs text-slate-600 leading-relaxed mt-0.5">
+                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">
                       {t('adsAwarenessPoint1Desc')}
                     </p>
                   </div>
                 </div>
 
-                {/* Poin 2: Penayangan Berbasis Durasi */}
+                {/* Poin 2: Waktu Penayangan */}
                 <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50/70 border border-slate-100">
                   <div className="w-8 h-8 rounded-xl bg-white border border-slate-200/80 text-jfu-primary flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
                     <Clock className="w-4 h-4" />
@@ -144,47 +251,33 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
                     <h3 className="text-xs sm:text-sm font-bold text-slate-900">
                       {t('adsAwarenessPoint2Title')}
                     </h3>
-                    <p className="text-xs text-slate-600 leading-relaxed mt-0.5">
+                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">
                       {t('adsAwarenessPoint2Desc')}
                     </p>
                   </div>
                 </div>
 
-                {/* Poin 3: Review Sebelum Penayangan */}
+                {/* Poin 3: Verifikasi Etika & Keamanan */}
                 <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50/70 border border-slate-100">
-                  <div className="w-8 h-8 rounded-xl bg-white border border-slate-200/80 text-jfu-primary flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
+                  <div className="w-8 h-8 rounded-xl bg-white border border-slate-200/80 text-emerald-600 flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
                     <ShieldCheck className="w-4 h-4" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <h3 className="text-xs sm:text-sm font-bold text-slate-900">
                       {t('adsAwarenessPoint3Title')}
                     </h3>
-                    <p className="text-xs text-slate-600 leading-relaxed mt-0.5">
+                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">
                       {t('adsAwarenessPoint3Desc')}
                     </p>
                   </div>
                 </div>
+
+                {/* Info Penyesuaian Tarif Bertanggal */}
+                <RateNoticeBlock />
               </div>
 
-              {/* Tarif bertanggal (1 Okt 2026 → 1 Jan 2027); hilang sendiri mulai 1 Feb 2027 */}
-              <RateNoticeBlock />
-
-              {/* Tautan Syarat & Ketentuan */}
-              <div className="text-center text-xs text-slate-500 pt-0.5">
-                <span>{t('adsAwarenessTermsLink')}{' '}</span>
-                <a
-                  href="/homepage/terms-conditions.html"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-jfu-primary hover:text-jfu-dark underline inline-flex items-center"
-                >
-                  {t('termsConditions')}
-                </a>
-                <span>.</span>
-              </div>
-
-              {/* Checkbox Konfirmasi */}
-              <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50/80 cursor-pointer transition-colors shadow-2xs select-none">
+              {/* Checkbox Persetujuan */}
+              <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 hover:border-slate-300 bg-white cursor-pointer select-none transition-all">
                 <input
                   type="checkbox"
                   checked={hasAcknowledged}
@@ -229,10 +322,10 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
                 </p>
               </div>
             </div>
-          ) : (
+          ) : step === 2 ? (
             /* ================= STEP 2: PILIH JALUR REVIEW ================= */
             <div className="space-y-4 animate-in fade-in duration-200">
-              {/* Opsi 1: Review Otomatis (Google Forms) */}
+              {/* Opsi 1: Review Otomatis (Google Forms) -> Membuka Step 3 di Modal */}
               <div className="border border-slate-200/90 rounded-2xl overflow-hidden bg-white shadow-xs hover:border-blue-200/90 transition-all">
                 {/* Header Jalur Otomatis */}
                 <div className="w-full flex items-center gap-3.5 px-4 sm:px-5 py-3.5 min-h-12 text-left bg-white">
@@ -252,18 +345,14 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
                   </div>
                 </div>
 
-                {/* Sub-opsi Google Form */}
+                {/* Sub-opsi Google Form: Membuka Step 3 langsung di modal ini */}
                 <div className="bg-slate-50/40 border-t border-slate-100">
                   <button
                     type="button"
-                    onClick={() => {
-                      handleClose();
-                      onSelectMethod('google');
-                    }}
+                    onClick={() => setStep(3)}
                     className="w-full flex items-center gap-3 px-4 sm:px-5 py-3 hover:bg-blue-50/60 group transition-all cursor-pointer text-left"
                   >
                     <span className="w-8 h-8 rounded-lg inline-flex shrink-0 items-center justify-center bg-white border border-slate-200/80 shadow-2xs group-hover:border-blue-200">
-                      {/* Logo Google */}
                       <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                         <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                         <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
@@ -282,10 +371,7 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
               {/* Opsi 2: Review Manual */}
               <button
                 type="button"
-                onClick={() => {
-                  handleClose();
-                  onSelectMethod('manual');
-                }}
+                onClick={handleSelectManual}
                 className="w-full flex items-center gap-3.5 px-4 sm:px-5 py-3.5 min-h-12 border border-slate-200/90 rounded-2xl bg-white hover:bg-blue-50/40 hover:border-blue-200/90 transition-all shadow-xs group cursor-pointer text-left"
               >
                 <span className="w-10 h-10 rounded-xl inline-flex shrink-0 items-center justify-center bg-slate-100/80 text-slate-600 border border-slate-200/70 group-hover:bg-blue-50 group-hover:text-jfu-primary group-hover:border-blue-100 transition-colors shadow-2xs">
@@ -316,6 +402,27 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
                     {t('jfuFormCtaAction')}
                   </Link>
                 </p>
+              </div>
+            </div>
+          ) : (
+            /* ================= STEP 3: IMPORT DARI GOOGLE FORM DI MODAL ================= */
+            <div className="space-y-4 animate-in fade-in duration-200">
+              <GoogleDriveImportSimple
+                formData={formData}
+                updateFormData={handleImportedFormData}
+                onFormDataLoaded={handleGoogleFormLoaded}
+                onCancel={() => setStep(2)}
+              />
+
+              <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-center text-xs text-gray-500">
+                <span>{t('noGoogleForm')}{' '}</span>
+                <button
+                  type="button"
+                  onClick={handleSelectManual}
+                  className="font-semibold text-jfu-primary hover:underline ml-1 cursor-pointer"
+                >
+                  {t('fillManualOnly')}
+                </button>
               </div>
             </div>
           )}

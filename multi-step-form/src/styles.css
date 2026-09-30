@@ -750,48 +750,11 @@ select.form-input.border-red-500:focus {
 
 .form-content {
   width: 100%;
-  max-width: 800px;
   margin: 0 auto;
 }
 
-
-
-
-/* Grid and Responsive Utilities */
-.grid {
-  display: grid;
-  gap: 1.5rem;
-}
-
-.grid-cols-1 {
-  grid-template-columns: 1fr;
-}
-
-@media (min-width: 768px) {
-  .md\:grid-cols-2 {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-.flex {
-  display: flex;
-}
-
-.flex-col {
-  flex-direction: column;
-}
-
-.items-center {
-  align-items: center;
-}
-
-.justify-between {
-  justify-content: space-between;
-}
-
-.justify-end {
-  justify-content: flex-end;
-}
+/* Flexbox and layout utilities — didelegasikan sepenuhnya ke Tailwind CSS
+   agar varian breakpoint responsif seperti lg:hidden dan lg:flex tidak tertimpa. */
 
 .gap-2 {
   gap: 0.5rem;

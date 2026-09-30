@@ -5,8 +5,6 @@ import { calculateTotalCost, getVoucherInfo, isManualVerificationVoucher } from 
 import { formatRupiah } from '../utils/currency';
 import { getOwnProfile } from '../utils/supabase';
 import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
-import { CostBreakdown } from './CostBreakdown';
-import { orderMoneyLines } from '../utils/orderMoneyLines';
 import { isAutoApprovalPath } from '../utils/review-path';
 import { checkoutBlocker } from '../utils/orderReadiness';
 import { orderSubmitErrorKeyForCode } from '../utils/submitOrder';
@@ -16,7 +14,6 @@ import { SectionLabel, FieldRow } from './SurveyFieldRow';
 import { Switch } from './ui/switch';
 import {
   Ticket,
-  Wallet,
   CheckCircle,
   AlertTriangle,
   FileText,
@@ -25,7 +22,6 @@ import {
   Info,
   CreditCard,
   Send,
-  ArrowLeft,
   ExternalLink,
   CalendarCheck,
   Zap,
@@ -33,8 +29,11 @@ import {
   User,
   Mail,
   Phone,
-  AlertCircle
+  Pencil,
+  Clock
 } from 'lucide-react';
+
+import { OrderLiveCompanion } from './order/OrderLiveCompanion';
 
 interface StepCheckoutProps {
   formData: SurveyFormData;
@@ -42,10 +41,11 @@ interface StepCheckoutProps {
   /** Lanjut ke langkah Jadwal — hanya jalur otomatis yang memakainya. */
   nextStep: () => void;
   /** Menulis order (jalur manual, dan jalur Kilat yang jadwalnya sudah dipilih). */
-  onSubmitOrder: () => Promise<boolean>;
+  onSubmitOrder: (overrides?: Partial<SurveyFormData>) => Promise<boolean>;
   onBack: () => void;
   onUpgradeKilat?: () => void;
   onUndoKilat?: () => void;
+  onCancelOrder?: () => void;
 }
 
 /**
@@ -55,7 +55,16 @@ interface StepCheckoutProps {
  * database yang lahir di sini kecuali pada jalur yang memang berakhir di sini
  * (manual, dan Kilat yang jadwalnya sudah terpilih di langkah tersendiri).
  */
-export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder, onBack, onUpgradeKilat, onUndoKilat }: StepCheckoutProps) {
+export function StepCheckout({
+  formData,
+  updateFormData,
+  nextStep,
+  onSubmitOrder,
+  onBack,
+  onUpgradeKilat,
+  onUndoKilat,
+  onCancelOrder,
+}: StepCheckoutProps) {
   const { t } = useLanguage();
   const { user } = useAuth();
 
@@ -74,11 +83,15 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
   const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
-  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
-  // Persetujuan S&K ikut di formData, bukan state lokal: pada jalur otomatis
-  // order baru ditulis satu langkah kemudian, setelah layar ini unmount.
-  const isTermsAccepted = formData.termsAccepted === true;
+  /*
+    Persetujuan S&K TERSIRAT: menekan tombol utama = menyetujui (kalimat
+    "Dengan melanjutkan…" di bawah tombol). Keputusan produk 30 Sep 2026.
+
+    ⚠️ Dicatat HANYA saat tombol ditekan — bukan saat layar dibuka. Versi awal
+    redesign menyetelnya lewat useEffect ketika mount, jadi draf sudah
+    "menyetujui" sebelum peneliti menekan apa pun.
+  */
 
   // Detail Invoice: default diambil dari data akun (profil + auth); toggle OFF
   // untuk mengisi kontak invoice custom khusus order ini (tidak mengubah profil).
@@ -105,6 +118,15 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
 
   // Email invoice berbeda dari email login → invoice terkirim ke email custom
   const isEmailMismatch = user?.email && formData.email && formData.email.trim().toLowerCase() !== user.email.toLowerCase();
+
+  const getQuestionTier = (count: number) => {
+    if (!count || count <= 0) return t('notSpecified');
+    if (count <= 15) return `${t('orderCompanionCategory')}: ≤ 15 ${t('questionCount') || 'Soal'}`;
+    if (count <= 30) return `${t('orderCompanionCategory')}: 16–30 ${t('questionCount') || 'Soal'}`;
+    if (count <= 50) return `${t('orderCompanionCategory')}: 31–50 ${t('questionCount') || 'Soal'}`;
+    if (count <= 70) return `${t('orderCompanionCategory')}: 51–70 ${t('questionCount') || 'Soal'}`;
+    return `${t('orderCompanionCategory')}: > 70 ${t('questionCount') || 'Soal'}`;
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -156,7 +178,7 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
     setCostCalculation(calculateTotalCost(effectiveForm, Date.now()));
 
     if (ilkomunyBlocked) {
-      setVoucherInfo({ isValid: false, isError: true, message: 'Kode voucher ini sudah pernah digunakan (berlaku satu kali per akun).' });
+      setVoucherInfo({ isValid: false, isError: true, message: t('voucherUsedOncePerAccount') });
     } else {
       setVoucherInfo(getVoucherInfo(formData.voucherCode, formData.duration));
     }
@@ -176,14 +198,16 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
    * yang bahkan tidak punya kolom itu.
    */
   const validateBeforeLeaving = (): boolean => {
-    const blocker = checkoutBlocker(formData);
+    const blocker = checkoutBlocker({ ...formData, termsAccepted: true });
     if (!blocker) return true;
     toast.error(t(orderSubmitErrorKeyForCode(blocker)));
     return false;
   };
 
   const handlePrimaryAction = async () => {
-    setAttemptedSubmit(true);
+    if (!formData.termsAccepted) {
+      updateFormData({ termsAccepted: true });
+    }
     // Guard double-submit lewat ref (sinkron, kebal batching React)
     if (isSubmittingRef.current) return;
     if (!validateBeforeLeaving()) return;
@@ -200,7 +224,10 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
 
     isSubmittingRef.current = true;
     setIsSubmitting(true);
-    const ok = await onSubmitOrder();
+    // ⚠️ Diteruskan eksplisit: `updateFormData` di atas baru mendarat di render
+    // berikutnya, sedangkan `submitOrderAndRoute` membaca `formData` render
+    // INI — tanpa override, `submitOrder()` menolak dengan kode 'terms'.
+    const ok = await onSubmitOrder({ termsAccepted: true });
     if (!ok) {
       isSubmittingRef.current = false;
       setIsSubmitting(false);
@@ -208,332 +235,404 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
   };
 
   return (
-    <div className="max-w-xl mx-auto space-y-3.5">
-      <div className="space-y-3.5">
-        {/* Warning Banner for Personal Data Detection */}
-        {formData.hasPersonalDataQuestions && formData.detectedKeywords && formData.detectedKeywords.length > 0 && (
-          <div className="p-4 rounded-xl bg-amber-100/50 border border-amber-200/60 flex flex-col gap-2 mb-6">
-            <div className="flex items-start gap-3">
-              <div className="p-1.5 bg-amber-200 text-amber-700 rounded-lg shrink-0">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
-                  <path d="M12 9v4" />
-                  <path d="M12 17h.01" />
-                </svg>
+    <div className="w-full">
+      <div className="grid lg:grid-cols-12 gap-6 items-start">
+        {/* KOLOM KIRI: Survey Overview & Invoice Details (~58-60% / 7 cols) */}
+        <div className="lg:col-span-7 space-y-4">
+          {/* Warning Banner for Personal Data Detection */}
+          {formData.hasPersonalDataQuestions && formData.detectedKeywords && formData.detectedKeywords.length > 0 && (
+            <div className="p-4 rounded-xl bg-amber-100/50 border border-amber-200/60 flex flex-col gap-2">
+              <div className="flex items-start gap-3">
+                <div className="p-1.5 bg-amber-200 text-amber-700 rounded-lg shrink-0">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+                    <path d="M12 9v4" />
+                    <path d="M12 17h.01" />
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="font-bold text-amber-900 text-sm">Terdeteksi Pertanyaan Data Pribadi</h4>
+                  <p className="text-sm text-amber-700 mt-1 leading-relaxed">
+                    Sistem mendeteksi form ini menanyakan: <strong className="bg-amber-200/60 px-1.5 py-0.5 rounded capitalize">{formData.detectedKeywords.join(', ')}</strong>.
+                    Sesuai <a href="/homepage/terms-conditions.html" target="_blank" rel="noopener noreferrer" className="font-bold underline decoration-amber-700/30 hover:text-amber-900 transition-colors">Syarat dan Ketentuan</a>, form ini akan memerlukan <strong>Review Manual</strong> oleh tim admin sebelum dilanjutkan ke tahap pembayaran.
+                  </p>
+                </div>
               </div>
+            </div>
+          )}
+
+          {/* Warning Banner for manual-verification vouchers (JFUFEB / ILKOMUNY) */}
+          {isManualVerificationVoucher(formData.voucherCode) && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+              <div className="flex gap-4">
+                <div className="flex-shrink-0 mt-0.5">
+                  <Info className="w-5 h-5 text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-sm font-bold text-blue-900 mb-2 flex items-center gap-2">
+                    {t('voucherManualVerifyTitle')}
+                  </h4>
+                  <p className="text-sm text-blue-800 leading-relaxed">
+                    {t('voucherManualVerifyBody1')} <strong>{formData.voucherCode?.toUpperCase()}</strong>{' '}
+                    {t('voucherManualVerifyBody2')}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SECTION: SURVEY OVERVIEW (HIGHLIGHT CARD - MODERN GRADIENT) */}
+          <div className="rounded-2xl border border-blue-200/80 bg-gradient-to-br from-blue-100/50 via-sky-50/60 to-indigo-100/40 p-5 md:p-6 shadow-sm overflow-hidden space-y-3.5">
+            <div className="flex items-center justify-between gap-3">
+              <SectionLabel>{t('orderOverviewTitle')}</SectionLabel>
+              <div className="flex items-center gap-2">
+                {formData.isKilatUpgrade && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-xs">
+                    <Zap size={11} className="fill-white" />
+                    JFU KILAT
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-blue-700 bg-white/90 hover:bg-white hover:text-blue-800 border border-blue-200/80 shadow-2xs transition-all cursor-pointer hover:shadow-xs active:scale-98"
+                  title={t('editOrder') || 'Edit Order'}
+                >
+                  <Pencil size={13} className="text-blue-600" />
+                  <span>{t('editOrder') || 'Edit Order'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {/* Title & Link */}
               <div>
-                <h4 className="font-bold text-amber-900 text-sm">Terdeteksi Pertanyaan Data Pribadi</h4>
-                <p className="text-sm text-amber-700 mt-1 leading-relaxed">
-                  Sistem mendeteksi form ini menanyakan: <strong className="bg-amber-200/60 px-1.5 py-0.5 rounded capitalize">{formData.detectedKeywords.join(', ')}</strong>.
-                  Sesuai <a href="/homepage/terms-conditions.html" target="_blank" rel="noopener noreferrer" className="font-bold underline decoration-amber-700/30 hover:text-amber-900 transition-colors">Syarat dan Ketentuan</a>, form ini akan memerlukan <strong>Review Manual</strong> oleh tim admin sebelum dilanjutkan ke tahap pembayaran.
-                </p>
+                <div className="text-base md:text-lg font-bold text-gray-900 leading-snug">{formData.title}</div>
+                {formData.surveyUrl && (
+                  <div className="mt-1 flex items-center gap-1.5 max-w-full">
+                    <ExternalLink size={12} className="text-blue-600 shrink-0" />
+                    <a 
+                      href={formData.surveyUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="text-blue-600 hover:text-blue-700 hover:underline text-xs truncate max-w-full block"
+                      title={formData.surveyUrl}
+                    >
+                      {formData.surveyUrl}
+                    </a>
+                  </div>
+                )}
               </div>
-            </div>
-          </div>
-        )}
 
-        {/* Warning Banner for manual-verification vouchers (JFUFEB / ILKOMUNY) */}
-        {isManualVerificationVoucher(formData.voucherCode) && (
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-6">
-            <div className="flex gap-4">
-              <div className="flex-shrink-0 mt-0.5">
-                <Info className="w-5 h-5 text-blue-600" />
+              {/* 3 Metric Stat Cards Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {/* 1. Jumlah Pertanyaan */}
+                <div className="bg-white/95 rounded-xl p-3.5 border border-blue-100/90 shadow-2xs flex flex-col justify-between">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <div className="w-6 h-6 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                      <FileText size={13} />
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      {t('questionCountLabel')}
+                    </span>
+                  </div>
+                  <div>
+                    <div className="text-sm sm:text-base font-bold text-slate-900 leading-tight">
+                      {formData.questionCount} {t('questionCount') || 'Pertanyaan'}
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-1 font-medium truncate">
+                      {getQuestionTier(formData.questionCount)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Durasi Tayang */}
+                <div className="bg-white/95 rounded-xl p-3.5 border border-blue-100/90 shadow-2xs flex flex-col justify-between">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${
+                      formData.isKilatUpgrade ? 'bg-amber-100 text-amber-600' : 'bg-indigo-50 text-indigo-600'
+                    }`}>
+                      {formData.isKilatUpgrade ? <Zap size={13} className="fill-amber-600" /> : <Clock size={13} />}
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      {t('surveyDurationLabel') || 'Durasi Tayang'}
+                    </span>
+                  </div>
+                  <div>
+                    <div className="text-sm sm:text-base font-bold text-slate-900 leading-tight">
+                      {formData.isKilatUpgrade ? t('kilatDuration') : `${formData.duration} ${t('days')}`}
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-1 font-medium truncate">
+                      {formData.isKilatUpgrade ? t('kilatInstant24h') : t('regularStandardAiring')}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Reward Responden */}
+                <div className="bg-white/95 rounded-xl p-3.5 border border-blue-100/90 shadow-2xs flex flex-col justify-between">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <div className="w-6 h-6 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                      <Gift size={13} />
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      {t('prizePerWinnerLabel') || 'Reward Responden'}
+                    </span>
+                  </div>
+                  <div>
+                    <div className="text-sm sm:text-base font-bold text-slate-900 leading-tight font-mono">
+                      {formData.prizePerWinner && formData.winnerCount
+                        ? `Rp ${formatRupiah(formData.winnerCount * formData.prizePerWinner)}`
+                        : t('noPrize')}
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-1 font-medium truncate">
+                      {formData.prizePerWinner && formData.winnerCount
+                        ? `${formData.winnerCount} ${t('winnerCountUnit') || 'pemenang'} @ Rp ${formatRupiah(formData.prizePerWinner)}`
+                        : t('noPrizeDraw')}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="flex-1">
-                <h4 className="text-sm font-bold text-blue-900 mb-2 flex items-center gap-2">
-                  {t('voucherManualVerifyTitle')}
-                </h4>
-                <p className="text-sm text-blue-800 leading-relaxed">
-                  {t('voucherManualVerifyBody1')} <strong>{formData.voucherCode?.toUpperCase()}</strong>{' '}
-                  {t('voucherManualVerifyBody2')}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* SECTION: SURVEY OVERVIEW (HIGHLIGHT CARD - MODERN GRADIENT) */}
-        <div className="rounded-2xl border border-blue-200/80 bg-gradient-to-br from-blue-100/50 via-sky-50/60 to-indigo-100/40 p-5 md:p-6 shadow-sm overflow-hidden space-y-3.5">
-          <div className="flex items-center justify-between">
-            <SectionLabel>{t('orderOverviewTitle')}</SectionLabel>
-            {formData.isKilatUpgrade && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-xs">
-                <Zap size={11} className="fill-white" />
-                JFU KILAT
-              </span>
-            )}
-          </div>
+              {/* Release Schedule (If Auto Approval) */}
+              {isAutoApproval && formData.startDate && (
+                <div className="bg-white/95 p-3.5 rounded-xl border border-blue-100/90 shadow-2xs flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                    <CalendarCheck size={15} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      {t('releaseSchedule') || 'Jadwal Tayang'}
+                    </span>
+                    <span className="text-xs font-bold text-blue-900 mt-0.5 block">
+                      {new Date(formData.startDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} – {
+                        (() => {
+                          const ed = new Date(formData.startDate);
+                          ed.setDate(ed.getDate() + (formData.duration || 1));
+                          return ed.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+                        })()
+                      } (15:00 WIB)
+                    </span>
+                  </div>
+                </div>
+              )}
 
-          <div className="space-y-3">
-            {/* Title & Link */}
-            <div>
-              <div className="text-base md:text-lg font-bold text-gray-900 leading-snug">{formData.title}</div>
-              {formData.surveyUrl && (
-                <div className="mt-1 flex items-center gap-1.5 max-w-full">
-                  <ExternalLink size={12} className="text-blue-600 shrink-0" />
-                  <a 
-                    href={formData.surveyUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    className="text-blue-600 hover:text-blue-700 hover:underline text-xs truncate max-w-full block"
-                    title={formData.surveyUrl}
-                  >
-                    {formData.surveyUrl}
-                  </a>
+              {/* Kriteria Responden */}
+              {formData.criteriaResponden && (
+                <div className="bg-white/95 p-3.5 rounded-xl border border-blue-100/90 shadow-2xs space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-5 h-5 rounded-md bg-rose-50 text-rose-500 flex items-center justify-center shrink-0">
+                      <Target size={12} />
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      {t('criteriaRespondentLabel') || 'Kriteria Responden'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-800 pl-6 leading-relaxed font-medium">
+                    {formData.criteriaResponden}
+                  </p>
+                </div>
+              )}
+
+              {/* Mode JFU Kilat Active Banner */}
+              {formData.isKilatUpgrade && (
+                <div className="border-t border-dashed border-blue-200/60 pt-3 mt-2 w-full flex flex-col gap-1">
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-2 text-xs text-amber-800 font-bold">
+                      <Zap size={14} className="fill-amber-500 text-amber-500 shrink-0" />
+                      <span>{t('kilatModeActive')}</span>
+                    </div>
+                    {onUndoKilat && (
+                      <button
+                        onClick={onUndoKilat}
+                        className="text-xs font-semibold text-gray-400 hover:text-gray-600 hover:underline transition-all whitespace-nowrap"
+                      >
+                        {t('kilatUndoButton')}
+                      </button>
+                    )}
+                  </div>
+                  <div className="pl-[22px] text-[11px] text-amber-600 leading-relaxed">
+                    {t('kilatBenefitFast')} &bull; {t('kilatBenefitNoPage')}
+                  </div>
                 </div>
               )}
             </div>
-
-            {/* Spec & Reward Bar (Compact Inline Meta) */}
-            <div className="flex flex-wrap items-center gap-y-1.5 gap-x-2 text-xs font-medium text-gray-700 bg-white/90 px-3.5 py-2.5 rounded-xl border border-blue-100 shadow-2xs">
-              <span className="flex items-center gap-1">
-                <FileText size={13} className="text-gray-400 shrink-0" />
-                <span>{formData.questionCount} Qs</span>
-              </span>
-              <span className="text-gray-300">•</span>
-              <span className="flex items-center gap-1">
-                <span>{formData.isKilatUpgrade ? t('kilatDuration') : `${formData.duration} ${t('days')}`}</span>
-              </span>
-              <span className="text-gray-300">•</span>
-              <span className="flex items-center gap-1">
-                <Gift size={13} className="text-gray-400 shrink-0" />
-                <span>{formData.winnerCount} {t('winner')}</span>
-              </span>
-              <span className="text-gray-300">•</span>
-              <span className="font-semibold text-gray-800">@ Rp {formatRupiah(formData.prizePerWinner)}</span>
-            </div>
-
-            {/* Release Schedule (If Auto Approval) */}
-            {isAutoApproval && formData.startDate && (
-              <div className="flex items-center gap-2 text-xs text-blue-800 bg-white/90 px-3.5 py-2 rounded-xl border border-blue-100">
-                <CalendarCheck size={14} className="text-blue-500 shrink-0" />
-                <div>
-                  <span className="font-semibold">{t('releaseSchedule')}: </span>
-                  <span>
-                    {new Date(formData.startDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - {
-                      (() => {
-                        const ed = new Date(formData.startDate);
-                        ed.setDate(ed.getDate() + (formData.duration || 1));
-                        return ed.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-                      })()
-                    } (15:00 WIB)
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Kriteria Responden */}
-            {formData.criteriaResponden && (
-              <div className="flex items-start gap-2 text-xs text-gray-700 bg-white/90 p-3 rounded-xl border border-blue-100 shadow-2xs">
-                <Target size={14} className="text-rose-500 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-semibold text-gray-900">Kriteria Responden: </span>
-                  <span className="text-gray-600 leading-relaxed">{formData.criteriaResponden}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Mode JFU Kilat Active Banner */}
-            {formData.isKilatUpgrade && (
-              <div className="border-t border-dashed border-blue-200/60 pt-3 mt-2 w-full flex flex-col gap-1">
-                <div className="flex items-center justify-between w-full">
-                  <div className="flex items-center gap-2 text-xs text-amber-800 font-bold">
-                    <Zap size={14} className="fill-amber-500 text-amber-500 shrink-0" />
-                    <span>{t('kilatModeActive')}</span>
-                  </div>
-                  {onUndoKilat && (
-                    <button
-                      onClick={onUndoKilat}
-                      className="text-xs font-semibold text-gray-400 hover:text-gray-600 hover:underline transition-all whitespace-nowrap"
-                    >
-                      {t('kilatUndoButton')}
-                    </button>
-                  )}
-                </div>
-                <div className="pl-[22px] text-[11px] text-amber-600 leading-relaxed">
-                  {t('kilatBenefitFast')} &bull; {t('kilatBenefitNoPage')}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* SECTION: INVOICE DETAILS */}
-        <div className="rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-xs p-5 md:p-6 shadow-[0_4px_20px_-2px_rgba(24,124,255,0.06),0_12px_32px_-4px_rgba(0,0,0,0.04)] overflow-hidden space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <SectionLabel>{t('invoiceDetailTitle')}</SectionLabel>
-            <div className="flex items-center gap-2.5 select-none">
-              <span className="text-xs font-medium text-slate-600">{t('sameAsAccount')}</span>
-              <Switch
-                checked={useAccountData}
-                onCheckedChange={handleUseAccountDataChange}
-                className="data-[state=unchecked]:!bg-slate-200 data-[state=checked]:!bg-jfu-primary"
-              />
-            </div>
           </div>
 
-          <div className="space-y-4">
-            <p className="text-xs text-slate-500 -mt-1 leading-relaxed">{t('invoiceContactHelp')}</p>
-
-            <div className="space-y-2.5">
-              <FieldRow
-                icon={User}
-                label={t('invoiceNameLabel')}
-                htmlFor="invoiceFullName"
-                required
-                compact
-                readOnly={useAccountData}
-              >
-                <input
-                  id="invoiceFullName"
-                  type="text"
-                  disabled={useAccountData}
-                  readOnly={useAccountData}
-                  className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
-                  placeholder={t('invoiceNamePlaceholder')}
-                  value={formData.fullName}
-                  onChange={(e) => updateFormData({ fullName: e.target.value })}
+          {/* SECTION: INVOICE DETAILS */}
+          <div className="rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-xs p-5 md:p-6 shadow-[0_4px_20px_-2px_rgba(24,124,255,0.06),0_12px_32px_-4px_rgba(0,0,0,0.04)] overflow-hidden space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <SectionLabel>{t('invoiceDetailTitle')}</SectionLabel>
+              <div className="flex items-center gap-2.5 select-none">
+                <span className="text-xs font-medium text-slate-600">{t('sameAsAccount')}</span>
+                <Switch
+                  checked={useAccountData}
+                  onCheckedChange={handleUseAccountDataChange}
+                  className="data-[state=unchecked]:!bg-slate-200 data-[state=checked]:!bg-jfu-primary"
                 />
-                {useAccountData && (
-                  <span className="shrink-0 text-slate-400 ml-2" title="Terkunci dari data akun">
-                    <Lock size={14} />
-                  </span>
-                )}
-              </FieldRow>
+              </div>
+            </div>
 
-              <FieldRow
-                icon={Mail}
-                label={t('invoiceEmailLabel')}
-                htmlFor="invoiceEmail"
-                required
-                compact
-                readOnly={useAccountData}
-                hint={
-                  !useAccountData && isEmailMismatch ? (
-                    <span className="flex items-start gap-1.5 text-amber-700 bg-amber-50/80 p-2 rounded-lg border border-amber-200/70 mt-1">
-                      <Info className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-                      <span>
-                        {t('emailMismatchNotice1')} (<strong>{user?.email}</strong>). {t('emailMismatchNotice2')}
-                      </span>
+            <div className="space-y-4">
+              <p className="text-xs text-slate-500 -mt-1 leading-relaxed">{t('invoiceContactHelp')}</p>
+
+              <div className="space-y-2.5">
+                <FieldRow
+                  icon={User}
+                  label={t('invoiceNameLabel')}
+                  htmlFor="invoiceFullName"
+                  required
+                  compact
+                  readOnly={useAccountData}
+                >
+                  <input
+                    id="invoiceFullName"
+                    type="text"
+                    disabled={useAccountData}
+                    readOnly={useAccountData}
+                    className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                    placeholder={t('invoiceNamePlaceholder')}
+                    value={formData.fullName}
+                    onChange={(e) => updateFormData({ fullName: e.target.value })}
+                  />
+                  {useAccountData && (
+                    <span className="shrink-0 text-slate-400 ml-2" title="Terkunci dari data akun">
+                      <Lock size={14} />
                     </span>
-                  ) : undefined
-                }
-              >
-                <input
-                  id="invoiceEmail"
-                  type="email"
-                  disabled={useAccountData}
-                  readOnly={useAccountData}
-                  className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
-                  placeholder={t('invoiceEmailPlaceholder')}
-                  value={formData.email}
-                  onChange={(e) => updateFormData({ email: e.target.value })}
-                />
-                {useAccountData && (
-                  <span className="shrink-0 text-slate-400 ml-2" title="Terkunci dari data akun">
-                    <Lock size={14} />
-                  </span>
-                )}
-              </FieldRow>
+                  )}
+                </FieldRow>
 
-              <FieldRow
-                icon={Phone}
-                label={t('invoicePhoneLabel')}
-                htmlFor="invoicePhoneNumber"
-                required
-                compact
-                readOnly={useAccountData}
-              >
-                <input
-                  id="invoicePhoneNumber"
-                  type="tel"
-                  disabled={useAccountData}
+                <FieldRow
+                  icon={Mail}
+                  label={t('invoiceEmailLabel')}
+                  htmlFor="invoiceEmail"
+                  required
+                  compact
                   readOnly={useAccountData}
-                  className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
-                  placeholder={t('invoicePhonePlaceholder')}
-                  value={formData.phoneNumber}
-                  onChange={(e) => updateFormData({ phoneNumber: e.target.value })}
-                />
-                {useAccountData && (
-                  <span className="shrink-0 text-slate-400 ml-2" title="Terkunci dari data akun">
-                    <Lock size={14} />
-                  </span>
-                )}
-              </FieldRow>
+                  hint={
+                    !useAccountData && isEmailMismatch ? (
+                      <span className="flex items-start gap-1.5 text-amber-700 bg-amber-50/80 p-2 rounded-lg border border-amber-200/70 mt-1">
+                        <Info className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                        <span>
+                          {t('emailMismatchNotice1')} (<strong>{user?.email}</strong>). {t('emailMismatchNotice2')}
+                        </span>
+                      </span>
+                    ) : undefined
+                  }
+                >
+                  <input
+                    id="invoiceEmail"
+                    type="email"
+                    disabled={useAccountData}
+                    readOnly={useAccountData}
+                    className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                    placeholder={t('invoiceEmailPlaceholder')}
+                    value={formData.email}
+                    onChange={(e) => updateFormData({ email: e.target.value })}
+                  />
+                  {useAccountData && (
+                    <span className="shrink-0 text-slate-400 ml-2" title="Terkunci dari data akun">
+                      <Lock size={14} />
+                    </span>
+                  )}
+                </FieldRow>
+
+                <FieldRow
+                  icon={Phone}
+                  label={t('invoicePhoneLabel')}
+                  htmlFor="invoicePhoneNumber"
+                  required
+                  compact
+                  readOnly={useAccountData}
+                >
+                  <input
+                    id="invoicePhoneNumber"
+                    type="tel"
+                    disabled={useAccountData}
+                    readOnly={useAccountData}
+                    className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                    placeholder={t('invoicePhonePlaceholder')}
+                    value={formData.phoneNumber}
+                    onChange={(e) => updateFormData({ phoneNumber: e.target.value })}
+                  />
+                  {useAccountData && (
+                    <span className="shrink-0 text-slate-400 ml-2" title="Terkunci dari data akun">
+                      <Lock size={14} />
+                    </span>
+                  )}
+                </FieldRow>
+              </div>
             </div>
 
-            {/* Divider line */}
-            <div className="border-t border-slate-100/90 my-5" />
-
-            {/* SECTION: PROMO / REFERRAL CODE INLINE */}
-            <div className="space-y-2.5">
+            {/* SEKSI 2: VOUCHER / REFERRAL CODE (SEKSI BERBEDA DALAM SATU KARTU) */}
+            <div className="pt-5 border-t border-slate-200/80 space-y-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-2">
                   <SectionLabel>{t('voucherTitle')}</SectionLabel>
                   <span className="text-xs text-slate-400 font-normal mb-2.5">({t('optional') || 'opsional'})</span>
                 </div>
-                {voucherInfo.isValid && (
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/80 mb-2.5">
-                    <CheckCircle size={12} />
-                    <span>{t('voucherApplied')}</span>
-                  </div>
-                )}
-              </div>
+              {voucherInfo.isValid && (
+                <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/80 mb-2.5">
+                  <CheckCircle size={12} />
+                  <span>{t('voucherApplied')}</span>
+                </div>
+              )}
+            </div>
 
+            <div className="space-y-2.5">
               <FieldRow
                 icon={Ticket}
-                label={t('voucherTitle')}
+                label={t('voucherCodeRowLabel') || 'Kode Voucher'}
                 htmlFor="voucherCode"
                 compact
-                error={voucherInfo.isError ? voucherInfo.message : undefined}
                 hint={
-                  voucherInfo.isValid && voucherInfo.message ? (
-                    <span className="text-xs text-emerald-600 flex items-center gap-1 font-medium">
-                      <CheckCircle className="w-3.5 h-3.5" /> {voucherInfo.message}
+                  voucherInfo.message ? (
+                    <span className={`flex items-center gap-1.5 text-xs font-medium ${
+                      voucherInfo.isValid
+                        ? 'text-emerald-600'
+                        : voucherInfo.isError
+                          ? 'text-rose-600'
+                          : 'text-slate-500'
+                    }`}>
+                      {voucherInfo.isValid ? (
+                        <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                      ) : voucherInfo.isError ? (
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      ) : (
+                        <Info className="w-3.5 h-3.5 shrink-0" />
+                      )}
+                      <span>{voucherInfo.message}</span>
                     </span>
                   ) : undefined
                 }
               >
-                <input
-                  id="voucherCode"
-                  type="text"
-                  className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none uppercase"
-                  placeholder={t('voucherPlaceholder')}
-                  value={formData.voucherCode || ''}
-                  onChange={handleVoucherChange}
-                />
+                <div className="flex items-center justify-between w-full">
+                  <input
+                    id="voucherCode"
+                    type="text"
+                    className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none uppercase font-mono tracking-wider"
+                    placeholder={t('voucherPlaceholder')}
+                    value={formData.voucherCode || ''}
+                    onChange={handleVoucherChange}
+                  />
+                </div>
               </FieldRow>
-              
-              {voucherInfo.isValid && voucherInfo.message && (
-                <p className="text-xs text-emerald-600 flex items-center gap-1 mt-2 font-medium animate-in slide-in-from-left-2">
-                  <CheckCircle className="w-3 h-3" /> {voucherInfo.message}
-                </p>
-              )}
-              {!voucherInfo.isValid && voucherInfo.message && (
-                <p className={`text-xs flex items-center gap-1 mt-2 font-medium animate-in slide-in-from-left-2 ${voucherInfo.isError ? 'text-rose-600' : 'text-slate-500'}`}>
-                  {voucherInfo.isError ? <AlertTriangle className="w-3 h-3" /> : <Info className="w-3 h-3" />} {voucherInfo.message}
-                </p>
-              )}
 
-              {/* Upgrade CTA */}
+              {/* Upgrade CTA jika voucher eligible Kilat */}
               {voucherInfo.isValid && voucherInfo.isKilatEligible && !formData.isKilatUpgrade && onUpgradeKilat && (
-                <div className="mt-4 p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg border border-amber-200 shadow-sm animate-in fade-in slide-in-from-bottom-2">
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 mt-0.5">
-                      <Zap size={16} className="fill-amber-600" />
+                <div className="mt-2.5 p-3 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200 shadow-sm animate-in fade-in slide-in-from-bottom-2">
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 mt-0.5">
+                      <Zap size={14} className="fill-amber-600" />
                     </div>
                     <div className="flex-1">
-                      <h4 className="text-sm font-bold text-amber-900">{t('kilatUpgradeTitle')}</h4>
-                      <p className="text-xs text-amber-800 mt-0.5">{t('kilatUpgradeTagline')}</p>
-                      <ul className="text-[11px] text-amber-700 mt-2 space-y-1 font-medium">
-                        <li className="flex items-center gap-1.5"><CheckCircle size={10} className="text-amber-500" /> {t('kilatBenefitFast')}</li>
-                        <li className="flex items-center gap-1.5"><CheckCircle size={10} className="text-amber-500" /> {t('kilatBenefitNoPage')}</li>
-                        <li className="flex items-center gap-1.5"><CheckCircle size={10} className="text-amber-500" /> {t('kilatBenefitPrice')}</li>
-                      </ul>
+                      <h4 className="text-xs font-bold text-amber-900">{t('kilatUpgradeTitle')}</h4>
+                      <p className="text-[11px] text-amber-800 mt-0.5">{t('kilatUpgradeTagline')}</p>
                       <button
+                        type="button"
                         onClick={onUpgradeKilat}
-                        className="mt-3 w-full sm:w-auto px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-1.5"
+                        className="mt-2 w-full px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                       >
+                        <Zap size={12} className="fill-white" />
                         {t('kilatUpgradeButton')}
                       </button>
                     </div>
@@ -543,132 +642,24 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
             </div>
           </div>
         </div>
-
-        {/* SECTION: COST BREAKDOWN */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-[0_4px_20px_-2px_rgba(24,124,255,0.06),0_12px_32px_-4px_rgba(0,0,0,0.04)] overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
-                <Wallet size={18} />
-              </div>
-              <h3 className="text-sm font-bold text-slate-900 tracking-tight">{t('costBreakdown')}</h3>
-            </div>
-          </div>
-
-          <div className="p-6">
-            {/* Rincian dirender `CostBreakdown` — komponen yang SAMA dipakai
-                kartu jadwal & halaman bayar. Sebelumnya blok ini digambar
-                tangan di sini, dan salinannya di layar lain bisa menyimpang
-                diam-diam: urutan baris, tanda diskon, label.
-
-                ⚠️ NOL perubahan hitungan. `costCalculation` tetap datang dari
-                `calculateTotalCost` yang sama; `orderMoneyLines` hanya
-                memetakan bentuknya, tidak menghitung ulang apa pun.
-
-                `variant="full"`: di Ringkasan angkanya MASIH BISA DIUBAH
-                (durasi, hadiah, voucher), jadi rincian yang bisa tersembunyi
-                akan menyembunyikan justru yang sedang diputuskan. */}
-            <CostBreakdown
-              total={costCalculation.totalCost}
-              lines={orderMoneyLines(costCalculation, {
-                questionCount: formData.questionCount,
-                duration: formData.duration,
-                isKilat: formData.isKilatUpgrade,
-                /* ⚠️ Voucher yang DIBLOKIR tidak boleh muncul sebagai label
-                   diskon. `costCalculation` di atas sudah dihitung dari
-                   `effectiveForm` yang voucher-nya dikosongkan, jadi
-                   `calc.discount` memang 0 dan barisnya tidak akan dirender —
-                   tapi meneruskan kodenya tetap salah arah. */
-                voucherCode: ilkomunyBlocked ? undefined : formData.voucherCode,
-              })}
-              variant="full"
-              totalLabel={t('totalPayment')}
-            />
-          </div>
         </div>
 
-        {/* Terms Agreement Checkbox - Soft Highlight Strip (Solusi 3) */}
-        <div
-          className={`rounded-2xl p-4 transition-all duration-200 ${
-            attemptedSubmit && !isTermsAccepted
-              ? 'border border-rose-300 bg-rose-50/80 shadow-xs ring-2 ring-rose-400/20'
-              : 'border border-sky-200/80 bg-sky-50/60 shadow-2xs hover:bg-sky-50/90 hover:border-sky-300'
-          }`}
-        >
-          <div className="flex items-start gap-3">
-            <div className="flex h-5 items-center mt-0.5">
-              <input
-                id="terms-checkbox"
-                type="checkbox"
-                checked={isTermsAccepted}
-                onChange={(e) => updateFormData({ termsAccepted: e.target.checked })}
-                className={`h-4 w-4 rounded cursor-pointer transition-all ${
-                  attemptedSubmit && !isTermsAccepted
-                    ? 'border-rose-400 text-rose-600 focus:ring-rose-500 accent-rose-600 ring-2 ring-rose-400/30'
-                    : 'border-sky-300 text-jfu-primary focus:ring-sky-400 accent-jfu-primary'
-                }`}
-              />
-            </div>
-            <div className="flex-1">
-              <label
-                htmlFor="terms-checkbox"
-                className={`text-xs md:text-sm leading-relaxed cursor-pointer select-none font-medium ${
-                  attemptedSubmit && !isTermsAccepted ? 'text-rose-950' : 'text-slate-700'
-                }`}
-              >
-                {t('byContinuingAgree')}{' '}
-                <a
-                  href="/homepage/privacy-policy.html"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-semibold text-jfu-primary hover:text-jfu-dark underline decoration-blue-300 hover:decoration-blue-500 transition-colors"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {t('privacyPolicy')}
-                </a>
-                {' '}{t('andText')}{' '}
-                <a
-                  href="/homepage/terms-conditions.html"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-semibold text-jfu-primary hover:text-jfu-dark underline decoration-blue-300 hover:decoration-blue-500 transition-colors"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {t('termsConditions')}
-                </a>
-              </label>
+        {/* KOLOM KANAN: Order Live Companion (Step 2), Terms Agreement & CTA (~40-42% / 5 cols, Sticky) */}
+        <div className="lg:col-span-5 space-y-4 lg:sticky lg:top-24">
+          <OrderLiveCompanion
+            formData={formData}
+            step={2}
+            costCalculation={costCalculation}
+            onCancelOrder={onCancelOrder}
+          />
 
-              {attemptedSubmit && !isTermsAccepted && (
-                <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-rose-600 animate-in slide-in-from-top-1">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>{t('errorTermsRequired') || 'Mohon setujui Syarat & Ketentuan serta Kebijakan Privasi'}</span>
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* ACTION — satu tombol, tiga takdir. */}
-        <div className="pt-2 pb-12 space-y-3">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={onBack}
-              disabled={isSubmitting}
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200/90 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition-all hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900 shadow-xs cursor-pointer disabled:opacity-60 disabled:pointer-events-none"
-            >
-              <ArrowLeft className="w-4 h-4 text-slate-500" />
-              {t('backButton')}
-            </button>
+          {/* Agreement Box with Primary Action & Implicit Consent */}
+          <div className="rounded-2xl border border-sky-200/80 bg-sky-50/60 p-4 sm:p-5 shadow-xs space-y-3.5">
             <button
               type="button"
               onClick={handlePrimaryAction}
               disabled={isSubmitting}
-              className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white transition-all shadow-xs cursor-pointer ${
-                !isAutoApproval
-                  ? 'bg-amber-600 hover:bg-amber-700'
-                  : 'bg-jfu-primary hover:bg-jfu-dark'
-              } disabled:cursor-not-allowed disabled:opacity-50`}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-bold text-white transition-all shadow-sm cursor-pointer bg-jfu-primary hover:bg-jfu-dark active:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isSubmitting ? (
                 <>
@@ -696,9 +687,30 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
                 </>
               )}
             </button>
+
+            <p className="text-center text-xs text-slate-600 leading-relaxed px-1">
+              {t('byContinuingAgree')}{' '}
+              <a
+                href="/homepage/privacy-policy.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-jfu-primary hover:text-jfu-dark underline decoration-blue-300 hover:decoration-blue-500 transition-colors"
+              >
+                {t('privacyPolicy')}
+              </a>
+              {' '}{t('andText')}{' '}
+              <a
+                href="/homepage/terms-conditions.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-jfu-primary hover:text-jfu-dark underline decoration-blue-300 hover:decoration-blue-500 transition-colors"
+              >
+                {t('termsConditions')}
+              </a>
+            </p>
           </div>
         </div>
       </div>
-    </div >
+    </div>
   );
 }

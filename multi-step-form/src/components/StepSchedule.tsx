@@ -120,7 +120,6 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
       isBusy={isConfirming}
       orderLabel={formData.title || undefined}
       title={mode === 'kilat' ? t('kilatScheduleTitle') : t(seg.key, seg.vars)}
-      subtitle={mode === 'kilat' ? undefined : t('scheduleSubtitle')}
       calendar={
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-2">

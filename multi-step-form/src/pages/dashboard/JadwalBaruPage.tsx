@@ -476,7 +476,6 @@ export function JadwalBaruPage() {
       isBusy={isSaving}
       orderLabel={`${submission.title}${bookingId ? ` · #${bookingId}` : ''}`}
       title={t(seg.key, seg.vars)}
-      subtitle={t('scheduleSubtitle')}
       duration={
         /* Lama tayang */
         <div className="space-y-3">

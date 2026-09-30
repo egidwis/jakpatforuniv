@@ -100,8 +100,12 @@ export function RateNoticeBlock() {
 }
 
 /** Tabel tarif + catatannya. Harga normal dicoret DI ATAS harga bayar (bukan
- *  sebaris) supaya kolom tetap sempit di layar ponsel. */
-export function RateTable() {
+ *  sebaris) supaya kolom tetap sempit di layar ponsel.
+ *
+ *  `highlightTier` (0–4) menebalkan baris kategori soal milik peneliti —
+ *  dipakai tooltip tarif di kartu ringkasan order. `showNotes={false}` untuk
+ *  pemanggil yang punya catatannya sendiri. */
+export function RateTable({ highlightTier = -1, showNotes = true }: { highlightTier?: number; showNotes?: boolean } = {}) {
   const { t, language } = useLanguage();
   const columns = rateTableColumns(Date.now());
   const rb = (n: number) => `${Math.round(n / 1000)}rb`;
@@ -133,8 +137,24 @@ export function RateTable() {
           </thead>
           <tbody>
             {TIER_LABELS.map((label, tier) => (
-              <tr key={label} className="border-t border-slate-100">
-                <th scope="row" className="py-1.5 px-2 font-normal text-left text-slate-700 whitespace-nowrap">{label}</th>
+              <tr
+                key={label}
+                aria-current={tier === highlightTier ? 'true' : undefined}
+                className="border-t border-slate-100"
+              >
+                {/* Bilah kiri lewat inset shadow, bukan outline pada <tr>: Tailwind 3
+                    `outline-2` tanpa gaya tidak terlihat, dan outline baris tabel
+                    tidak konsisten antar-browser. */}
+                <th
+                  scope="row"
+                  className={`py-1.5 px-2 text-left whitespace-nowrap ${
+                    tier === highlightTier
+                      ? 'font-bold text-slate-900 shadow-[inset_3px_0_0_theme(colors.emerald.600)]'
+                      : 'font-normal text-slate-700'
+                  }`}
+                >
+                  {label}
+                </th>
                 {columns.map(({ entry, active }) => (
                   <td
                     key={entry.from ?? 'base'}
@@ -154,12 +174,14 @@ export function RateTable() {
         </table>
       </div>
 
-      <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-emerald-900/90 leading-relaxed">
-        <li>{t('rateTableSubtitle')}</li>
-        <li>{t('rateTableNoteLocked')}</li>
-        <li>{t('rateTableNoteRebook')}</li>
-        <li>{t('rateTableNoteExcl')}</li>
-      </ul>
+      {showNotes && (
+        <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-emerald-900/90 leading-relaxed">
+          <li>{t('rateTableSubtitle')}</li>
+          <li>{t('rateTableNoteLocked')}</li>
+          <li>{t('rateTableNoteRebook')}</li>
+          <li>{t('rateTableNoteExcl')}</li>
+        </ul>
+      )}
     </div>
   );
 }

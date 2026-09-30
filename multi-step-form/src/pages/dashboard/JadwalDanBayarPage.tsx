@@ -448,7 +448,6 @@ export function JadwalDanBayarPage() {
         isBusy={isWorking}
         orderLabel={`${entry.title} · #${entry.bookingId}`}
         title={t(seg.key, seg.vars)}
-        subtitle={t('scheduleSubtitle')}
         calendar={
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-2">

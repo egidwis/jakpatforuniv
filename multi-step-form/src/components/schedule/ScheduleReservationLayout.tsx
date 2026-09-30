@@ -76,7 +76,7 @@ export function ScheduleReservationLayout({
   const { t } = useLanguage();
 
   return (
-    <div className="max-w-2xl mx-auto px-4 sm:px-6 pt-6 pb-16">
+    <div className="max-w-5xl mx-auto px-4 md:px-6 pt-6 pb-16">
       {/*
         Jalan keluar berdiri DI LUAR kartu: ia menjawab "aku di mana, bagaimana
         keluar" — pertanyaan yang muncul sebelum isinya dibaca, dan bukan bagian
@@ -102,7 +102,7 @@ export function ScheduleReservationLayout({
         hidup di dalam satu permukaan; pemisahnya garis, bukan jurang.
       */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <header className="px-5 sm:px-6 pt-5 sm:pt-6 pb-5 space-y-1.5">
+        <header className="px-6 sm:px-10 lg:px-14 pt-7 sm:pt-8 pb-6 space-y-1.5">
           {orderLabel && (
             <div className="flex items-center gap-1.5 text-xs text-slate-500">
               <span className="text-slate-400">{t('scheduleForOrderLabel')}</span>
@@ -128,15 +128,15 @@ export function ScheduleReservationLayout({
           jarak membaca sebagai "hal lain".
         */}
         {duration && (
-          <section className="px-5 sm:px-6 py-5 border-t border-slate-100">{duration}</section>
+          <section className="px-6 sm:px-10 lg:px-14 py-6 sm:py-7 border-t border-slate-100">{duration}</section>
         )}
 
-        <section className="px-5 sm:px-6 py-5 border-t border-slate-100">
+        <section className="px-6 sm:px-10 lg:px-14 py-6 sm:py-7 border-t border-slate-100">
           {calendar}
         </section>
 
         {reward && (
-          <section className="px-5 sm:px-6 py-5 border-t border-slate-100">{reward}</section>
+          <section className="px-6 sm:px-10 lg:px-14 py-6 sm:py-7 border-t border-slate-100">{reward}</section>
         )}
 
         {/*
@@ -144,7 +144,7 @@ export function ScheduleReservationLayout({
           kartu. Peneliti tidak boleh harus memindai ke tempat lain untuk melihat
           angka yang sedang ia setujui.
         */}
-        <div className="px-5 sm:px-6 py-5 border-t border-slate-200 bg-slate-50/70 space-y-3">
+        <div className="px-6 sm:px-10 lg:px-14 py-6 sm:py-7 border-t border-slate-200 bg-slate-50/70 space-y-3.5">
           {cost}
 
           {/*

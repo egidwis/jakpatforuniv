@@ -557,7 +557,6 @@ export function PaymentCheckoutPage() {
         isBusy={isRebooking}
         orderLabel={submission.title || 'Untitled Form'}
         title={t('segmentReservation')}
-        subtitle={t('scheduleSubtitle')}
         alertBanner={
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
             <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
