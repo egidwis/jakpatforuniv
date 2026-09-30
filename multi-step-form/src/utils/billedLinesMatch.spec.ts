@@ -26,6 +26,8 @@ const entryOf = (o: Partial<AdScheduleEntry> = {}): AdScheduleEntry => ({
   totalCost: 0, subtotal: null, ppnAmount: null,
   voucherCode: null, prizePerWinner: 0, winnerCount: 0,
   additionalPrizePerWinner: 0, isNewPeriod: false,
+  // Instan tarif dikunci (sql/103) supaya hasilnya tidak bergantung kalender.
+  rateLockedAt: '2026-09-01T00:00:00Z',
   ...o,
 } as AdScheduleEntry);
 

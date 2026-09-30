@@ -109,7 +109,7 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
   */
   const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
   const effectiveForm = ilkomunyBlocked ? { ...formData, voucherCode: '' } : formData;
-  const cost = calculateTotalCost(effectiveForm);
+  const cost = calculateTotalCost(effectiveForm, Date.now());
 
   const seg = segmentTitleOf({ phase: 'reservation', ordinal: 1 });
 

@@ -24,10 +24,10 @@ var translations = {
         // Hero Section
         hero: {
             heading: "Riset Stuck Karena Susah Dapat Responden?",
-            subheadline: "Iklankan surveymu ke <strong>2 juta+ responden Jakpat</strong> di seluruh Indonesia. Mulai dari <strong>100 ribuan</strong>, pilih durasi iklan sesuai kebutuhanmu!",
+            subheadline: "Iklankan surveymu ke <strong>2 juta+ responden Jakpat</strong> di seluruh Indonesia. Bayar <strong>per hari tayang</strong>, pilih durasi iklan sesuai kebutuhanmu!",
             ctaButton: "🚀 Iklankan Survey Sekarang",
             ctaAriaLabel: "Iklankan survey Anda sekarang di Jakpat for Universities",
-            badgePrice: "Harga mulai <strong>100 ribuan</strong>",
+            badgePrice: "Tarif <strong>per hari tayang</strong>",
             badgeLocation: "Tersebar di <strong>seluruh Indonesia</strong>",
             badgeSpeed: "Rata-rata <strong>300+ responden/hari</strong>",
             disclaimer: "*Hasil bergantung jumlah pertanyaan & insentif yang ditawarkan"
@@ -138,10 +138,10 @@ var translations = {
         // Hero Section
         hero: {
             heading: "Stuck with Your Research Because No One's Responding?",
-            subheadline: "Get your survey in front of <strong>2M+ Jakpat respondents</strong> across Indonesia. Starts from <strong>100K IDR</strong> — pick the ad duration that fits you!",
+            subheadline: "Get your survey in front of <strong>2M+ Jakpat respondents</strong> across Indonesia. Pay <strong>per airing day</strong> — pick the ad duration that fits you!",
             ctaButton: "🚀 Promote Your Survey Now",
             ctaAriaLabel: "Promote your survey now on Jakpat for Universities",
-            badgePrice: "Price starts at <strong>IDR 100K</strong>",
+            badgePrice: "Priced <strong>per airing day</strong>",
             badgeLocation: "Spread across <strong>all of Indonesia</strong>",
             badgeSpeed: "Average <strong>300+ respondents/day</strong>",
             disclaimer: "*Results depend on number of questions & incentives offered"

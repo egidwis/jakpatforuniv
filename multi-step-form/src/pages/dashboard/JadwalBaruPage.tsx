@@ -260,6 +260,7 @@ export function JadwalBaruPage() {
     distributionType: submission?.distribution_type ?? null,
     // Voucher melekat ke ORDER dan diwariskan; layar ini tidak punya input.
     voucherCode: submission?.voucher_code ?? null,
+    orderCreatedAt: submission?.created_at ?? null,
   });
 
   // Prefill hadiah dari jadwal sebelumnya, hanya bila batch-nya memang baru.

@@ -9,6 +9,7 @@ import {
   calculateAdCostPerDay,
   calculatePpn,
   getKilatAddonCost,
+  voucherInstantOf,
 } from '../../../utils/cost-calculator';
 import type { SurveySubmission, PaymentState } from '../types';
 import { deriveLifecycle } from '../lifecycle';
@@ -34,17 +35,21 @@ export function DistributionConvertDialog({
 
   if (!convertTarget) return null;
 
+  // ⚠️ PRATINJAU. Instan tarif = tanggal order (`submittedAt`); angka yang
+  // DITULIS dihitung ulang convertDistributionType() dari `rate_locked_at`.
+  const previewAt = voucherInstantOf(submission.submittedAt);
   const previewIncentive = calculateIncentiveCost(
     submission.winnerCount || 0,
     submission.prize_per_winner || 0
   );
   const previewKilatSubtotal =
-    calculateAdCostPerDay(submission.questionCount || 0) +
+    calculateAdCostPerDay(submission.questionCount || 0, previewAt) +
     getKilatAddonCost(submission.voucher_code) +
     previewIncentive;
   const previewRegularAdCost = calculateTotalAdCost(
     submission.questionCount || 0,
-    submission.duration || 0
+    submission.duration || 0,
+    previewAt
   );
   const previewRegularSubtotal =
     previewRegularAdCost +
@@ -53,7 +58,8 @@ export function DistributionConvertDialog({
       submission.voucher_code,
       previewRegularAdCost,
       previewIncentive,
-      submission.duration || 0
+      submission.duration || 0,
+      previewAt
     );
   const previewSubtotal = convertTarget === 'kilat' ? previewKilatSubtotal : previewRegularSubtotal;
   const previewTotal = previewSubtotal + calculatePpn(previewSubtotal);

@@ -12,6 +12,7 @@ import {
   calculatePpn,
   getKilatAddonCost,
   voucherInstantOf,
+  rateInstantOf,
 } from './cost-calculator';
 
 // Supabase URL dan anon key akan diambil dari environment variables
@@ -2571,6 +2572,29 @@ export interface OrderPriceResult {
   scheduleCount: number;
 }
 
+/**
+ * Instan tarif HARGA ORDER = `rate_locked_at` jadwal pertamanya (sql/103).
+ *
+ * Harga order yang tersimpan di `form_submissions` adalah harga jadwal ke-1,
+ * dan create-payment.js menilai jadwal itu dengan kolom yang sama — termasuk
+ * dua cadangannya, yang WAJIB identik dengan server:
+ *   - NULL (slot dilepas, belum dipesan ulang) → sekarang;
+ *   - baris cermin tidak ada → tanggal order.
+ * Gagal membaca = MELEMPAR, sama seperti server (502). Pemanggilnya menulis
+ * `total_cost`; menebak "sekarang" di sini menagih order November dengan tarif
+ * Desember tanpa ada yang tahu.
+ */
+async function firstScheduleRateInstant(submissionId: string, orderCreatedAt: string | null): Promise<number> {
+  const { data, error } = await supabase
+    .from('ad_schedules')
+    .select('rate_locked_at')
+    .eq('source_table', 'form_submissions')
+    .eq('source_id', submissionId)
+    .maybeSingle();
+  if (error) throw error;
+  return rateInstantOf(data ? data.rate_locked_at : orderCreatedAt);
+}
+
 export const recomputeOrderPrice = async (
   submissionId: string,
   overrides: { questionCount?: number } = {}
@@ -2594,14 +2618,15 @@ export const recomputeOrderPrice = async (
   const prizePerWinner = Number(sub.prize_per_winner) || 0;
   const incentiveCost = calculateIncentiveCost(winnerCount, prizePerWinner);
 
+  const rateAt = await firstScheduleRateInstant(submissionId, sub.created_at ?? null);
   let subtotal: number;
   if (sub.distribution_type === 'kilat') {
     subtotal =
-      calculateAdCostPerDay(questionCount) +
+      calculateAdCostPerDay(questionCount, rateAt) +
       getKilatAddonCost(sub.voucher_code) +
       incentiveCost;
   } else {
-    const adCost = calculateTotalAdCost(questionCount, duration);
+    const adCost = calculateTotalAdCost(questionCount, duration, rateAt);
     const discount = calculateDiscount(
       sub.voucher_code, adCost, incentiveCost, duration, voucherInstantOf(sub.created_at),
     );
@@ -2655,11 +2680,12 @@ export const previewOrderPrice = async (
     Number(sub.winner_count) || 0,
     Number(sub.prize_per_winner) || 0,
   );
+  const rateAt = await firstScheduleRateInstant(submissionId, sub.created_at ?? null);
   let subtotal: number;
   if (sub.distribution_type === 'kilat') {
-    subtotal = calculateAdCostPerDay(questionCount) + getKilatAddonCost(sub.voucher_code) + incentiveCost;
+    subtotal = calculateAdCostPerDay(questionCount, rateAt) + getKilatAddonCost(sub.voucher_code) + incentiveCost;
   } else {
-    const adCost = calculateTotalAdCost(questionCount, duration);
+    const adCost = calculateTotalAdCost(questionCount, duration, rateAt);
     const discount = calculateDiscount(
       sub.voucher_code, adCost, incentiveCost, duration, voucherInstantOf(sub.created_at),
     );
@@ -4003,14 +4029,16 @@ export const convertDistributionType = async (
   const prizePerWinner = Number(sub.prize_per_winner) || 0;
   const incentiveCost = calculateIncentiveCost(winnerCount, prizePerWinner);
 
+  // Memindah jalur distribusi bukan pemesanan ulang: tarif jadwal pertama tetap.
+  const rateAt = await firstScheduleRateInstant(submissionId, sub.created_at ?? null);
   let subtotal: number;
   if (target === 'kilat') {
     subtotal =
-      calculateAdCostPerDay(questionCount) +
+      calculateAdCostPerDay(questionCount, rateAt) +
       getKilatAddonCost(sub.voucher_code) +
       incentiveCost;
   } else {
-    const adCost = calculateTotalAdCost(questionCount, duration);
+    const adCost = calculateTotalAdCost(questionCount, duration, rateAt);
     // Voucher dinilai pada tanggal order lahir: memindahkan jalur distribusi
     // tidak boleh mencabut hak diskon yang sudah dimiliki pemesannya.
     const discount = calculateDiscount(
@@ -4915,6 +4943,13 @@ export interface AdScheduleEntry {
    * ia tanggal jadwal itu dibuat, dan itulah yang tampil di kartu peneliti.
    */
   createdAt: string | null;
+  /**
+   * Instan tarif jadwal ini — `ad_schedules.rate_locked_at` (sql/103), diisi
+   * trigger saja. NULL = dilepas/dibatalkan dan belum dipesan ulang; pembaca
+   * memakai "sekarang" lewat `rateInstantOf()`. JANGAN diganti `createdAt` /
+   * `submissionCreatedAt`: keduanya tidak tahu soal pemesanan ulang.
+   */
+  rateLockedAt: string | null;
   /** Sumbu ketiga, diisi query kedua. 'kilat' = memang tidak pernah punya halaman. */
   pageStatus: 'none' | 'draft' | 'published' | 'kilat';
   /**
@@ -5050,7 +5085,7 @@ export const fetchAdSchedules = async (
         distribution_type, kilat_slot_hour, is_extra_ad,
         total_cost, subtotal, ppn_amount, voucher_code,
         prize_per_winner, winner_count, additional_prize_per_winner, is_new_period, period_batch,
-        slot_booked_by, slot_reserved_at, created_at,
+        slot_booked_by, slot_reserved_at, created_at, rate_locked_at,
         air_on_credit_at, air_on_credit_note,
         form_submissions!ad_schedules_submission_id_fkey ( title, full_name, university, created_at )
       `, { count: 'exact' });
@@ -5159,6 +5194,7 @@ export const fetchAdSchedules = async (
       university: row.form_submissions?.university || null,
       submissionCreatedAt: row.form_submissions?.created_at || new Date().toISOString(),
       createdAt: row.created_at || null,
+      rateLockedAt: row.rate_locked_at ?? null,
       pageStatus,
       isExtraAd: !!row.is_extra_ad,
       // Hanya bermakna untuk halaman yang BENAR-BENAR ada. Kilat dan order tanpa

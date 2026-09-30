@@ -14,6 +14,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import { RateNoticeBlock } from './RateNotice';
 
 export interface AdsEntryModalProps {
   isOpen: boolean;
@@ -164,6 +165,9 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Tarif bertanggal (1 Okt 2026 → 1 Jan 2027); hilang sendiri mulai 1 Feb 2027 */}
+              <RateNoticeBlock />
 
               {/* Tautan Syarat & Ketentuan */}
               <div className="text-center text-xs text-slate-500 pt-0.5">

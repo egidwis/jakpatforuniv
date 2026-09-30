@@ -1,5 +1,5 @@
 import {
-  calculateAdCostPerDay, calculateDiscount, calculateIncentiveCost, getKilatAddonCost,
+  calculateAdCostPerDay, calculateDiscount, calculateIncentiveCost, getKilatAddonCost, rateInstantOf,
 } from '@/utils/cost-calculator';
 import type { AdScheduleEntry } from '@/utils/supabase';
 
@@ -52,6 +52,13 @@ export interface OrderPricingInput {
    * Kosong = sekarang, mempertahankan perilaku pemanggil yang belum menyediakannya.
    */
   voucherInstantMs?: number;
+  /**
+   * Instan TARIF — `rateInstantOf(entry.rateLockedAt)` (sql/103). WAJIB, tanpa
+   * default: tagihan Desember untuk order Oktober harus memakai tarif Oktober,
+   * persis seperti yang dihitung create-payment.js. Berbeda dari
+   * `voucherInstantMs` untuk jadwal yang dipesan ulang sesudah dilepas.
+   */
+  rateInstantMs: number;
 }
 
 /**
@@ -95,7 +102,7 @@ export function buildOrderInvoiceItems(
       id: nextId(),
       name: 'Jakpat for Universities (ads)',
       qty: 1,
-      price: calculateAdCostPerDay(questionCount),
+      price: calculateAdCostPerDay(questionCount, input.rateInstantMs),
       category: 'Jakpat for Universities (ads)',
     }, {
       id: nextId(),
@@ -117,7 +124,10 @@ export function buildOrderInvoiceItems(
   }
 
   const invoiceItems: InvoiceItem[] = [];
-  const costPerDay = calculateAdCostPerDay(questionCount);
+  // Harga satuan = tarif EFEKTIF (yang ditagih). Invoice & kwitansi sengaja
+  // tidak memuat baris "Harga perkenalan" — sama seperti voucher yang sejak
+  // dulu dilipat ke harga satuan (rencana 29 Sep, layar ⑧).
+  const costPerDay = calculateAdCostPerDay(questionCount, input.rateInstantMs);
   const adCost = costPerDay * duration;
   const incentiveCost = calculateIncentiveCost(winnerCount, prizePerWinner);
   const discount = calculateDiscount(input.voucherCode || undefined, adCost, incentiveCost, duration, input.voucherInstantMs ?? Date.now());
@@ -195,7 +205,8 @@ export function buildExtensionInvoiceItems(
   }
 ): InvoiceItem[] {
   const items: InvoiceItem[] = [];
-  const costPerDay = calculateAdCostPerDay(opts.questionCount || 0);
+  // Instan tarif perpanjangan = saat ia dipesan (atau dipesan ulang) — sql/103.
+  const costPerDay = calculateAdCostPerDay(opts.questionCount || 0, rateInstantOf(entry.rateLockedAt));
   const duration = entry.duration || 0;
 
   if (costPerDay > 0 && duration > 0) {

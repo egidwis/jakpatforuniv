@@ -52,6 +52,9 @@ const entryOf = (over: Partial<AdScheduleEntry> = {}): AdScheduleEntry => ({
   researcherName: 'Uji',
   university: null,
   submissionCreatedAt: '2026-09-01T00:00:00Z',
+  // Instan tarif DIKUNCI (sql/103) — tanpa ini fixture jatuh ke "sekarang"
+  // dan hasilnya berubah sendiri saat kalender melewati 1 Okt 2026.
+  rateLockedAt: '2026-09-01T00:00:00Z',
   ...over,
 } as AdScheduleEntry);
 

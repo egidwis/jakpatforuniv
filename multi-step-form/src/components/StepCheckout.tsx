@@ -153,7 +153,7 @@ export function StepCheckout({ formData, updateFormData, nextStep, onSubmitOrder
   // "sudah pernah digunakan" tampil, tanpa memblokir submit (order lanjut harga normal).
   useEffect(() => {
     const effectiveForm = ilkomunyBlocked ? { ...formData, voucherCode: '' } : formData;
-    setCostCalculation(calculateTotalCost(effectiveForm));
+    setCostCalculation(calculateTotalCost(effectiveForm, Date.now()));
 
     if (ilkomunyBlocked) {
       setVoucherInfo({ isValid: false, isError: true, message: 'Kode voucher ini sudah pernah digunakan (berlaku satu kali per akun).' });

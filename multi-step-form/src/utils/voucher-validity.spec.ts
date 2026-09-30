@@ -81,11 +81,13 @@ describe('harga dikunci ke tanggal order, bukan ke jam pembayaran', () => {
       ...subDasar,
       voucher_code: 'JFUSUHUD',
       created_at: '2026-08-17T03:00:00Z',
+      rate_instant: Date.parse('2026-08-17T03:00:00Z'),
     });
     const tanpaVoucher = computeTotalCostFromSubmission({
       ...subDasar,
       voucher_code: null,
       created_at: '2026-08-17T03:00:00Z',
+      rate_instant: Date.parse('2026-08-17T03:00:00Z'),
     });
 
     expect(denganVoucher.total).toBeLessThan(tanpaVoucher.total);
@@ -99,11 +101,13 @@ describe('harga dikunci ke tanggal order, bukan ke jam pembayaran', () => {
       ...subDasar,
       voucher_code: 'JFUSUHUD',
       created_at: '2026-09-01T03:00:00Z',
+      rate_instant: Date.parse('2026-09-01T03:00:00Z'),
     });
     const tanpaVoucher = computeTotalCostFromSubmission({
       ...subDasar,
       voucher_code: null,
       created_at: '2026-09-01T03:00:00Z',
+      rate_instant: Date.parse('2026-09-01T03:00:00Z'),
     });
 
     expect(denganVoucher.total).toBe(tanpaVoucher.total);

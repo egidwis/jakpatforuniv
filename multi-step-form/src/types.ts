@@ -59,4 +59,12 @@ export interface CostCalculation {
   totalCost: number;   // subtotal + ppn — ini yang ditagih DOKU
   discount: number;
   kilatAddonCost?: number; // JFU Kilat add-on
+  /**
+   * Biaya iklan pada harga KATALOG (AD_RATE_SCHEDULE.list). `adCost` tetap
+   * harga efektif — semua pemanggil lama tidak berubah arti. Selisihnya
+   * (`adCostList − adCost`) adalah baris "Harga perkenalan".
+   */
+  adCostList?: number;
+  /** Tanggal terakhir harga perkenalan berlaku (YYYY-MM-DD, WIB) — label saja. */
+  introUntil?: string | null;
 }

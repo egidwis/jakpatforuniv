@@ -21,6 +21,24 @@
         "rule": "overused-font",
         "value": "arial",
         "createdAt": "2026-09-28T23:12:16.359Z"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "*",
+        "files": [
+          "src/components/RateNotice.tsx"
+        ],
+        "createdAt": "2026-09-29T06:56:29.196Z",
+        "reason": "Claude: slate-500 hanya dipakai sel non-aktif berlatar putih; sel aktif (bg-emerald-50) memakai text-emerald-700 lewat ternary"
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "animate-bounce",
+        "files": [
+          "src/pages/dashboard/ChatPage.tsx"
+        ],
+        "createdAt": "2026-09-29T07:02:23.841Z",
+        "reason": "Claude: titik indikator 'Mimin sedang mengetik' (pola chat konvensional, dari commit 41ccf8c, di luar perubahan tarif)"
       }
     ]
   }

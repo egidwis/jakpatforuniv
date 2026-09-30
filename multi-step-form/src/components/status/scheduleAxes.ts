@@ -190,6 +190,11 @@ export function scheduleFromSubmission(submission: FormSubmission): AdScheduleEn
         // dinamai — jadi NULL di sini bukan kehilangan, melainkan nilai yang benar.
         periodBatch: null,
         createdAt: submission.created_at || null,
+        // Cermin trigger sql/103 untuk jadwal pertama: tanggal order, kecuali
+        // slotnya sudah dilepas/dibatalkan (→ NULL = tarif saat dipesan ulang).
+        rateLockedAt: (!hasDates && submission.payment_status === 'expired') || status === 'slot_cancelled'
+            ? null
+            : submission.created_at || null,
         slotBookedBy: submission.slot_booked_by || null,
         slotReservedAt: submission.slot_reserved_at || null,
         title: submission.title || '',

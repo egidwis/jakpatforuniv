@@ -341,7 +341,9 @@ export function MultiStepForm() {
     try {
       const saved = await submitOrder({
         formData: merged,
-        cost: calculateTotalCost(effective),
+        // Order baru: instan tarif = sekarang (sama dengan `created_at` yang
+        // dipaksakan sql/103 saat INSERT).
+        cost: calculateTotalCost(effective, Date.now()),
         isAutoApproval: auto,
         ilkomunyBlocked,
         authUserId: user?.id,

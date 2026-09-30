@@ -26,6 +26,9 @@ import { pricingRowForSchedule, computeTotalCostFromSubmission, buildNoteItems }
 const ORDER_LAHIR = '2026-08-20T03:00:00Z';
 // 2 Sep 2026 — JFUSUHUD sudah mati.
 const SESUDAH_VOUCHER_MATI = Date.parse('2026-09-02T04:00:00Z');
+// Instan TARIF (sql/103): jadwal pertama & perpanjangan di sini dipesan
+// sebelum 1 Okt 2026 — tarif lama. Voucher tetap dinilai pada `created_at`.
+const RATE = Date.parse(ORDER_LAHIR);
 
 const ORDER = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -66,14 +69,14 @@ afterEach(() => {
 
 describe('kolom mana dari mana (sub-langkah f)', () => {
   test('duration datang dari JADWAL, bukan order', () => {
-    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null, RATE);
     expect(row.duration).toBe(3);
     expect(row.duration).not.toBe(ORDER.duration);
   });
 
   test('question_count & distribution_type tetap dari ORDER', () => {
     // Kuesionernya satu; jadwal ke-2 menayangkan survei yang sama.
-    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null, RATE);
     expect(row.question_count).toBe(20);
     expect(row.distribution_type).toBe('regular');
   });
@@ -83,26 +86,26 @@ describe('kolom mana dari mana (sub-langkah f)', () => {
     // baris jadwal dioper apa adanya, voucher dinilai pada tanggal JADWAL
     // dibuat. Itu persis bug yang ditutup create-payment-select.spec.ts,
     // dilahirkan kembali lewat pintu lain.
-    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null, RATE);
     expect(row.created_at).toBe(ORDER_LAHIR);
   });
 
   test('voucher NULL di jadwal TIDAK mencabut voucher order', () => {
     // 18/18 jadwal produksi ber-voucher NULL. Mengambilnya apa adanya membuat
     // setiap jadwal ke-2 kehilangan diskon tanpa satu pun error.
-    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null, RATE);
     expect(row.voucher_code).toBe('JFUSUHUD');
   });
 
   test('voucher TAGIHAN tetap menang kalau ada', () => {
     // Presedensi lama dipertahankan: voucher tagihan > voucher order.
-    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, 'ILKOMUNY');
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, 'ILKOMUNY', RATE);
     expect(row.voucher_code).toBe('ILKOMUNY');
   });
 
   test('voucher JADWAL menang kalau memang diisi', () => {
     const row = pricingRowForSchedule(
-      ORDER, { ...JADWAL_BATCH_LAMA, voucher_code: 'JFUFEB' }, null,
+      ORDER, { ...JADWAL_BATCH_LAMA, voucher_code: 'JFUFEB' }, null, RATE,
     );
     expect(row.voucher_code).toBe('JFUFEB');
   });
@@ -112,13 +115,13 @@ describe('hadiah hanya ditagih saat batch BARU', () => {
   test('batch lama: nol hadiah, walau ordernya punya', () => {
     // Pool batch itu sudah didanai jadwal pertama. Menagihnya lagi adalah
     // penagihan ganda yang diperbaiki sql/37.
-    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null, RATE);
     expect(row.winner_count).toBe(0);
     expect(row.prize_per_winner).toBe(0);
   });
 
   test('batch baru: hadiah JADWAL yang ditagih, bukan hadiah order', () => {
-    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_BARU, null);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_BARU, null, RATE);
     expect(row.winner_count).toBe(4);
     expect(row.prize_per_winner).toBe(25_000);
   });
@@ -129,7 +132,7 @@ describe('hadiah hanya ditagih saat batch BARU', () => {
     // `storedIncentive()` (scheduleMoney.ts:57) menolak karena alasan yang sama.
     expect(() =>
       pricingRowForSchedule(
-        ORDER, { ...JADWAL_BATCH_LAMA, additional_prize_per_winner: 10_000 }, null,
+        ORDER, { ...JADWAL_BATCH_LAMA, additional_prize_per_winner: 10_000 }, null, RATE,
       ),
     ).toThrow();
   });
@@ -138,7 +141,7 @@ describe('hadiah hanya ditagih saat batch BARU', () => {
 describe('angka akhirnya', () => {
   test('batch lama = iklan saja, 3 hari, diskon voucher order', () => {
     vi.setSystemTime(SESUDAH_VOUCHER_MATI);
-    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null, RATE);
     const { subtotal } = computeTotalCostFromSubmission(row);
     // 200.000/hari x 3 hari = 600.000; JFUSUHUD 10% (sah, order lahir 20 Agu)
     // -> 540.000. Nol hadiah karena batch lama.
@@ -147,7 +150,7 @@ describe('angka akhirnya', () => {
 
   test('batch baru = iklan + hadiah jadwal', () => {
     vi.setSystemTime(SESUDAH_VOUCHER_MATI);
-    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_BARU, null);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_BARU, null, RATE);
     const { subtotal } = computeTotalCostFromSubmission(row);
     // iklan 600.000 - diskon 60.000 = 540.000, + hadiah 25.000 x 4 = 100.000.
     expect(subtotal).toBe(640_000);
@@ -155,9 +158,9 @@ describe('angka akhirnya', () => {
 
   test('harganya BERBEDA dari harga order — pembuktian (f) benar-benar bekerja', () => {
     vi.setSystemTime(SESUDAH_VOUCHER_MATI);
-    const hargaOrder = computeTotalCostFromSubmission(ORDER).total;
+    const hargaOrder = computeTotalCostFromSubmission({ ...ORDER, rate_instant: RATE }).total;
     const hargaJadwal = computeTotalCostFromSubmission(
-      pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null),
+      pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null, RATE),
     ).total;
     // Tanpa (f), keduanya identik — dan peneliti ditagih harga jadwal PERTAMA
     // (7 hari + hadiah 10 orang) untuk jadwal ke-2 yang cuma 3 hari.
@@ -167,9 +170,9 @@ describe('angka akhirnya', () => {
 
   test('tanpa jadwal, barisnya order apa adanya — ordinal 1 tidak berubah', () => {
     vi.setSystemTime(SESUDAH_VOUCHER_MATI);
-    const row = pricingRowForSchedule(ORDER, null, null);
+    const row = pricingRowForSchedule(ORDER, null, null, RATE);
     expect(computeTotalCostFromSubmission(row).total).toBe(
-      computeTotalCostFromSubmission(ORDER).total,
+      computeTotalCostFromSubmission({ ...ORDER, rate_instant: RATE }).total,
     );
   });
 });
@@ -190,7 +193,7 @@ describe('rincian kwitansi memakai angka jadwalnya sendiri', () => {
 
   test('durasi iklan = durasi JADWAL, bukan durasi order', () => {
     vi.setSystemTime(SESUDAH_VOUCHER_MATI);
-    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null, RATE);
     const items = buildNoteItems(ORDER, row);
     const iklan = items.find((i: any) => i.category === 'Jakpat for Universities (ads)');
     expect(iklan.qty).toBe(3);
@@ -199,14 +202,14 @@ describe('rincian kwitansi memakai angka jadwalnya sendiri', () => {
 
   test('batch lama: NOL baris insentif di kwitansi', () => {
     vi.setSystemTime(SESUDAH_VOUCHER_MATI);
-    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null, RATE);
     const items = buildNoteItems(ORDER, row);
     expect(items.find((i: any) => i.category === "Respondent's Incentive")).toBeUndefined();
   });
 
   test('batch baru: insentif memakai angka JADWAL', () => {
     vi.setSystemTime(SESUDAH_VOUCHER_MATI);
-    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_BARU, null);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_BARU, null, RATE);
     const items = buildNoteItems(ORDER, row);
     const hadiah = items.find((i: any) => i.category === "Respondent's Incentive");
     expect(hadiah.qty).toBe(4);
@@ -215,21 +218,21 @@ describe('rincian kwitansi memakai angka jadwalnya sendiri', () => {
 
   test('JANJI BERKAS: rincian menjumlah ke subtotal yang ditagih (batch lama)', () => {
     vi.setSystemTime(SESUDAH_VOUCHER_MATI);
-    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null, RATE);
     const { subtotal } = computeTotalCostFromSubmission(row);
     expect(sumOf(buildNoteItems(ORDER, row))).toBe(subtotal);
   });
 
   test('JANJI BERKAS: rincian menjumlah ke subtotal yang ditagih (batch baru)', () => {
     vi.setSystemTime(SESUDAH_VOUCHER_MATI);
-    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_BARU, null);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_BARU, null, RATE);
     const { subtotal } = computeTotalCostFromSubmission(row);
     expect(sumOf(buildNoteItems(ORDER, row))).toBe(subtotal);
   });
 
   test('ordinal 1 tidak berubah — rincian tetap menjumlah ke subtotalnya', () => {
     vi.setSystemTime(SESUDAH_VOUCHER_MATI);
-    const row = pricingRowForSchedule(ORDER, null, null);
+    const row = pricingRowForSchedule(ORDER, null, null, RATE);
     const { subtotal } = computeTotalCostFromSubmission(row);
     expect(sumOf(buildNoteItems(ORDER, row))).toBe(subtotal);
   });
@@ -237,7 +240,7 @@ describe('rincian kwitansi memakai angka jadwalnya sendiri', () => {
   test('question_count & jenis distribusi tetap dari ORDER', () => {
     // Kuesionernya satu. Harga per hari diturunkan dari sana, bukan dari jadwal.
     vi.setSystemTime(SESUDAH_VOUCHER_MATI);
-    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null);
+    const row = pricingRowForSchedule(ORDER, JADWAL_BATCH_LAMA, null, RATE);
     const items = buildNoteItems({ ...ORDER, question_count: 20 }, row);
     const iklan = items.find((i: any) => i.category === 'Jakpat for Universities (ads)');
     // 20 Qs -> Rp 200.000/hari, diskon JFUSUHUD 10% -> Rp 180.000/hari.

@@ -257,6 +257,13 @@ You are politely professional, proactive, and solution-oriented.
     -> T1: Rp 160.000 | T2: Rp 280.000 | T3: Rp 400.000 | T4: Rp 520.000 | T5: Rp 640.000
   * **Mulai 1 Januari 2027** (Tarif Normal Penuh):
     -> T1: Rp 200.000 | T2: Rp 350.000 | T3: Rp 500.000 | T4: Rp 650.000 | T5: Rp 800.000
+- **Tarif mana yang berlaku (WAJIB dijelaskan dengan benar)**:
+  * Jadwal pertama sebuah order memakai tarif pada TANGGAL ORDER DIBUAT — termasuk bila tanggal tayangnya baru dipilih belakangan.
+  * Perpanjangan (jadwal ke-2 dst.) memakai tarif pada tanggal perpanjangan DIPESAN, bukan tarif order awal.
+  * Jadwal yang dilepas (lewat batas bayar) atau dibatalkan lalu DIPESAN ULANG memakai tarif pada tanggal pemesanan ulang.
+  * Jadwal yang tanggal tayangnya DIPINDAH ke hari lain sebelum dibayar (oleh peneliti maupun tim Jakpat) memakai tarif pada tanggal pemindahan. Menggeser jam di hari yang sama tidak mengubah tarif.
+  * Jangan menjanjikan tarif lama untuk jadwal yang dipesan ulang, dipindah, atau diperpanjang setelah tarif naik.
+  * Add-on JFU Kilat tetap Rp 200.000 (belum berubah).
 - **Aturan Grid/Likert/Matrix**: Setiap baris pernyataan dihitung sebagai 1 pertanyaan (bukan 1 blok).
 - **Insentif Responden**: Ditentukan sendiri oleh peneliti, rekomendasi minimal Rp 25.000 untuk 2 pemenang undian.
 - **Add-on Randomizer**: Rp 20.000 per link.`;

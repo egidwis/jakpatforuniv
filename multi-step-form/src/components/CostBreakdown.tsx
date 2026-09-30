@@ -78,9 +78,33 @@ export interface CostBreakdownProps {
   className?: string;
 }
 
+/**
+ * Tanggal `YYYY-MM-DD` di variabel i18n → "30 Nov 2026" / "30 Des 2026".
+ *
+ * `scheduleMoney` modul murni tanpa bahasa, jadi ia mengirim tanggal mentah;
+ * yang tahu bahasanya komponen ini. Kalender WIB: tanggalnya dibaca sebagai
+ * tanggal kalender, bukan instan, supaya tidak bergeser sehari di zona lain.
+ */
+export function localizeDateVars(
+  vars: Record<string, string | number> | undefined,
+  language: string,
+): Record<string, string | number> | undefined {
+  if (!vars) return vars;
+  const out: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(vars)) {
+    const m = typeof v === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(v) : null;
+    out[k] = m
+      ? new Intl.DateTimeFormat(language === 'en' ? 'en-GB' : 'id-ID', {
+          day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+        }).format(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
+      : v;
+  }
+  return out;
+}
+
 /** Satu baris rincian — bentuknya identik di kedua varian, sengaja. */
 function BreakdownLine({ line }: { line: MoneyLine }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   /*
     ⚠️ Kunci i18n diutamakan di atas teks siap-pakai. `scheduleMoney` dan
     `orderMoneyLines` adalah modul murni tanpa konteks React, jadi mereka tidak
@@ -89,7 +113,7 @@ function BreakdownLine({ line }: { line: MoneyLine }) {
     lama tidak pecah.
   */
   const label = line.labelKey ? t(line.labelKey as never, line.labelVars) : line.label;
-  const hint = line.hintKey ? t(line.hintKey as never, line.hintVars) : line.hint;
+  const hint = line.hintKey ? t(line.hintKey as never, localizeDateVars(line.hintVars, language)) : line.hint;
   return (
     /* Baris rangkuman (Subtotal/DPP) diberi garis pemisah di ATASnya: ia
        merangkum baris sebelumnya, bukan menambah biaya baru. Tanpa pemisah
@@ -122,6 +146,28 @@ function BreakdownLine({ line }: { line: MoneyLine }) {
   );
 }
 
+/**
+ * Hemat yang diklaim chip — VOUCHER saja.
+ *
+ * ⚠️ Baris "Harga perkenalan" (`kind: 'intro'`) SENGAJA dikeluarkan
+ * (keputusan 29 Sep 2026). Di Okt–Nov harga efektifnya persis harga lama;
+ * menulis "Kamu hemat Rp400.000" terhadap harga katalog yang belum pernah
+ * ditagih terbaca seperti harga coret palsu. Perkenalan punya chip sendiri
+ * tanpa nominal.
+ */
+export function savingOf(lines: MoneyLine[] | null): number {
+  return (lines ?? [])
+    .filter((l) => l.tone === 'discount' && l.kind !== 'intro')
+    .reduce((sum, l) => sum + Math.abs(l.amount), 0);
+}
+
+/** Tanggal akhir harga perkenalan di rincian ini, kalau ada. */
+export function introUntilOf(lines: MoneyLine[] | null): string | null {
+  const intro = (lines ?? []).find((l) => l.kind === 'intro');
+  const date = intro?.hintVars?.date;
+  return typeof date === 'string' ? date : null;
+}
+
 export function CostBreakdown({
   total,
   lines,
@@ -133,7 +179,7 @@ export function CostBreakdown({
   muted = false,
   className = '',
 }: CostBreakdownProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   // `full` tidak punya tombol, jadi state-nya tidak pernah dibaca di sana.
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const detailId = useId();
@@ -149,9 +195,8 @@ export function CostBreakdown({
     admin — tepat di depan tombol yang melahirkan tagihan. Satu kalimat
     menjadikannya kabar baik, bukan kesalahan sistem.
   */
-  const saving = (lines ?? [])
-    .filter((l) => l.tone === 'discount')
-    .reduce((sum, l) => sum + Math.abs(l.amount), 0);
+  const saving = savingOf(lines);
+  const introUntil = introUntilOf(lines);
   const showDetail = isDetailVisible(variant, isOpen);
 
   const detail = hasDetail && showDetail && (
@@ -195,6 +240,13 @@ export function CostBreakdown({
         </div>
       </div>
 
+
+      {introUntil && (
+        <p className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 text-xs font-medium text-emerald-800">
+          <Tag className="w-3.5 h-3.5 shrink-0" />
+          {t('costIntroChip' as never, localizeDateVars({ date: introUntil }, language))}
+        </p>
+      )}
 
       {saving > 0 && (
         <p className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 text-xs font-medium text-emerald-800">
