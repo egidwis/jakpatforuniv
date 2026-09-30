@@ -1,6 +1,14 @@
 # Transisi harga iklan bersegmen — Okt 2026 → Jan 2027
 
-> **Status: ⬜ BELUM DIEKSEKUSI — ditulis 2026-09-04. Nol baris kode berubah.**
+> **Status: ✅ DIEKSEKUSI & DIDEPLOY 2026-09-30 ±23.35 WIB** (merge `c8d76c4`:
+> `5ebe00b` tarif bertanggal + `4425766` redesign form order). `sql/103`
+> (`ad_schedules.rate_locked_at` + kunci `created_at`) diterapkan lebih dulu,
+> 30 Sep ±12.51 WIB. Rencana teknis eksekusinya ditulis ulang di sesi chat
+> 29 Sep; badan dokumen ini tetap sumber **strategi & angka**, bukan keadaan
+> kode. Yang berubah dari dokumen ini dan sisa pekerjaan ≤ 15 Nov ada di baris
+> rencana ini pada [README indeks](README.md).
+>
+> _Status asli: ⬜ belum dieksekusi — ditulis 2026-09-04._
 >
 > Dokumen ini **menggantikan strategi** [`2026-08-30-kenaikan-harga-voucher-klaim.md`](2026-08-30-kenaikan-harga-voucher-klaim.md)
 > dan **memakai ulang rancangan teknisnya**. Rencana 30 Agustus tetap berlaku sebagai
