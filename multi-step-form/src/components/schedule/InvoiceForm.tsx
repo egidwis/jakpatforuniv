@@ -7,7 +7,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { calculateAdCostPerDay, calculateIncentiveCost, voucherInstantOf } from '@/utils/cost-calculator';
+import { calculateAdCostPerDay, calculateIncentiveCost, rateInstantOf, voucherInstantOf } from '@/utils/cost-calculator';
 import { createManualInvoice } from '@/utils/payment';
 import { payLinkUrl } from '@/utils/payLink';
 import { toWibYmd } from '@/utils/airing-window';
@@ -214,6 +214,7 @@ export function InvoiceForm({
       voucherCode: appliedVoucher,
       isKilat: submission.distribution_type === 'kilat',
       voucherInstantMs: voucherInstantOf(submission.submittedAt),
+      rateInstantMs: rateInstantOf(entry.rateLockedAt),
     });
     setItems(built.items);
     setNote(built.note);
@@ -310,7 +311,7 @@ export function InvoiceForm({
   // labelnya menyusut setiap kali voucher diterapkan ulang.
   const voucherEffect = (() => {
     const duration = entry.isExtension ? (entry.duration || 0) : (submission.duration || 0);
-    const adCost = calculateAdCostPerDay(submission.questionCount || 0) * duration;
+    const adCost = calculateAdCostPerDay(submission.questionCount || 0, rateInstantOf(entry.rateLockedAt)) * duration;
     const incentiveCost = entry.isExtension
       ? (entry.isNewPeriod ? calculateIncentiveCost(entry.winnerCount, entry.prizePerWinner) : 0)
       : calculateIncentiveCost(submission.winnerCount || 0, submission.prize_per_winner || 0);

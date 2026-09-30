@@ -29,7 +29,7 @@ export function Sidebar({ currentStep, formData }: SidebarProps) {
   // Hitung biaya saat form data berubah - hanya field yang relevan
   useEffect(() => {
     const effectiveForm = ilkomunyBlocked ? { ...formData, voucherCode: '' } : formData;
-    const calculation = calculateTotalCost(effectiveForm);
+    const calculation = calculateTotalCost(effectiveForm, Date.now());
     setCostCalculation(calculation);
   }, [formData.questionCount, formData.duration, formData.winnerCount, formData.prizePerWinner, formData.voucherCode, ilkomunyBlocked]);
 

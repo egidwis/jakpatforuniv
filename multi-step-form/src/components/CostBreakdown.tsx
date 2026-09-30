@@ -78,9 +78,33 @@ export interface CostBreakdownProps {
   className?: string;
 }
 
+/**
+ * Tanggal `YYYY-MM-DD` di variabel i18n → "30 Nov 2026" / "30 Des 2026".
+ *
+ * `scheduleMoney` modul murni tanpa bahasa, jadi ia mengirim tanggal mentah;
+ * yang tahu bahasanya komponen ini. Kalender WIB: tanggalnya dibaca sebagai
+ * tanggal kalender, bukan instan, supaya tidak bergeser sehari di zona lain.
+ */
+export function localizeDateVars(
+  vars: Record<string, string | number> | undefined,
+  language: string,
+): Record<string, string | number> | undefined {
+  if (!vars) return vars;
+  const out: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(vars)) {
+    const m = typeof v === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(v) : null;
+    out[k] = m
+      ? new Intl.DateTimeFormat(language === 'en' ? 'en-GB' : 'id-ID', {
+          day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+        }).format(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
+      : v;
+  }
+  return out;
+}
+
 /** Satu baris rincian — bentuknya identik di kedua varian, sengaja. */
 function BreakdownLine({ line }: { line: MoneyLine }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   /*
     ⚠️ Kunci i18n diutamakan di atas teks siap-pakai. `scheduleMoney` dan
     `orderMoneyLines` adalah modul murni tanpa konteks React, jadi mereka tidak
@@ -89,29 +113,31 @@ function BreakdownLine({ line }: { line: MoneyLine }) {
     lama tidak pecah.
   */
   const label = line.labelKey ? t(line.labelKey as never, line.labelVars) : line.label;
-  const hint = line.hintKey ? t(line.hintKey as never, line.hintVars) : line.hint;
+  const hint = line.hintKey ? t(line.hintKey as never, localizeDateVars(line.hintVars, language)) : line.hint;
   return (
     /* Baris rangkuman (Subtotal/DPP) diberi garis pemisah di ATASnya: ia
        merangkum baris sebelumnya, bukan menambah biaya baru. Tanpa pemisah
        itu kolomnya terbaca seperti daftar yang bisa dijumlah — dan
        menjumlahkannya menghitung ganda. */
-    <div className={`flex justify-between items-center gap-3 ${
-      line.isSubtotal ? 'border-t border-slate-200/80 pt-2 mt-1' : ''
+    <div className={`flex justify-between items-center gap-3 text-sm ${
+      line.isSubtotal ? 'border-t border-slate-200/90 pt-2.5 mt-1.5' : ''
     }`}>
-      <span className="min-w-0">
+      <span className="min-w-0 text-slate-700">
         {line.tone === 'addon' ? (
-          <span className="inline-flex items-center gap-1">
-            <Zap className="w-3.5 h-3.5 fill-amber-500 text-amber-500" /> {label}
+          <span className="inline-flex items-center gap-1 font-medium">
+            <Zap className="w-4 h-4 fill-amber-500 text-amber-500 shrink-0" /> {label}
           </span>
-        ) : label}
+        ) : (
+          <span className="font-medium">{label}</span>
+        )}
         {hint && (
-          <span className="text-xs text-slate-500 font-normal"> ({hint})</span>
+          <span className="text-xs sm:text-[13px] text-slate-500 font-normal"> ({hint})</span>
         )}
       </span>
       {/* ⚠️ -700, bukan -600. Pada latar `slate-50/70` varian 600 terukur
           3,60:1 (emerald) dan 3,04:1 (amber) — gagal ambang teks 4,5:1, dan ini
           justru angka yang paling penting dibaca benar. */}
-      <span className={`font-semibold shrink-0 tabular-nums ${
+      <span className={`font-semibold shrink-0 tabular-nums text-sm sm:text-base ${
         line.tone === 'discount' ? 'text-emerald-700'
           : line.tone === 'addon' ? 'text-amber-700'
             : 'text-slate-900'
@@ -120,6 +146,28 @@ function BreakdownLine({ line }: { line: MoneyLine }) {
       </span>
     </div>
   );
+}
+
+/**
+ * Hemat yang diklaim chip — VOUCHER saja.
+ *
+ * ⚠️ Baris "Harga perkenalan" (`kind: 'intro'`) SENGAJA dikeluarkan
+ * (keputusan 29 Sep 2026). Di Okt–Nov harga efektifnya persis harga lama;
+ * menulis "Kamu hemat Rp400.000" terhadap harga katalog yang belum pernah
+ * ditagih terbaca seperti harga coret palsu. Perkenalan punya chip sendiri
+ * tanpa nominal.
+ */
+export function savingOf(lines: MoneyLine[] | null): number {
+  return (lines ?? [])
+    .filter((l) => l.tone === 'discount' && l.kind !== 'intro')
+    .reduce((sum, l) => sum + Math.abs(l.amount), 0);
+}
+
+/** Tanggal akhir harga perkenalan di rincian ini, kalau ada. */
+export function introUntilOf(lines: MoneyLine[] | null): string | null {
+  const intro = (lines ?? []).find((l) => l.kind === 'intro');
+  const date = intro?.hintVars?.date;
+  return typeof date === 'string' ? date : null;
 }
 
 export function CostBreakdown({
@@ -133,7 +181,7 @@ export function CostBreakdown({
   muted = false,
   className = '',
 }: CostBreakdownProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   // `full` tidak punya tombol, jadi state-nya tidak pernah dibaca di sana.
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const detailId = useId();
@@ -149,16 +197,15 @@ export function CostBreakdown({
     admin — tepat di depan tombol yang melahirkan tagihan. Satu kalimat
     menjadikannya kabar baik, bukan kesalahan sistem.
   */
-  const saving = (lines ?? [])
-    .filter((l) => l.tone === 'discount')
-    .reduce((sum, l) => sum + Math.abs(l.amount), 0);
+  const saving = savingOf(lines);
+  const introUntil = introUntilOf(lines);
   const showDetail = isDetailVisible(variant, isOpen);
 
   const detail = hasDetail && showDetail && (
-    <div id={detailId} className="rounded-lg border border-slate-200/80 bg-slate-50/70 p-3 space-y-2 text-xs font-normal text-slate-600">
+    <div id={detailId} className="rounded-xl border border-slate-200/90 bg-white sm:bg-slate-50/80 p-3.5 sm:p-4 space-y-2.5 sm:space-y-3 text-sm font-normal text-slate-700 shadow-2xs">
       {lines
         ? lines.map((line, i) => <BreakdownLine key={`${line.label}-${i}`} line={line} />)
-        : <p className="leading-relaxed">{note}</p>}
+        : <p className="leading-relaxed text-sm text-slate-600">{note}</p>}
     </div>
   );
 
@@ -195,6 +242,13 @@ export function CostBreakdown({
         </div>
       </div>
 
+
+      {introUntil && (
+        <p className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 text-xs font-medium text-emerald-800">
+          <Tag className="w-3.5 h-3.5 shrink-0" />
+          {t('costIntroChip' as never, localizeDateVars({ date: introUntil }, language))}
+        </p>
+      )}
 
       {saving > 0 && (
         <p className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 text-xs font-medium text-emerald-800">

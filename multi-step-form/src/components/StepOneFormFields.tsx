@@ -1,13 +1,11 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { SurveyFormData } from '../types';
 import {
-  ArrowLeft,
   CalendarDays,
   CheckCircle,
   Gift,
   Hash,
   Info,
-  Lightbulb,
   Link2,
   ShieldAlert,
   Trophy,
@@ -28,6 +26,7 @@ import {
   fieldRowListClass,
 } from './SurveyFieldRow';
 import { DurationPicker } from './DurationPicker';
+import { OrderLiveCompanion } from './order/OrderLiveCompanion';
 import { RewardRecommendationHint } from './RewardRecommendationHint';
 import {
   getRecommendedPrize,
@@ -39,12 +38,13 @@ interface StepOneFormFieldsProps {
   formData: SurveyFormData;
   updateFormData: (data: Partial<SurveyFormData>) => void;
   onSubmit: () => void;
-  onBack: () => void;
+  onBack?: () => void;
   isGoogleImport?: boolean;
   onSwitchToGoogle?: () => void;
   /** Order lahir dari CTA "Sebar via Jakpat": sumber datanya form JFU, jadi
    *  field surveinya dikunci dan tautan ganti-metode disembunyikan. */
   isJfuImport?: boolean;
+  onCancelOrder?: () => void;
 }
 
 interface FormErrors {
@@ -107,10 +107,11 @@ export function StepOneFormFields({
   formData,
   updateFormData,
   onSubmit,
-  onBack,
+  onBack: _onBack,
   isGoogleImport = false,
   onSwitchToGoogle,
-  isJfuImport = false
+  isJfuImport = false,
+  onCancelOrder,
 }: StepOneFormFieldsProps) {
   const { t } = useLanguage();
   const prevQuestionCountRef = useRef(formData.questionCount);
@@ -321,8 +322,11 @@ export function StepOneFormFields({
   }, [isGoogleImport, availability.isLoading, availability.isRangeAvailable, formData.duration]);
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-3.5">
-      {/* Blokir keras: form JFU yang terdeteksi meminta data pribadi responden.
+    <form onSubmit={handleSubmit} noValidate>
+      <div className="grid lg:grid-cols-12 gap-6 items-start">
+        {/* Kolom Kiri: Form Isian (order-1 pada mobile, 7 kolom pada desktop) */}
+        <div className="order-1 lg:col-span-7 space-y-4">
+          {/* Blokir keras: form JFU yang terdeteksi meminta data pribadi responden.
           Sengaja DI LUAR kartu dan di paling atas — ini bukan catatan tambahan,
           melainkan alasan seluruh layar ini tidak bisa dilanjutkan. */}
       {isBlockedByPersonalData && (
@@ -470,6 +474,20 @@ export function StepOneFormFields({
             <span className="ml-1.5 shrink-0 text-sm lowercase text-gray-400">items</span>
           </FieldRow>
         </div>
+
+        {/* Switch to Google Form — jika mode manual dan handler tersedia */}
+        {!isGoogleImport && onSwitchToGoogle && (
+          <div className="mt-4 pt-3.5 border-t border-slate-100 flex flex-wrap items-center justify-center gap-x-1.5 text-xs text-slate-500">
+            <span>{t('troubleFillingManual')}</span>
+            <button
+              type="button"
+              onClick={onSwitchToGoogle}
+              className="font-semibold text-jfu-primary hover:underline cursor-pointer"
+            >
+              {t('importFromGoogleForm')}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* CARD 2 — KONFIGURASI IKLAN & REWARD */}
@@ -663,25 +681,25 @@ export function StepOneFormFields({
           )}
         </div>
       </div>
-
-      <div className="flex items-center gap-3 pt-2">
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200/90 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition-all hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900 shadow-xs cursor-pointer"
-        >
-          <ArrowLeft className="w-4 h-4 text-slate-500" />
-          {t('backButton')}
-        </button>
-        <button
-          type="submit"
-          disabled={isBlockedByPersonalData}
-          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-3 text-sm font-bold text-white transition-all hover:bg-jfu-dark shadow-xs cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-jfu-primary"
-        >
-          {t('continueToSummary')}
-          <span aria-hidden="true">→</span>
-        </button>
       </div>
-    </form>
+
+      {/* Kolom Kanan: Live Order Assistant & Cost Estimator (order-2 pada mobile, 5 kolom sticky pada desktop) */}
+      <div className="order-2 lg:col-span-5 space-y-4 lg:sticky lg:top-24">
+        <OrderLiveCompanion formData={formData} step={1} onCancelOrder={onCancelOrder} />
+
+        {/* Tombol Lanjut ke Ringkasan / Detail Pembayaran */}
+        <div className="pt-1 pb-6 lg:pb-0">
+          <button
+            type="submit"
+            disabled={isBlockedByPersonalData}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-3.5 text-sm font-bold text-white transition-all hover:bg-jfu-dark shadow-xs cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-jfu-primary"
+          >
+            {t('continueToSummary')}
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </form>
   );
 }

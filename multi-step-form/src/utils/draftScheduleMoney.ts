@@ -25,6 +25,8 @@ type PricingFields = Pick<
   | 'winnerCount'
   | 'additionalPrizePerWinner'
   | 'isNewPeriod'
+  | 'rateLockedAt'
+  | 'submissionCreatedAt'
 >;
 
 /**
@@ -69,6 +71,11 @@ export interface DraftScheduleInput {
   distributionType: string | null | undefined;
   /** Voucher WARISAN order — read-only, tidak pernah diketik di layar jadwal. */
   voucherCode: string | null | undefined;
+  /**
+   * `created_at` ORDER — instan penilai VOUCHER (bukan tarif). Kosong =
+   * sekarang, sama seperti `voucherInstantOf`.
+   */
+  orderCreatedAt?: string | null;
 }
 
 export function draftScheduleMoney(input: DraftScheduleInput): ScheduleMoney {
@@ -108,6 +115,14 @@ export function draftScheduleMoney(input: DraftScheduleInput): ScheduleMoney {
     winnerCount: input.winnerCount,
     additionalPrizePerWinner: 0,
     isNewPeriod: input.isNewBatch,
+    /*
+      Instan TARIF = sekarang: jadwal ini dipesan saat tombolnya ditekan, dan
+      trigger sql/103 akan mengunci `rate_locked_at = now()` saat barisnya
+      lahir. Voucher tetap dinilai pada tanggal order — dua instan berbeda,
+      persis create-payment.js.
+    */
+    rateLockedAt: null,
+    submissionCreatedAt: input.orderCreatedAt ?? new Date().toISOString(),
   };
 
   /*

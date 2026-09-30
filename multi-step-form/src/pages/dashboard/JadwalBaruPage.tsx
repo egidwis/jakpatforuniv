@@ -260,6 +260,7 @@ export function JadwalBaruPage() {
     distributionType: submission?.distribution_type ?? null,
     // Voucher melekat ke ORDER dan diwariskan; layar ini tidak punya input.
     voucherCode: submission?.voucher_code ?? null,
+    orderCreatedAt: submission?.created_at ?? null,
   });
 
   // Prefill hadiah dari jadwal sebelumnya, hanya bila batch-nya memang baru.
@@ -475,7 +476,6 @@ export function JadwalBaruPage() {
       isBusy={isSaving}
       orderLabel={`${submission.title}${bookingId ? ` · #${bookingId}` : ''}`}
       title={t(seg.key, seg.vars)}
-      subtitle={t('scheduleSubtitle')}
       duration={
         /* Lama tayang */
         <div className="space-y-3">

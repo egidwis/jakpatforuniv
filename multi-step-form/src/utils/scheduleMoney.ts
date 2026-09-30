@@ -1,7 +1,7 @@
 import type { AdScheduleEntry } from '@/utils/supabase';
 import {
-  calculateTotalAdCost, calculateIncentiveCost, calculateDiscount,
-  calculateAdCostPerDay, calculatePpn, getKilatAddonCost,
+  calculateIncentiveCost, calculateDiscount, calculatePpn, getKilatAddonCost,
+  adRateAt, rateInstantOf, voucherInstantOf,
 } from '@/utils/cost-calculator';
 
 // ─────────────────────────────────────────────────────────────
@@ -11,7 +11,9 @@ import {
 //
 //   YANG DITAGIH  — `ad_schedules.total_cost`, catatan sejarah. Inilah yang
 //                   benar-benar keluar sebagai tagihan ke peneliti.
-//   ESTIMASI      — dihitung ulang dari tarif HARI INI.
+//   ESTIMASI      — dihitung dari tarif pada INSTAN TARIF jadwal ini
+//                   (`rate_locked_at`, sql/103): tanggal order untuk jadwal
+//                   pertama, tanggal pemesanan untuk perpanjangan/pesan ulang.
 //
 // Dipakai DUA LAYAR: kartu jadwal di drawer admin dan kartu Fase ② di
 // dashboard peneliti. Sebelumnya masing-masing punya hitungannya sendiri, dan
@@ -52,6 +54,15 @@ export interface MoneyLine {
   amount: number;
   tone?: 'discount' | 'addon';
   /**
+   * `'intro'` = baris "Harga perkenalan" (selisih harga katalog − efektif).
+   *
+   * ⚠️ Ditandai terpisah dari diskon voucher karena `CostBreakdown` TIDAK
+   * menjumlahkannya ke chip "Kamu hemat" (keputusan 29 Sep 2026: jangan
+   * mengklaim hemat dari harga katalog yang belum pernah ditagih). Chip-nya
+   * sendiri: "Harga perkenalan s/d …".
+   */
+  kind?: 'intro';
+  /**
    * Baris ini RANGKUMAN baris di atasnya (mis. Subtotal/DPP), bukan komponen
    * biaya baru.
    *
@@ -63,7 +74,7 @@ export interface MoneyLine {
 
 export interface ScheduleMoney {
   total: number;
-  /** true = belum pernah ditagih; angkanya hitungan tarif hari ini. */
+  /** true = belum pernah ditagih; angkanya hitungan pada instan tarif jadwal ini. */
   isEstimate: boolean;
   /** null = rincian tidak tersimpan untuk jadwal ini (order pra-PPN). */
   lines: MoneyLine[] | null;
@@ -149,6 +160,25 @@ function effectiveVoucher(
   return fromOrder || undefined;
 }
 
+/**
+ * Baris "Harga perkenalan" — nol baris bila harga katalog = efektif.
+ * Dipakai juga `orderMoneyLines` (Ringkasan), supaya bentuknya satu.
+ */
+export function introLine(listAmount: number, effectiveAmount: number, introUntil: string | null): MoneyLine[] {
+  const cut = listAmount - effectiveAmount;
+  if (cut <= 0 || !introUntil) return [];
+  return [{
+    label: 'Harga perkenalan',
+    labelKey: 'costLineIntro',
+    hint: `s/d ${introUntil}`,
+    hintKey: 'costHintIntroUntil',
+    hintVars: { date: introUntil },
+    amount: -cut,
+    tone: 'discount',
+    kind: 'intro',
+  }];
+}
+
 export function deriveScheduleMoney(
   entry: AdScheduleEntry,
   submission: {
@@ -167,6 +197,11 @@ export function deriveScheduleMoney(
   const isKilat = entry.distributionType === 'kilat' || submission.distribution_type === 'kilat' || submission.distributionType === 'kilat';
   const questionCount = submission.question_count ?? submission.questionCount ?? 0;
   const orderVoucher = submission.voucher_code ?? submission.voucherCode ?? null;
+  // Instan tarif (sql/103) dan instan voucher (tanggal order) — dua hal yang
+  // berbeda, persis seperti create-payment.js. NULL/rusak → sekarang.
+  const rateAt = rateInstantOf(entry.rateLockedAt);
+  const voucherAt = voucherInstantOf(entry.submissionCreatedAt);
+  const rate = adRateAt(questionCount, rateAt);
 
   // ── Sudah ditagih ────────────────────────────────────────
   if (entry.totalCost > 0) {
@@ -191,17 +226,36 @@ export function deriveScheduleMoney(
 
       let grossAdCost = netAdCost;
       let discountAmount = 0;
+      /*
+        Baris "Harga perkenalan" pada jadwal yang SUDAH ditagih hanya
+        direkonstruksi bila tarif pada instan tarifnya menjelaskan nominal
+        tersimpan persis (toleransi < Rp10, pola yang sama dengan voucher).
+        Kalau tidak cocok — admin menagih nominal lain, order pra-sql/103 —
+        bentuk lama yang tampil. Kalimatnya tidak pernah menebak.
+      */
+      let introMatched = false;
+      const kilatAddon = isKilat ? getKilatAddonCost(voucher) : 0;
 
-      if (voucher && netAdCost != null && netAdCost > 0) {
-        let calculatedGross = isKilat
-          ? calculateAdCostPerDay(questionCount)
-          : calculateTotalAdCost(questionCount, duration);
-        let calculatedDiscount = isKilat ? 0 : calculateDiscount(voucher, calculatedGross, incentive || 0, duration);
+      if (!isKilat && !voucher && netAdCost != null && netAdCost > 0) {
+        const expected = rate.effective * duration;
+        if (expected > 0 && Math.abs(expected - netAdCost) < 10) {
+          grossAdCost = expected;
+          introMatched = true;
+        }
+      } else if (isKilat && netAdCost != null && netAdCost > 0) {
+        if (rate.effective > 0 && Math.abs((rate.effective + kilatAddon) - netAdCost) < 10) {
+          grossAdCost = rate.effective;
+          introMatched = true;
+        }
+      } else if (voucher && netAdCost != null && netAdCost > 0) {
+        let calculatedGross = rate.effective * duration;
+        let calculatedDiscount = calculateDiscount(voucher, calculatedGross, incentive || 0, duration, voucherAt);
 
         if (calculatedGross > 0 && Math.abs((calculatedGross - calculatedDiscount) - netAdCost) < 10) {
           grossAdCost = calculatedGross;
           discountAmount = calculatedDiscount;
-        } else if (!isKilat) {
+          introMatched = true;
+        } else {
           // `question_count` kosong, jadi harga kotornya tidak bisa dihitung ulang
           // — ia harus dibalik dari nilai bersih yang tersimpan.
           //
@@ -218,8 +272,8 @@ export function deriveScheduleMoney(
           // berbeda, dan baris diskon dilewati alih-alih menampilkan angka karangan.
           const probeA = 1_000_000;
           const probeB = 2_000_000;
-          const rateA = calculateDiscount(voucher, probeA, 0, duration) / probeA;
-          const rateB = calculateDiscount(voucher, probeB, 0, duration) / probeB;
+          const rateA = calculateDiscount(voucher, probeA, 0, duration, voucherAt) / probeA;
+          const rateB = calculateDiscount(voucher, probeB, 0, duration, voucherAt) / probeB;
           const isProportional = Math.abs(rateA - rateB) < 1e-9 && rateA > 0 && rateA < 1;
 
           if (isProportional) {
@@ -232,14 +286,21 @@ export function deriveScheduleMoney(
       const lines: MoneyLine[] = [];
 
       if (grossAdCost != null && grossAdCost >= 0) {
+        const listAdCost = introMatched
+          ? (isKilat ? rate.list : rate.list * duration)
+          : grossAdCost;
         lines.push({
           label: 'Iklan',
           labelKey: 'costLineAd',
           hint: entry.duration ? `${entry.duration} hari` : undefined,
           hintKey: entry.duration ? 'costHintDays' : undefined,
           hintVars: { d: entry.duration ?? 0 },
-          amount: grossAdCost,
+          amount: listAdCost,
         });
+        lines.push(...introLine(listAdCost, grossAdCost, rate.introUntil));
+        if (introMatched && kilatAddon > 0) {
+          lines.push({ label: 'Add-on JFU Kilat', labelKey: 'costLineKilatAddon', amount: kilatAddon, tone: 'addon' });
+        }
 
         if (discountAmount > 0) {
           lines.push({
@@ -311,12 +372,11 @@ export function deriveScheduleMoney(
   // Kilat: base rate 1× (durasi tidak berlaku — selesai ~2 jam), plus add-on,
   // tanpa diskon voucher. Rumus yang sama dipakai invoice admin dan
   // functions/api/doku/create-payment.js.
-  const adCost = isKilat
-    ? calculateAdCostPerDay(questionCount)
-    : calculateTotalAdCost(questionCount, duration);
+  const adCost = isKilat ? rate.effective : rate.effective * duration;
+  const adCostList = isKilat ? rate.list : rate.list * duration;
   const voucher = effectiveVoucher(entry.voucherCode, orderVoucher);
   const addon = isKilat ? getKilatAddonCost(voucher) : 0;
-  const discount = isKilat ? 0 : calculateDiscount(voucher, adCost, incentive, duration);
+  const discount = isKilat ? 0 : calculateDiscount(voucher, adCost, incentive, duration, voucherAt);
 
   const subtotal = adCost - discount + addon + incentive;
   const ppn = calculatePpn(subtotal);
@@ -328,8 +388,9 @@ export function deriveScheduleMoney(
       hint: isKilat ? `${questionCount} Qs · base rate` : `${questionCount} Qs × ${duration} hari`,
       hintKey: isKilat ? undefined : 'costHintQsDays',
       hintVars: { q: questionCount, d: duration },
-      amount: adCost,
+      amount: adCostList,
     },
+    ...introLine(adCostList, adCost, rate.introUntil),
   ];
   if (addon > 0) lines.push({ label: 'Add-on JFU Kilat', labelKey: 'costLineKilatAddon', amount: addon, tone: 'addon' });
   if (discount > 0) lines.push({ label: `Diskon Voucher (${voucher})`, labelKey: 'costLineVoucherNamed', labelVars: { code: voucher ?? '' }, amount: -discount, tone: 'discount' });

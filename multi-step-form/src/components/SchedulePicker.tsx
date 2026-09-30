@@ -70,23 +70,18 @@ export function SchedulePicker({
   if (availability.isLoading && !availability.isReady) {
     return (
       <div className="space-y-4">
-        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 py-1"
-        /* ⚠️ JARAK LEWAT STYLE INLINE, BUKAN `gap-2.5`.
-           `styles.css` warisan dimuat SESUDAH Tailwind dan mendefinisikan
-           `.grid { gap: 1.5rem }` polos. Pada spesifisitas yang sama, urutan
-           sumber menang — terverifikasi di bundle terkirim: aturan legacy ada
-           di offset 252203, `gap-2.5` di 50410. Akibatnya grid ini merender
-           jarak 24px, bukan 10px, dan tile menyusut ~7px di ponsel.
-           Style inline satu-satunya yang menang tanpa menyentuh berkas warisan. */
-        style={{ gap: '0.625rem' }}>
+        <div
+          className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 py-1"
+          style={{ gap: '0.75rem' }}
+        >
           {Array.from({ length: HORIZON_DAYS }).map((_, i) => (
             <div
               key={i}
-              className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white p-2.5 h-[86px] animate-pulse"
+              className="flex flex-col items-center justify-between rounded-2xl border border-slate-200 bg-white p-2.5 sm:p-3 min-h-[96px] sm:min-h-[102px] animate-pulse"
             >
-              <div className="h-2.5 w-7 rounded bg-slate-200" />
-              <div className="h-4 w-12 rounded bg-slate-300" />
-              <div className="h-3.5 w-9 rounded-full bg-slate-100" />
+              <div className="h-2.5 w-8 rounded bg-slate-200" />
+              <div className="h-4 w-12 rounded bg-slate-300 my-1" />
+              <div className="h-4 w-12 rounded-full bg-slate-100 mt-auto" />
             </div>
           ))}
         </div>
@@ -96,7 +91,8 @@ export function SchedulePicker({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 py-1"
+      <div
+        className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 py-1"
         /* ⚠️ JARAK LEWAT STYLE INLINE, BUKAN `gap-2.5`.
            `styles.css` warisan dimuat SESUDAH Tailwind dan mendefinisikan
            `.grid { gap: 1.5rem }` polos. Pada spesifisitas yang sama, urutan
@@ -104,7 +100,8 @@ export function SchedulePicker({
            di offset 252203, `gap-2.5` di 50410. Akibatnya grid ini merender
            jarak 24px, bukan 10px, dan tile menyusut ~7px di ponsel.
            Style inline satu-satunya yang menang tanpa menyentuh berkas warisan. */
-        style={{ gap: '0.625rem' }}>
+        style={{ gap: '0.75rem' }}
+      >
         {dates.map((date, i) => {
           const ymd = toLocalYmd(date);
           const baseCount = counts[ymd] || 0;
@@ -115,18 +112,19 @@ export function SchedulePicker({
             selectedIndex !== -1 && i >= selectedIndex && i < selectedIndex + effectiveDuration;
           const displayCount = isSelectedInRange ? baseCount + 1 : baseCount;
 
-          let statusColors = 'bg-white border-slate-200 hover:border-blue-400 shadow-sm';
+          let statusColors =
+            'bg-white border-slate-200 hover:border-blue-400 hover:bg-blue-50/20 shadow-xs cursor-pointer';
           let textColor = 'text-slate-800';
 
           if (isSelectedInRange) {
             if (displayCount > maxPerDay) {
-              statusColors = 'bg-red-50 border-red-500 ring-1 ring-red-500 shadow-md';
+              statusColors = 'bg-red-50/80 border-red-500 ring-2 ring-red-500/20 shadow-xs';
               textColor = 'text-red-900';
             } else {
               statusColors =
                 mode === 'kilat'
-                  ? 'bg-amber-50 border-amber-500 ring-1 ring-amber-500 shadow-md'
-                  : 'bg-blue-50 border-blue-600 ring-1 ring-blue-600 shadow-md';
+                  ? 'bg-amber-50/80 border-amber-500 ring-2 ring-amber-500/20 shadow-xs'
+                  : 'bg-blue-50/80 border-blue-600 ring-2 ring-blue-600/20 shadow-xs';
               textColor = mode === 'kilat' ? 'text-amber-900' : 'text-blue-900';
             }
           } else if (isClosed) {
@@ -134,10 +132,11 @@ export function SchedulePicker({
                latarnya bersamaan, jadi teksnya menggelap MENUJU latar: tile
                lewat-cutoff terukur 1,87:1 — jauh di bawah ambang teks besar
                sekalipun. Warna diredam eksplisit supaya tetap terbaca. */
-            statusColors = 'bg-slate-100 border-slate-200 cursor-not-allowed';
-            textColor = 'text-slate-600';
+            statusColors = 'bg-slate-50/90 border-slate-200/70 cursor-not-allowed';
+            textColor = 'text-slate-500';
           } else if (isFull) {
-            statusColors = 'bg-slate-50 border-slate-200 cursor-not-allowed';
+            statusColors = 'bg-slate-50/90 border-slate-200/70 cursor-not-allowed';
+            textColor = 'text-slate-500';
           }
 
           /* Warna -600, bukan -500: pada pil `slate-100/50` varian 500 terukur
@@ -180,50 +179,59 @@ export function SchedulePicker({
               aria-label={reason ? `${dayLabel} — ${reason}` : dayLabel}
               aria-pressed={isSelectedInRange || undefined}
               title={reason ?? undefined}
-              className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 ${statusColors}`}
+              className={`group relative flex flex-col items-center justify-between p-2.5 sm:p-3 min-h-[96px] sm:min-h-[102px] rounded-2xl border transition-all duration-150 text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 ${statusColors}`}
             >
-              {isToday || isTomorrow ? (
-                <div className="flex-1 flex items-center justify-center min-h-[38px] mb-1">
-                  <span
-                    className={`font-semibold text-sm leading-tight text-center ${
-                      isSelectedInRange
-                        ? textColor
-                        : isToday
-                          ? 'text-jfu-primary font-bold'
-                          : 'text-slate-800'
-                    }`}
-                  >
-                    {isToday ? t('calendarToday') : t('calendarTomorrow')}
-                  </span>
-                </div>
-              ) : (
-                <>
-                  <span className="text-slate-500 text-[10px] font-semibold uppercase tracking-wider">
-                    {date.toLocaleDateString(locale, { weekday: 'short' })}
-                  </span>
-                  <span className={`font-semibold text-[15px] leading-tight mb-1 ${textColor}`}>
-                    {date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
-                  </span>
-                </>
-              )}
+              {/* 1. Header label: Hari ini / Besok / Nama Hari */}
+              <span
+                className={`text-[10px] font-bold uppercase tracking-wider truncate max-w-full ${
+                  isSelectedInRange
+                    ? textColor
+                    : isToday && !isClosed
+                      ? 'text-jfu-primary'
+                      : 'text-slate-400'
+                }`}
+              >
+                {isToday
+                  ? t('calendarToday')
+                  : isTomorrow
+                    ? t('calendarTomorrow')
+                    : date.toLocaleDateString(locale, { weekday: 'short' })}
+              </span>
+
+              {/* 2. Tanggal & Bulan: Tampil seragam untuk SEMUA 14 hari */}
+              <span className={`text-sm sm:text-base font-bold leading-tight my-0.5 tracking-tight ${textColor}`}>
+                {date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+              </span>
+
+              {/* 3. Status kuota / tutup */}
               {isClosed ? (
-                <div className="flex items-center gap-1 mt-auto bg-slate-200/60 px-1.5 py-0.5 rounded-full border border-slate-200">
-                  <span className="text-[10px] font-medium text-slate-700">{t('slotClosedTodayLabel')}</span>
+                <div className="flex items-center gap-1 mt-auto bg-slate-200/60 px-2 py-0.5 rounded-full border border-slate-200">
+                  <span className="text-[10px] font-medium text-slate-600">{t('slotClosedTodayLabel')}</span>
                 </div>
               ) : isFull && !isSelectedInRange ? (
                 /* Kata, bukan cuma angka merah: "4/4" menuntut pembacanya tahu
                    bahwa penyebutnya kuota. "Penuh" tidak menuntut apa pun. */
-                <div className="flex items-center gap-1 mt-auto bg-red-50 px-1.5 py-0.5 rounded-full border border-red-200">
-                  <span className="text-[10px] font-medium text-red-800">{t('slotFullLabel')}</span>
+                <div className="flex items-center gap-1 mt-auto bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
+                  <span className="text-[10px] font-semibold text-red-700">{t('slotFullLabel')}</span>
                 </div>
               ) : (
-                <div className="flex items-center gap-1 mt-auto bg-slate-100/50 px-1.5 py-0.5 rounded-full border border-slate-100">
-                  <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`} aria-hidden="true" />
+                <div
+                  className={`flex items-center gap-1.5 mt-auto px-2 py-0.5 rounded-full border ${
+                    isSelectedInRange
+                      ? mode === 'kilat'
+                        ? 'bg-amber-100/70 border-amber-200 text-amber-900'
+                        : 'bg-blue-100/70 border-blue-200 text-blue-900'
+                      : 'bg-slate-100/60 border-slate-200/60 text-slate-600'
+                  }`}
+                >
+                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} aria-hidden="true" />
                   <span
-                    className={`text-[10px] font-medium ${
+                    className={`text-[10px] font-medium tabular-nums ${
                       displayCount > maxPerDay || (isFull && !isSelectedInRange)
-                        ? 'text-red-700'
-                        : 'text-slate-600'
+                        ? 'text-red-700 font-semibold'
+                        : isSelectedInRange
+                          ? 'font-semibold'
+                          : 'text-slate-600'
                     }`}
                   >
                     {displayCount}/{maxPerDay}

@@ -687,7 +687,7 @@ export function StatusPage() {
 
     if (loading) {
         return (
-            <div className="max-w-4xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-10 space-y-6">
+            <div className="max-w-5xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-10 space-y-6">
                 {/* Skeleton 2 Kartu Buat Order */}
                 <div className="grid gap-3 sm:grid-cols-2">
                     <Skeleton className="h-28 rounded-2xl bg-slate-100" />
@@ -734,7 +734,7 @@ export function StatusPage() {
 
     return (
         <div>
-            <div className="max-w-4xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-10 space-y-6">
+            <div className="max-w-5xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-10 space-y-6">
                 {/* Hub produk — jalur masuk Buat Order selalu konsisten terlihat di atas */}
                 <CreateOrderCards onOpenAdsModal={() => setIsAdsModalOpen(true)} />
 

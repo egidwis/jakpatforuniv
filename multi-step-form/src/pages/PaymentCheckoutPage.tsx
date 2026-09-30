@@ -513,6 +513,7 @@ export function PaymentCheckoutPage() {
     | 'ordinal' | 'duration' | 'status' | 'distributionType' | 'totalCost'
     | 'subtotal' | 'ppnAmount' | 'voucherCode' | 'prizePerWinner'
     | 'winnerCount' | 'additionalPrizePerWinner' | 'isNewPeriod'
+    | 'rateLockedAt' | 'submissionCreatedAt'
   > = {
       ordinal: 1,
       duration: submission.duration ?? 1,
@@ -532,6 +533,14 @@ export function PaymentCheckoutPage() {
       prizePerWinner: submission.prize_per_winner ?? 0,
       winnerCount: submission.winner_count ?? 0,
       status: isExpired ? 'waiting_payment' : (submission.status || 'waiting_payment'),
+      /*
+        Instan tarif = tanggal order — cermin jalur cadangan `scheduleAxes.ts`.
+        Totalnya tetap nominal tersimpan (`totalCost` di atas); instan ini hanya
+        memutuskan apakah baris "Harga perkenalan" bisa direkonstruksi. Jadwal
+        yang dipesan ulang (tarif baru) tidak cocok → bentuk lama, tanpa tebakan.
+      */
+      rateLockedAt: submission.created_at ?? null,
+      submissionCreatedAt: submission.created_at ?? new Date().toISOString(),
   };
 
   const money = deriveScheduleMoney(pricingEntry as AdScheduleEntry, {
@@ -548,7 +557,6 @@ export function PaymentCheckoutPage() {
         isBusy={isRebooking}
         orderLabel={submission.title || 'Untitled Form'}
         title={t('segmentReservation')}
-        subtitle={t('scheduleSubtitle')}
         alertBanner={
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
             <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">

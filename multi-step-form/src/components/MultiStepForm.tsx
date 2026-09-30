@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { getFormSubmissionsByUser, getOwnProfile } from '../utils/supabase';
 import { expandReferralSource } from '../constants/biodata';
 import { SURVEY_DRAFT_KEY, LEGACY_SURVEY_DRAFT_KEY } from '../utils/constants';
+import { DEFAULT_SURVEY_FORM_DATA } from '../utils/defaultFormData';
 import { restoreDraft } from '../utils/draftRestore';
 import { isAutoApprovalPath as computeIsAutoApprovalPath } from '../utils/review-path';
 import { isBookingClosedForDate } from '../utils/airing-window';
@@ -44,40 +45,7 @@ const STORAGE_KEY = SURVEY_DRAFT_KEY;
 const readDraft = () => restoreDraft(localStorage);
 
 
-// Default values untuk form
-const defaultFormData: SurveyFormData = {
-  // Step 1
-  surveyUrl: '',
-  title: '',
-  description: '',
-  questionCount: 0,
-  criteriaResponden: '',
-  duration: 2, // Default 2 hari (seragam dengan perpanjangan jadwal)
-  startDate: '',
-  endDate: '',
-
-  // Kontak invoice (diedit di checkout) + biodata researcher (prefill dari profil)
-  fullName: '',
-  email: '',
-  phoneNumber: '',
-  university: '',
-  department: '',
-  status: '',
-  referralSource: '',
-  referralSourceOther: '',
-  winnerCount: 2,
-  prizePerWinner: 25000,
-
-  // Checkout
-  voucherCode: '',
-
-  // JFU Kilat
-  isKilatUpgrade: false,
-  kilatStartDate: '',
-  kilatStartTime: '',
-  regularStartDateBackup: '',
-  regularStartTimeBackup: '',
-};
+const defaultFormData = DEFAULT_SURVEY_FORM_DATA;
 
 export function MultiStepForm() {
   const { user } = useAuth();
@@ -341,7 +309,9 @@ export function MultiStepForm() {
     try {
       const saved = await submitOrder({
         formData: merged,
-        cost: calculateTotalCost(effective),
+        // Order baru: instan tarif = sekarang (sama dengan `created_at` yang
+        // dipaksakan sql/103 saat INSERT).
+        cost: calculateTotalCost(effective, Date.now()),
         isAutoApproval: auto,
         ilkomunyBlocked,
         authUserId: user?.id,
@@ -443,7 +413,7 @@ export function MultiStepForm() {
       {/* Padding bawah kini SERAGAM: bar melayang yang dulu menuntut
           `pb-32 md:pb-36` sudah dicabut, jadi tidak ada lagi ruang kosong yang
           harus disisakan untuknya. */}
-      <div className="form-content mt-8 max-w-5xl mx-auto px-6 pb-12">
+      <div className="form-content mt-8 max-w-5xl mx-auto px-4 md:px-6 pb-12">
         {/* Judul segmen + jalan keluar. Sengaja DI DALAM `form-content` supaya
             ikut lebar dan padding isinya — dulu bar melayang berdiri di luar
             aliran dan karena itu butuh padding kompensasi. */}
@@ -454,7 +424,7 @@ export function MultiStepForm() {
         {isHeaderVisible && (
           <OrderFormHeader
             title={t(segmentTitleOf({ phase: 'detail' }).key)}
-            subtitle={currentStep === 2 ? t('summaryTitle') : undefined}
+            showCancel={false}
             onCancelConfirmed={cancelOrder}
           />
         )}
@@ -488,6 +458,7 @@ export function MultiStepForm() {
             updateFormData={updateFormData}
             nextStep={nextStep}
             onHeaderVisibilityChange={setIsStep1HeaderAllowed}
+            onCancelOrder={cancelOrder}
           />
         )}
 
@@ -500,6 +471,7 @@ export function MultiStepForm() {
             onBack={prevStep}
             onUpgradeKilat={goToKilatSchedule}
             onUndoKilat={undoKilatUpgrade}
+            onCancelOrder={cancelOrder}
           />
         )}
 

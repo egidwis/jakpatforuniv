@@ -20,6 +20,15 @@
         ],
         "createdAt": "2026-09-29T03:25:30.790Z",
         "reason": "Claude: false positive on hover-variant pairing. The hit (Salin link bayar icon button) is 'text-slate-400 hover:text-blue-600 hover:bg-blue-50' on a white row — bg-blue-50 only applies on hover, where the icon also becomes blue-600, so gray never renders on the colored background."
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "animate-bounce",
+        "files": [
+          "multi-step-form/src/pages/dashboard/ChatPage.tsx"
+        ],
+        "createdAt": "2026-09-30T05:54:14.260Z",
+        "reason": "Claude: titik indikator 'Mimin sedang mengetik' (pola chat konvensional, sudah ada di main, di luar perubahan tarif). Cermin ignore yang sama di multi-step-form/.impeccable/config.json — hook membaca config dari cwd, dan path relatifnya berbeda."
       }
     ]
   }

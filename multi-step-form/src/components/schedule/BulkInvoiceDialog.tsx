@@ -7,7 +7,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { formatIDR } from '@/utils/currency';
-import { voucherInstantOf } from '@/utils/cost-calculator';
+import { rateInstantOf, voucherInstantOf } from '@/utils/cost-calculator';
 import { createManualInvoice } from '@/utils/payment';
 import { leadOf, payLinkUrl } from '@/utils/payLink';
 import {
@@ -622,6 +622,7 @@ function buildItems(candidate: BulkCandidate, voucherCode: string): InvoiceItem[
     voucherCode,
     isKilat: entry.distributionType === 'kilat',
     voucherInstantMs,
+    rateInstantMs: rateInstantOf(entry.rateLockedAt),
   }).items;
 }
 

@@ -5,7 +5,7 @@ import { describe, expect, test, afterEach, vi } from 'vitest';
 // bukan di functions/api/doku/, karena berkas di sana yang tidak berawalan `_`
 // akan lahir jadi route publik.
 // @ts-ignore -- Pages Function tanpa deklarasi tipe
-import { SUBMISSION_SELECT_COLUMNS, computeTotalCostFromSubmission } from '../../functions/api/doku/create-payment.js';
+import { SUBMISSION_SELECT_COLUMNS, computeTotalCostFromSubmission, pricingRowForSchedule } from '../../functions/api/doku/create-payment.js';
 
 /*
   KENAPA TES INI ADA, DAN KENAPA BENTUKNYA BEGINI.
@@ -57,6 +57,14 @@ const ORDER_DI_DATABASE = {
 };
 
 /** Apa yang BENAR-BENAR sampai ke endpoint: PostgREST hanya memulangkan `select=`. */
+/*
+  Instan TARIF (sql/103) datang dari `ad_schedules.rate_locked_at`, bukan dari
+  select= ini — ditempelkan `pricingRowForSchedule`, persis jalur produksi.
+  Order ini lahir sebelum 1 Okt 2026, jadi instannya = tanggal lahirnya.
+*/
+const denganTarif = (row: Record<string, unknown>) =>
+  pricingRowForSchedule(row, null, null, Date.parse(LAHIR));
+
 const lewatSelect = (row: Record<string, unknown>) =>
   Object.fromEntries(
     Object.entries(row).filter(([kolom]) => SUBMISSION_SELECT_COLUMNS.includes(kolom)),
@@ -93,15 +101,15 @@ describe('daftar kolom yang diminta create-payment', () => {
 describe('voucher dinilai pada tanggal order LAHIR, bukan jam bayar', () => {
   test('baris hasil select= menghitung harga yang sama dengan baris lengkap', () => {
     vi.setSystemTime(DIBAYAR);
-    expect(computeTotalCostFromSubmission(lewatSelect(ORDER_DI_DATABASE)).total).toBe(
-      computeTotalCostFromSubmission(ORDER_DI_DATABASE).total,
+    expect(computeTotalCostFromSubmission(denganTarif(lewatSelect(ORDER_DI_DATABASE))).total).toBe(
+      computeTotalCostFromSubmission(denganTarif(ORDER_DI_DATABASE)).total,
     );
   });
 
   test('harganya tetap harga saat dipesan meski dibayar setelah 31 Agustus 2026', () => {
     vi.setSystemTime(DIBAYAR);
     // 1.953.600 = subtotal 1.760.000 (sudah didiskon 10%) + PPN 193.600.
-    expect(computeTotalCostFromSubmission(lewatSelect(ORDER_DI_DATABASE)).total).toBe(1_953_600);
+    expect(computeTotalCostFromSubmission(denganTarif(lewatSelect(ORDER_DI_DATABASE))).total).toBe(1_953_600);
   });
 
   test('bug lamanya memang terjadi kalau created_at hilang — angkanya beda, bukan error', () => {
@@ -112,6 +120,6 @@ describe('voucher dinilai pada tanggal order LAHIR, bukan jam bayar', () => {
     delete (tanpaCreatedAt as Record<string, unknown>).created_at;
 
     vi.setSystemTime(DIBAYAR);
-    expect(computeTotalCostFromSubmission(tanpaCreatedAt).total).toBe(2_109_000);
+    expect(computeTotalCostFromSubmission(denganTarif(tanpaCreatedAt)).total).toBe(2_109_000);
   });
 });

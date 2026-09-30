@@ -44,7 +44,7 @@ export function AdsFlowCard({ step, children }: AdsFlowCardProps) {
 
   const hasCap = false;
 
-  const shellClass = 'mx-auto w-full max-w-xl';
+  const shellClass = step === 'fields' ? 'w-full' : 'mx-auto w-full max-w-xl';
   const bodyClass = 'w-full';
 
   return (

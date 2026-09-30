@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isDetailVisible } from './CostBreakdown';
+import { isDetailVisible, savingOf, introUntilOf, localizeDateVars } from './CostBreakdown';
 
 /*
   Satu komponen, dua kedalaman — dan kedalamannya tidak boleh mengubah ISI.
@@ -51,5 +51,32 @@ describe('isDetailVisible — `compact` mengikuti state', () => {
       satu `BreakdownLine` yang sama — bukan oleh varian.
     */
     expect(isDetailVisible('compact', true)).toBe(isDetailVisible('full', true));
+  });
+});
+
+describe('chip hemat vs chip harga perkenalan (keputusan 29 Sep 2026)', () => {
+  const lines = [
+    { label: 'Iklan', amount: 1_950_000 },
+    { label: 'Harga perkenalan', amount: -750_000, tone: 'discount' as const, kind: 'intro' as const, hintVars: { date: '2026-11-30' } },
+    { label: 'Diskon voucher', amount: -300_000, tone: 'discount' as const },
+  ];
+
+  it('"Kamu hemat" hanya menjumlah voucher — bukan selisih harga katalog', () => {
+    expect(savingOf(lines)).toBe(300_000);
+  });
+
+  it('tanpa voucher, tidak ada klaim hemat sama sekali', () => {
+    expect(savingOf(lines.slice(0, 2))).toBe(0);
+  });
+
+  it('chip perkenalan membaca tanggal akhirnya dari baris', () => {
+    expect(introUntilOf(lines)).toBe('2026-11-30');
+    expect(introUntilOf([lines[0]])).toBeNull();
+  });
+
+  it('tanggal dilokalkan per bahasa, tanpa bergeser sehari', () => {
+    expect(localizeDateVars({ date: '2026-12-31' }, 'id')?.date).toMatch(/31 Des 2026/);
+    expect(localizeDateVars({ date: '2026-12-31' }, 'en')?.date).toMatch(/31 Dec 2026/);
+    expect(localizeDateVars({ d: 3 }, 'id')).toEqual({ d: 3 });
   });
 });

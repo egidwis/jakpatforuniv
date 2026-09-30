@@ -1,5 +1,5 @@
 import type { CostCalculation } from '../types';
-import type { MoneyLine } from './scheduleMoney';
+import { introLine, type MoneyLine } from './scheduleMoney';
 
 /**
  * Jembatan `CostCalculation` → `MoneyLine[]`.
@@ -46,8 +46,12 @@ export function orderMoneyLines(
       : `${ctx.questionCount} Qs × ${ctx.duration} hari`,
     hintKey: ctx.isKilat ? undefined : 'costHintQsDays',
     hintVars: { q: ctx.questionCount, d: ctx.duration },
-    amount: calc.adCost,
+    // Harga KATALOG bila ada; selisihnya jadi baris "Harga perkenalan" di
+    // bawah. `adCostList` kosong (kalkulasi lama) = harga efektif apa adanya.
+    amount: calc.adCostList ?? calc.adCost,
   });
+
+  lines.push(...introLine(calc.adCostList ?? calc.adCost, calc.adCost, calc.introUntil ?? null));
 
   if (calc.discount > 0) {
     // ⚠️ NEGATIF, sama seperti `deriveScheduleMoney`. `CostBreakdown` memakai

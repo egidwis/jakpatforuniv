@@ -31,7 +31,9 @@ export function DurationPicker({
   className = '',
 }: DurationPickerProps) {
   const { t } = useLanguage();
-  const unit = unitLabel ?? t('scheduleAgainDays');
+  // Tunggal/jamak: bahasa Inggris membedakan "1 day" vs "2 days"; Indonesia
+  // tidak ("1 hari" / "2 hari"), jadi kedua kunci ID sama.
+  const unitFor = (n: number) => unitLabel ?? (n === 1 ? t('scheduleAgainDay') : t('scheduleAgainDays'));
   const safeVal = Math.max(min, Math.min(max, value || min));
 
   const handleStep = (delta: number) => {
@@ -69,7 +71,7 @@ export function DurationPicker({
                   : 'bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium'
               }`}
             >
-              {preset} {unit}
+              {preset} {unitFor(preset)}
             </button>
           );
         })}

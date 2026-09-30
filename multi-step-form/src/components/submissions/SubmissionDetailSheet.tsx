@@ -52,7 +52,7 @@ import { SchedulePaymentTab } from './tabs/SchedulePaymentTab';
 import { PageTab } from './tabs/PageTab';
 import { ScheduleForm } from '@/components/schedule/ScheduleForm';
 import { InvoiceForm } from '@/components/schedule/InvoiceForm';
-import { calculateTotalAdCost } from '@/utils/cost-calculator';
+import { calculateTotalAdCost, voucherInstantOf } from '@/utils/cost-calculator';
 import { updateFormDetails, type AdScheduleEntry } from '@/utils/supabase';
 import { repriceMessage } from '@/utils/repriceMessage';
 import { openWhatsApp, reviewFeedbackMessage } from '@/utils/waMessage';
@@ -601,8 +601,10 @@ export function SubmissionDetailSheet({
     // Selisihnya disebut di depan supaya admin memutuskan sadar, bukan kaget.
     if (questionCountInput !== submission.questionCount && !lifecycle.isPaid) {
       const duration = Number(submission.duration) || 1;
-      const oldAdCost = calculateTotalAdCost(submission.questionCount || 0, duration);
-      const newAdCost = calculateTotalAdCost(questionCountInput, duration);
+      // Pratinjau pada tanggal order; recomputeOrderPrice memakai rate_locked_at.
+      const at = voucherInstantOf(submission.submittedAt);
+      const oldAdCost = calculateTotalAdCost(submission.questionCount || 0, duration, at);
+      const newAdCost = calculateTotalAdCost(questionCountInput, duration, at);
       const rupiah = (n: number) => `Rp ${n.toLocaleString('id-ID')}`;
       const priceLine = oldAdCost === newAdCost
         ? `Harga tidak berubah: ${rupiah(oldAdCost)}.`

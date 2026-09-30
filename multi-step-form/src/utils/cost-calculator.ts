@@ -1,5 +1,5 @@
 import type { SurveyFormData, CostCalculation } from '../types';
-import { KILAT_ADDON_COST, KILAT_ADDON_COST_VOUCHER, PPN_PERCENT, ILKOMUNY_VALID_UNTIL, JFUFEB_VALID_UNTIL, JFUSUHUD_VALID_UNTIL, PPISWEDIA_VALID_UNTIL } from './constants';
+import { AD_RATE_SCHEDULE, type AdRateEntry, KILAT_ADDON_COST, KILAT_ADDON_COST_VOUCHER, PPN_PERCENT, ILKOMUNY_VALID_UNTIL, JFUFEB_VALID_UNTIL, JFUSUHUD_VALID_UNTIL, PPISWEDIA_VALID_UNTIL } from './constants';
 
 // DUPLICATED in functions/api/doku/create-payment.js (server-side authoritative
 // copy) — the two MUST be changed together: price tiers, voucher list, the
@@ -81,37 +81,65 @@ export function getKilatAddonCost(voucherCode: string | undefined): number {
 }
 
 /**
- * Menghitung biaya iklan berdasarkan jumlah pertanyaan dan durasi
- * @param questionCount Jumlah pertanyaan dalam survei
- * @param duration Durasi iklan dalam hari
- * @returns Biaya iklan per hari
+ * Instan tarif sebuah jadwal yang SUDAH ada: `ad_schedules.rate_locked_at`.
+ *
+ * Kolom itu diisi trigger sql/103 saja — tanggal order untuk jadwal pertama,
+ * tanggal pemesanan untuk perpanjangan dan untuk jadwal yang dipesan ulang
+ * sesudah dilepas/dibatalkan. NULL (baru dilepas, belum dipesan ulang) atau
+ * tidak terbaca → "sekarang": pemesanan berikutnya memang akan memakai tarif
+ * saat itu. Tidak pernah jatuh ke tarif lama.
  */
-export function calculateAdCostPerDay(questionCount: number): number {
-  // Jika jumlah pertanyaan 0, kembalikan 0
-  if (questionCount === 0) {
-    return 0;
-  } else if (questionCount <= 15) {
-    return 150000; // Rp 150.000/hari untuk max 15 pertanyaan
-  } else if (questionCount <= 30) {
-    return 200000; // Rp 200.000/hari untuk max 30 pertanyaan
-  } else if (questionCount <= 50) {
-    return 300000; // Rp 300.000/hari untuk 31-50 pertanyaan
-  } else if (questionCount <= 70) {
-    return 400000; // Rp 400.000/hari untuk 51-70 pertanyaan
-  } else {
-    return 500000; // Rp 500.000/hari untuk >70 pertanyaan
+export function rateInstantOf(rateLockedAt: string | null | undefined, nowMs: number = Date.now()): number {
+  const parsed = Date.parse(rateLockedAt ?? '');
+  return Number.isNaN(parsed) ? nowMs : parsed;
+}
+
+function tierIndexOf(questionCount: number): number {
+  if (questionCount <= 15) return 0;
+  if (questionCount <= 30) return 1;
+  if (questionCount <= 50) return 2;
+  if (questionCount <= 70) return 3;
+  return 4;
+}
+
+/** Entri AD_RATE_SCHEDULE yang berlaku pada `atMs`. */
+export function adRateEntryAt(atMs: number): AdRateEntry {
+  let current = AD_RATE_SCHEDULE[0];
+  for (const entry of AD_RATE_SCHEDULE) {
+    if (entry.from === null || atMs >= Date.parse(entry.from)) current = entry;
   }
+  return current;
 }
 
 /**
- * Menghitung total biaya iklan
- * @param questionCount Jumlah pertanyaan dalam survei
- * @param duration Durasi iklan dalam hari
- * @returns Total biaya iklan
+ * Tarif per hari pada `atMs`: harga katalog, harga efektif, dan sampai kapan
+ * harga perkenalannya berlaku. 0 soal → semuanya 0 (belum ada survei).
  */
-export function calculateTotalAdCost(questionCount: number, duration: number): number {
-  const costPerDay = calculateAdCostPerDay(questionCount);
-  return costPerDay * duration;
+export function adRateAt(questionCount: number, atMs: number): {
+  list: number; effective: number; introUntil: string | null;
+} {
+  if (!questionCount) return { list: 0, effective: 0, introUntil: null };
+  const entry = adRateEntryAt(atMs);
+  const i = tierIndexOf(questionCount);
+  const list = entry.list[i];
+  const effective = entry.effective[i];
+  return { list, effective, introUntil: list > effective ? entry.introUntil : null };
+}
+
+/**
+ * Biaya iklan per hari yang DITAGIH pada instan tarif `atMs`.
+ *
+ * ⚠️ `atMs` SENGAJA WAJIB. Tanpa default, `tsc` mendaftar setiap pemanggil
+ * yang belum memutuskan instannya — default `Date.now()` akan diam-diam
+ * menagih order Oktober dengan tarif Desember.
+ */
+export function calculateAdCostPerDay(questionCount: number, atMs: number): number {
+  return adRateAt(questionCount, atMs).effective;
+}
+
+/** Total biaya iklan yang ditagih (efektif × durasi). */
+export function calculateTotalAdCost(questionCount: number, duration: number, atMs: number): number {
+  return calculateAdCostPerDay(questionCount, atMs) * duration;
 }
 
 /**
@@ -435,14 +463,18 @@ export function getVoucherInfo(voucherCode: string | undefined, duration: number
 }
 
 /**
- * Menghitung total biaya keseluruhan
- * @param formData Data form
- * @returns Perhitungan biaya
+ * Menghitung total biaya keseluruhan pada instan tarif `atMs`.
+ *
+ * `atMs` WAJIB (lihat `calculateAdCostPerDay`). Wizard order baru mengoper
+ * `Date.now()`; order yang sudah ada mengoper `rateInstantOf(rate_locked_at)`.
+ * Voucher tetap dinilai pada `voucherAtMs` (tanggal order lahir), yang
+ * defaultnya sama dengan `atMs` — untuk order baru keduanya "sekarang".
  */
-export function calculateTotalCost(formData: SurveyFormData): CostCalculation {
+export function calculateTotalCost(formData: SurveyFormData, atMs: number, voucherAtMs: number = atMs): CostCalculation {
   if (formData.isKilatUpgrade) {
     // Kilat: base rate (no duration multiplier) + add-on + incentive
-    const adCostBase = calculateAdCostPerDay(formData.questionCount); // 1x only
+    const rate = adRateAt(formData.questionCount, atMs);
+    const adCostBase = rate.effective; // 1x only
     const incentiveCost = calculateIncentiveCost(formData.winnerCount, formData.prizePerWinner);
     const kilatAddon = getKilatAddonCost(formData.voucherCode);
     // No discount applied on top of Kilat add-on
@@ -450,6 +482,8 @@ export function calculateTotalCost(formData: SurveyFormData): CostCalculation {
     const ppn = calculatePpn(subtotal);
     return {
       adCost: adCostBase,
+      adCostList: rate.list,
+      introUntil: rate.introUntil,
       incentiveCost,
       discount: 0,
       kilatAddonCost: kilatAddon,
@@ -460,14 +494,19 @@ export function calculateTotalCost(formData: SurveyFormData): CostCalculation {
   }
 
   // Regular pricing
-  const adCost = calculateTotalAdCost(formData.questionCount, formData.duration);
+  const rate = adRateAt(formData.questionCount, atMs);
+  const adCost = rate.effective * formData.duration;
   const incentiveCost = calculateIncentiveCost(formData.winnerCount, formData.prizePerWinner);
-  const discount = calculateDiscount(formData.voucherCode, adCost, incentiveCost, formData.duration);
+  // Voucher dihitung terhadap harga EFEKTIF — JFUFEB/ILKOMUNY (cap 300rb/hari)
+  // karenanya tidak berubah nominal selama harga perkenalan berjalan.
+  const discount = calculateDiscount(formData.voucherCode, adCost, incentiveCost, formData.duration, voucherAtMs);
 
   const subtotal = adCost + incentiveCost - discount;
   const ppn = calculatePpn(subtotal);
   return {
     adCost,
+    adCostList: rate.list * formData.duration,
+    introUntil: rate.introUntil,
     incentiveCost,
     discount,
     kilatAddonCost: 0,

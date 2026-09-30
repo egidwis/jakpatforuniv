@@ -36,6 +36,56 @@ export const MAX_KILAT_ADS_PER_DAY = KILAT_SLOT_HOURS.length * KILAT_QUOTA_PER_S
 // DUPLICATED di sql/40_auto_publish_page.sql — WAJIB diubah bersamaan.
 export const DEFAULT_AD_BANNER_URL = '/default-ad-banner.jpg';
 
+// Tarif iklan per hari tayang, BERTANGGAL (keputusan 4 & 29 Sep 2026).
+//
+// `list` = harga katalog. `effective` = yang benar-benar ditagih. Selisihnya
+// tampil sebagai baris "Harga perkenalan" — jadi 1 Des dan 1 Jan cukup
+// menambah entri di sini, tanpa menyentuh satu pun pemanggil.
+//
+// Tier: [1–15, 16–30, 31–50, 51–70, >70] soal. `from` = instan pertama entri
+// berlaku (tengah malam WIB). Entri pertama `null` = sejak dulu.
+//
+// Instan yang dipakai memilih entri ("instan tarif"): `ad_schedules.rate_locked_at`
+// (sql/103) untuk jadwal yang sudah ada, "sekarang" untuk order yang sedang
+// dibuat. Lihat `rateInstantOf` di cost-calculator.ts.
+//
+// DUPLICATED sebagai literal di functions/api/doku/create-payment.js — WAJIB
+// diubah bersamaan; rateSchedule.spec.ts membandingkan keduanya.
+export interface AdRateEntry {
+  from: string | null;
+  list: readonly [number, number, number, number, number];
+  effective: readonly [number, number, number, number, number];
+  /** Tanggal terakhir harga perkenalan entri ini berlaku (label, WIB). */
+  introUntil: string | null;
+}
+
+export const AD_RATE_SCHEDULE: readonly AdRateEntry[] = [
+  {
+    from: null,
+    list: [150000, 200000, 300000, 400000, 500000],
+    effective: [150000, 200000, 300000, 400000, 500000],
+    introUntil: null,
+  },
+  {
+    from: '2026-10-01T00:00:00+07:00',
+    list: [200000, 350000, 500000, 650000, 800000],
+    effective: [150000, 200000, 300000, 400000, 500000],
+    introUntil: '2026-11-30',
+  },
+  {
+    from: '2026-12-01T00:00:00+07:00',
+    list: [200000, 350000, 500000, 650000, 800000],
+    effective: [160000, 280000, 400000, 520000, 640000],
+    introUntil: '2026-12-31',
+  },
+  {
+    from: '2027-01-01T00:00:00+07:00',
+    list: [200000, 350000, 500000, 650000, 800000],
+    effective: [200000, 350000, 500000, 650000, 800000],
+    introUntil: null,
+  },
+];
+
 // PPN (Pajak Pertambahan Nilai / Indonesian VAT), dipungut di ATAS subtotal (DPP).
 // PPN_PERCENT dipakai untuk menghitung & label; PPN_RATE disimpan per-invoice agar
 // invoice lama tetap benar bila tarif berubah kelak (11% → 12%).

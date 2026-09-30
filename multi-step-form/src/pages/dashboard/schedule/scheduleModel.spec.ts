@@ -38,6 +38,9 @@ function makeEntry(partial: Partial<AdScheduleEntry>): AdScheduleEntry {
     researcherName: 'Researcher',
     university: 'UI',
     submissionCreatedAt: '2026-09-01T10:00:00Z',
+    // Instan tarif DIKUNCI (sql/103) — tanpa ini fixture jatuh ke "sekarang"
+    // dan hasilnya berubah sendiri saat kalender melewati 1 Okt 2026.
+    rateLockedAt: '2026-09-01T10:00:00Z',
     createdAt: '2026-09-01T10:00:00Z',
     pageId: 'page-1',
     pageSlug: 'test-slug',

@@ -367,13 +367,22 @@ export function JadwalDanBayarPage() {
   // Gunakan data submission aktif agar menampilkan nominal estimasi sebenarnya, bukan Rp 0.
   if (money.total === 0 && state.screen === 'pick' && submission) {
     const subTotal = Number(submission.total_cost) || 0;
-    if (subTotal > 0) {
+    /*
+      ⚠️ TARIF DILEPAS = HARGA LAMA TIDAK BERLAKU LAGI (sql/103).
+      Slot yang dilepas/dibatalkan kehilangan `rate_locked_at`; pemesanan
+      ulangnya dikunci ke tarif HARI ITU, dan create-payment.js menagih
+      dengan tarif itu. `total_cost` tersimpan masih harga lama, jadi
+      memajangnya di sini menjanjikan angka yang tidak akan ditagih. Untuk
+      kasus itu: estimasi pada "sekarang" (totalCost 0 = cabang estimasi).
+    */
+    const rateReleased = entry.rateLockedAt == null;
+    if (subTotal > 0 || rateReleased) {
       const activeEntry: AdScheduleEntry = {
         ...entry,
         status: 'waiting_payment',
-        totalCost: subTotal,
-        subtotal: submission.subtotal ?? subTotal,
-        ppnAmount: submission.ppn_amount ?? 0,
+        totalCost: rateReleased ? 0 : subTotal,
+        subtotal: rateReleased ? null : (submission.subtotal ?? subTotal),
+        ppnAmount: rateReleased ? null : (submission.ppn_amount ?? 0),
         voucherCode: billedVoucher || entry.voucherCode || submission.voucher_code || null,
       };
       money = deriveScheduleMoney(activeEntry, {
@@ -439,7 +448,6 @@ export function JadwalDanBayarPage() {
         isBusy={isWorking}
         orderLabel={`${entry.title} · #${entry.bookingId}`}
         title={t(seg.key, seg.vars)}
-        subtitle={t('scheduleSubtitle')}
         calendar={
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-2">

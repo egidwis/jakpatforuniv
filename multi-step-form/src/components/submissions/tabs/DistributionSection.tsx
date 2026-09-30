@@ -3,7 +3,7 @@ import { AlertTriangle, Calendar, Zap } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../ui/dialog';
 import { DetailSheetSection } from '../../data-list/DetailSheet';
-import { calculateTotalAdCost, calculateIncentiveCost, calculateDiscount, calculateAdCostPerDay, calculatePpn, getKilatAddonCost } from '../../../utils/cost-calculator';
+import { calculateTotalAdCost, calculateIncentiveCost, calculateDiscount, calculateAdCostPerDay, calculatePpn, getKilatAddonCost, voucherInstantOf } from '../../../utils/cost-calculator';
 import type { SurveySubmission, PaymentState, ExistingPage } from '../types';
 import { deriveLifecycle } from '../lifecycle';
 import { DistributionAction } from '../CampaignActions';
@@ -37,16 +37,20 @@ export function DistributionSection({
   // menekan tombol. Angka finalnya tetap dihitung ulang di server oleh
   // convertDistributionType() dari data DB yang segar — ini hanya pratinjau,
   // jadi admin tidak memindahkan order secara buta.
+  // ⚠️ PRATINJAU. Instan tarif di sini = tanggal order (`submittedAt`) — benar
+  // untuk jadwal pertama yang tidak pernah dilepas. Angka yang DITULIS dihitung
+  // ulang oleh convertDistributionType() dari `ad_schedules.rate_locked_at`.
+  const previewAt = voucherInstantOf(submission.submittedAt);
   const previewIncentive = calculateIncentiveCost(submission.winnerCount || 0, submission.prize_per_winner || 0);
   const previewKilatSubtotal =
-    calculateAdCostPerDay(submission.questionCount || 0) +
+    calculateAdCostPerDay(submission.questionCount || 0, previewAt) +
     getKilatAddonCost(submission.voucher_code) +
     previewIncentive;
-  const previewRegularAdCost = calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0);
+  const previewRegularAdCost = calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0, previewAt);
   const previewRegularSubtotal =
     previewRegularAdCost +
     previewIncentive -
-    calculateDiscount(submission.voucher_code, previewRegularAdCost, previewIncentive, submission.duration || 0);
+    calculateDiscount(submission.voucher_code, previewRegularAdCost, previewIncentive, submission.duration || 0, previewAt);
   const previewSubtotal = convertTarget === 'kilat' ? previewKilatSubtotal : previewRegularSubtotal;
   const previewTotal = previewSubtotal + calculatePpn(previewSubtotal);
 

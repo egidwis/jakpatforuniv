@@ -47,6 +47,9 @@ const scheduleOf = (over: Partial<AdScheduleEntry> = {}): AdScheduleEntry => ({
     researcherName: 'Peneliti',
     university: null,
     submissionCreatedAt: '2026-09-01T00:00:00.000Z',
+    // Instan tarif DIKUNCI (sql/103) — tanpa ini fixture jatuh ke "sekarang"
+    // dan hasilnya berubah sendiri saat kalender melewati 1 Okt 2026.
+    rateLockedAt: '2026-09-01T00:00:00.000Z',
     createdAt: '2026-09-01T00:00:00.000Z',
     pageStatus: 'none',
     isExtraAd: false,

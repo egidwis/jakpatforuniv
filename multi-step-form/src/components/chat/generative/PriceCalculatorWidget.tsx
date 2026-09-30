@@ -1,39 +1,44 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calculator, Sparkles, ArrowRight, Zap, Flame } from 'lucide-react';
+import { adRateAt } from '../../../utils/cost-calculator';
+import { KILAT_ADDON_COST } from '../../../utils/constants';
 
 export const PriceCalculatorWidget: React.FC = () => {
   const navigate = useNavigate();
 
-  const [respondents, setRespondents] = useState<number>(200);
+  // Jumlah SOAL, bukan target responden: tarif iklan ditentukan tier soal
+  // (AD_RATE_SCHEDULE). Versi sebelumnya memakai Rp150rb rata untuk semua tier
+  // dan rumus Kilat karangan per 100 responden — angka yang tidak pernah
+  // ditagih checkout mana pun.
+  const [questionCount, setQuestionCount] = useState<number>(30);
   const [durationDays, setDurationDays] = useState<number>(1);
   const [serviceType, setServiceType] = useState<'regular' | 'kilat'>('regular');
 
   // Kalkulasi harga simulasi
+  // Instan tarif = sekarang: order yang dibuat dari simulasi ini lahir hari ini.
   const calculation = useMemo(() => {
+    const rate = adRateAt(questionCount, Date.now());
     if (serviceType === 'regular') {
-      // Regular Ads: Rp 150.000 per hari tayang
-      const dailyPrice = 150000;
-      const total = dailyPrice * durationDays;
       return {
-        dailyPrice,
-        total,
+        dailyPrice: rate.effective,
+        listTotal: rate.list * durationDays,
+        total: rate.effective * durationDays,
+        introUntil: rate.introUntil,
         estSpeed: `${durationDays} - ${durationDays + 1} hari`,
         highlight: 'Cocok untuk riset akademik umum dengan budget hemat.'
       };
-    } else {
-      // JFU Kilat: paket kuota kilat
-      // Misal 100 resp: Rp 450.000, 200 resp: Rp 800.000, dst.
-      const basePer100 = 450000;
-      const total = Math.round((respondents / 100) * basePer100 * 0.95);
-      return {
-        dailyPrice: total,
-        total,
-        estSpeed: 'Kurang dari 24 jam',
-        highlight: '⚡ Prioritas tayang kilat & slot terjamin untuk deadline mepet.'
-      };
     }
-  }, [respondents, durationDays, serviceType]);
+    // Kilat: tarif dasar 1× (durasi tidak berlaku) + add-on.
+    return {
+      dailyPrice: rate.effective,
+      listTotal: rate.list + KILAT_ADDON_COST,
+      total: rate.effective + KILAT_ADDON_COST,
+      introUntil: rate.introUntil,
+      estSpeed: 'Kurang dari 24 jam',
+      highlight: '⚡ Prioritas tayang kilat & slot terjamin untuk deadline mepet.'
+    };
+  }, [questionCount, durationDays, serviceType]);
 
   const handleOrderNow = () => {
     navigate('/?service=' + serviceType);
@@ -92,24 +97,24 @@ export const PriceCalculatorWidget: React.FC = () => {
         {/* Slider Responden */}
         <div>
           <div className="flex justify-between items-center text-xs mb-1">
-            <span className="font-semibold text-slate-700">Target Responden:</span>
+            <span className="font-semibold text-slate-700">Jumlah Soal:</span>
             <span className="font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
-              {respondents} Responden
+              {questionCount >= 100 ? '100+' : questionCount} Soal
             </span>
           </div>
           <input
             type="range"
-            min={100}
-            max={1000}
-            step={50}
-            value={respondents}
-            onChange={(e) => setRespondents(Number(e.target.value))}
+            min={1}
+            max={100}
+            step={1}
+            value={questionCount}
+            onChange={(e) => setQuestionCount(Number(e.target.value))}
             className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
           />
-          <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
-            <span>100</span>
-            <span>500</span>
-            <span>1.000+</span>
+          <div className="flex justify-between text-[10px] text-slate-500 mt-0.5">
+            <span>1</span>
+            <span>50</span>
+            <span>100+</span>
           </div>
         </div>
 
@@ -144,10 +149,23 @@ export const PriceCalculatorWidget: React.FC = () => {
       <div className="p-3 bg-white border border-indigo-100 rounded-xl space-y-2">
         <div className="flex justify-between items-center">
           <span className="text-xs font-semibold text-slate-600">Estimasi Total Biaya:</span>
-          <span className="text-base font-extrabold text-indigo-700">
-            Rp {calculation.total.toLocaleString('id-ID')}
+          <span className="text-right">
+            {calculation.listTotal > calculation.total && (
+              <span className="block text-[11px] text-slate-500 line-through">
+                Rp {calculation.listTotal.toLocaleString('id-ID')}
+              </span>
+            )}
+            <span className="text-base font-extrabold text-indigo-700">
+              Rp {calculation.total.toLocaleString('id-ID')}
+            </span>
           </span>
         </div>
+        <p className="text-[11px] text-slate-500 leading-tight">
+          Biaya iklan saja — belum termasuk hadiah responden & PPN 11%.
+          {calculation.introUntil && ' Harga perkenalan berlaku untuk order yang dibuat s/d '
+            + new Date(`${calculation.introUntil}T00:00:00+07:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' })
+            + '.'}
+        </p>
         <p className="text-[11px] text-slate-500 leading-tight">
           {calculation.highlight} Estimasi perolehan: <span className="font-semibold text-slate-700">{calculation.estSpeed}</span>.
         </p>

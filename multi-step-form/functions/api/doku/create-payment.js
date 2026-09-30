@@ -58,13 +58,71 @@ function calculatePpn(dpp) {
   return Math.round((dpp * PPN_PERCENT) / 100);
 }
 
-function calculateAdCostPerDay(questionCount) {
-  if (questionCount === 0) return 0;
-  if (questionCount <= 15) return 150000;
-  if (questionCount <= 30) return 200000;
-  if (questionCount <= 50) return 300000;
-  if (questionCount <= 70) return 400000;
-  return 500000;
+// Tarif iklan BERTANGGAL. Cermin literal AD_RATE_SCHEDULE di
+// src/utils/constants.ts — WAJIB identik; rateSchedule.spec.ts membandingkan
+// keduanya entri demi entri. `list` = katalog, `effective` = yang ditagih.
+export const AD_RATE_SCHEDULE = [
+  {
+    from: null,
+    list: [150000, 200000, 300000, 400000, 500000],
+    effective: [150000, 200000, 300000, 400000, 500000],
+    introUntil: null,
+  },
+  {
+    from: '2026-10-01T00:00:00+07:00',
+    list: [200000, 350000, 500000, 650000, 800000],
+    effective: [150000, 200000, 300000, 400000, 500000],
+    introUntil: '2026-11-30',
+  },
+  {
+    from: '2026-12-01T00:00:00+07:00',
+    list: [200000, 350000, 500000, 650000, 800000],
+    effective: [160000, 280000, 400000, 520000, 640000],
+    introUntil: '2026-12-31',
+  },
+  {
+    from: '2027-01-01T00:00:00+07:00',
+    list: [200000, 350000, 500000, 650000, 800000],
+    effective: [200000, 350000, 500000, 650000, 800000],
+    introUntil: null,
+  },
+];
+
+function tierIndexOf(questionCount) {
+  if (questionCount <= 15) return 0;
+  if (questionCount <= 30) return 1;
+  if (questionCount <= 50) return 2;
+  if (questionCount <= 70) return 3;
+  return 4;
+}
+
+/**
+ * Tarif per hari yang DITAGIH pada instan tarif `atMs`.
+ *
+ * ⚠️ `atMs` WAJIB — tanpa itu fungsi ini MELEMPAR. Instan yang terlupa akan
+ * diam-diam menagih order Oktober dengan tarif Desember; gagal keras di sini
+ * lebih murah daripada selisih kas yang baru ketahuan di rekonsiliasi.
+ */
+export function calculateAdCostPerDay(questionCount, atMs) {
+  if (typeof atMs !== 'number' || Number.isNaN(atMs)) {
+    throw new Error('rate_instant_missing');
+  }
+  if (!questionCount) return 0;
+  let entry = AD_RATE_SCHEDULE[0];
+  for (const e of AD_RATE_SCHEDULE) {
+    if (e.from === null || atMs >= Date.parse(e.from)) entry = e;
+  }
+  return entry.effective[tierIndexOf(questionCount)];
+}
+
+/**
+ * Instan tarif dari `ad_schedules.rate_locked_at` (sql/103, diisi trigger
+ * saja). NULL/tak terbaca = dilepas dan belum dipesan ulang → sekarang.
+ * Cermin `rateInstantOf()` di cost-calculator.ts.
+ */
+export function rateInstantOf(rateLockedAt, nowMs = Date.now()) {
+  const parsed = Date.parse(rateLockedAt ?? '');
+  return Number.isNaN(parsed) ? nowMs : parsed;
 }
 
 export function calculateDiscount(voucherCode, adCost, incentiveCost, duration, atMs = Date.now()) {
@@ -203,8 +261,16 @@ export function scheduleAttribution(schedule) {
  *        voucher order, sesuai presedensi yang sudah berjalan). `null` = tidak
  *        menyatakan apa-apa.
  */
-export function pricingRowForSchedule(sub, schedule, billingVoucher) {
-  const base = billingVoucher ? { ...sub, voucher_code: billingVoucher } : { ...sub };
+export function pricingRowForSchedule(sub, schedule, billingVoucher, rateInstant) {
+  /*
+    `rate_instant` — instan TARIF jadwal yang ditagih (`rate_locked_at`,
+    sql/103). BERBEDA dari `created_at` yang tetap menilai voucher: jadwal yang
+    dipesan ulang sesudah dilepas memakai tarif saat itu, tapi hak vouchernya
+    tetap milik order. Tidak diisi = `computeTotalCostFromSubmission` melempar.
+  */
+  const base = billingVoucher
+    ? { ...sub, voucher_code: billingVoucher, rate_instant: rateInstant }
+    : { ...sub, rate_instant: rateInstant };
   if (!schedule) return base;
 
   /*
@@ -299,14 +365,14 @@ export function computeTotalCostFromSubmission(sub) {
   let subtotal;
   if (isKilat) {
     // Kilat: base rate (no duration multiplier) + add-on + incentive, no discount
-    const adCostBase = calculateAdCostPerDay(questionCount);
+    const adCostBase = calculateAdCostPerDay(questionCount, sub.rate_instant);
     const kilatAddon =
       voucherCode && voucherCode.toUpperCase() === 'JFUSUHUD'
         ? KILAT_ADDON_COST_VOUCHER
         : KILAT_ADDON_COST;
     subtotal = adCostBase + kilatAddon + incentiveCost;
   } else {
-    const adCost = calculateAdCostPerDay(questionCount) * duration;
+    const adCost = calculateAdCostPerDay(questionCount, sub.rate_instant) * duration;
     const discount = calculateDiscount(voucherCode, adCost, incentiveCost, duration, orderInstant(sub));
     subtotal = adCost + incentiveCost - discount;
   }
@@ -356,7 +422,7 @@ export function buildNoteItems(sub, pricingSub) {
     noteItems.push({
       name: 'Jakpat for Universities (ads)',
       qty: 1,
-      price: calculateAdCostPerDay(noteQuestionCount),
+      price: calculateAdCostPerDay(noteQuestionCount, pricingSub.rate_instant),
       category: 'Jakpat for Universities (ads)',
     });
     noteItems.push({
@@ -366,7 +432,9 @@ export function buildNoteItems(sub, pricingSub) {
       category: 'Lainnya',
     });
   } else {
-    const adCostBase = calculateAdCostPerDay(noteQuestionCount);
+    // Instan tarif yang SAMA dengan `amount` — kalau beda, rincian kwitansi
+    // tidak lagi menjumlah ke subtotal yang ditagih.
+    const adCostBase = calculateAdCostPerDay(noteQuestionCount, pricingSub.rate_instant);
     const discount = calculateDiscount(noteVoucherCode, adCostBase * noteDuration, noteWinnerCount * notePrizePerWinner, noteDuration, orderInstant(sub));
     const discountedPerDay = discount > 0 && noteDuration > 0 ? Math.max(0, adCostBase - Math.ceil(discount / noteDuration)) : adCostBase;
     if (adCostBase > 0 && noteDuration > 0) {
@@ -635,7 +703,10 @@ export async function onRequest(context) {
         `${supabaseUrl}/rest/v1/ad_schedules?id=eq.${encodeURIComponent(scheduleId)}` +
           `&select=id,submission_id,source_id,ordinal,status,payment_status,` +
           `slot_booked_by,slot_reserved_at,start_date,end_date,duration,` +
-          `prize_per_winner,winner_count,additional_prize_per_winner,is_new_period,voucher_code&limit=1`,
+          `prize_per_winner,winner_count,additional_prize_per_winner,is_new_period,voucher_code,` +
+          // ⚠️ Kolom sql/103. Belum diterapkan = SELECT ini ditolak = SEMUA
+          // checkout jadwal ke-2 dst. 502. SQL-nya wajib mendahului deploy.
+          `rate_locked_at&limit=1`,
         { headers: sbHeaders }
       );
       if (!schedRes.ok) {
@@ -794,9 +865,37 @@ export async function onRequest(context) {
       `distribution_type`, dan `created_at` sengaja tetap dari order.
       Lihat catatan panjang di `pricingRowForSchedule()`.
     */
+    /*
+      ── INSTAN TARIF (sql/103) ───────────────────────────────────────────
+      Jadwal ke-2 dst.: `rate_locked_at` ikut di SELECT jadwal di atas.
+      Ordinal 1: dibaca dari baris cerminnya. Gagal membaca = 502, BUKAN
+      jatuh ke "sekarang" — menebak di sini menagih order Oktober dengan tarif
+      Desember. Baris cermin yang tidak ada (seharusnya mustahil sejak sql/51)
+      jatuh ke tanggal order, sama dengan jalur cadangan `scheduleAxes.ts`.
+    */
+    let rateLockedAt;
+    if (schedule) {
+      rateLockedAt = schedule.rate_locked_at ?? null;
+    } else {
+      const rateRes = await fetch(
+        `${supabaseUrl}/rest/v1/ad_schedules?source_table=eq.form_submissions` +
+          `&source_id=eq.${encodeURIComponent(formSubmissionId)}&select=rate_locked_at&limit=1`,
+        { headers: sbHeaders }
+      );
+      if (!rateRes.ok) {
+        console.error(`[create-payment] Gagal membaca rate_locked_at ${formSubmissionId} (status ${rateRes.status}).`);
+        return json({ error: 'Could not read schedule rate' }, 502);
+      }
+      const rateRows = await rateRes.json();
+      rateLockedAt = Array.isArray(rateRows) && rateRows.length > 0
+        ? rateRows[0].rate_locked_at ?? null
+        : sub.created_at ?? null;
+    }
+    const rateInstant = rateInstantOf(rateLockedAt);
+
     let pricingSub;
     try {
-      pricingSub = pricingRowForSchedule(sub, schedule, billingVoucher);
+      pricingSub = pricingRowForSchedule(sub, schedule, billingVoucher, rateInstant);
     } catch (e) {
       /*
         Top-up hadiah tidak bisa dihargai dari baris jadwal (jumlah pemenang
@@ -820,7 +919,15 @@ export async function onRequest(context) {
     }
 
     const storedTotalCost = Number(sub.total_cost);
-    if (storedTotalCost !== amount) {
+    /*
+      ⚠️ `form_submissions.total_cost` adalah harga JADWAL PERTAMA. Untuk jadwal
+      ke-2 dst. `amount` adalah harga PERPANJANGAN — membandingkannya dengan
+      harga order selalu "mismatch", dan cabang koreksi di bawah akan MENIMPA
+      harga order dengan harga perpanjangan bila order itu belum punya baris
+      `invoices` (Temuan 2, 29 Sep 2026: paparan produksi 0 dari 18, laten).
+    */
+    const isFirstSchedule = !schedule || schedule.source_id === sub.id;
+    if (isFirstSchedule && storedTotalCost !== amount) {
       // Could be tampering, could be client/server formula drift (e.g. a
       // voucher changed on one side only) — log both values plus the inputs
       // so the two cases can be told apart. Don't treat as an attack outright.
