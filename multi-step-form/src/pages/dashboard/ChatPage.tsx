@@ -27,6 +27,10 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { buildMiminPricingSection } from '@/utils/miminPricing';
 import { GenerativeUiRenderer, type GenerativeUiData } from '@/components/chat/generative/GenerativeUiRenderer';
+import { openChatHref } from '@/utils/chatLinks';
+import { ensureProductEscalation } from '@/utils/miminEscalation';
+import { faqsForSkill, formatLinkedFaqsForPrompt } from '@/utils/miminSkillFaqs';
+import { ensureFaqListUi } from '@/utils/miminFaqUi';
 
 interface ChatCta {
     id: string;
@@ -119,7 +123,7 @@ export function ChatPage() {
     // AI Knowledge Base & Skills State
     const [systemPrompt, setSystemPrompt] = useState<string>('');
     const [skills, setSkills] = useState<AISkill[]>([]);
-    const [faqs, setFaqs] = useState<Array<{q: string, a: string}>>([]);
+    const [faqs, setFaqs] = useState<Array<{id?: string, q: string, a: string}>>([]);
 
     // Order milik user, untuk disuntikkan sebagai ORDER CONTEXT ke system
     const [userOrders, setUserOrders] = useState<Array<{ submission: FormSubmission; schedules: AdScheduleEntry[] }>>([]);
@@ -131,7 +135,7 @@ export function ChatPage() {
             try {
                 const [{ data: promptData }, { data: faqsData }, activeSkills] = await Promise.all([
                     supabase.from('ai_settings').select('value').eq('key', 'system_prompt').single(),
-                    supabase.from('ai_knowledge_base').select('question, answer').eq('is_active', true).order('sort_order', { ascending: true }),
+                    supabase.from('ai_knowledge_base').select('id, question, answer').eq('is_active', true).order('sort_order', { ascending: true }),
                     fetchActiveAISkills()
                 ]);
 
@@ -142,7 +146,7 @@ export function ChatPage() {
                 }
 
                 if (faqsData && faqsData.length > 0) {
-                    setFaqs(faqsData.map(f => ({ q: f.question, a: f.answer })));
+                    setFaqs(faqsData.map(f => ({ id: f.id, q: f.question, a: f.answer })));
                 } else {
                     setFaqs(defaultFaqs);
                 }
@@ -251,7 +255,7 @@ You are politely professional, proactive, and solution-oriented.
                 let block = `[SOP: ${s.name}]\n- Situasi / Trigger: ${s.trigger_context}\n- Langkah Panduan Jawaban:\n${s.sop_instructions}\n`;
                 if (s.tag) block += `- Tag Kategori: ${s.tag} (${s.tag_label || ''})\n`;
                 if (s.suggested_actions && s.suggested_actions.length > 0) {
-                  block += `- Action Buttons (CTAs) yang WAJIB dimasukkan ke array JSON "ctas":\n` +
+                  block += `- Action Buttons (CTAs) yang WAJIB dimasukkan ke array JSON "ctas" (kalau SOP menyebut mailto/email, action HARUS open_url dan target HARUS mailto:... — jangan HTML <a href> di dalam reply):\n` +
                     JSON.stringify(s.suggested_actions.map(a => ({
                       id: a.label.toLowerCase().replace(/[^a-z0-9]/g, '_'),
                       label: a.label,
@@ -259,6 +263,8 @@ You are politely professional, proactive, and solution-oriented.
                       target: a.url || a.prompt || ''
                     }))) + '\n';
                 }
+                const linkedFaqs = faqsForSkill(s.linked_faq_ids, currentFaqs);
+                block += formatLinkedFaqsForPrompt(linkedFaqs);
                 return block;
               }).join('\n\n')
             : '';
@@ -291,33 +297,44 @@ PENTING:
 - JANGAN PERNAH menampilkan format teknis seperti "Label: ... -> Action: ...", "Action Buttons", atau mencantumkan kode teknis di dalam teks 'reply'.
 - Tombol aksi (CTA) HANYA dimasukkan ke dalam array JSON "ctas".
 
-=== GENERATIVE UI CAPABILITIES (@json-render) ===
-Kamu memiliki kemampuan Generative UI dengan komponen standar @json-render!
-Sertakan field "generative_ui" di JSON output kapan pun relevan:
-1. Saat user meminta daftar survei, status survei, atau ingin mengedit:
-   Sertakan Card dengan SurveyItem:
-   {
-     "component": "Card",
-     "props": { "title": "Daftar Survei Anda", "description": "...", "badge": "..." },
-     "children": [
-       {
-         "component": "SurveyItem",
-         "props": {
-           "title": "Judul Survei",
-           "badge": "Perlu Revisi" | "Live" | "Review" | "Selesai",
-           "badgeVariant": "warning" | "success" | "info" | "danger",
-           "description": "Keterangan status / alasan revisi",
-           "schedule": "Jadwal tayang jika ada",
-           "actionLabel": "✏️ Edit Survei" | "📋 Buka Dashboard",
-           "actionUrl": "/dashboard"
-         }
-       }
-     ]
-   }
-2. Saat user bertanya estimasi biaya atau simulasi harga:
-   Sertakan { "type": "price_calculator" }
-3. Saat user ingin menambah jadwal / extend survei:
-   Sertakan { "type": "survey_picker", "props": { "action": "extend_schedule", "action_label": "➕ Tambah Jadwal Baru" } }
+=== GENERATIVE UI (katalog tetap — pilih Lego, jangan mengarang komponen baru) ===
+Sertakan "generative_ui" bila relevan. Hanya komponen ini yang dirender:
+
+Widget data (type saja, client mengisi data nyata):
+- { "type": "faq_list" } — FAQ tertaut / cara kerja / kebijakan
+- { "type": "price_calculator" } — simulasi biaya interaktif
+- { "type": "survey_picker" } — pilih survei untuk extend
+- { "type": "pricing_tiers" } — tabel tarif harian (angka diisi client)
+
+Komponen susunan (component + props, boleh nested di Card):
+- StepList { title, steps: [{ title, body }] } — alur cara kerja, 3–6 langkah
+- OptionCards { title, options: [{ title, description, badge, actionLabel, url }] } — pilih Ads vs Kilat vs Panel
+- ComparisonTable { title, columns: ["Ads","Kilat"], rows: [{ label, values: ["...","..."] }] }
+- Checklist { title, items: [{ text, ok: true|false }] } — syarat form / PII (ok:false = dilarang)
+- ContactCard { title, email, subject, body, actionLabel } — eskalasi email (mailto)
+- Timeline { title, items: [{ title, description, state: "done"|"current"|"upcoming" }] } — status order
+- KeyValueList { title, items: [{ label, value }] } — fakta ringkas
+- LinkList { title, links: [{ label, url }] } — tautan dashboard / jadwal
+- Card, SurveyItem, Metric, AlertCallout, ActionButton, QuickInfoCard — seperti sebelumnya
+
+Primitif json-render (cadangan seperti playground json-render.dev) — PAKAI INI jika tidak ada widget JFU yang pas. Rangkai dengan children di dalam Stack / Grid / Card:
+- Stack { direction, gap, align, justify } + children
+- Grid { columns, gap } + children
+- Heading { text, level }, Text { text, variant }, Badge { text, variant }
+- Alert { title, message, type }, Button { label, variant, href }
+- Accordion { items: [{ title, content }] } — Q&A generik (bukan FaqList)
+- Table { columns, rows }, Tabs { tabs: [{ label, content }] }
+- Progress { value, max, label }, Separator { orientation }
+- ComparisonCard { title, description, badge, features[] } + children — kartu banding produk
+- Stepper { title, steps[] } + children ListItem — alur bernomor
+- ListItem { title, description, badge } — baris dalam Stepper / ComparisonCard
+- Box — cadangan jika nama komponen tidak dikenal (tetap dirender, jangan dikosongkan)
+
+Aturan:
+- Utamakan widget JFU (faq_list, price_calculator, survey_picker, StepList, OptionCards, ContactCard, …) bila kasusnya cocok.
+- Jika tidak cocok: JANGAN menyerah ke teks polos. Susun UI dari primitif di atas (contoh: Card > Stack > Heading + Table + Button).
+- reply singkat; detail ada di widget. Jangan HTML di reply.
+- Jangan mengarang nama komponen di luar daftar ini.
 
 Format responmu WAJIB menggunakan JSON dengan struktur:
 {
@@ -330,11 +347,15 @@ Format responmu WAJIB menggunakan JSON dengan struktur:
       "id": "string",
       "label": "Teks tombol",
       "action": "navigate" | "open_url" | "chat_prompt",
-      "target": "URL atau prompt"
+      "target": "path in-app, https://..., atau mailto:alamat@domain?subject=..."
     }
   ],
-  "generative_ui": { ... } // Opsional: gunakan untuk merender Card/SurveyItem/PriceCalculator/SurveyPicker
-}`;
+  "generative_ui": { "type": "faq_list" | "price_calculator" | "survey_picker" | "pricing_tiers" | "step_list" | "option_cards" | "comparison_table" | "checklist" | "contact_card" | "timeline" | "key_value_list" | "link_list" }
+    ATAU { "component": "StepList"|"OptionCards"|..., "props": { ... } }
+}
+
+Untuk mengarahkan user mengirim email: action "open_url" dan target "mailto:product@jakpat.net?subject=...". JANGAN menaruh HTML <a href="mailto:..."> di dalam 'reply'.
+Pertanyaan di luar JFU (politik, berita, hal yang tidak ada di FAQ/SOP/ORDER CONTEXT): tetap JSON, reply menolak dengan sopan, dan WAJIB ada CTA mailto ke product@jakpat.net.`;
 
         // Tarif SELALU dari kode, ditempel setelah prompt mana pun — prompt DB
         // (ai_settings.system_prompt) tidak memuat harga. Lihat miminPricing.ts.
@@ -344,6 +365,7 @@ ${buildMiminPricingSection()}
 ${skillsContext}
 
 === KNOWLEDGE BASE (FAQ) ===
+FAQ di bawah ini selalu tersedia. Jika sebuah SOP punya blok "FAQ TERKAIT", utamakan Q&A itu untuk situasi SOP tersebut.
 ${currentFaqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
 ${orderContext}
 ${jsonContract}
@@ -457,7 +479,9 @@ function cleanRawReply(text: string): string {
 function parseMiminResponse(
     rawText: string,
     userPrompt: string,
-    userOrderStates: Array<{ submission: FormSubmission; ui: any }>
+    userOrderStates: Array<{ submission: FormSubmission; ui: any }>,
+    skillsForFaqs: AISkill[] = [],
+    faqCatalog: Array<{ id?: string; q: string; a: string }> = []
 ): {
     reply: string;
     intent: 'issue' | 'feedback' | 'request_extend' | 'request_upsell' | 'faq';
@@ -677,7 +701,28 @@ function parseMiminResponse(
         reply = 'Berikut adalah data survei Anda:';
     }
 
-    return { reply, intent, tag_label, needs_attention, ctas, generative_ui };
+    generative_ui = ensureFaqListUi({
+        userPrompt,
+        skills: skillsForFaqs,
+        faqs: faqCatalog,
+        generativeUi: generative_ui,
+    });
+
+    const escalated = ensureProductEscalation({
+        reply,
+        userPrompt,
+        ctas,
+        generativeUi: generative_ui,
+    });
+
+    return {
+        reply,
+        intent,
+        tag_label,
+        needs_attention,
+        ctas: escalated.ctas,
+        generative_ui: escalated.generative_ui,
+    };
 }
 
     // Auto-send message from query param or user input
@@ -719,7 +764,7 @@ function parseMiminResponse(
             }
 
             const rawAiContent = data.choices?.[0]?.message?.content || "Maaf, saya sedang mengalami kendala. Silakan coba lagi nanti.";
-            const parsed = parseMiminResponse(rawAiContent, userMessage, orderStates);
+            const parsed = parseMiminResponse(rawAiContent, userMessage, orderStates, skills, faqs);
 
             setMessages(prev => [...prev, { 
                 role: 'assistant', 
@@ -740,7 +785,7 @@ function parseMiminResponse(
         } finally {
             setIsLoading(false);
         }
-    }, [messages, isLoading, sessionId, buildSystemPrompt, orderStates]);
+    }, [messages, isLoading, sessionId, buildSystemPrompt, orderStates, skills, faqs]);
 
     useEffect(() => {
         const messageParam = searchParams.get('message');
@@ -765,40 +810,19 @@ function parseMiminResponse(
     };
 
     const handleCtaClick = (cta: ChatCta) => {
-        let target = (cta.target || '').trim();
+        const target = (cta.target || '').trim();
 
-        // Jika target berupa full URL yang menuju ke domain aplikasi sendiri, ubah jadi relative path untuk React Router navigate
-        if (target.startsWith('http://') || target.startsWith('https://')) {
-            try {
-                const parsedUrl = new URL(target);
-                if (
-                    parsedUrl.hostname.includes('jakpatforuniv.com') ||
-                    parsedUrl.hostname === 'localhost' ||
-                    parsedUrl.hostname === '127.0.0.1'
-                ) {
-                    target = parsedUrl.pathname + parsedUrl.search + parsedUrl.hash;
-                }
-            } catch (_) {}
-        }
-
-        if ((cta.action === 'navigate' || target.startsWith('/')) && target) {
-            navigate(target);
-        } else if (cta.action === 'open_url' && target) {
-            // Automatically support email address even if user didn't write mailto:
-            if (target.includes('@') && !target.startsWith('http') && !target.startsWith('mailto:')) {
-                target = `mailto:${target}`;
-            }
-
-            if (target.startsWith('mailto:') || target.startsWith('tel:')) {
-                window.location.href = target;
-            } else {
-                window.open(target, '_blank', 'noopener,noreferrer');
-            }
-        } else if (cta.action === 'chat_prompt' && target) {
+        if (cta.action === 'chat_prompt' && target) {
             sendMessageDirect(target);
-        } else {
-            sendMessageDirect(cta.label);
+            return;
         }
+
+        if (target) {
+            openChatHref(target, navigate);
+            return;
+        }
+
+        sendMessageDirect(cta.label);
     };
 
 

@@ -14,6 +14,7 @@ import {
   voucherInstantOf,
   rateInstantOf,
 } from './cost-calculator';
+import { compactedSkillSortOrders, orderedAISkills, skillSortHasGaps } from './aiSkillOrder';
 
 // Supabase URL dan anon key akan diambil dari environment variables
 // Anda perlu menambahkan variabel ini di file .env.local
@@ -2966,6 +2967,8 @@ export interface AISkill {
   tag_label?: string;
   is_active: boolean;
   sort_order: number;
+  /** id baris ai_knowledge_base yang jadi sumber jawaban SOP ini */
+  linked_faq_ids?: string[];
   created_at?: string;
   updated_at?: string;
 }
@@ -3277,11 +3280,44 @@ export const fetchAllAISkills = async (): Promise<AISkill[]> => {
       .order('sort_order', { ascending: true });
 
     if (error) throw error;
-    return data || [];
+    const rows = data || [];
+    try {
+      return await compactAISkillSortOrders(rows);
+    } catch (compactError) {
+      console.error('Error compacting AI skill sort_order:', compactError);
+      return orderedAISkills(rows);
+    }
   } catch (error) {
     console.error('Error fetching all AI skills:', error);
     return [];
   }
+};
+
+/** Rapikan sort_order jadi 1..n supaya badge di /internal-dash tidak lompat. */
+export const compactAISkillSortOrders = async (skills: AISkill[]): Promise<AISkill[]> => {
+  if (skills.length === 0) return skills;
+  if (!skillSortHasGaps(skills)) return orderedAISkills(skills);
+
+  const next = compactedSkillSortOrders(skills);
+  for (let i = 0; i < next.length; i++) {
+    const { error } = await supabase
+      .from('ai_skills')
+      .update({ sort_order: 1000 + i + 1 })
+      .eq('id', next[i].id);
+    if (error) throw error;
+  }
+  for (const row of next) {
+    const { error } = await supabase
+      .from('ai_skills')
+      .update({ sort_order: row.sort_order, updated_at: new Date().toISOString() })
+      .eq('id', row.id);
+    if (error) throw error;
+  }
+
+  const byId = new Map(next.map((row) => [row.id, row.sort_order]));
+  return orderedAISkills(
+    skills.map((skill) => ({ ...skill, sort_order: byId.get(skill.id) ?? skill.sort_order }))
+  );
 };
 
 // Admin: Insert or update an AI skill

@@ -85,7 +85,8 @@ const MiminAISetup: React.FC = () => {
     tag_label: 'Request Extend / Kuota',
     suggested_actions: [],
     is_active: true,
-    sort_order: 1
+    sort_order: 1,
+    linked_faq_ids: []
   });
   const [savingSkill, setSavingSkill] = useState(false);
 
@@ -164,7 +165,8 @@ const MiminAISetup: React.FC = () => {
         { label: '🚀 Cek Status & Extend', action: 'navigate', url: '/dashboard' }
       ],
       is_active: true,
-      sort_order: (skills.length > 0 ? Math.max(...skills.map(s => s.sort_order || 0)) + 1 : 1)
+      sort_order: (skills.length > 0 ? Math.max(...skills.map(s => s.sort_order || 0)) + 1 : 1),
+      linked_faq_ids: []
     });
   };
 
@@ -177,6 +179,7 @@ const MiminAISetup: React.FC = () => {
     setSkillError(null);
     setSkillForm({
       ...skill,
+      linked_faq_ids: skill.linked_faq_ids || [],
       suggested_actions: (skill.suggested_actions || []).map(a => {
         if (a.action === 'chat_prompt') {
           return { label: a.label, action: a.action, prompt: a.prompt || a.url || '', url: '' };
@@ -327,6 +330,16 @@ const MiminAISetup: React.FC = () => {
     });
   };
 
+  const toggleLinkedFaq = (faqId: string) => {
+    setSkillForm(prev => {
+      const current = prev.linked_faq_ids || [];
+      const linked_faq_ids = current.includes(faqId)
+        ? current.filter(id => id !== faqId)
+        : [...current, faqId];
+      return { ...prev, linked_faq_ids };
+    });
+  };
+
   const handleSaveSkill = async () => {
     setSkillError(null);
 
@@ -381,7 +394,8 @@ const MiminAISetup: React.FC = () => {
               return { label: a.label.trim(), action: a.action, prompt: (a.prompt || a.url || '').trim() };
             }
             return { label: a.label.trim(), action: a.action, url: (a.url || a.prompt || '').trim() };
-          })
+          }),
+        linked_faq_ids: skillForm.linked_faq_ids || []
       };
 
       const saved = await saveAISkill(cleanedSkill);
@@ -411,7 +425,8 @@ const MiminAISetup: React.FC = () => {
     try {
       const success = await deleteAISkill(id);
       if (success) {
-        setSkills(prev => prev.filter(s => s.id !== id));
+        const remaining = await fetchAllAISkills();
+        setSkills(remaining);
       }
     } catch (err) {
       console.error(err);
@@ -821,6 +836,73 @@ const MiminAISetup: React.FC = () => {
                     </div>
                   </div>
 
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <label className="block text-xs font-semibold text-slate-700">
+                        FAQ terkait (tab Simple FAQs)
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSkillForm(prev => ({
+                            ...prev,
+                            linked_faq_ids: faqs.filter(f => f.is_active).map(f => f.id)
+                          }))}
+                          className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800"
+                        >
+                          Pilih yang aktif
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSkillForm(prev => ({ ...prev, linked_faq_ids: [] }))}
+                          className="text-[11px] font-semibold text-slate-500 hover:text-slate-700"
+                        >
+                          Kosongkan
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mb-2">
+                      Saat percakapan cocok dengan trigger skill ini, Mimin mengutamakan Q&amp;A yang kamu centang — daftarnya sama dengan tab Simple FAQs.
+                    </p>
+                    {faqs.length === 0 ? (
+                      <p className="text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg p-3">
+                        Belum ada FAQ. Tambah dulu di tab Simple FAQs.
+                      </p>
+                    ) : (
+                      <div className="max-h-44 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+                        {faqs.map((faq) => {
+                          const checked = (skillForm.linked_faq_ids || []).includes(faq.id);
+                          return (
+                            <label
+                              key={faq.id}
+                              className={`flex items-start gap-2.5 px-3 py-2 cursor-pointer ${
+                                faq.is_active ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/80 opacity-70'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                checked={checked}
+                                onChange={() => toggleLinkedFaq(faq.id)}
+                              />
+                              <span className="min-w-0">
+                                <span className="block text-xs font-semibold text-slate-800 leading-snug">
+                                  {faq.question}
+                                </span>
+                                <span className="block text-[11px] text-slate-500 leading-snug mt-0.5 line-clamp-2">
+                                  {faq.answer}
+                                </span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      {(skillForm.linked_faq_ids || []).length} FAQ dipilih
+                    </p>
+                  </div>
+
                   {/* Section 2: Prosedur SOP / Langkah Berpikir AI */}
                   <div className="bg-white border border-indigo-200/90 rounded-xl p-5 shadow-2xs space-y-4">
                     <div className="flex items-center justify-between pb-3 border-b border-indigo-100">
@@ -1079,7 +1161,7 @@ const MiminAISetup: React.FC = () => {
                                     act.action === 'chat_prompt'
                                       ? 'Pesan otomatis saat diklik...'
                                       : act.action === 'open_url'
-                                        ? 'https://wa.me/... atau link web'
+                                        ? 'mailto:product@jakpat.net atau https://wa.me/...'
                                         : '/dashboard, /faq, /pricing'
                                   }
                                   className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20"
@@ -1216,6 +1298,26 @@ const MiminAISetup: React.FC = () => {
                     "{skill.trigger_context}"
                   </p>
                 </div>
+
+                {(skill.linked_faq_ids || []).length > 0 && (
+                  <div className="flex items-start gap-1.5 flex-wrap mb-3 pl-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">
+                      FAQ terkait:
+                    </span>
+                    {(skill.linked_faq_ids || []).map((faqId) => {
+                      const faq = faqs.find(f => f.id === faqId);
+                      return (
+                        <span
+                          key={faqId}
+                          className="inline-flex max-w-full px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-100 truncate"
+                          title={faq?.question}
+                        >
+                          {faq?.question || 'FAQ terhapus'}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* SOP Instructions */}
                 <div className="text-xs text-slate-700 pl-1 mb-3">
