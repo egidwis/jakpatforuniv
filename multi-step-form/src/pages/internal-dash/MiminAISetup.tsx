@@ -281,13 +281,14 @@ const MiminAISetup: React.FC = () => {
 
   const applySopTemplate = (type: 'pricing' | 'extend' | 'review') => {
     const templates = {
-      pricing: `1. Jelaskan penyesuaian tarif per 1 Oktober 2026 secara transparan: tampilkan harga katalog (list price) dan potongan diskon masa transisi (hemat nominal rupiah).
-2. Tegaskan bahwa total biaya bersih efektif hingga 30 November 2026 TETAP SAMA dengan tarif lama (tidak ada kenaikan beban bagi peneliti).
-3. Berikan simulasi hitungan biaya sesuai estimasi jumlah responden dan jumlah pertanyaan pengguna.
-4. Tawarkan konfirmasi pemesanan dan sediakan tombol aksi untuk menuju form pemesanan atau konsultasi WhatsApp.`,
+      pricing: `1. Tanyakan jumlah pertanyaan dan rencana lama tayang bila belum disebut peneliti.
+2. Sebut tarif per hari untuk tier jumlah pertanyaannya beserta periodenya, PERSIS dari bagian TARIF IKLAN (OTOMATIS DARI SISTEM). Selisih terhadap harga normal disebut "Harga perkenalan" beserta tanggal berakhirnya — bukan diskon, voucher, atau "hemat".
+3. Jelaskan bahwa tarif dikunci saat order dibuat (perpanjangan: saat dipesan; jadwal yang dipindah ke hari lain sebelum dibayar: saat dipindah), jadi memesan lebih awal mengamankan tarif periode ini.
+4. Berikan simulasi: tarif per hari × jumlah hari + hadiah responden, ditambah PPN 11%.
+5. Tawarkan konfirmasi pemesanan dan sediakan tombol aksi untuk menuju form pemesanan atau konsultasi WhatsApp.`,
       extend: `1. Awali dengan empati atas kekhawatiran peneliti jika jumlah responden belum memenuhi target menjelang batas jadwal selesai.
 2. Analisis faktor penyebab secara objektif (misal: kriteria responden spesifik memerlukan waktu penetrasi lebih lama di panel).
-3. Tawarkan opsi perpanjangan jadwal tayang (Extend) seharga Rp 50.000/hari tambahan agar survei tetap aktif di feed responden.
+3. Tawarkan opsi perpanjangan jadwal tayang (Extend) agar survei tetap aktif di feed responden. Biayanya = tarif per hari sesuai jumlah pertanyaan pada tanggal perpanjangan DIPESAN (lihat TARIF IKLAN) × jumlah hari + PPN 11%; angka pastinya tampil di halaman perpanjangan sebelum bayar.
 4. Sediakan tombol aksi interaktif untuk langsung mengajukan perpanjangan atau menghubungi WhatsApp Admin.`,
       review: `1. Sambut ramah dan tanyakan ID survei atau email pemesan untuk memeriksa status kuesioner.
 2. Jelaskan proses review kuesioner oleh tim QC Jakpat (memastikan kesesuaian target kriteria, logika alur pertanyaan, dan kelayakan link).

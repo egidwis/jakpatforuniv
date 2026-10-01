@@ -2584,7 +2584,7 @@ export interface OrderPriceResult {
  * `total_cost`; menebak "sekarang" di sini menagih order November dengan tarif
  * Desember tanpa ada yang tahu.
  */
-async function firstScheduleRateInstant(submissionId: string, orderCreatedAt: string | null): Promise<number> {
+export async function firstScheduleRateInstant(submissionId: string, orderCreatedAt: string | null): Promise<number> {
   const { data, error } = await supabase
     .from('ad_schedules')
     .select('rate_locked_at')

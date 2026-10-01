@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AlertTriangle, Calendar, Zap } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../ui/dialog';
@@ -11,6 +11,7 @@ import {
   getKilatAddonCost,
   voucherInstantOf,
 } from '../../../utils/cost-calculator';
+import { firstScheduleRateInstant } from '../../../utils/supabase';
 import type { SurveySubmission, PaymentState } from '../types';
 import { deriveLifecycle } from '../lifecycle';
 
@@ -32,12 +33,31 @@ export function DistributionConvertDialog({
   onConfirm,
 }: DistributionConvertDialogProps) {
   const [isConverting, setIsConverting] = useState(false);
+  /**
+   * Instan tarif pratinjau — SAMA dengan yang dipakai convertDistributionType()
+   * untuk menulis harga (`rate_locked_at` jadwal pertama). `undefined` = masih
+   * dimuat, `null` = gagal dibaca (konversi tetap boleh; server menghitung ulang).
+   */
+  const [rateAt, setRateAt] = useState<number | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!convertTarget) return;
+    let cancelled = false;
+    setRateAt(undefined);
+    firstScheduleRateInstant(submission.id, submission.submittedAt ?? null)
+      .then((at) => { if (!cancelled) setRateAt(at); })
+      .catch((e) => {
+        console.error('[DistributionConvertDialog] gagal membaca instan tarif:', e);
+        if (!cancelled) setRateAt(null);
+      });
+    return () => { cancelled = true; };
+  }, [convertTarget, submission.id, submission.submittedAt]);
 
   if (!convertTarget) return null;
 
-  // ⚠️ PRATINJAU. Instan tarif = tanggal order (`submittedAt`); angka yang
-  // DITULIS dihitung ulang convertDistributionType() dari `rate_locked_at`.
-  const previewAt = voucherInstantOf(submission.submittedAt);
+  // ⚠️ PRATINJAU. Angka yang DITULIS tetap dihitung ulang convertDistributionType().
+  // Selama instan tarif belum terbaca, angka di bawah tidak ditampilkan.
+  const previewAt = rateAt ?? Date.now();
   const previewIncentive = calculateIncentiveCost(
     submission.winnerCount || 0,
     submission.prize_per_winner || 0
@@ -59,7 +79,9 @@ export function DistributionConvertDialog({
       previewRegularAdCost,
       previewIncentive,
       submission.duration || 0,
-      previewAt
+      // Voucher dinilai pada tanggal ORDER, tarif pada `rate_locked_at` —
+      // persis pasangan instan di convertDistributionType().
+      voucherInstantOf(submission.submittedAt)
     );
   const previewSubtotal = convertTarget === 'kilat' ? previewKilatSubtotal : previewRegularSubtotal;
   const previewTotal = previewSubtotal + calculatePpn(previewSubtotal);
@@ -107,14 +129,22 @@ export function DistributionConvertDialog({
               Jadwal yang sudah dipesan akan <strong>dilepas</strong> — slotnya kembali ke pool, dan
               slot baru dapat dipilih di step Schedule setelah ini.
             </p>
-            <p className="text-slate-600">
-              Harga dihitung ulang jadi{' '}
-              <strong className="text-slate-900">Rp {previewTotal.toLocaleString('id-ID')}</strong>{' '}
-              (subtotal Rp {previewSubtotal.toLocaleString('id-ID')} + PPN 11%)
-              {convertTarget === 'kilat'
-                ? ' — base rate 1× + add-on Kilat, tanpa diskon voucher.'
-                : ' — base rate × durasi, diskon voucher berlaku lagi.'}
-            </p>
+            {rateAt === undefined ? (
+              <p className="text-slate-500">Menghitung harga baru…</p>
+            ) : rateAt === null ? (
+              <p className="text-slate-600">
+                Harga baru dihitung saat konversi disimpan (pratinjau gagal dimuat).
+              </p>
+            ) : (
+              <p className="text-slate-600">
+                Harga dihitung ulang jadi{' '}
+                <strong className="text-slate-900">Rp {previewTotal.toLocaleString('id-ID')}</strong>{' '}
+                (subtotal Rp {previewSubtotal.toLocaleString('id-ID')} + PPN 11%)
+                {convertTarget === 'kilat'
+                  ? ' — base rate 1× + add-on Kilat, tanpa diskon voucher.'
+                  : ' — base rate × durasi, diskon voucher berlaku lagi.'}
+              </p>
+            )}
           </div>
 
           {lifecycle.isPaid && (

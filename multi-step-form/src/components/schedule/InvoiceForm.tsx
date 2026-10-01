@@ -23,8 +23,8 @@ import {
 import { bundleTotals, writeInvoiceRows, InvoiceWriteError, type InvoiceBundle } from './invoiceWrite';
 import { formatWibShort } from '@/pages/dashboard/schedule/scheduleModel';
 import {
-  ITEM_CATEGORIES, buildExtensionInvoiceItems, buildOrderInvoiceItems, describeVoucher,
-  newBlankItem, type InvoiceItem,
+  ITEM_CATEGORIES, adUnitPriceOf, buildExtensionInvoiceItems, buildOrderInvoiceItems, describeVoucher,
+  newBlankItem, rateContextOf, type InvoiceItem,
 } from './invoiceItems';
 
 // ─────────────────────────────────────────────────────────────
@@ -149,6 +149,10 @@ export function InvoiceForm({
   const [creditNote, setCreditNote] = useState('');
   const [openDebt, setOpenDebt] = useState<OpenTempoDebt | null>(null);
   const [items, setItems] = useState<InvoiceItem[]>([]);
+  // Harga satuan iklan hasil prefill (voucher yang diterapkan sudah terlipat).
+  // Pembanding penanda "di bawah harga sistem" — peringatan, bukan penghalang:
+  // batas nego resmi belum ditetapkan (keputusan 1 Okt 2026).
+  const [systemAdPrice, setSystemAdPrice] = useState<number | null>(null);
   const [note, setNote] = useState('');
   const [existing, setExisting] = useState<ExistingInvoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -173,6 +177,18 @@ export function InvoiceForm({
   // baris database tidak boleh menghitung PPN dengan cara yang berbeda.
   const { subtotal, ppn, amount: grandTotal } = bundleTotals(items);
 
+  const isKilatOrder = !entry.isExtension && submission.distribution_type === 'kilat';
+  const rateContext = rateContextOf({
+    questionCount: submission.questionCount,
+    rateLockedAt: entry.rateLockedAt,
+    isKilat: isKilatOrder,
+  });
+  const typedAdPrice = adUnitPriceOf(items);
+  const adPriceBelowSystem =
+    systemAdPrice !== null && typedAdPrice !== null && typedAdPrice < systemAdPrice
+      ? { typed: typedAdPrice, system: systemAdPrice }
+      : null;
+
   /** Prefill item sesuai jalur jadwalnya. */
   const prefill = useCallback(async () => {
     if (entry.isExtension) {
@@ -195,13 +211,15 @@ export function InvoiceForm({
           toast.warning('Gagal memastikan jumlah pemenang batch — invoice memakai angka order induk. Periksa sebelum dikirim.');
         }
       }
-      setItems(buildExtensionInvoiceItems(entry, {
+      const extItems = buildExtensionInvoiceItems(entry, {
         questionCount: submission.questionCount,
         poolWinnerCount,
         fallbackWinnerCount: submission.winnerCount || undefined,
         voucherCode: appliedVoucher,
         voucherInstantMs: voucherInstantOf(submission.submittedAt),
-      }));
+      });
+      setItems(extItems);
+      setSystemAdPrice(adUnitPriceOf(extItems));
       setNote('');
       return;
     }
@@ -217,6 +235,7 @@ export function InvoiceForm({
       rateInstantMs: rateInstantOf(entry.rateLockedAt),
     });
     setItems(built.items);
+    setSystemAdPrice(adUnitPriceOf(built.items));
     setNote(built.note);
   }, [entry, submission, appliedVoucher]);
 
@@ -709,6 +728,9 @@ export function InvoiceForm({
         {/* Item — bertumpuk, bukan sebaris. Baris horizontal tidak muat di 480px. */}
         <div className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Item</p>
+          {rateContext && (
+            <p className="text-[11px] text-gray-500 leading-snug">{rateContext}</p>
+          )}
           {items.map((item) => (
             <div key={item.id} className="rounded-lg border border-gray-200 bg-white p-2.5 space-y-2">
               <select
@@ -768,6 +790,12 @@ export function InvoiceForm({
           >
             <Plus className="w-3.5 h-3.5 mr-1.5" /> Tambah item
           </Button>
+          {adPriceBelowSystem && (
+            <p className="rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900 leading-snug">
+              ⚠️ Harga iklan {formatIDR(adPriceBelowSystem.typed)}/hari di bawah harga sistem{' '}
+              {formatIDR(adPriceBelowSystem.system)}/hari. Tagihan tetap bisa dibuat — batas nego resmi belum ditetapkan.
+            </p>
+          )}
         </div>
 
         {/* Kode voucher — milik TAGIHAN ini, bukan order.
