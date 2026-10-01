@@ -7,7 +7,7 @@ const OCT_01 = Date.parse('2026-10-01T11:00:00+07:00');
 const DEC_02 = Date.parse('2026-12-02T11:00:00+07:00');
 const JAN_05 = Date.parse('2027-01-05T11:00:00+07:00');
 
-const periodLines = (text: string) => text.split('\n').filter((l) => l.startsWith('- Dikunci '));
+const periodLines = (text: string) => text.split('\n').filter((l) => l.startsWith('- Pesanan dibuat '));
 
 describe('buildMiminPricingSection — tarif Mimin dari AD_RATE_SCHEDULE', () => {
   const text = buildMiminPricingSection(OCT_01);
@@ -31,10 +31,10 @@ describe('buildMiminPricingSection — tarif Mimin dari AD_RATE_SCHEDULE', () =>
 
   it('rentang periode dibaca kalender WIB', () => {
     const lines = periodLines(text);
-    expect(lines[0]).toMatch(/^- Dikunci s\/d 30 Sep 2026: /);
-    expect(lines[1]).toMatch(/^- Dikunci 1 Okt 2026 – 30 Nov 2026 \[BERLAKU HARI INI\]: /);
-    expect(lines[2]).toMatch(/^- Dikunci 1 Des 2026 – 31 Des 2026: /);
-    expect(lines[3]).toMatch(/^- Dikunci mulai 1 Jan 2027: /);
+    expect(lines[0]).toMatch(/^- Pesanan dibuat s\/d 30 Sep 2026: /);
+    expect(lines[1]).toMatch(/^- Pesanan dibuat 1 Okt 2026 – 30 Nov 2026 \[BERLAKU HARI INI\]: /);
+    expect(lines[2]).toMatch(/^- Pesanan dibuat 1 Des 2026 – 31 Des 2026: /);
+    expect(lines[3]).toMatch(/^- Pesanan dibuat mulai 1 Jan 2027: /);
   });
 
   it('"Harga perkenalan" beserta batasnya; tanpa bingkai hemat/diskon pada angka', () => {
@@ -56,5 +56,19 @@ describe('buildMiminPricingSection — tarif Mimin dari AD_RATE_SCHEDULE', () =>
     expect(text).toContain('Menggeser jam di hari yang sama tidak mengubah tarif');
     expect(text).toContain('add-on Kilat Rp200.000');
     expect(text).toContain('PPN 11%');
+  });
+
+  it('aturan wajib: tarif perkenalan selalu disertai harga normal + batasnya, dengan contoh dari periode berjalan', () => {
+    expect(text).toContain('WAJIB sertakan harga normalnya dan tanggal berakhirnya');
+    expect(text).toContain('Contoh: "Rp300.000/hari — Harga perkenalan dari harga normal Rp500.000, berlaku untuk pesanan yang dibuat s/d 30 Nov 2026."');
+    expect(buildMiminPricingSection(DEC_02))
+      .toContain('Contoh: "Rp400.000/hari — Harga perkenalan dari harga normal Rp500.000, berlaku untuk pesanan yang dibuat s/d 31 Des 2026."');
+    expect(buildMiminPricingSection(JAN_05)).not.toContain('Contoh:');
+  });
+
+  it('istilah internal "dikunci" hanya muncul di larangannya — Mimin menyalin kata dari prompt', () => {
+    const mentions = text.split('\n').filter((l) => /kunci/i.test(l));
+    expect(mentions).toHaveLength(1);
+    expect(mentions[0]).toMatch(/^- Ke peneliti, pakai kata "pesanan dibuat"/);
   });
 });

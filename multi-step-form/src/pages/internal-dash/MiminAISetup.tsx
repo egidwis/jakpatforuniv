@@ -282,8 +282,8 @@ const MiminAISetup: React.FC = () => {
   const applySopTemplate = (type: 'pricing' | 'extend' | 'review') => {
     const templates = {
       pricing: `1. Tanyakan jumlah pertanyaan dan rencana lama tayang bila belum disebut peneliti.
-2. Sebut tarif per hari untuk tier jumlah pertanyaannya beserta periodenya, PERSIS dari bagian TARIF IKLAN (OTOMATIS DARI SISTEM). Selisih terhadap harga normal disebut "Harga perkenalan" beserta tanggal berakhirnya — bukan diskon, voucher, atau "hemat".
-3. Jelaskan bahwa tarif dikunci saat order dibuat (perpanjangan: saat dipesan; jadwal yang dipindah ke hari lain sebelum dibayar: saat dipindah), jadi memesan lebih awal mengamankan tarif periode ini.
+2. Sebut tarif per hari untuk tier jumlah pertanyaannya, PERSIS dari bagian TARIF IKLAN (OTOMATIS DARI SISTEM), bersama harga normalnya dan tanggal berakhirnya Harga perkenalan — bukan diskon, voucher, atau "hemat".
+3. Jelaskan bahwa tarif mengikuti tanggal pesanan dibuat (perpanjangan: tanggal dipesan; jadwal yang dipindah ke hari lain sebelum dibayar: tanggal dipindah), jadi memesan lebih awal mengamankan Harga perkenalan periode ini.
 4. Berikan simulasi: tarif per hari × jumlah hari + hadiah responden, ditambah PPN 11%.
 5. Tawarkan konfirmasi pemesanan dan sediakan tombol aksi untuk menuju form pemesanan atau konsultasi WhatsApp.`,
       extend: `1. Awali dengan empati atas kekhawatiran peneliti jika jumlah responden belum memenuhi target menjelang batas jadwal selesai.

@@ -42,22 +42,29 @@ export function buildMiminPricingSection(nowMs: number = Date.now()): string {
       ? ` — selisih terhadap harga normal = "Harga perkenalan", berlaku s/d ${formatYmdId(entry.introUntil)}`
       : '';
     const marker = entry === current ? ' [BERLAKU HARI INI]' : '';
-    return `- Dikunci ${periodLabel(i)}${marker}: ${tiers}${intro}`;
+    return `- Pesanan dibuat ${periodLabel(i)}${marker}: ${tiers}${intro}`;
   });
+
+  // Contoh kalimat dari periode yang SEDANG berlaku (tier 31–50 soal), supaya
+  // contohnya tidak basi saat 1 Des / 1 Jan. Tanpa harga perkenalan → tanpa contoh.
+  const t = 2;
+  const example = current.introUntil && current.list[t] > current.effective[t]
+    ? ` Contoh: "${rp(current.effective[t])}/hari — Harga perkenalan dari harga normal ${rp(current.list[t])}, berlaku untuk pesanan yang dibuat s/d ${formatYmdId(current.introUntil)}."`
+    : '';
 
   return `${MIMIN_PRICING_HEADING}
 Hari ini: ${formatYmdId(toWibYmd(new Date(nowMs)))} (WIB). Angka di bawah dari sistem tagihan — pakai PERSIS, jangan dibulatkan atau dikarang.
 
-Tarif iklan per HARI tayang, menurut jumlah pertanyaan dan tanggal tarifnya DIKUNCI:
+Tarif iklan per HARI tayang, menurut jumlah pertanyaan dan tanggal pesanan dibuat:
 ${periods.join('\n')}
 
-Kapan tarif sebuah jadwal dikunci:
+Tanggal mana yang menentukan tarif sebuah jadwal:
 - Jadwal pertama sebuah order: tanggal ORDER DIBUAT — termasuk bila tanggal tayangnya baru dipilih belakangan.
 - Perpanjangan (jadwal ke-2 dst.): tanggal perpanjangan DIPESAN, bukan tarif order awal.
 - Jadwal yang dilepas (lewat batas bayar) atau dibatalkan lalu dipesan ulang: tanggal pemesanan ulang.
 - Jadwal yang dipindah ke HARI lain sebelum dibayar (oleh peneliti maupun tim Jakpat): tanggal pemindahan. Menggeser jam di hari yang sama tidak mengubah tarif.
 - Jadwal yang sudah lunas tidak pernah dinilai ulang.
-- Yang menentukan adalah tanggal pemesanan/penguncian, BUKAN tanggal tayang.
+- Yang menentukan adalah tanggal pesanan dibuat/dipesan, BUKAN tanggal tayang.
 
 Cara menghitung:
 - Iklan reguler: tarif per hari × jumlah hari tayang, ditambah hadiah responden (pemenang × hadiah per pemenang).
@@ -66,7 +73,9 @@ Cara menghitung:
 - Untuk order yang sudah ada, angka di dashboard peneliti / halaman bayar yang berlaku; bila berbeda dengan hitunganmu, rujuk ke angka dashboard.
 
 Cara menyebutnya:
-- Selisih terhadap harga normal disebut "Harga perkenalan" beserta tanggal berakhirnya. JANGAN menyebutnya diskon, promo, voucher, atau "hemat".
+- Setiap kali menyebut tarif yang sedang dalam masa "Harga perkenalan", WAJIB sertakan harga normalnya dan tanggal berakhirnya dalam kalimat yang sama.${example}
+- Selisih terhadap harga normal disebut "Harga perkenalan". JANGAN menyebutnya diskon, promo, voucher, atau "hemat".
+- Ke peneliti, pakai kata "pesanan dibuat" atau "dipesan". JANGAN memakai istilah internal "dikunci", "penguncian", atau "rate lock".
 - Selalu sebut nominal Rupiah, bukan persen.
 - Jangan menjanjikan tarif lama untuk jadwal yang dipesan ulang, dipindah hari, atau diperpanjang setelah tarif naik.`;
 }
