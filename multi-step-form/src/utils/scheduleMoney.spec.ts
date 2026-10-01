@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveScheduleMoney } from './scheduleMoney';
+import { deriveScheduleMoney, introLine } from './scheduleMoney';
 import type { MoneyLine } from './scheduleMoney';
 import type { AdScheduleEntry } from './supabase';
 
@@ -292,5 +292,23 @@ describe('pemecahan rincian jadwal yang sudah ditagih ikut mewarisi voucher orde
     const discount = money.lines?.find((l) => l.tone === 'discount');
     expect(discount).toBeTruthy();
     expect(discount?.amount).toBe(-35000);
+  });
+});
+
+describe('introLine — tanggal "s/d" untuk tampilan admin', () => {
+  it('hint ditulis tanggal Indonesia, hintVars tetap mentah untuk i18n peneliti', () => {
+    const [line] = introLine(500000, 300000, '2026-11-30');
+    expect(line.hint).toBe('s/d 30 Nov 2026');
+    expect(line.hintVars).toEqual({ date: '2026-11-30' });
+    expect(line.amount).toBe(-200000);
+  });
+
+  it('Desember → "Des"', () => {
+    expect(introLine(500000, 400000, '2026-12-31')[0].hint).toBe('s/d 31 Des 2026');
+  });
+
+  it('tanpa potongan / tanpa tanggal → nol baris', () => {
+    expect(introLine(300000, 300000, '2026-11-30')).toEqual([]);
+    expect(introLine(500000, 300000, null)).toEqual([]);
   });
 });

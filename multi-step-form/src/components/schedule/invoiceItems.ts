@@ -1,6 +1,10 @@
 import {
-  calculateAdCostPerDay, calculateDiscount, calculateIncentiveCost, getKilatAddonCost, rateInstantOf,
+  adRateAt, calculateAdCostPerDay, calculateDiscount, calculateIncentiveCost, getKilatAddonCost,
+  rateInstantOf, tierIndexOf,
 } from '@/utils/cost-calculator';
+import { AD_TIER_LABELS } from '@/utils/constants';
+import { formatYmdId, toWibYmd } from '@/utils/airing-window';
+import { formatIDR } from '@/utils/currency';
 import type { AdScheduleEntry } from '@/utils/supabase';
 
 // ─────────────────────────────────────────────────────────────
@@ -290,4 +294,52 @@ export function describeVoucher(
     discount,
     label: `Potongan Rp ${discount.toLocaleString('id-ID')} diterapkan ke baris iklan`,
   };
+}
+
+
+/**
+ * Baris konteks di atas daftar item: dari tarif mana harga satuan iklan datang.
+ *
+ * Harga satuan iklan sengaja hanya tarif EFEKTIF (lihat `buildOrderInvoiceItems`),
+ * jadi tanpa baris ini admin melihat "Rp300.000" tanpa tahu bahwa harga
+ * normalnya Rp500.000 dan sampai kapan harga perkenalannya berlaku — dan tidak
+ * bisa menjawab peneliti yang bertanya. Instan tarifnya SAMA dengan prefill
+ * (`rateInstantOf(entry.rateLockedAt)`), jadi angkanya selalu cocok dengan item.
+ *
+ * `null` = belum ada jumlah soal (tidak ada tarif untuk diterangkan).
+ */
+export function rateContextOf(input: {
+  questionCount?: number | null;
+  rateLockedAt: string | null | undefined;
+  isKilat?: boolean;
+  nowMs?: number;
+}): string | null {
+  const questionCount = input.questionCount || 0;
+  if (!questionCount) return null;
+  const nowMs = input.nowMs ?? Date.now();
+  const atMs = rateInstantOf(input.rateLockedAt, nowMs);
+  const { list, effective, introUntil } = adRateAt(questionCount, atMs);
+  const isLocked = !Number.isNaN(Date.parse(input.rateLockedAt ?? ''));
+  const lock = isLocked
+    ? `dikunci ${formatYmdId(toWibYmd(new Date(atMs)))}`
+    : 'belum dikunci — memakai tarif hari ini';
+  let text = `Tarif ${AD_TIER_LABELS[tierIndexOf(questionCount)]} soal, ${lock}: ${formatIDR(effective)}/hari`;
+  if (introUntil) {
+    text += ` · normal ${formatIDR(list)} · harga perkenalan s/d ${formatYmdId(introUntil)}`;
+  }
+  if (input.isKilat) text += ' · Kilat: tarif 1× + add-on';
+  return text;
+}
+
+const AD_CATEGORY: InvoiceItem['category'] = 'Jakpat for Universities (ads)';
+
+/**
+ * Harga satuan iklan TERENDAH di daftar item — `null` bila tidak ada baris
+ * iklan. Pembanding penanda "di bawah harga sistem" di InvoiceForm; dipanggil
+ * pada hasil prefill (= harga sistem, voucher sudah terlipat) dan pada item
+ * yang sedang disunting admin.
+ */
+export function adUnitPriceOf(items: readonly InvoiceItem[]): number | null {
+  const prices = items.filter((it) => it.category === AD_CATEGORY).map((it) => it.price);
+  return prices.length ? Math.min(...prices) : null;
 }

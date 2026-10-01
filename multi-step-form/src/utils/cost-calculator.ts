@@ -94,7 +94,8 @@ export function rateInstantOf(rateLockedAt: string | null | undefined, nowMs: nu
   return Number.isNaN(parsed) ? nowMs : parsed;
 }
 
-function tierIndexOf(questionCount: number): number {
+/** Indeks tier (0–4) untuk jumlah soal — lihat `AD_TIER_LABELS`. */
+export function tierIndexOf(questionCount: number): number {
   if (questionCount <= 15) return 0;
   if (questionCount <= 30) return 1;
   if (questionCount <= 50) return 2;

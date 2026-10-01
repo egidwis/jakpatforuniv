@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 import { ChevronDown, Tag } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
-import { AD_RATE_SCHEDULE, type AdRateEntry } from '../utils/constants';
+import { AD_RATE_SCHEDULE, AD_TIER_LABELS, type AdRateEntry } from '../utils/constants';
 import { adRateEntryAt } from '../utils/cost-calculator';
 import { localizeDateVars } from './CostBreakdown';
 
@@ -36,7 +36,7 @@ export function rateNoticePhase(nowMs: number): RateNoticePhase {
   return entry === AD_RATE_SCHEDULE[2] ? 'intro2' : 'intro';
 }
 
-const TIER_LABELS = ['1–15', '16–30', '31–50', '51–70', '>70'];
+const TIER_LABELS = AD_TIER_LABELS;
 
 /**
  * Kolom tabel tarif: entri yang berlaku SEKARANG dan sesudahnya. Kolom yang

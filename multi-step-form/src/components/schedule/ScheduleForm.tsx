@@ -12,7 +12,9 @@ import {
   setScheduleExtraAd, supabase, updateExtendScheduleDates, updateScheduleDates,
   type AdScheduleEntry, type DokuKillReport,
 } from '@/utils/supabase';
-import { nowWib, toAiringEndIso, toAiringStartIso, toWibYmd } from '@/utils/airing-window';
+import { formatYmdId, nowWib, toAiringEndIso, toAiringStartIso, toWibYmd } from '@/utils/airing-window';
+import { formatIDR } from '@/utils/currency';
+import { repriceOnMove, type RepriceOnMove } from '@/utils/scheduleReprice';
 import { rescheduleResetPatch } from '@/utils/rescheduleReset';
 import { isAiringNowSchedule, isSchedulePaid } from '@/components/status/scheduleAxes';
 import { notifyScheduleChange } from '@/utils/notifyScheduleChange';
@@ -86,6 +88,12 @@ export interface ScheduleFormProps {
    * terakhir.
    */
   isKilatOrder?: boolean;
+  /**
+   * Jumlah soal order — hanya untuk menyebut tarif per hari lama → baru di
+   * dialog pindah hari (`repriceOnMove`). Tanpa ini dialognya tetap muncul,
+   * cuma tanpa angka (papan Schedule tidak membawa jumlah soal).
+   */
+  questionCount?: number | null;
   /** Hadiah order induk — hanya dipakai mode create untuk prefill & pratinjau. */
   currentPrizePerWinner?: number;
   currentWinnerCount?: number;
@@ -129,6 +137,7 @@ export function ScheduleForm({
   entry,
   isExtraAd = false,
   isKilatOrder = false,
+  questionCount,
   currentPrizePerWinner = 0,
   currentWinnerCount = 0,
   columns = 7,
@@ -193,9 +202,13 @@ export function ScheduleForm({
    * berubah jadi tong sampah. Yang ditambahkan adalah harga yang harus dibayar
    * untuk memakainya: menyebut konsekuensinya, lalu mengabari penelitinya.
    */
-  const [pendingMove, setPendingMove] = useState<
-    { from: string | null; to: string; kind: 'paid' | 'live_bill' } | null
-  >(null);
+  const [pendingMove, setPendingMove] = useState<{
+    from: string | null;
+    to: string;
+    kind: 'paid' | 'live_bill' | 'reprice';
+    /** Pindah hari ini mengunci ulang tarifnya (sql/103) — paragrafnya ikut di dialog apa pun. */
+    reprice?: RepriceOnMove | null;
+  } | null>(null);
 
   const [regularCounts, setRegularCounts] = useState<Record<string, number>>({});
   const [extraCounts, setExtraCounts] = useState<Record<string, number>>({});
@@ -287,11 +300,25 @@ export function ScheduleForm({
       return;
     }
 
+    // Tarifnya ikut berubah? Trigger sql/103 mengunci ulang jadwal BELUM lunas
+    // yang pindah hari WIB ke tarif hari ini. Dihitung lebih dulu supaya
+    // paragrafnya ikut menempel di dialog E1/E1b bila salah satunya muncul.
+    // (Jalur Kilat tidak lewat sini — lihat komentar `KilatScheduleStep` di bawah.)
+    const reprice = !isCreate && entry
+      ? repriceOnMove({
+          paymentStatus: entry.paymentStatus,
+          rateLockedAt: entry.rateLockedAt,
+          fromStartIso: entry.startDate,
+          toStartIso: startIso,
+          questionCount,
+        })
+      : null;
+
     // Gerbang E1: menggeser tanggal jadwal yang uangnya sudah masuk harus lewat
     // dialog konsekuensi lebih dulu. Hanya sekali — `pendingMove` dikosongkan
     // tepat sebelum `commit()` supaya konfirmasinya tidak berulang.
     if (!isCreate && entry && isSchedulePaid(entry) && startIso !== entry.startDate) {
-      setPendingMove({ from: entry.startDate, to: startIso, kind: 'paid' });
+      setPendingMove({ from: entry.startDate, to: startIso, kind: 'paid', reprice });
       return;
     }
 
@@ -322,9 +349,15 @@ export function ScheduleForm({
         console.error('[ScheduleForm] gagal memeriksa tagihan hidup sebelum pindah tanggal:', e);
       }
       if (hasLiveBill) {
-        setPendingMove({ from: entry.startDate, to: startIso, kind: 'live_bill' });
+        setPendingMove({ from: entry.startDate, to: startIso, kind: 'live_bill', reprice });
         return;
       }
+    }
+
+    // Gerbang E1c: tanpa tagihan hidup, tapi pindah hari menaikkan tarifnya.
+    if (!isCreate && entry && reprice) {
+      setPendingMove({ from: entry.startDate, to: startIso, kind: 'reprice', reprice });
+      return;
     }
 
     await commit();
@@ -624,7 +657,9 @@ export function ScheduleForm({
     Dialog konsekuensi untuk E1. Isinya menyesuaikan keadaan, dan tiap barisnya
     hanya muncul kalau memang berlaku — tidak ada kalimat pengisi:
 
-      * order sudah dibayar (selalu, sebab gerbangnya `isSchedulePaid`);
+      * order sudah dibayar (gerbang E1, `isSchedulePaid`);
+      * tarifnya ikut berubah karena pindah hari sebelum lunas (`repriceOnMove`,
+        E1c — atau menempel di E1/E1b bila keduanya berlaku);
       * iklannya SEDANG TAYANG, kalau memang begitu — akibatnya berbeda total
         dari memindahkan iklan yang belum mulai;
       * tanggal lama -> tanggal baru, dua-duanya disebut;
@@ -633,14 +668,21 @@ export function ScheduleForm({
     Baris terakhir itu bukan basa-basi: ia yang membuat tombolnya jujur. Tanpa
     email, memindahkan tanggal iklan orang lain adalah perubahan senyap.
   */
+  // E1 + reprice = jadwal TEMPO: `isSchedulePaid` membacanya lunas, padahal
+  // `payment_status` masih pending dan trigger tetap mengunci ulang tarifnya.
+  // Kalimat "sudah dibayar" salah untuk baris ini — tampilkan sebagai dialog tarif.
+  const moveKind = pendingMove?.kind === 'paid' && pendingMove.reprice ? 'reprice' : pendingMove?.kind;
+
   const moveDialog = (
     <Dialog open={!!pendingMove} onOpenChange={(open) => { if (!open) setPendingMove(null); }}>
       <DialogContent className="sm:max-w-[26rem] p-6">
         <DialogHeader>
           <DialogTitle className="text-base font-bold text-gray-900">
-            {pendingMove?.kind === 'live_bill'
+            {moveKind === 'live_bill'
               ? 'Geser tanggal — tagihan yang berjalan akan dicabut?'
-              : 'Geser tanggal tayang pesanan yang sudah dibayar?'}
+              : moveKind === 'reprice'
+                ? 'Geser tanggal — tarifnya ikut berubah?'
+                : 'Geser tanggal tayang pesanan yang sudah dibayar?'}
           </DialogTitle>
         </DialogHeader>
 
@@ -660,7 +702,7 @@ export function ScheduleForm({
               sudah berjalan, dan respondennya sudah melihat iklan itu di tanggal lama.
             </p>
           )}
-          {pendingMove?.kind === 'live_bill' ? (
+          {moveKind === 'live_bill' ? (
             <>
               <p className="text-xs leading-relaxed text-slate-700 font-medium">
                 Tagihan yang berjalan untuk tanggal lama akan DICABUT — link bayarnya kami
@@ -675,7 +717,7 @@ export function ScheduleForm({
                 dan link lamanya mungkin masih bisa dibayar.
               </p>
             </>
-          ) : (
+          ) : moveKind === 'paid' ? (
             <>
               <p className="text-xs leading-relaxed text-slate-700 font-medium">
                 Pesanan ini sudah dibayar. Uangnya tidak dikembalikan dan tidak ditagih ulang —
@@ -686,6 +728,15 @@ export function ScheduleForm({
                 untuk pesanan ini.
               </p>
             </>
+          ) : null}
+          {pendingMove?.reprice && (
+            <p className="text-xs leading-relaxed text-amber-800 font-semibold">
+              Jadwal ini belum lunas, jadi memindahkannya ke hari lain memakai tarif hari ini —
+              bukan tarif saat dikunci ({formatYmdId(toWibYmd(new Date(pendingMove.reprice.lockedAtMs)))})
+              {pendingMove.reprice.perDay
+                ? <>: {formatIDR(pendingMove.reprice.perDay.from)} → {formatIDR(pendingMove.reprice.perDay.to)} per hari.</>
+                : <>. Periode tarifnya berbeda, jadi harga per harinya bisa naik.</>}
+            </p>
           )}
           <p className="text-xs leading-relaxed text-slate-500">
             Penelitinya akan menerima email berisi tanggal lama dan tanggal barunya.
@@ -704,7 +755,11 @@ export function ScheduleForm({
             className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold h-9 px-5"
             onClick={() => { setPendingMove(null); void commit(); }}
           >
-            {pendingMove?.kind === 'live_bill' ? 'Ya, Geser & Cabut Tagihan' : 'Ya, Geser Tanggal'}
+            {moveKind === 'live_bill'
+              ? 'Ya, Geser & Cabut Tagihan'
+              : moveKind === 'reprice'
+                ? 'Ya, Geser & Pakai Tarif Baru'
+                : 'Ya, Geser Tanggal'}
           </Button>
         </div>
       </DialogContent>

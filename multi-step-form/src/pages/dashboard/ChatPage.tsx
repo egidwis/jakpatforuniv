@@ -25,6 +25,7 @@ import {
     AccordionTrigger,
 } from "@/components/ui/accordion";
 import ReactMarkdown from 'react-markdown';
+import { buildMiminPricingSection } from '@/utils/miminPricing';
 import { GenerativeUiRenderer, type GenerativeUiData } from '@/components/chat/generative/GenerativeUiRenderer';
 
 interface ChatCta {
@@ -234,36 +235,8 @@ You are politely professional, proactive, and solution-oriented.
 - **Tahap 3: Pemilihan Jadwal & Pembayaran** -> Setelah kuesioner disetujui, peneliti memilih tanggal di kalender dan membayar via DOKU (QRIS, Bank Transfer / Virtual Account, E-Wallet).
 - **Tahap 4: Penayangan Iklan Live** -> Survei tayang di aplikasi Jakpat pada tanggal yang dipilih.
 
-=== PRICING FORMULA (BIAYA IKLAN HARIAN) ===
-- **Struktur Tier Pertanyaan**:
-  * T1 (1–15 pertanyaan)
-  * T2 (16–30 pertanyaan)
-  * T3 (31–50 pertanyaan)
-  * T4 (51–70 pertanyaan)
-  * T5 (>70 pertanyaan)
-- **Roadmap & Tarif Iklan (per hari tayang)**:
-  * **s/d 30 September 2026**:
-    T1: Rp 150.000 | T2: Rp 200.000 | T3: Rp 300.000 | T4: Rp 400.000 | T5: Rp 500.000
-  * **1 Oktober – 30 November 2026** (Masa Transisi & Promo Pengenalan):
-    Harga katalog resmi (list price) baru: T1: Rp 200.000 | T2: Rp 350.000 | T3: Rp 500.000 | T4: Rp 650.000 | T5: Rp 800.000.
-    TETAPI ada promo potongan sehingga harga efektif yang dibayar SAMA PERSIS dengan harga lama (1 Okt adalah no-op rupiah bagi peneliti):
-    -> T1: Rp 150.000 (hemat Rp 50.000)
-    -> T2: Rp 200.000 (hemat Rp 150.000)
-    -> T3: Rp 300.000 (hemat Rp 200.000)
-    -> T4: Rp 400.000 (hemat Rp 250.000)
-    -> T5: Rp 500.000 (hemat Rp 300.000)
-    *PENTING: Komunikasikan penghematan selalu dalam format nominal Rupiah (bukan persentase).*
-  * **1 Desember – 31 Desember 2026** (Promo Akhir Tahun: Diskon 20% dari list price):
-    -> T1: Rp 160.000 | T2: Rp 280.000 | T3: Rp 400.000 | T4: Rp 520.000 | T5: Rp 640.000
-  * **Mulai 1 Januari 2027** (Tarif Normal Penuh):
-    -> T1: Rp 200.000 | T2: Rp 350.000 | T3: Rp 500.000 | T4: Rp 650.000 | T5: Rp 800.000
-- **Tarif mana yang berlaku (WAJIB dijelaskan dengan benar)**:
-  * Jadwal pertama sebuah order memakai tarif pada TANGGAL ORDER DIBUAT — termasuk bila tanggal tayangnya baru dipilih belakangan.
-  * Perpanjangan (jadwal ke-2 dst.) memakai tarif pada tanggal perpanjangan DIPESAN, bukan tarif order awal.
-  * Jadwal yang dilepas (lewat batas bayar) atau dibatalkan lalu DIPESAN ULANG memakai tarif pada tanggal pemesanan ulang.
-  * Jadwal yang tanggal tayangnya DIPINDAH ke hari lain sebelum dibayar (oleh peneliti maupun tim Jakpat) memakai tarif pada tanggal pemindahan. Menggeser jam di hari yang sama tidak mengubah tarif.
-  * Jangan menjanjikan tarif lama untuk jadwal yang dipesan ulang, dipindah, atau diperpanjang setelah tarif naik.
-  * Add-on JFU Kilat tetap Rp 200.000 (belum berubah).
+=== ATURAN HITUNG LAINNYA ===
+- Tarif iklan per hari: lihat bagian TARIF IKLAN (OTOMATIS DARI SISTEM) di bawah.
 - **Aturan Grid/Likert/Matrix**: Setiap baris pernyataan dihitung sebagai 1 pertanyaan (bukan 1 blok).
 - **Insentif Responden**: Ditentukan sendiri oleh peneliti, rekomendasi minimal Rp 25.000 untuk 2 pemenang undian.
 - **Add-on Randomizer**: Rp 20.000 per link.`;
@@ -363,7 +336,11 @@ Format responmu WAJIB menggunakan JSON dengan struktur:
   "generative_ui": { ... } // Opsional: gunakan untuk merender Card/SurveyItem/PriceCalculator/SurveyPicker
 }`;
 
+        // Tarif SELALU dari kode, ditempel setelah prompt mana pun — prompt DB
+        // (ai_settings.system_prompt) tidak memuat harga. Lihat miminPricing.ts.
         return `${basePersona}
+
+${buildMiminPricingSection()}
 ${skillsContext}
 
 === KNOWLEDGE BASE (FAQ) ===

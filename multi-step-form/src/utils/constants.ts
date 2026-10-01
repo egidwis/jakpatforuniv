@@ -51,6 +51,9 @@ export const DEFAULT_AD_BANNER_URL = '/default-ad-banner.jpg';
 //
 // DUPLICATED sebagai literal di functions/api/doku/create-payment.js — WAJIB
 // diubah bersamaan; rateSchedule.spec.ts membandingkan keduanya.
+/** Label rentang soal per tier, urut sama dengan `list`/`effective`. */
+export const AD_TIER_LABELS = ['1–15', '16–30', '31–50', '51–70', '>70'] as const;
+
 export interface AdRateEntry {
   from: string | null;
   list: readonly [number, number, number, number, number];

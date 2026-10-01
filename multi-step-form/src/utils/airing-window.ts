@@ -69,6 +69,21 @@ export const formatWibTime = (iso: string) => wibTimeFmt.format(new Date(iso)).r
 export const formatWibDay = (iso: string) => wibDayFmt.format(new Date(iso));
 export const formatWibShort = (iso: string) => wibShortDayFmt.format(new Date(iso));
 
+const ymdIdFmt = new Intl.DateTimeFormat('id-ID', {
+    timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric',
+});
+
+/**
+ * Tanggal KALENDER `YYYY-MM-DD` → "30 Nov 2026". Dibaca sebagai tanggal, bukan
+ * instan (UTC), supaya tidak bergeser sehari di zona device mana pun. Bentuk
+ * lain dikembalikan apa adanya. Kembaran berbahasa: `localizeDateVars`
+ * (CostBreakdown) — utils tidak boleh mengimpor komponen.
+ */
+export function formatYmdId(ymd: string): string {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+    return m ? ymdIdFmt.format(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) : ymd;
+}
+
 export interface WibNow {
     /** Tanggal menurut kalender WIB, format YYYY-MM-DD */
     ymd: string;

@@ -52,8 +52,8 @@ import { SchedulePaymentTab } from './tabs/SchedulePaymentTab';
 import { PageTab } from './tabs/PageTab';
 import { ScheduleForm } from '@/components/schedule/ScheduleForm';
 import { InvoiceForm } from '@/components/schedule/InvoiceForm';
-import { calculateTotalAdCost, voucherInstantOf } from '@/utils/cost-calculator';
-import { updateFormDetails, type AdScheduleEntry } from '@/utils/supabase';
+import { calculateTotalAdCost } from '@/utils/cost-calculator';
+import { firstScheduleRateInstant, updateFormDetails, type AdScheduleEntry } from '@/utils/supabase';
 import { repriceMessage } from '@/utils/repriceMessage';
 import { openWhatsApp, reviewFeedbackMessage } from '@/utils/waMessage';
 import { toast } from 'sonner';
@@ -558,6 +558,7 @@ export function SubmissionDetailSheet({
         entry={subView.kind === 'edit' ? subView.entry : undefined}
         isExtraAd={subView.kind === 'create' ? subView.isExtraAd : undefined}
         isKilatOrder={submission.distribution_type === 'kilat'}
+        questionCount={submission.questionCount}
         currentPrizePerWinner={submission.prize_per_winner || 0}
         currentWinnerCount={submission.winnerCount || 0}
         columns={4}
@@ -601,14 +602,24 @@ export function SubmissionDetailSheet({
     // Selisihnya disebut di depan supaya admin memutuskan sadar, bukan kaget.
     if (questionCountInput !== submission.questionCount && !lifecycle.isPaid) {
       const duration = Number(submission.duration) || 1;
-      // Pratinjau pada tanggal order; recomputeOrderPrice memakai rate_locked_at.
-      const at = voucherInstantOf(submission.submittedAt);
-      const oldAdCost = calculateTotalAdCost(submission.questionCount || 0, duration, at);
-      const newAdCost = calculateTotalAdCost(questionCountInput, duration, at);
-      const rupiah = (n: number) => `Rp ${n.toLocaleString('id-ID')}`;
-      const priceLine = oldAdCost === newAdCost
-        ? `Harga tidak berubah: ${rupiah(oldAdCost)}.`
-        : `Harga berubah: ${rupiah(oldAdCost)} → ${rupiah(newAdCost)}.`;
+      // Instan tarif = yang dipakai recomputeOrderPrice untuk MENULIS harga
+      // (`rate_locked_at` jadwal pertama). Dulu pratinjau memakai tanggal order
+      // — sama selama jadwalnya tak pernah dilepas/dipindah, berbeda sejak
+      // 1 Des untuk jadwal yang kuncinya NULL atau sudah bergeser.
+      let priceLine: string;
+      try {
+        const at = await firstScheduleRateInstant(submission.id, submission.submittedAt ?? null);
+        const oldAdCost = calculateTotalAdCost(submission.questionCount || 0, duration, at);
+        const newAdCost = calculateTotalAdCost(questionCountInput, duration, at);
+        const rupiah = (n: number) => `Rp ${n.toLocaleString('id-ID')}`;
+        priceLine = oldAdCost === newAdCost
+          ? `Harga tidak berubah: ${rupiah(oldAdCost)}.`
+          : `Harga berubah: ${rupiah(oldAdCost)} → ${rupiah(newAdCost)}.`;
+      } catch (e) {
+        // Pratinjau saja — angka sesungguhnya dihitung ulang saat disimpan.
+        console.error('[handleApprove] gagal membaca instan tarif:', e);
+        priceLine = 'Harga baru dihitung saat disimpan (pratinjau gagal dimuat).';
+      }
       const ok = window.confirm(
         `Jumlah pertanyaan dikoreksi dari ${submission.questionCount} menjadi ${questionCountInput} Q.\n${priceLine}\n*harga belum termasuk Reward dan PPN 11%\n\nLanjutkan approve?`
       );

@@ -3,6 +3,7 @@ import {
   calculateIncentiveCost, calculateDiscount, calculatePpn, getKilatAddonCost,
   adRateAt, rateInstantOf, voucherInstantOf,
 } from '@/utils/cost-calculator';
+import { formatYmdId } from '@/utils/airing-window';
 
 // ─────────────────────────────────────────────────────────────
 // Berapa uang untuk SATU jadwal.
@@ -170,7 +171,8 @@ export function introLine(listAmount: number, effectiveAmount: number, introUnti
   return [{
     label: 'Harga perkenalan',
     labelKey: 'costLineIntro',
-    hint: `s/d ${introUntil}`,
+    // `hint` = tampilan admin (tanpa i18n); peneliti memakai hintKey+hintVars.
+    hint: `s/d ${formatYmdId(introUntil)}`,
     hintKey: 'costHintIntroUntil',
     hintVars: { date: introUntil },
     amount: -cut,
