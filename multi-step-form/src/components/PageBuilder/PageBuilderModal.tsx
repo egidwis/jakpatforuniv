@@ -86,6 +86,8 @@ const generateSlug = (title: string): string => {
         .slice(0, 60);                 // max 60 chars
 };
 
+// Default intro for a new survey page. Mirrored by ensure_survey_page
+// (sql/108). Pages that already saved their own blocks keep that copy.
 const defaultSurveiAdBlocks = {
     type: 'doc',
     content: [
@@ -112,7 +114,7 @@ const defaultSurveiAdBlocks = {
             content: [
                 {
                     type: 'text',
-                    text: 'Semua pemenang undian survei akan diumumkan setiap akhir bulan, jadi tunggu pengumuman dari kami ya. Semoga beruntung! ✨',
+                    text: 'Periode undian bulan ini ditutup di akhir bulan. Pemenang diundi sekitar minggu pertama bulan berikutnya. Tunggu pengumuman dari kami ya. Semoga beruntung! ✨',
                 },
             ],
         },
