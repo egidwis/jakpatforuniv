@@ -143,12 +143,12 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
     >
       <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-gray-100 shadow-2xl w-full sm:max-w-xl max-h-[92vh] sm:max-h-[86vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
         {/* Mobile Drag Handle Indicator */}
-        <div className="sm:hidden pt-2.5 pb-1 flex justify-center bg-gradient-to-r from-blue-50/80 via-indigo-50/40 to-white shrink-0">
+        <div className="sm:hidden pt-2.5 pb-1 flex justify-center shrink-0">
           <div className="w-10 h-1 bg-slate-300 rounded-full" />
         </div>
 
         {/* Header (sembunyikan tombol tutup/mundur saat sedang transisi) */}
-        <div className="px-5 sm:px-7 py-4 sm:py-4.5 border-b border-gray-100 bg-gradient-to-r from-blue-50/80 via-indigo-50/40 to-white flex items-center justify-between shrink-0">
+        <div className="px-5 sm:px-7 py-4 sm:py-4.5 border-b border-gray-100 bg-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             {step > 1 && !isTransitioning ? (
               <button
@@ -198,8 +198,97 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
           )}
         </div>
 
-        {/* Modal Body */}
-        <div className="overflow-y-auto p-5 sm:p-7 flex-1 overscroll-contain">
+        {/* Langkah 1: bacaan bergeser, keputusan tetap di footer.
+            Langkah lain tetap satu area geser. */}
+        {step === 1 && !isTransitioning ? (
+          <>
+            <div className="overflow-y-auto px-5 sm:px-7 py-5 sm:py-6 flex-1 min-h-0 overscroll-contain">
+              <div className="animate-in fade-in duration-200">
+                <ul className="space-y-6">
+                  <li className="flex items-start gap-2.5">
+                    <Users className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        {t('adsAwarenessPoint1Title')}
+                      </h3>
+                      <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                        {t('adsAwarenessPoint1Desc')}
+                      </p>
+                    </div>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <Clock className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        {t('adsAwarenessPoint2Title')}
+                      </h3>
+                      <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                        {t('adsAwarenessPoint2Desc')}
+                      </p>
+                    </div>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        {t('adsAwarenessPoint3Title')}
+                      </h3>
+                      <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                        {t('adsAwarenessPoint3Desc')}
+                      </p>
+                    </div>
+                  </li>
+                </ul>
+                <div className="mt-6">
+                  <RateNoticeBlock />
+                </div>
+              </div>
+            </div>
+
+            <div className="shrink-0 border-t border-slate-200 bg-white px-5 sm:px-7 pt-4 pb-5 space-y-3">
+              <label className="flex items-start gap-3 py-1 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={hasAcknowledged}
+                  onChange={(e) => setHasAcknowledged(e.target.checked)}
+                  className="mt-0.5 size-4 shrink-0 rounded border-slate-300 text-jfu-primary focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 cursor-pointer accent-jfu-primary"
+                />
+                <span className="text-sm leading-relaxed text-slate-700">
+                  {t('adsAwarenessCheckboxLabel')}
+                </span>
+              </label>
+
+              <button
+                type="button"
+                disabled={!hasAcknowledged}
+                onClick={() => setStep(2)}
+                className={`w-full py-3.5 px-4 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 ${
+                  hasAcknowledged
+                    ? 'bg-jfu-primary hover:bg-jfu-dark text-white cursor-pointer'
+                    : 'bg-slate-100 text-slate-600 cursor-not-allowed'
+                }`}
+              >
+                <span>{t('adsAwarenessContinueBtn')}</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+
+              <p className="text-center text-xs leading-relaxed text-slate-500">
+                {t('adsAwarenessNeedSpecificCta')}{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleClose();
+                    onOpenCustomMission?.();
+                  }}
+                  className="font-medium text-jfu-primary underline decoration-jfu-primary/40 underline-offset-2 hover:decoration-jfu-primary cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary"
+                >
+                  {t('adsAwarenessConsultMission')}
+                </button>
+              </p>
+            </div>
+          </>
+        ) : (
+        <div className="overflow-y-auto p-5 sm:p-7 flex-1 min-h-0 overscroll-contain">
           {isTransitioning ? (
             /* ================= STATE TRANSISI MIKRO HALUS ================= */
             <div className="py-12 px-6 flex flex-col items-center justify-center text-center animate-in fade-in zoom-in-95 duration-200">
@@ -221,105 +310,6 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
                 <span className="w-2 h-2 rounded-full bg-jfu-primary animate-ping" />
                 <span className="w-2 h-2 rounded-full bg-jfu-primary/60" />
                 <span className="w-2 h-2 rounded-full bg-jfu-primary/30" />
-              </div>
-            </div>
-          ) : step === 1 ? (
-            /* ================= STEP 1: INFORMASI MEKANISME ================= */
-            <div className="space-y-5 animate-in fade-in duration-200">
-              <div className="space-y-3.5">
-                {/* Poin 1: Profil Acak & Screening */}
-                <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50/70 border border-slate-100">
-                  <div className="w-8 h-8 rounded-xl bg-white border border-slate-200/80 text-jfu-primary flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
-                    <Users className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-xs sm:text-sm font-bold text-slate-900">
-                      {t('adsAwarenessPoint1Title')}
-                    </h3>
-                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                      {t('adsAwarenessPoint1Desc')}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Poin 2: Waktu Penayangan */}
-                <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50/70 border border-slate-100">
-                  <div className="w-8 h-8 rounded-xl bg-white border border-slate-200/80 text-jfu-primary flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
-                    <Clock className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-xs sm:text-sm font-bold text-slate-900">
-                      {t('adsAwarenessPoint2Title')}
-                    </h3>
-                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                      {t('adsAwarenessPoint2Desc')}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Poin 3: Verifikasi Etika & Keamanan */}
-                <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50/70 border border-slate-100">
-                  <div className="w-8 h-8 rounded-xl bg-white border border-slate-200/80 text-emerald-600 flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
-                    <ShieldCheck className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-xs sm:text-sm font-bold text-slate-900">
-                      {t('adsAwarenessPoint3Title')}
-                    </h3>
-                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                      {t('adsAwarenessPoint3Desc')}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Info Penyesuaian Tarif Bertanggal */}
-                <RateNoticeBlock />
-              </div>
-
-              {/* Checkbox Persetujuan */}
-              <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 hover:border-slate-300 bg-white cursor-pointer select-none transition-all">
-                <input
-                  type="checkbox"
-                  checked={hasAcknowledged}
-                  onChange={(e) => setHasAcknowledged(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 rounded border-slate-300 text-jfu-primary focus:ring-jfu-primary cursor-pointer accent-jfu-primary"
-                />
-                <span className="text-xs font-medium text-slate-700 leading-relaxed">
-                  {t('adsAwarenessCheckboxLabel')}
-                </span>
-              </label>
-
-              {/* Tombol Lanjut ke Step 2 */}
-              <button
-                type="button"
-                disabled={!hasAcknowledged}
-                onClick={() => setStep(2)}
-                className={`w-full py-3.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all ${
-                  hasAcknowledged
-                    ? 'bg-jfu-primary hover:bg-jfu-dark text-white shadow-md shadow-jfu-primary/20 cursor-pointer hover:-translate-y-0.5'
-                    : 'bg-slate-100 text-slate-400 border border-slate-200/60 cursor-not-allowed'
-                }`}
-              >
-                <span>{t('adsAwarenessContinueBtn')}</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-
-              {/* Escape Hatch ke Riset Non-Survei */}
-              <div className="pt-2 text-center border-t border-slate-100">
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  {t('adsAwarenessNeedSpecificCta')}{' '}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleClose();
-                      onOpenCustomMission?.();
-                    }}
-                    className="font-semibold text-jfu-primary hover:underline cursor-pointer inline-flex items-center gap-0.5"
-                  >
-                    <span>{t('adsAwarenessConsultMission')}</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </button>
-                </p>
               </div>
             </div>
           ) : step === 2 ? (
@@ -427,6 +417,7 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   );

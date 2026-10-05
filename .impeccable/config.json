@@ -29,6 +29,33 @@
         ],
         "createdAt": "2026-09-30T05:54:14.260Z",
         "reason": "Claude: titik indikator 'Mimin sedang mengetik' (pola chat konvensional, sudah ada di main, di luar perubahan tarif). Cermin ignore yang sama di multi-step-form/.impeccable/config.json — hook membaca config dari cwd, dan path relatifnya berbeda."
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "text-slate-600",
+        "files": [
+          "multi-step-form/src/components/AdsEntryModal.tsx"
+        ],
+        "createdAt": "2026-10-05T07:28:11.782Z",
+        "reason": "Agent: step 2 review-path icon chip is text-slate-600 on slate-100, and group-hover swaps both fill and icon color together. Plan leaves step 2 unchanged."
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "text-slate-800",
+        "files": [
+          "multi-step-form/src/components/RateNotice.tsx"
+        ],
+        "createdAt": "2026-10-05T07:28:11.834Z",
+        "reason": "Agent: RateTable inactive prices are text-slate-800 on white; the active column is already emerald-900 on emerald-50. The detector flags the shared class template. Plan keeps RateTable unchanged because OrderLiveCompanion uses it."
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "text-slate-500",
+        "files": [
+          "multi-step-form/src/components/RateNotice.tsx"
+        ],
+        "createdAt": "2026-10-05T07:28:11.834Z",
+        "reason": "Agent: struck-through list price uses text-slate-500 only on the inactive white column. The active column uses text-emerald-700. Plan keeps RateTable unchanged."
       }
     ]
   }

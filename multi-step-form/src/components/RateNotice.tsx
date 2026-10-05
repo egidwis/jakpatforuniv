@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { ChevronDown, Tag } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { AD_RATE_SCHEDULE, AD_TIER_LABELS, type AdRateEntry } from '../utils/constants';
 import { adRateEntryAt } from '../utils/cost-calculator';
@@ -55,6 +55,8 @@ export function rateTableColumns(nowMs: number): Array<{ entry: AdRateEntry; act
  * TEMPAT (bukan dialog kedua): modal ini bottom sheet buatan sendiri yang
  * mengunci scroll body — sheet di atas sheet di ponsel rawan bentrok z-index.
  * Tanpa tombol tutup: blok ini hanya muncul saat peneliti memang mau memesan.
+ * Satu kartu sorotan: isi lembut, tanpa ikon, tanpa hover. Seluruh kartu
+ * tidak bisa diklik. Satu-satunya kontrol di sini adalah pengungkap tabel.
  */
 export function RateNoticeBlock() {
   const { t } = useLanguage();
@@ -68,30 +70,22 @@ export function RateNoticeBlock() {
       : t('rateNoticeFullBody');
 
   return (
-    <div className="p-3 rounded-2xl bg-emerald-50/80 border border-emerald-100">
-      <div className="flex items-start gap-3">
-        <div className="w-8 h-8 rounded-xl bg-white border border-emerald-200/80 text-emerald-700 flex items-center justify-center shrink-0 shadow-2xs mt-0.5">
-          <Tag className="w-4 h-4" aria-hidden />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h3 className="text-xs sm:text-sm font-bold text-emerald-950">
-            {phase === 'full' ? t('rateNoticeFullTitle') : t('rateNoticeTitle')}
-          </h3>
-          <p className="text-xs text-emerald-900 leading-relaxed mt-0.5">{body}</p>
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            aria-expanded={open}
-            aria-controls={tableId}
-            className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-emerald-800 hover:text-emerald-950 underline underline-offset-2 cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-          >
-            {open ? t('rateNoticeHideTable') : t('rateNoticeOpenTable')}
-            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
-          </button>
-        </div>
-      </div>
+    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5">
+      <h3 className="text-sm font-semibold text-emerald-950">
+        {phase === 'full' ? t('rateNoticeFullTitle') : t('rateNoticeTitle')}
+      </h3>
+      <p className="mt-1 text-sm leading-relaxed text-emerald-900">{body}</p>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={tableId}
+        className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-emerald-800 underline decoration-emerald-800/40 underline-offset-2 hover:decoration-emerald-800 cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700"
+      >
+        {open ? t('rateNoticeHideTable') : t('rateNoticeOpenTable')}
+        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
+      </button>
 
-      {/* Selebar blok, tidak menjorok di bawah ikon — supaya 4 kolom muat di 375px. */}
       <div id={tableId} hidden={!open} className="mt-3">
         <RateTable />
       </div>
