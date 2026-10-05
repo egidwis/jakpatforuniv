@@ -1,6 +1,8 @@
 import type { ChatCta, GenerativeUiData } from './supabase';
 
 export const PRODUCT_EMAIL = 'product@jakpat.net';
+export const OUT_OF_SCOPE_TAG = 'out_of_scope';
+export const OUT_OF_SCOPE_LABEL = 'Di luar SOP';
 
 const OUT_OF_KNOWLEDGE_REPLY =
   /belum memiliki informasi mengenai hal tersebut/i;
@@ -33,6 +35,11 @@ function hasProductMailtoCta(ctas: ChatCta[]): boolean {
     const label = cta.label || '';
     return /mailto:/i.test(target) || mentionsProductEmail(target) || mentionsProductEmail(label);
   });
+}
+
+/** Reply menolak / eskalasi Product — bukan FAQ yang berhasil dijawab. */
+export function isOutOfScopeConversation(reply: string, ctas: ChatCta[] = []): boolean {
+  return needsProductEscalation(reply) || hasProductMailtoCta(ctas);
 }
 
 export function productEscalationUi(userQuestion?: string): GenerativeUiData {

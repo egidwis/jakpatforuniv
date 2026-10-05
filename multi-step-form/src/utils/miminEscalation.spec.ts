@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PRODUCT_EMAIL,
   ensureProductEscalation,
+  isOutOfScopeConversation,
   needsProductEscalation,
   productMailto,
 } from './miminEscalation';
@@ -51,5 +52,15 @@ describe('miminEscalation', () => {
     expect(href.startsWith(`mailto:${PRODUCT_EMAIL}?`)).toBe(true);
     expect(href).toContain('subject=');
     expect(href).toContain(encodeURIComponent('integrasi API custom'));
+  });
+
+  it('isOutOfScopeConversation: frasa tidak tahu ATAU CTA mailto', () => {
+    expect(isOutOfScopeConversation('Maaf, saya belum memiliki informasi mengenai hal tersebut.', [])).toBe(true);
+    expect(isOutOfScopeConversation('Tarif iklan mengikuti jumlah soal.', [])).toBe(false);
+    expect(
+      isOutOfScopeConversation('Silakan tanya tim Product.', [
+        { id: 'm', label: 'Email', action: 'open_url', target: `mailto:${PRODUCT_EMAIL}` },
+      ])
+    ).toBe(true);
   });
 });

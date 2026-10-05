@@ -54,7 +54,7 @@ export function InternalDashboardWithLayout() {
         if (!session.last_message_snippet) return;
 
         // 1. Prioritas utama: Percakapan yang butuh perhatian atau ada kendala
-        if (session.needs_attention || session.tag === 'issue') {
+        if (session.needs_attention || session.tag === 'issue' || session.tag === 'out_of_scope') {
           unread++;
           return;
         }

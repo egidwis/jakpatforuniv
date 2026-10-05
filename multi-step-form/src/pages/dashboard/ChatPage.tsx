@@ -9,7 +9,9 @@ import {
     supabase, 
     getOrCreateChatSession, 
     getChatMessages, 
-    saveChatMessage, 
+    saveChatMessage,
+    fetchChatReplyMode,
+    parseEmbeddedCtas, 
     getFormSubmissionsByUser, 
     fetchAdSchedules, 
     fetchActiveAISkills,
@@ -28,9 +30,15 @@ import ReactMarkdown from 'react-markdown';
 import { buildMiminPricingSection } from '@/utils/miminPricing';
 import { GenerativeUiRenderer, type GenerativeUiData } from '@/components/chat/generative/GenerativeUiRenderer';
 import { openChatHref } from '@/utils/chatLinks';
-import { ensureProductEscalation } from '@/utils/miminEscalation';
+import {
+    ensureProductEscalation,
+    isOutOfScopeConversation,
+    OUT_OF_SCOPE_LABEL,
+    OUT_OF_SCOPE_TAG,
+} from '@/utils/miminEscalation';
 import { faqsForSkill, formatLinkedFaqsForPrompt } from '@/utils/miminSkillFaqs';
 import { ensureFaqListUi } from '@/utils/miminFaqUi';
+import { mergeIncomingMessage, normalizeReplyMode, toModelHistory } from '@/utils/miminHandoff';
 
 interface ChatCta {
     id: string;
@@ -41,7 +49,8 @@ interface ChatCta {
 }
 
 interface ChatMessageItem {
-    role: 'user' | 'assistant';
+    id?: string;
+    role: 'user' | 'assistant' | 'admin';
     content: string;
     ctas?: ChatCta[];
     generative_ui?: GenerativeUiData;
@@ -116,6 +125,7 @@ export function ChatPage() {
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [sessionId, setSessionId] = useState<string | null>(null);
+    const [replyMode, setReplyMode] = useState<'ai' | 'human'>('ai');
     const scrollRef = useRef<HTMLDivElement>(null);
     const [searchParams, setSearchParams] = useSearchParams();
     const autoSentRef = useRef(false);
@@ -160,10 +170,12 @@ export function ChatPage() {
                 const session = await getOrCreateChatSession(user.email);
                 if (session) {
                     setSessionId(session.id);
+                    setReplyMode(normalizeReplyMode(session.reply_mode));
                     const savedMessages = await getChatMessages(session.id);
                     if (savedMessages && savedMessages.length > 0) {
-                        setMessages(savedMessages.map(m => ({ 
-                            role: m.role as 'user' | 'assistant', 
+                        setMessages(savedMessages.map(m => ({
+                            id: m.id,
+                            role: m.role === 'admin' || m.role === 'user' ? m.role : 'assistant',
                             content: m.content,
                             ctas: (m as any).ctas || [],
                             generative_ui: (m as any).generative_ui
@@ -196,7 +208,86 @@ export function ChatPage() {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
-    }, [messages]);
+    }, [messages, replyMode]);
+
+    useEffect(() => {
+        if (!sessionId) return;
+
+        const channel = supabase
+            .channel(`researcher-chat-${sessionId}`)
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `session_id=eq.${sessionId}` },
+                (payload) => {
+                    const row = payload.new as {
+                        id?: string;
+                        role?: string;
+                        content?: string;
+                        ctas?: ChatCta[];
+                    };
+                    const parsed = parseEmbeddedCtas(row.content || '');
+                    const role = row.role === 'admin' || row.role === 'user' ? row.role : 'assistant';
+                    setMessages((prev) => mergeIncomingMessage(prev, {
+                        id: row.id,
+                        role,
+                        content: parsed.cleanContent,
+                        ctas: Array.isArray(row.ctas) && row.ctas.length > 0 ? row.ctas : parsed.ctas,
+                        generative_ui: parsed.generativeUi,
+                    }));
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'chat_sessions', filter: `id=eq.${sessionId}` },
+                (payload) => {
+                    const row = payload.new as { reply_mode?: string };
+                    setReplyMode(normalizeReplyMode(row.reply_mode));
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [sessionId]);
+
+    useEffect(() => {
+        if (!sessionId) return;
+        let cancelled = false;
+
+        const pull = async () => {
+            const [saved, mode] = await Promise.all([
+                getChatMessages(sessionId),
+                fetchChatReplyMode(sessionId),
+            ]);
+            if (cancelled) return;
+            setReplyMode((current) => (current === mode ? current : mode));
+            if (!saved?.length) return;
+            setMessages((prev) => {
+                const server = saved.map((message) => ({
+                    id: message.id,
+                    role: (message.role === 'admin' || message.role === 'user' ? message.role : 'assistant') as ChatMessageItem['role'],
+                    content: message.content,
+                    ctas: message.ctas || [],
+                    generative_ui: (message as { generative_ui?: GenerativeUiData }).generative_ui,
+                }));
+                const serverIds = server.map((message) => message.id).join('|');
+                const prevIds = prev.filter((message) => message.id).map((message) => message.id).join('|');
+                const pending = prev.filter((message) => (
+                    !message.id && !server.some((row) => row.role === message.role && row.content === message.content)
+                ));
+                if (serverIds === prevIds && pending.length === 0) return prev;
+                return [...server, ...pending];
+            });
+        };
+
+        const timer = window.setInterval(pull, 3000);
+        void pull();
+        return () => {
+            cancelled = true;
+            window.clearInterval(timer);
+        };
+    }, [sessionId]);
 
     const orderStates = useMemo(
         () => userOrders.map(({ submission, schedules }) => ({
@@ -339,7 +430,7 @@ Aturan:
 Format responmu WAJIB menggunakan JSON dengan struktur:
 {
   "reply": "Teks pengantar alami tanpa format teknis...",
-  "intent": "issue" | "feedback" | "request_extend" | "request_upsell" | "faq",
+  "intent": "issue" | "feedback" | "request_extend" | "request_upsell" | "faq" | "out_of_scope",
   "tag_label": "Label ringkas maks 3 kata",
   "needs_attention": true | false,
   "ctas": [
@@ -355,7 +446,7 @@ Format responmu WAJIB menggunakan JSON dengan struktur:
 }
 
 Untuk mengarahkan user mengirim email: action "open_url" dan target "mailto:product@jakpat.net?subject=...". JANGAN menaruh HTML <a href="mailto:..."> di dalam 'reply'.
-Pertanyaan di luar JFU (politik, berita, hal yang tidak ada di FAQ/SOP/ORDER CONTEXT): tetap JSON, reply menolak dengan sopan, dan WAJIB ada CTA mailto ke product@jakpat.net.`;
+Pertanyaan di luar JFU (politik, berita, hal yang tidak ada di FAQ/SOP/ORDER CONTEXT): tetap JSON, reply menolak dengan sopan, WAJIB CTA mailto ke product@jakpat.net, dan set "intent": "out_of_scope", "tag_label": "Di luar SOP", "needs_attention": true.`;
 
         // Tarif SELALU dari kode, ditempel setelah prompt mana pun — prompt DB
         // (ai_settings.system_prompt) tidak memuat harga. Lihat miminPricing.ts.
@@ -484,14 +575,14 @@ function parseMiminResponse(
     faqCatalog: Array<{ id?: string; q: string; a: string }> = []
 ): {
     reply: string;
-    intent: 'issue' | 'feedback' | 'request_extend' | 'request_upsell' | 'faq';
+    intent: 'issue' | 'feedback' | 'request_extend' | 'request_upsell' | 'faq' | 'out_of_scope';
     tag_label: string;
     needs_attention: boolean;
     ctas: ChatCta[];
     generative_ui?: GenerativeUiData;
 } {
     let reply = '';
-    let intent: 'issue' | 'feedback' | 'request_extend' | 'request_upsell' | 'faq' = 'faq';
+    let intent: 'issue' | 'feedback' | 'request_extend' | 'request_upsell' | 'faq' | 'out_of_scope' = 'faq';
     let tag_label = 'FAQ Umum';
     let needs_attention = false;
     let ctas: ChatCta[] = [];
@@ -708,12 +799,19 @@ function parseMiminResponse(
         generativeUi: generative_ui,
     });
 
+    const wasOutOfScope = intent === OUT_OF_SCOPE_TAG || isOutOfScopeConversation(reply, ctas);
     const escalated = ensureProductEscalation({
         reply,
         userPrompt,
         ctas,
         generativeUi: generative_ui,
     });
+
+    if (wasOutOfScope) {
+        intent = OUT_OF_SCOPE_TAG;
+        if (!tag_label || tag_label === 'FAQ Umum') tag_label = OUT_OF_SCOPE_LABEL;
+        needs_attention = true;
+    }
 
     return {
         reply,
@@ -730,13 +828,34 @@ function parseMiminResponse(
         if (!messageText.trim() || isLoading) return;
 
         const userMessage = messageText.trim();
+        let mode: 'ai' | 'human' = replyMode;
+        if (sessionId) {
+            mode = await fetchChatReplyMode(sessionId);
+            setReplyMode(mode);
+        }
+
         const newMessages = [...messages, { role: 'user' as const, content: userMessage }];
-        setMessages(newMessages);
-        setIsLoading(true);
+        setMessages((prev) => [...prev, { role: 'user' as const, content: userMessage }]);
 
         if (sessionId) {
-            saveChatMessage(sessionId, 'user', userMessage);
+            const saved = await saveChatMessage(
+                sessionId,
+                'user',
+                userMessage,
+                mode === 'human' ? { needs_attention: true } : undefined
+            );
+            if (saved?.id) {
+                setMessages((prev) => prev.map((message) => (
+                    !message.id && message.role === 'user' && message.content === userMessage
+                        ? { ...message, id: saved.id }
+                        : message
+                )));
+            }
         }
+
+        if (mode === 'human') return;
+
+        setIsLoading(true);
 
         const systemPrompt = buildSystemPrompt();
 
@@ -752,7 +871,7 @@ function parseMiminResponse(
                     "sessionId": sessionId,
                     "messages": [
                         { "role": "system", "content": systemPrompt },
-                        ...newMessages.map(m => ({ role: m.role, content: m.content }))
+                        ...toModelHistory(newMessages)
                     ]
                 })
             });
@@ -763,29 +882,42 @@ function parseMiminResponse(
                 console.error('[Mimin AI] OpenRouter error:', { status: response.status, error: data.error, data });
             }
 
+            if (sessionId && (await fetchChatReplyMode(sessionId)) === 'human') {
+                setReplyMode('human');
+                return;
+            }
+
             const rawAiContent = data.choices?.[0]?.message?.content || "Maaf, saya sedang mengalami kendala. Silakan coba lagi nanti.";
             const parsed = parseMiminResponse(rawAiContent, userMessage, orderStates, skills, faqs);
 
-            setMessages(prev => [...prev, { 
-                role: 'assistant', 
+            const assistantMessage = {
+                role: 'assistant' as const,
                 content: parsed.reply,
                 ctas: parsed.ctas,
                 generative_ui: parsed.generative_ui
-            }]);
+            };
+            setMessages(prev => [...prev, assistantMessage]);
 
             if (sessionId) {
-                saveChatMessage(sessionId, 'assistant', parsed.reply, {
+                const savedReply = await saveChatMessage(sessionId, 'assistant', parsed.reply, {
                     tag: parsed.intent,
                     tag_label: parsed.tag_label,
                     needs_attention: parsed.needs_attention
                 }, parsed.ctas, parsed.generative_ui);
+                if (savedReply?.id) {
+                    setMessages((prev) => prev.map((message) => (
+                        !message.id && message.role === 'assistant' && message.content === parsed.reply
+                            ? { ...message, id: savedReply.id }
+                            : message
+                    )));
+                }
             }
         } catch {
             setMessages(prev => [...prev, { role: 'assistant', content: 'Maaf, terjadi kesalahan koneksi. Silakan coba lagi.' }]);
         } finally {
             setIsLoading(false);
         }
-    }, [messages, isLoading, sessionId, buildSystemPrompt, orderStates, skills, faqs]);
+    }, [messages, isLoading, sessionId, replyMode, buildSystemPrompt, orderStates, skills, faqs]);
 
     useEffect(() => {
         const messageParam = searchParams.get('message');
@@ -877,24 +1009,42 @@ function parseMiminResponse(
                                         <span className="absolute bottom-0 right-0 w-3 h-3 md:w-3.5 md:h-3.5 bg-green-500 border-2 border-white rounded-full"></span>
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <CardTitle className="text-lg md:text-xl font-bold text-[#1a1a1a] truncate">Mimin AI</CardTitle>
+                                        <CardTitle className="text-lg md:text-xl font-bold text-[#1a1a1a] truncate">
+                                            {replyMode === 'human' ? 'Admin' : 'Mimin AI'}
+                                        </CardTitle>
                                         <CardDescription className="flex items-center gap-1.5 text-xs font-medium text-[#666] mt-0.5">
-                                            <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse shrink-0" />
-                                            <span className="truncate">Asisten Admin Cerdas - Siap Membantu</span>
+                                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${replyMode === 'human' ? 'bg-sky-500' : 'bg-green-400 animate-pulse'}`} />
+                                            <span className="truncate">
+                                                {replyMode === 'human'
+                                                    ? 'Admin sedang membalas'
+                                                    : 'Asisten Admin Cerdas - Siap Membantu'}
+                                            </span>
                                         </CardDescription>
                                     </div>
                                 </div>
                             </CardHeader>
 
+                            {replyMode === 'human' && (
+                                <div className="px-4 py-2 bg-sky-50 text-sky-900 text-xs border-b border-sky-100">
+                                    Admin sedang membalas percakapan ini. Mimin AI dijeda sampai sesi dikembalikan.
+                                </div>
+                            )}
+
                             {/* Chat Messages Area */}
                             <CardContent className="flex-1 overflow-y-auto overflow-x-hidden p-3.5 sm:p-4 md:p-5 space-y-4 md:space-y-5 bg-jfu-bg min-w-0" ref={scrollRef}>
                                 {messages.map((msg, idx) => (
-                                    <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} w-full min-w-0 animate-in slide-in-from-bottom-2 duration-300`}>
+                                    <div key={msg.id || idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} w-full min-w-0 animate-in slide-in-from-bottom-2 duration-300`}>
+                                        <div className={`flex flex-col min-w-0 max-w-[94%] sm:max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                            {msg.role === 'admin' && (
+                                                <span className="text-[10px] font-medium text-sky-700 mb-1 ml-1">Admin</span>
+                                            )}
                                         <div className={`
-                                            max-w-[94%] sm:max-w-[85%] px-3.5 py-3 md:px-5 md:py-3.5 text-[14px] sm:text-[15px] shadow-sm min-w-0 break-words overflow-hidden box-border
+                                            px-3.5 py-3 md:px-5 md:py-3.5 text-[14px] sm:text-[15px] shadow-sm min-w-0 break-words overflow-hidden box-border
                                             ${msg.role === 'user'
                                                 ? 'bg-gradient-to-br from-jfu-primary to-jfu-light text-white rounded-2xl rounded-tr-sm'
-                                                : 'bg-white text-[#1a1a1a] border border-gray-200 rounded-2xl rounded-tl-sm shadow-sm'
+                                                : msg.role === 'admin'
+                                                    ? 'bg-sky-50 text-[#1a1a1a] border border-sky-200 rounded-2xl rounded-tl-sm shadow-sm'
+                                                    : 'bg-white text-[#1a1a1a] border border-gray-200 rounded-2xl rounded-tl-sm shadow-sm'
                                             }
                                         `}>
                                             <ReactMarkdown
@@ -939,6 +1089,7 @@ function parseMiminResponse(
                                                 </div>
                                             )}
                                         </div>
+                                        </div>
                                     </div>
                                 ))}
                                 {isLoading && (
@@ -959,7 +1110,7 @@ function parseMiminResponse(
                             <div className="p-3 md:p-4 bg-white border-t border-gray-100">
                                 <form onSubmit={handleSendMessage} className="flex gap-3 relative">
                                     <Input
-                                        placeholder="Ketik pertanyaan atau minta bantuan Mimin..."
+                                        placeholder={replyMode === 'human' ? 'Ketik balasan untuk admin...' : 'Ketik pertanyaan atau minta bantuan Mimin...'}
                                         value={input}
                                         onChange={(e) => setInput(e.target.value)}
                                         disabled={isLoading}
@@ -975,7 +1126,7 @@ function parseMiminResponse(
                                     </Button>
                                 </form>
                                 <div className="hidden md:block text-[11px] font-medium text-center text-gray-400 mt-2.5 tracking-wide">
-                                    ⚡ Powered by Jakpat Agentic AI
+                                    {replyMode === 'human' ? 'Dibalas oleh admin' : '⚡ Powered by Jakpat Agentic AI'}
                                 </div>
                             </div>
                         </Card>
