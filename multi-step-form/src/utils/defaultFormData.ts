@@ -85,3 +85,29 @@ export function formDataForImportedSurvey(
   delete next.flaggedPersonalDataQuestions;
   return next;
 }
+
+/**
+ * Impor yang terjadi DI DALAM wizard, setelah peneliti sempat mengisi kartu
+ * konfigurasi (durasi, kriteria, hadiah) lewat jalur manual lalu beralih.
+ *
+ * `formDataForImportedSurvey` tetap yang membuang voucher, Kilat, tanggal, dan
+ * S&K milik order lain. Yang ditambahkan di sini hanya field yang memang
+ * terlihat di layar Detail — supaya isian yang baru diketik tidak hilang.
+ * Impor ulang survei yang sama tetap melanjutkan draf utuh.
+ */
+export function formDataForWizardImport(
+  draft: Partial<SurveyFormData>,
+  imported: Partial<SurveyFormData>,
+): SurveyFormData {
+  const next = formDataForImportedSurvey(draft, imported);
+  const sameSurvey = !!draft.surveyUrl && draft.surveyUrl === imported.surveyUrl;
+  if (sameSurvey) return next;
+
+  if (draft.criteriaResponden) next.criteriaResponden = draft.criteriaResponden;
+  if (typeof draft.duration === 'number' && draft.duration > 0) next.duration = draft.duration;
+  if (typeof draft.winnerCount === 'number' && draft.winnerCount > 0) next.winnerCount = draft.winnerCount;
+  if (typeof draft.prizePerWinner === 'number' && draft.prizePerWinner > 0) {
+    next.prizePerWinner = draft.prizePerWinner;
+  }
+  return next;
+}

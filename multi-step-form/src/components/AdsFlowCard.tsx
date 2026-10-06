@@ -17,10 +17,9 @@ interface AdsFlowCardProps {
  * PERSIST di DOM saat body berganti — cap & footer tidak pernah unmount,
  * cuma `children` yang cross-fade lewat `key={step}` di pemanggilnya.
  *
- * Cap identik untuk `method` ↔ `import`, tidak bercabang — itulah yang dulu
- * memperbaiki transisi berkedip antar dua layar itu, dan tetap berlaku.
- * Tombol kembali TIDAK hidup di cap ini; sudah pindah ke heading body
- * (`StepOneGoogleForm`), jadi kedua step itu benar-benar nol elemen baru.
+ * Cap identik untuk layar pilihan dan impor, tidak bercabang.
+ * Tombol kembali tidak hidup di cap ini. Pilihan sumber kuesioner
+ * sekarang ada di dalam kartu Informasi Survey.
  *
  * `fields` DIKECUALIKAN dari invarian tersebut — dan sekarang malah tanpa cap
  * SAMA SEKALI, bukan cuma dipadatkan. Judul & navigasi-mundur layar ini sudah

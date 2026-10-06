@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DEFAULT_SURVEY_FORM_DATA, formDataForImportedSurvey } from './defaultFormData';
+import { DEFAULT_SURVEY_FORM_DATA, formDataForImportedSurvey, formDataForWizardImport } from './defaultFormData';
 import type { SurveyFormData } from '../types';
 
 const OLD_URL = 'https://docs.google.com/forms/d/lama/viewform';
@@ -91,6 +91,41 @@ describe('formDataForImportedSurvey — impor ulang survei yang sama', () => {
     expect(next.title).toBe('Survei Lama (v2)');
     expect(next.questionCount).toBe(20);
     expect('customFormId' in next).toBe(false);
+  });
+});
+
+describe('formDataForWizardImport — ganti dari isian manual yang sudah terisi', () => {
+  const typed: Partial<SurveyFormData> = {
+    ...staleDraft,
+    surveyUrl: '',
+    title: '',
+    questionCount: 0,
+    criteriaResponden: 'Usia 18-24',
+    duration: 4,
+    winnerCount: 3,
+    prizePerWinner: 50000,
+  };
+
+  const next = formDataForWizardImport(typed, imported);
+
+  it('menyimpan durasi, kriteria, dan hadiah yang baru diketik', () => {
+    expect(next.criteriaResponden).toBe('Usia 18-24');
+    expect(next.duration).toBe(4);
+    expect(next.winnerCount).toBe(3);
+    expect(next.prizePerWinner).toBe(50000);
+  });
+
+  it('tetap membuang voucher, Kilat, tanggal, dan S&K order lama', () => {
+    expect(next.voucherCode).toBe(DEFAULT_SURVEY_FORM_DATA.voucherCode);
+    expect(next.isKilatUpgrade).toBe(false);
+    expect(next.startDate).toBe('');
+    expect(next.termsAccepted).toBeUndefined();
+  });
+
+  it('memakai identitas survei hasil impor', () => {
+    expect(next.surveyUrl).toBe(NEW_URL);
+    expect(next.title).toBe('Survei Baru');
+    expect(next.questionCount).toBe(20);
   });
 });
 

@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
-import * as AccordionPrimitive from '@radix-ui/react-accordion';
+import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, AlertTriangle, Check, ChevronDown, Loader2, ShieldCheck } from 'lucide-react';
-import { Accordion, AccordionContent, AccordionItem } from '@/components/ui/accordion';
+import { InfoTooltip } from './status/InfoTooltip';
 import { simpleGoogleAuth, type AuthResult } from '../utils/google-auth-simple';
 import { googlePicker } from '../utils/google-picker-browser';
 import { googleFormsApi } from '../utils/google-forms-api-browser';
@@ -9,14 +8,36 @@ import type { SurveyFormData } from '../types';
 import { toast } from 'sonner';
 import { useLanguage } from '../i18n/LanguageContext';
 
+export interface ImportedGoogleForm {
+  formId: string;
+  surveyUrl: string;
+  title: string;
+  description: string;
+  questionCount: number;
+  isManualEntry: false;
+  hasPersonalDataQuestions: boolean;
+  detectedKeywords: string[];
+}
+
 interface GoogleDriveImportSimpleProps {
   formData: SurveyFormData;
   updateFormData: (data: Partial<SurveyFormData>) => void;
   onFormDataLoaded: () => void;
   onCancel?: () => void;
+  /** Kalau diisi, pemilih file dilewati dan form ini langsung diekstrak. */
+  autoFormId?: string | null;
+  /**
+   * Kalau diisi, hasil ekstraksi diserahkan ke induk dan tidak ditampilkan
+   * sebagai kartu "lanjut" di dalam komponen ini.
+   */
+  onReviewed?: (data: ImportedGoogleForm) => void;
 }
 
-const REVIEW_STEP_MS = 1800;
+const REVIEW_TIMEOUT_MS = 45000;
+
+function isGoogleAuthError(message: string): boolean {
+  return /no access token|not authenticated|api error: 401|invalid authentication|login required/i.test(message);
+}
 
 /**
  * Import Google Form — restyle Soft DNA (v6), dirender di dalam body
@@ -39,10 +60,12 @@ const REVIEW_STEP_MS = 1800;
 export function GoogleDriveImportSimple({
   updateFormData,
   onFormDataLoaded,
-  onCancel
+  onCancel,
+  autoFormId,
+  onReviewed,
 }: GoogleDriveImportSimpleProps) {
   const { t } = useLanguage();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => simpleGoogleAuth.isAuthenticated());
   const [googleEmail, setGoogleEmail] = useState<string>('');
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
@@ -52,19 +75,27 @@ export function GoogleDriveImportSimple({
   const [failedFormTitle, setFailedFormTitle] = useState<string>('Google Form');
   const [connectError, setConnectError] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [needsReauth, setNeedsReauth] = useState(false);
+  const [safetyOpen, setSafetyOpen] = useState(false);
+  const [reviewSlow, setReviewSlow] = useState(false);
+  const requestSeq = useRef(0);
+  const stepMsRef = useRef(1800);
 
-  // Checklist kosmetik: mencentang berurutan selama isReviewing. Reset begitu
-  // review selesai/batal supaya siklus berikutnya mulai dari awal lagi.
+  // Checklist kosmetik: mencentang berurutan selama isReviewing. Jaraknya
+  // mengikuti durasi minimum putaran ini, supaya langkah terakhir tidak
+  // berhenti lama. Reset begitu review selesai/batal.
   useEffect(() => {
     if (!isReviewing) {
       setReviewStepIndex(0);
+      setReviewSlow(false);
       return;
     }
-    const t1 = setTimeout(() => setReviewStepIndex(1), REVIEW_STEP_MS);
-    const t2 = setTimeout(() => setReviewStepIndex(2), REVIEW_STEP_MS * 2);
+    const step = stepMsRef.current;
+    const timers = [1, 2].map((i) => setTimeout(() => setReviewStepIndex(i), step * i));
+    const slow = setTimeout(() => setReviewSlow(true), 10000);
     return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
+      timers.forEach(clearTimeout);
+      clearTimeout(slow);
     };
   }, [isReviewing]);
 
@@ -133,7 +164,80 @@ export function GoogleDriveImportSimple({
     }
   };
 
-  // Select form using Google Picker
+  // Select form using Google Picker, or re-extract a form the user already chose.
+  const runExtract = async (formId: string, fileName: string) => {
+    const seq = ++requestSeq.current;
+    const stillCurrent = () => seq === requestSeq.current;
+
+    setImportError(null);
+    setNeedsReauth(false);
+    setFailedFormTitle(fileName || 'Google Form');
+    setIsReviewing(true);
+    const minDuration = 6000 + Math.floor(Math.random() * 4001);
+    stepMsRef.current = Math.floor(minDuration / 3);
+    const startTime = Date.now();
+    let timeoutId = 0;
+
+    try {
+      const extractPromise = googleFormsApi.extractToSurveyInfo(formId);
+      void extractPromise.catch(() => undefined);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = window.setTimeout(() => reject(new Error('review-timeout')), REVIEW_TIMEOUT_MS);
+      });
+      const result = await Promise.race([extractPromise, timeoutPromise]);
+      const elapsedTime = Date.now() - startTime;
+      if (elapsedTime < minDuration) {
+        await new Promise((resolve) => setTimeout(resolve, minDuration - elapsedTime));
+      }
+      if (!stillCurrent()) return;
+
+      const extracted: ImportedGoogleForm = {
+        formId,
+        surveyUrl: result.url || `https://docs.google.com/forms/d/${formId}/viewform`,
+        title: (fileName && fileName !== 'Google Form' ? fileName : result.title) || 'Google Form',
+        description: result.description || '',
+        questionCount: result.questionCount,
+        isManualEntry: false,
+        hasPersonalDataQuestions: result.hasPersonalDataQuestions || false,
+        detectedKeywords: result.detectedKeywords || [],
+      };
+
+      if (onReviewed) {
+        onReviewed(extracted);
+        return;
+      }
+
+      setImportedForm(extracted);
+      toast.success(t('reviewSuccess'));
+    } catch (error: any) {
+      if (!stillCurrent()) return;
+      const errMsg = error?.message || '';
+      if (errMsg === 'review-timeout') {
+        setImportError(t('technicalIssueReasonNote'));
+        toast.error(t('errorSelectForm'));
+        return;
+      }
+      if (isGoogleAuthError(errMsg)) {
+        setNeedsReauth(true);
+        setIsAuthenticated(false);
+        toast.error(t('googleReconnect'));
+        return;
+      }
+      toast.error(t('errorSelectForm'));
+      if (errMsg === 'errorFormNotPublished' || errMsg === 'errorFormRestricted') {
+        setImportError(t('technicalIssueReasonNote'));
+      } else {
+        setImportError(errMsg || t('technicalIssueReasonNote'));
+      }
+    } finally {
+      window.clearTimeout(timeoutId);
+      if (stillCurrent()) {
+        setIsSelecting(false);
+        setIsReviewing(false);
+      }
+    }
+  };
+
   const handleSelectForm = async () => {
     if (!isAuthenticated) {
       toast.error(t('errorConnectFirst'));
@@ -142,78 +246,38 @@ export function GoogleDriveImportSimple({
 
     setIsSelecting(true);
     setImportError(null);
-    let selectedFile: any = null;
     try {
-      selectedFile = await googlePicker.showFormsPicker();
-
+      const selectedFile = await googlePicker.showFormsPicker();
       if (!selectedFile) {
         setIsSelecting(false);
         return;
       }
-
-      setFailedFormTitle(selectedFile.name || 'Google Form');
-
-      // Momen auto-review terlihat mulai di sini — SETELAH file terbukti
-      // dipilih, bukan sejak picker dibuka (lihat doc comment file).
-      setIsReviewing(true);
-      const startTime = Date.now();
-
-      // Extract form data
-      const result = await googleFormsApi.extractToSurveyInfo(selectedFile.id);
-
-      // Ensure review loading state is at least 6 seconds (6000ms)
-      const elapsedTime = Date.now() - startTime;
-      const minDuration = 6000;
-      if (elapsedTime < minDuration) {
-        await new Promise((resolve) => setTimeout(resolve, minDuration - elapsedTime));
-      }
-
-      if (result) {
-        // Google Drive file name (Picker) dan Google Forms internal title
-        // (API info.title) adalah dua hal yang independen. User bisa rename
-        // file di Drive tanpa mengubah judul form di editor — Picker
-        // menampilkan file name, jadi kita pakai itu sebagai title agar
-        // sesuai dengan apa yang user pilih dan lihat.
-        const pickerName = selectedFile?.name;
-        if (pickerName && result.title && pickerName !== result.title) {
-          console.warn(
-            `[Google Import] Title mismatch — Picker: "${pickerName}" vs API: "${result.title}". Using Picker name.`
-          );
-        }
-
-        const extractedData = {
-          surveyUrl: result.url,
-          title: pickerName || result.title,
-          description: result.description,
-          questionCount: result.questionCount,
-          isManualEntry: false,
-          hasPersonalDataQuestions: result.hasPersonalDataQuestions || false,
-          detectedKeywords: result.detectedKeywords || []
-        };
-
-        setImportedForm(extractedData);
-        toast.success(t('reviewSuccess'));
-      } else {
-        throw new Error(t('errorExtractFormData'));
-      }
+      await runExtract(selectedFile.id, selectedFile.name || 'Google Form');
     } catch (error: any) {
       console.error('Error selecting form:', error);
-
-      // Toast notification sederhana
       toast.error(t('errorSelectForm'));
-
-      // Detail error persisten di card
-      const errMsg = error.message;
-      if (errMsg === 'errorFormNotPublished' || errMsg === 'errorFormRestricted') {
-        setImportError(t('technicalIssueReasonNote'));
-      } else {
-        setImportError(errMsg || t('technicalIssueReasonNote'));
-      }
-    } finally {
+      setImportError(error?.message || t('technicalIssueReasonNote'));
       setIsSelecting(false);
       setIsReviewing(false);
     }
   };
+
+  // Impor ulang form yang sama, tanpa membuka pemilih file lagi.
+  useEffect(() => {
+    if (!autoFormId || !isAuthenticated) return;
+    void runExtract(autoFormId, failedFormTitle);
+    // Hanya saat id atau status sambungan berubah. runExtract membaca state
+    // lewat ref permintaan, jadi identitas fungsinya tidak perlu jadi dependensi.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFormId, isAuthenticated]);
+
+  // Pindah halaman atau batal di tengah review: hasil yang datang belakangan
+  // tidak boleh mengubah kartu yang sudah ditinggalkan.
+  useEffect(() => {
+    return () => {
+      requestSeq.current += 1;
+    };
+  }, []);
 
   const reviewChecklist = [
     t('autoReviewCheckQuestions'),
@@ -223,120 +287,91 @@ export function GoogleDriveImportSimple({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Keamanan — ringkas + accordion (v6), di luar kartu Step 1 (permintaan
-          user setelah melihat draft: aksesnya milik keseluruhan proses import,
-          bukan cuma milik langkah "Hubungkan Google"). Dulu panel emerald
-          raksasa (shield dekoratif + 3 sub-kartu ber-hover) yang jadi blok
-          tertinggi di layar, mendorong tombol Hubungkan ke bawah fold. */}
-      {!isAuthenticated && (
-        <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 px-3 overflow-hidden">
-          <Accordion type="single" collapsible>
-            <AccordionItem value="safety" className="border-b-0">
-              <AccordionPrimitive.Header className="flex">
-                <AccordionPrimitive.Trigger className="flex flex-1 items-center gap-2 py-2.5 min-h-11 text-left [&[data-state=open]>svg]:rotate-180">
-                  <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-600" />
-                  <span className="flex-1 text-xs font-semibold text-emerald-900">{t('googleSafetyToggle')}</span>
-                  <ChevronDown className="w-4 h-4 shrink-0 text-emerald-600/60 transition-transform duration-200" />
-                </AccordionPrimitive.Trigger>
-              </AccordionPrimitive.Header>
-              <AccordionContent className="pb-2.5 pt-0">
-                <div className="space-y-1 pl-6">
-                  <p className="text-xs text-emerald-800/80">✓ {t('googleSafetyPoint1')}</p>
-                  <p className="text-xs text-emerald-800/80">✓ {t('googleSafetyPoint2')}</p>
-                  <p className="text-xs text-emerald-800/80">✓ {t('googleSafetyPoint3')}</p>
-                  <p className="text-xs text-emerald-700/60 mt-1.5">· {t('permissionDrive')}</p>
-                  <p className="text-xs text-emerald-700/60">· {t('permissionForms')}</p>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
+      {/* Judul dan subjudul selalu terlihat. Rincian izin dibuka lewat chevron. */}
+      {!isReviewing && (
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-3">
+        <button
+          type="button"
+          onClick={() => setSafetyOpen((open) => !open)}
+          aria-expanded={safetyOpen}
+          className="flex w-full items-start gap-2.5 text-left cursor-pointer"
+        >
+          <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-emerald-700" aria-hidden="true" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-emerald-950">{t('googleSafetyToggle')}</span>
+            <span className="mt-0.5 block text-xs leading-relaxed text-emerald-900">{t('googleSafetyLead')}</span>
+          </span>
+          <ChevronDown className={`w-4 h-4 shrink-0 mt-0.5 text-emerald-700 transition-transform ${safetyOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+        </button>
+        {safetyOpen && (
+          <ul className="mt-2 space-y-1 pl-6 text-xs leading-relaxed text-emerald-900">
+            <li>{t('googleSafetyPoint1')}</li>
+            <li>{t('googleSafetyPoint2')}</li>
+            <li>{t('googleSafetyPoint3')}</li>
+          </ul>
+        )}
+      </div>
+      )}
+
+      <div className="flex items-center justify-between gap-3">
+        <p className="min-w-0 flex items-center gap-2 truncate text-sm text-slate-800">
+          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+          </svg>
+          <span className="truncate">
+            {isAuthenticated
+              ? (googleEmail ? googleEmail : t('googleConnectedMessage'))
+              : needsReauth
+                ? t('googleReconnect')
+                : t('googleAccountLabel')}
+          </span>
+        </p>
+        {isAuthenticated ? (
+          <button
+            type="button"
+            onClick={handleChangeAccount}
+            className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+          >
+            {t('googleChangeShort')}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleConnect}
+            disabled={isConnecting}
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+          >
+            {isConnecting && <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />}
+            {isConnecting ? t('connecting') : t('googleConnectShort')}
+          </button>
+        )}
+      </div>
+
+      <p className="flex items-center gap-1 text-xs text-slate-500">
+        {t('surveyEntryImportGoogleTag')}
+        <InfoTooltip content={t('surveyEntryImportGoogleTip')} />
+        <span aria-hidden="true">·</span>
+        {t('surveyEntryImportGoogleSub')}
+      </p>
+
+      {connectError && (
+        <div className="p-3 rounded-xl border border-rose-200 bg-rose-50 flex gap-2.5 items-start">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+          <div>
+            <h4 className="text-sm font-bold text-rose-900">
+              {connectError === 'insufficient_permissions' ? t('errorInsufficientPermissionsTitle') : t('errorConnectGoogleDrive')}
+            </h4>
+            <p className="text-xs text-rose-700 mt-0.5 leading-relaxed">
+              {connectError === 'insufficient_permissions' ? t('errorInsufficientPermissionsDesc') : connectError}
+            </p>
+          </div>
         </div>
       )}
 
-      {!isAuthenticated ? (
-        <>
-          {/* Step 1: Connect to Google */}
-          <div className="rounded-xl border border-gray-100 p-3 md:p-3.5">
-            <div className="flex items-center gap-3 mb-3">
-              <span className="w-8 h-8 rounded-lg bg-jfu-primary/[0.08] text-jfu-primary font-bold text-sm inline-flex items-center justify-center shrink-0">1</span>
-              <div className="min-w-0">
-                <h3 className="text-sm font-bold text-[#1a1a1a]">{t('googleConnectTitle')}</h3>
-                <p className="text-xs text-gray-500 mt-0.5">{t('googleConnectDescription')}</p>
-              </div>
-            </div>
-
-            <button
-              onClick={handleConnect}
-              disabled={isConnecting}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 min-h-11 font-semibold rounded-xl bg-white text-[#3c4043] border border-gray-200 shadow-sm hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-            >
-              {isConnecting ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  {t('connecting')}
-                </>
-              ) : (
-                <>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                  </svg>
-                  {t('googleConnectButton')}
-                </>
-              )}
-            </button>
-
-            {connectError && (
-              <div className="mt-3 p-3 rounded-xl border border-rose-200 bg-rose-50 flex gap-2.5 items-start">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-                <div>
-                  <h4 className="text-sm font-bold text-rose-900">
-                    {connectError === 'insufficient_permissions' ? t('errorInsufficientPermissionsTitle') : t('errorConnectGoogleDrive')}
-                  </h4>
-                  <p className="text-xs text-rose-700 mt-0.5 leading-relaxed">
-                    {connectError === 'insufficient_permissions' ? t('errorInsufficientPermissionsDesc') : connectError}
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Step 2 preview — redup, sama treatment dengan baris coming-soon
-              di kartu pintu-masuk (aria-disabled, tanpa tombol). */}
-          <div aria-disabled="true" className="flex items-center gap-3 px-1">
-            <span className="w-8 h-8 rounded-lg bg-gray-100 text-gray-400 font-bold text-sm inline-flex items-center justify-center shrink-0">2</span>
-            <div className="min-w-0">
-              <h3 className="text-sm font-semibold text-gray-400">{t('titleSelectForm')}</h3>
-              <p className="text-xs text-gray-400 mt-0.5">{t('descriptionSelectForm')}</p>
-            </div>
-          </div>
-        </>
-      ) : (
-        <>
-          {/* Step 1 success */}
-          <div className="rounded-xl border border-emerald-100 bg-emerald-50/30 p-3 md:p-3.5">
-            <div className="flex items-center gap-3">
-              <span className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 inline-flex items-center justify-center shrink-0">
-                <Check className="w-4 h-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-bold text-[#1a1a1a]">{t('googleConnectedTitle')}</h3>
-                <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                  <p className="text-xs text-emerald-700 font-medium truncate">
-                    {googleEmail ? t('connectedAsEmail').replace('{email}', googleEmail) : t('googleConnectedMessage')}
-                  </p>
-                  <button onClick={handleChangeAccount} className="text-xs font-semibold text-emerald-700 hover:underline shrink-0">
-                    {t('changeGoogleAccount')}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Step 2 */}
-          {importedForm ? (
+      {isAuthenticated && importedForm ? (
             <div>
               <div className={`rounded-xl border p-3 md:p-3.5 transition-all ${
                 importedForm.hasPersonalDataQuestions
@@ -431,7 +466,7 @@ export function GoogleDriveImportSimple({
             <div className="rounded-xl border border-jfu-primary/15 bg-jfu-primary/[0.04] p-3 md:p-3.5">
               <p className="flex items-center gap-2 text-sm font-semibold text-[#1a1a1a]">
                 <Loader2 className="w-4 h-4 animate-spin text-jfu-primary shrink-0" />
-                {t('reviewingSystem')}
+                {reviewSlow ? t('reviewStillReading') : t('reviewingSystem')}
               </p>
               <div className="mt-2 space-y-1.5 pl-6">
                 {reviewChecklist.map((label, i) => (
@@ -505,35 +540,18 @@ export function GoogleDriveImportSimple({
               </div>
             </div>
           ) : (
-            <div className="rounded-xl border border-gray-100 p-3 md:p-3.5">
-              <div className="flex items-center gap-3 mb-3">
-                <span className="w-8 h-8 rounded-lg bg-jfu-primary/[0.08] text-jfu-primary font-bold text-sm inline-flex items-center justify-center shrink-0">2</span>
-                <div className="min-w-0">
-                  <h3 className="text-sm font-bold text-[#1a1a1a]">{t('titleSelectForm')}</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">{t('descriptionSelectForm')}</p>
-                </div>
-              </div>
-
-              <button
-                onClick={handleSelectForm}
-                disabled={isSelecting}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 min-h-11 text-white font-semibold rounded-xl bg-jfu-primary hover:bg-jfu-dark disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-              >
-                {isSelecting ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
-                )}
-                {t('buttonSelectForm')}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleSelectForm}
+              disabled={!isAuthenticated || isSelecting}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 min-h-11 text-white font-semibold rounded-xl bg-jfu-primary hover:bg-jfu-dark disabled:bg-slate-200 disabled:text-slate-500 disabled:hover:bg-slate-200 disabled:cursor-not-allowed cursor-pointer transition-colors"
+            >
+              {isSelecting ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : null}
+              {t('googlePickQuestionnaire')}
+            </button>
           )}
-        </>
-      )}
     </div>
   );
 }

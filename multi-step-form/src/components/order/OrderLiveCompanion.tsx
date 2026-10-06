@@ -5,7 +5,6 @@ import {
   Info,
   CheckCircle2,
   CreditCard,
-  Lightbulb,
   ChevronDown,
   Trash2,
   AlertTriangle,
@@ -31,6 +30,8 @@ export interface OrderLiveCompanionProps {
   costCalculation?: CostCalculation;
   voucherSlot?: React.ReactNode;
   onCancelOrder?: () => void;
+  /** Belum ada isian konfigurasi. Jangan menagih hadiah bawaan. */
+  quotePending?: boolean;
 }
 
 
@@ -49,6 +50,7 @@ export const OrderLiveCompanion: React.FC<OrderLiveCompanionProps> = ({
   costCalculation,
   voucherSlot,
   onCancelOrder,
+  quotePending = false,
 }) => {
   const { t } = useLanguage();
   const [isMobileExpanded, setIsMobileExpanded] = useState(false);
@@ -58,7 +60,10 @@ export const OrderLiveCompanion: React.FC<OrderLiveCompanionProps> = ({
   const isAuto = isAutoApprovalPath(formData);
   // Order baru: instan tarif = sekarang (sama dengan `created_at` yang
   // dipaksakan sql/103 saat INSERT).
-  const defaultCost = calculateTotalCost(formData, Date.now());
+  const quotedForm = quotePending
+    ? { ...formData, questionCount: 0, winnerCount: 0, prizePerWinner: 0, voucherCode: '' }
+    : formData;
+  const defaultCost = calculateTotalCost(quotedForm, Date.now());
   const cost = costCalculation || defaultCost;
   const activeTierIndex = getTierIndex(formData.questionCount);
 
@@ -105,14 +110,18 @@ export const OrderLiveCompanion: React.FC<OrderLiveCompanionProps> = ({
               </div>
               <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
                 <span>{formData.duration} {t('days')}</span>
-                <span>•</span>
-                <span
-                  className={
-                    isAuto ? 'text-emerald-700 font-semibold' : 'text-blue-700 font-semibold'
-                  }
-                >
-                  {isAuto ? '⚡ Auto-Approval' : t('reviewPathManualShort')}
-                </span>
+                {step !== 1 && (
+                  <>
+                    <span>•</span>
+                    <span
+                      className={
+                        isAuto ? 'text-emerald-700 font-semibold' : 'text-blue-700 font-semibold'
+                      }
+                    >
+                      {isAuto ? '⚡ Auto-Approval' : t('reviewPathManualShort')}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -128,7 +137,7 @@ export const OrderLiveCompanion: React.FC<OrderLiveCompanionProps> = ({
 
         {/* ================= KONTEN DETAIL (MOBILE EXPANDED + SELALU TAMPIL DI DESKTOP) ================= */}
         <div className={`${isMobileExpanded ? 'block' : 'hidden'} lg:block`}>
-          {/* 1. SEKSI JALUR REVIEW (URUTAN 1) */}
+          {step !== 1 && (
           <div className="p-4 sm:p-5 border-b border-slate-100">
             <div
               className={`rounded-xl border p-3.5 sm:p-4 transition-all ${isAuto
@@ -165,52 +174,48 @@ export const OrderLiveCompanion: React.FC<OrderLiveCompanionProps> = ({
               </div>
             </div>
           </div>
+          )}
 
           {/* 2. SEKSI TIPS DENGAN BOX HIJAU (URUTAN 2) */}
           <div className="p-4 sm:p-5 border-b border-slate-100">
-            <div className="rounded-xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50/70 via-emerald-50/30 to-white p-3.5 sm:p-4 space-y-2.5 shadow-2xs">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-md bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                  <Lightbulb className="w-3.5 h-3.5 text-emerald-600" />
-                </div>
-                <h5 className="text-xs font-bold text-slate-900">
-                  {step === 1 ? t('checklistReadinessTitle') : t('tipsVerificationTitle')}
-                </h5>
-              </div>
+            <div className="rounded-xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50/70 via-emerald-50/30 to-white p-3.5 sm:p-4 shadow-2xs">
+              <h5 className="mb-3 text-sm font-semibold text-slate-900 leading-snug">
+                {step === 1 ? t('checklistReadinessTitle') : t('tipsVerificationTitle')}
+              </h5>
 
               {step === 1 ? (
-                <ul className="space-y-2 text-xs text-slate-600 leading-relaxed">
+                <ul className="space-y-2.5 text-xs text-slate-600 leading-relaxed">
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
                     <span>
-                      <strong className="text-slate-800">{t('tipOpenAccessTitle')}</strong> {t('tipOpenAccessDesc')}
+                      <strong className="font-semibold text-slate-800">{t('tipOpenAccessTitle')}</strong> {t('tipOpenAccessDesc')}
                     </span>
                   </li>
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
                     <span>
-                      <strong className="text-slate-800">{t('tipPrivacyEthicsTitle')}</strong> {t('tipPrivacyEthicsDesc')}
+                      <strong className="font-semibold text-slate-800">{t('tipPrivacyEthicsTitle')}</strong> {t('tipPrivacyEthicsDesc')}
                     </span>
                   </li>
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
                     <span>
-                      <strong className="text-slate-800">{t('tipGeneralAudienceTitle')}</strong> {t('tipGeneralAudienceDesc')}
+                      <strong className="font-semibold text-slate-800">{t('tipGeneralAudienceTitle')}</strong> {t('tipGeneralAudienceDesc')}
                     </span>
                   </li>
                 </ul>
               ) : (
-                <ul className="space-y-2 text-xs text-slate-600 leading-relaxed">
+                <ul className="space-y-2.5 text-xs text-slate-600 leading-relaxed">
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
                     <span>
-                      <strong className="text-slate-800">{t('tipInvoiceContactTitle')}</strong> {t('tipInvoiceContactDesc')}
+                      <strong className="font-semibold text-slate-800">{t('tipInvoiceContactTitle')}</strong> {t('tipInvoiceContactDesc')}
                     </span>
                   </li>
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
                     <span>
-                      <strong className="text-slate-800">{t('tipSlotCertaintyTitle')}</strong>{' '}
+                      <strong className="font-semibold text-slate-800">{t('tipSlotCertaintyTitle')}</strong>{' '}
                       {isAuto ? t('tipSlotCertaintyAuto') : t('tipSlotCertaintyManual')}
                     </span>
                   </li>
@@ -287,17 +292,19 @@ export const OrderLiveCompanion: React.FC<OrderLiveCompanionProps> = ({
             <CostBreakdown
               total={cost.totalCost}
               lines={orderMoneyLines(cost, {
-                questionCount: formData.questionCount,
-                duration: formData.duration,
-                isKilat: formData.isKilatUpgrade,
-                voucherCode: formData.voucherCode,
+                questionCount: quotedForm.questionCount,
+                duration: quotedForm.duration,
+                isKilat: quotedForm.isKilatUpgrade,
+                voucherCode: quotedForm.voucherCode,
               })}
               variant="full"
               totalLabel={step === 2 ? t('orderCompanionTotalPayment') : t('orderCompanionTotalEstimate')}
             />
-            <p className="text-[10px] text-slate-400">
-              {step === 2 ? t('orderCompanionIncludesTax') : t('orderCompanionBeforeDiscount')}
-            </p>
+            {step === 2 && (
+              <p className="text-[10px] text-slate-400">
+                {t('orderCompanionIncludesTax')}
+              </p>
+            )}
           </div>
 
           {/* 4. SEKSI TOMBOL BATALKAN PESANAN — di KEDUA langkah. Tombol batal

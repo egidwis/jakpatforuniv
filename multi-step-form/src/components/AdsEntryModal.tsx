@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import {
   X,
   Radio,
@@ -7,130 +6,50 @@ import {
   Clock,
   ShieldCheck,
   ArrowRight,
-  ArrowLeft,
-  Bot,
-  UserCheck,
-  ChevronRight,
-  Zap,
-  Check,
-  Sparkles,
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { RateNoticeBlock } from './RateNotice';
-import { GoogleDriveImportSimple } from './GoogleDriveImportSimple';
-import { SURVEY_DRAFT_KEY } from '../utils/constants';
-import { DEFAULT_SURVEY_FORM_DATA, formDataForImportedSurvey } from '../utils/defaultFormData';
-import type { SurveyFormData } from '../types';
-
-/** Draf wizard di atas nilai awal — bentuk yang sama dengan `MultiStepForm`. */
-function readDraftFormData(): SurveyFormData {
-  try {
-    const saved = localStorage.getItem(SURVEY_DRAFT_KEY);
-    const parsed = saved ? JSON.parse(saved) : null;
-    if (parsed?.formData) return { ...DEFAULT_SURVEY_FORM_DATA, ...parsed.formData };
-  } catch {
-    // localStorage tak tersedia / JSON rusak → mulai dari nilai awal
-  }
-  return DEFAULT_SURVEY_FORM_DATA;
-}
 
 export interface AdsEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelectMethod: (method: 'google' | 'manual') => void;
+  onContinue: () => void;
   onOpenCustomMission?: () => void;
 }
 
+/**
+ * Pintu masuk iklan survei: hanya penjelasan mekanisme tayang, tarif, dan
+ * persetujuan. Pilihan sumber kuesioner hidup di kartu Informasi Survey.
+ */
 export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
   isOpen,
   onClose,
-  onSelectMethod,
+  onContinue,
   onOpenCustomMission,
 }) => {
   const { t } = useLanguage();
-  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [hasAcknowledged, setHasAcknowledged] = useState(false);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const [transitionKind, setTransitionKind] = useState<'manual' | 'google'>('manual');
 
-  /*
-    Draf wizard dibaca ULANG setiap modal dibuka, bukan sekali saat mount —
-    modal ini hidup sepanjang umur dashboard, jadi pembacaan sekali-mount
-    menyimpan draf basi (order yang sudah terkirim/dibatalkan sejak itu).
-  */
-  const [formData, setFormData] = useState<SurveyFormData>(DEFAULT_SURVEY_FORM_DATA);
-  useEffect(() => {
-    if (!isOpen) return;
-    setFormData(readDraftFormData());
-  }, [isOpen]);
-
-  // Lock body scroll saat modal terbuka
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
+      setHasAcknowledged(false);
     }
     return () => {
       document.body.style.overflow = '';
     };
   }, [isOpen]);
 
-  // Handle ESC key untuk menutup modal
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isTransitioning) onClose();
+      if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, isTransitioning]);
-
-  // Reset state saat modal ditutup
-  const handleClose = () => {
-    setStep(1);
-    setHasAcknowledged(false);
-    setIsTransitioning(false);
-    onClose();
-  };
-
-  /*
-    Hasil impor Google Form → draf wizard. Aturan "survei baru = order baru"
-    ada di `formDataForImportedSurvey`. Draf DIGANTI utuh, bukan digabung
-    dengan `formData` lama di storage — penggabungan itulah yang dulu
-    menghidupkan lagi voucher/Kilat order sebelumnya.
-  */
-  const handleImportedFormData = (imported: Partial<SurveyFormData>) => {
-    const next = formDataForImportedSurvey(readDraftFormData(), imported);
-    setFormData(next);
-    try {
-      localStorage.setItem(SURVEY_DRAFT_KEY, JSON.stringify({ formData: next, currentStep: 1 }));
-    } catch (e) {
-      console.error('Failed to sync draft in AdsEntryModal', e);
-    }
-  };
-
-  // Transisi halus saat user memilih Review Manual
-  const handleSelectManual = () => {
-    setIsTransitioning(true);
-    setTransitionKind('manual');
-    setTimeout(() => {
-      setIsTransitioning(false);
-      handleClose();
-      onSelectMethod('manual');
-    }, 450);
-  };
-
-  // Transisi halus saat Google Form berhasil dipilih dan diekstrak
-  const handleGoogleFormLoaded = () => {
-    setIsTransitioning(true);
-    setTransitionKind('google');
-    setTimeout(() => {
-      setIsTransitioning(false);
-      handleClose();
-      onSelectMethod('google');
-    }, 600);
-  };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -138,286 +57,108 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
     <div
       className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-6 md:p-8 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
       onClick={(e) => {
-        if (e.target === e.currentTarget && !isTransitioning) handleClose();
+        if (e.target === e.currentTarget) onClose();
       }}
     >
       <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-gray-100 shadow-2xl w-full sm:max-w-xl max-h-[92vh] sm:max-h-[86vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
-        {/* Mobile Drag Handle Indicator */}
         <div className="sm:hidden pt-2.5 pb-1 flex justify-center shrink-0">
           <div className="w-10 h-1 bg-slate-300 rounded-full" />
         </div>
 
-        {/* Header (sembunyikan tombol tutup/mundur saat sedang transisi) */}
         <div className="px-5 sm:px-7 py-4 sm:py-4.5 border-b border-gray-100 bg-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            {step > 1 && !isTransitioning ? (
-              <button
-                type="button"
-                onClick={() => setStep(step === 3 ? 2 : 1)}
-                className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white border border-slate-200/90 text-slate-600 hover:text-jfu-primary hover:border-blue-200 flex items-center justify-center transition-colors cursor-pointer shrink-0 shadow-2xs group"
-                title={step === 3 ? t('adsEntrySelectMethodTitle') : t('adsEntryBackToAwareness')}
-              >
-                <ArrowLeft className="w-4.5 h-4.5 group-hover:-translate-x-0.5 transition-transform" />
-              </button>
-            ) : (
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-jfu-primary text-white flex items-center justify-center shadow-md shadow-jfu-primary/25 shrink-0">
-                <Radio className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
-              </div>
-            )}
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-jfu-primary text-white flex items-center justify-center shadow-md shadow-jfu-primary/25 shrink-0">
+              <Radio className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
+            </div>
             <div className="min-w-0">
               <h2 className="text-sm sm:text-base font-extrabold text-gray-900 leading-tight truncate">
-                {isTransitioning
-                  ? t('adsEntryPreparingTitle')
-                  : step === 1
-                  ? t('adsAwarenessModalTitle')
-                  : step === 2
-                  ? t('adsEntrySelectMethodTitle')
-                  : t('googleFormImportTitle')}
+                {t('adsAwarenessModalTitle')}
               </h2>
               <p className="text-[11px] sm:text-xs text-gray-500 truncate mt-0.5">
-                {isTransitioning
-                  ? t('adsEntryPreparingSubtitle')
-                  : step === 1
-                  ? t('adsAwarenessModalSubtitle')
-                  : step === 2
-                  ? t('adsEntrySelectMethodSubtitle')
-                  : t('adsEntryGoogleImportSubtitle')}
+                {t('adsAwarenessModalSubtitle')}
               </p>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t('closePopup')}
+            className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 transition-colors cursor-pointer shrink-0 ml-3"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
 
-          {!isTransitioning && (
+        <div className="overflow-y-auto px-5 sm:px-7 py-5 sm:py-6 flex-1 min-h-0 overscroll-contain">
+          <ul className="space-y-6">
+            <li className="flex items-start gap-2.5">
+              <Users className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-slate-900">{t('adsAwarenessPoint1Title')}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-slate-600">{t('adsAwarenessPoint1Desc')}</p>
+              </div>
+            </li>
+            <li className="flex items-start gap-2.5">
+              <Clock className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-slate-900">{t('adsAwarenessPoint2Title')}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-slate-600">{t('adsAwarenessPoint2Desc')}</p>
+              </div>
+            </li>
+            <li className="flex items-start gap-2.5">
+              <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-slate-900">{t('adsAwarenessPoint3Title')}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-slate-600">{t('adsAwarenessPoint3Desc')}</p>
+              </div>
+            </li>
+          </ul>
+          <div className="mt-6">
+            <RateNoticeBlock />
+          </div>
+        </div>
+
+        <div className="shrink-0 border-t border-slate-200 bg-white px-5 sm:px-7 pt-4 pb-5 space-y-3">
+          <label className="flex items-start gap-3 py-1 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={hasAcknowledged}
+              onChange={(e) => setHasAcknowledged(e.target.checked)}
+              className="mt-0.5 size-4 shrink-0 rounded border-slate-300 text-jfu-primary focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 cursor-pointer accent-jfu-primary"
+            />
+            <span className="text-sm leading-relaxed text-slate-700">
+              {t('adsAwarenessCheckboxLabel')}
+            </span>
+          </label>
+
+          <button
+            type="button"
+            disabled={!hasAcknowledged}
+            onClick={onContinue}
+            className={`w-full py-3.5 px-4 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 ${
+              hasAcknowledged
+                ? 'bg-jfu-primary hover:bg-jfu-dark text-white cursor-pointer'
+                : 'bg-slate-100 text-slate-600 cursor-not-allowed'
+            }`}
+          >
+            <span>{t('adsAwarenessContinueBtn')}</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+
+          <p className="text-center text-xs leading-relaxed text-slate-500">
+            {t('adsAwarenessNeedSpecificCta')}{' '}
             <button
               type="button"
-              onClick={handleClose}
-              aria-label={t('closePopup')}
-              className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 transition-colors cursor-pointer shrink-0 ml-3"
+              onClick={() => {
+                onClose();
+                onOpenCustomMission?.();
+              }}
+              className="font-medium text-jfu-primary underline decoration-jfu-primary/40 underline-offset-2 hover:decoration-jfu-primary cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary"
             >
-              <X className="w-4 h-4" />
+              {t('adsAwarenessConsultMission')}
             </button>
-          )}
+          </p>
         </div>
-
-        {/* Langkah 1: bacaan bergeser, keputusan tetap di footer.
-            Langkah lain tetap satu area geser. */}
-        {step === 1 && !isTransitioning ? (
-          <>
-            <div className="overflow-y-auto px-5 sm:px-7 py-5 sm:py-6 flex-1 min-h-0 overscroll-contain">
-              <div className="animate-in fade-in duration-200">
-                <ul className="space-y-6">
-                  <li className="flex items-start gap-2.5">
-                    <Users className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
-                    <div className="min-w-0">
-                      <h3 className="text-sm font-semibold text-slate-900">
-                        {t('adsAwarenessPoint1Title')}
-                      </h3>
-                      <p className="mt-1 text-sm leading-relaxed text-slate-600">
-                        {t('adsAwarenessPoint1Desc')}
-                      </p>
-                    </div>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <Clock className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
-                    <div className="min-w-0">
-                      <h3 className="text-sm font-semibold text-slate-900">
-                        {t('adsAwarenessPoint2Title')}
-                      </h3>
-                      <p className="mt-1 text-sm leading-relaxed text-slate-600">
-                        {t('adsAwarenessPoint2Desc')}
-                      </p>
-                    </div>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
-                    <div className="min-w-0">
-                      <h3 className="text-sm font-semibold text-slate-900">
-                        {t('adsAwarenessPoint3Title')}
-                      </h3>
-                      <p className="mt-1 text-sm leading-relaxed text-slate-600">
-                        {t('adsAwarenessPoint3Desc')}
-                      </p>
-                    </div>
-                  </li>
-                </ul>
-                <div className="mt-6">
-                  <RateNoticeBlock />
-                </div>
-              </div>
-            </div>
-
-            <div className="shrink-0 border-t border-slate-200 bg-white px-5 sm:px-7 pt-4 pb-5 space-y-3">
-              <label className="flex items-start gap-3 py-1 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={hasAcknowledged}
-                  onChange={(e) => setHasAcknowledged(e.target.checked)}
-                  className="mt-0.5 size-4 shrink-0 rounded border-slate-300 text-jfu-primary focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 cursor-pointer accent-jfu-primary"
-                />
-                <span className="text-sm leading-relaxed text-slate-700">
-                  {t('adsAwarenessCheckboxLabel')}
-                </span>
-              </label>
-
-              <button
-                type="button"
-                disabled={!hasAcknowledged}
-                onClick={() => setStep(2)}
-                className={`w-full py-3.5 px-4 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 ${
-                  hasAcknowledged
-                    ? 'bg-jfu-primary hover:bg-jfu-dark text-white cursor-pointer'
-                    : 'bg-slate-100 text-slate-600 cursor-not-allowed'
-                }`}
-              >
-                <span>{t('adsAwarenessContinueBtn')}</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-
-              <p className="text-center text-xs leading-relaxed text-slate-500">
-                {t('adsAwarenessNeedSpecificCta')}{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleClose();
-                    onOpenCustomMission?.();
-                  }}
-                  className="font-medium text-jfu-primary underline decoration-jfu-primary/40 underline-offset-2 hover:decoration-jfu-primary cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary"
-                >
-                  {t('adsAwarenessConsultMission')}
-                </button>
-              </p>
-            </div>
-          </>
-        ) : (
-        <div className="overflow-y-auto p-5 sm:p-7 flex-1 min-h-0 overscroll-contain">
-          {isTransitioning ? (
-            /* ================= STATE TRANSISI MIKRO HALUS ================= */
-            <div className="py-12 px-6 flex flex-col items-center justify-center text-center animate-in fade-in zoom-in-95 duration-200">
-              <div className="relative mb-5">
-                <div className="w-16 h-16 rounded-2xl bg-blue-50 text-jfu-primary flex items-center justify-center shadow-md shadow-jfu-primary/10 border border-blue-100">
-                  <Sparkles className="w-8 h-8 animate-pulse text-jfu-primary" />
-                </div>
-                <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-xs">
-                  <Check className="w-3.5 h-3.5 stroke-[3]" />
-                </div>
-              </div>
-              <h3 className="text-base sm:text-lg font-extrabold text-slate-900 leading-snug">
-                {transitionKind === 'google' ? t('adsEntryTransitionGoogleTitle') : t('adsEntryTransitionManualTitle')}
-              </h3>
-              <p className="mt-1 text-xs sm:text-sm text-slate-500 max-w-xs leading-relaxed">
-                {transitionKind === 'google' ? t('adsEntryTransitionGoogleSubtitle') : t('adsEntryTransitionManualSubtitle')}
-              </p>
-              <div className="mt-6 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-jfu-primary animate-ping" />
-                <span className="w-2 h-2 rounded-full bg-jfu-primary/60" />
-                <span className="w-2 h-2 rounded-full bg-jfu-primary/30" />
-              </div>
-            </div>
-          ) : step === 2 ? (
-            /* ================= STEP 2: PILIH JALUR REVIEW ================= */
-            <div className="space-y-4 animate-in fade-in duration-200">
-              {/* Opsi 1: Review Otomatis (Google Forms) -> Membuka Step 3 di Modal */}
-              <div className="border border-slate-200/90 rounded-2xl overflow-hidden bg-white shadow-xs hover:border-blue-200/90 transition-all">
-                {/* Header Jalur Otomatis */}
-                <div className="w-full flex items-center gap-3.5 px-4 sm:px-5 py-3.5 min-h-12 text-left bg-white">
-                  <span className="w-10 h-10 rounded-xl inline-flex shrink-0 items-center justify-center bg-blue-50 text-jfu-primary border border-blue-100/80 shadow-2xs">
-                    <Bot className="w-5 h-5" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <span className="block text-xs sm:text-sm font-bold text-slate-900">
-                      {t('reviewMethodAutoHint')}
-                    </span>
-                    <span className="flex items-center gap-1.5 text-xs mt-0.5 leading-relaxed flex-wrap">
-                      <Zap className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
-                      <span className="font-semibold text-emerald-600">{t('adsEntryAutoRowHighlight')}</span>
-                      <span className="text-slate-300">·</span>
-                      <span className="text-slate-500">{t('adsEntryAutoRowTime')}</span>
-                    </span>
-                  </div>
-                </div>
-
-                {/* Sub-opsi Google Form: Membuka Step 3 langsung di modal ini */}
-                <div className="bg-slate-50/40 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => setStep(3)}
-                    className="w-full flex items-center gap-3 px-4 sm:px-5 py-3 hover:bg-blue-50/60 group transition-all cursor-pointer text-left"
-                  >
-                    <span className="w-8 h-8 rounded-lg inline-flex shrink-0 items-center justify-center bg-white border border-slate-200/80 shadow-2xs group-hover:border-blue-200">
-                      <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                      </svg>
-                    </span>
-                    <span className="min-w-0 flex-1 text-xs sm:text-sm font-semibold text-slate-800 group-hover:text-jfu-primary transition-colors">
-                      {t('reviewMethodAuto')}
-                    </span>
-                    <ChevronRight className="w-4 h-4 shrink-0 text-slate-400 group-hover:text-jfu-primary group-hover:translate-x-0.5 transition-all" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Opsi 2: Review Manual */}
-              <button
-                type="button"
-                onClick={handleSelectManual}
-                className="w-full flex items-center gap-3.5 px-4 sm:px-5 py-3.5 min-h-12 border border-slate-200/90 rounded-2xl bg-white hover:bg-blue-50/40 hover:border-blue-200/90 transition-all shadow-xs group cursor-pointer text-left"
-              >
-                <span className="w-10 h-10 rounded-xl inline-flex shrink-0 items-center justify-center bg-slate-100/80 text-slate-600 border border-slate-200/70 group-hover:bg-blue-50 group-hover:text-jfu-primary group-hover:border-blue-100 transition-colors shadow-2xs">
-                  <UserCheck className="w-5 h-5" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <span className="block text-xs sm:text-sm font-bold text-slate-900 group-hover:text-jfu-primary transition-colors">
-                    {t('reviewMethodManualHint')}
-                  </span>
-                  <span className="flex items-center gap-1.5 text-xs mt-0.5 leading-relaxed flex-wrap text-slate-500">
-                    <span>{t('adsEntryManualRowHighlight')}</span>
-                    <span className="text-slate-300">·</span>
-                    <span>{t('adsEntryManualRowTime')}</span>
-                  </span>
-                </div>
-                <ChevronRight className="w-4 h-4 shrink-0 text-slate-400 group-hover:text-jfu-primary group-hover:translate-x-0.5 transition-all" />
-              </button>
-
-              {/* CTA Form Builder */}
-              <div className="pt-3 text-center border-t border-slate-100 mt-2">
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  {t('jfuFormCtaLead')}{' '}
-                  <Link
-                    to="/dashboard/forms"
-                    onClick={handleClose}
-                    className="font-semibold text-jfu-primary hover:underline"
-                  >
-                    {t('jfuFormCtaAction')}
-                  </Link>
-                </p>
-              </div>
-            </div>
-          ) : (
-            /* ================= STEP 3: IMPORT DARI GOOGLE FORM DI MODAL ================= */
-            <div className="space-y-4 animate-in fade-in duration-200">
-              <GoogleDriveImportSimple
-                formData={formData}
-                updateFormData={handleImportedFormData}
-                onFormDataLoaded={handleGoogleFormLoaded}
-                onCancel={() => setStep(2)}
-              />
-
-              <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-center text-xs text-gray-500">
-                <span>{t('noGoogleForm')}{' '}</span>
-                <button
-                  type="button"
-                  onClick={handleSelectManual}
-                  className="font-semibold text-jfu-primary hover:underline ml-1 cursor-pointer"
-                >
-                  {t('fillManualOnly')}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-        )}
       </div>
     </div>
   );

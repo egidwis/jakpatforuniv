@@ -136,24 +136,28 @@ export function StatusPage() {
     const [isAdsModalOpen, setIsAdsModalOpen] = useState(false);
     const [isCustomMissionOpen, setIsCustomMissionOpen] = useState(false);
     const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false);
-    const [pendingMethod, setPendingMethod] = useState<'google' | 'manual' | null>(null);
+    const [pendingContinue, setPendingContinue] = useState(false);
 
-    const handleSelectAdsMethod = async (method: 'google' | 'manual') => {
+    const openSurveyOrder = () => {
+        navigate('/dashboard/submit-iklan');
+    };
+
+    const handleContinueAds = async () => {
         setIsAdsModalOpen(false);
         const isProfileSatisfied = await isProfileGateSatisfied();
         if (!isProfileSatisfied) {
-            setPendingMethod(method);
+            setPendingContinue(true);
             setIsProfileSheetOpen(true);
             return;
         }
-        navigate(`/dashboard/submit-iklan?method=${method}`);
+        openSurveyOrder();
     };
 
     const handleProfileCompleted = () => {
         setIsProfileSheetOpen(false);
-        const method = pendingMethod || 'google';
-        setPendingMethod(null);
-        navigate(`/dashboard/submit-iklan?method=${method}`);
+        if (!pendingContinue) return;
+        setPendingContinue(false);
+        openSurveyOrder();
     };
 
     useEffect(() => {
@@ -1050,7 +1054,7 @@ export function StatusPage() {
             <AdsEntryModal
                 isOpen={isAdsModalOpen}
                 onClose={() => setIsAdsModalOpen(false)}
-                onSelectMethod={handleSelectAdsMethod}
+                onContinue={handleContinueAds}
                 onOpenCustomMission={() => setIsCustomMissionOpen(true)}
             />
 
