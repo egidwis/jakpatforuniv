@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLocation, Outlet } from 'react-router-dom';
 import { AppNav } from './AppNav';
-import { SpecialMissionRunningBanner } from './SpecialMissionRunningBanner';
 import { ProfileCompletionSheet } from './ProfileCompletionSheet';
 import { getOwnProfile, isProfileComplete } from '../utils/supabase';
 
@@ -13,7 +12,6 @@ export function DashboardLayout() {
   // Chat mengatur tingginya sendiri (full-height di bawah navbar),
   // jadi tanpa padding bawah dari layout.
   const isChat = location.pathname.startsWith('/dashboard/chat');
-  const isMyOrders = location.pathname === '/dashboard' || location.pathname === '/dashboard/status';
 
   // Banner ajakan melengkapi profil (user Google / user lama). Dicek ulang tiap
   // pindah halaman agar hilang segera setelah profil dilengkapi.
@@ -77,7 +75,6 @@ export function DashboardLayout() {
 
       <div className="relative z-10 flex flex-col min-h-screen">
         <AppNav />
-        {isMyOrders && <SpecialMissionRunningBanner />}
 
         {/* Selaras dengan gate di flow submit: banner membuka drawer profil di
             tempat, bukan menavigasi ke /dashboard/profile. */}

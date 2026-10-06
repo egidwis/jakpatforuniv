@@ -36,7 +36,6 @@ import { groupInfoFor } from '@/components/status/invoiceGroups';
 import { CreateOrderCards, ProductCardGrid } from '@/components/CreateOrderCards';
 import { deriveOrderUiState, getActiveDashboardPhase, type OrderGroup } from '@/components/status/deriveOrderUiState';
 import { AdsEntryModal } from '@/components/AdsEntryModal';
-import { CustomMissionModal } from '@/components/CustomMissionModal';
 import { ProfileCompletionSheet } from '@/components/ProfileCompletionSheet';
 import { isProfileGateSatisfied } from '@/components/ProfileForm';
 
@@ -134,7 +133,6 @@ export function StatusPage() {
 
     // Modal Pintu Masuk Iklan Survei (2-Step Modal)
     const [isAdsModalOpen, setIsAdsModalOpen] = useState(false);
-    const [isCustomMissionOpen, setIsCustomMissionOpen] = useState(false);
     const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false);
     const [pendingContinue, setPendingContinue] = useState(false);
 
@@ -1055,13 +1053,6 @@ export function StatusPage() {
                 isOpen={isAdsModalOpen}
                 onClose={() => setIsAdsModalOpen(false)}
                 onContinue={handleContinueAds}
-                onOpenCustomMission={() => setIsCustomMissionOpen(true)}
-            />
-
-            {/* Modal Riset Non-Survei (Cross-sell / Escape Hatch) */}
-            <CustomMissionModal
-                isOpen={isCustomMissionOpen}
-                onClose={() => setIsCustomMissionOpen(false)}
             />
 
             {/* Sheet Kelengkapan Profil */}

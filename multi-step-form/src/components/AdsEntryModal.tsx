@@ -14,7 +14,6 @@ export interface AdsEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
   onContinue: () => void;
-  onOpenCustomMission?: () => void;
 }
 
 /**
@@ -25,7 +24,6 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
   isOpen,
   onClose,
   onContinue,
-  onOpenCustomMission,
 }) => {
   const { t } = useLanguage();
   const [hasAcknowledged, setHasAcknowledged] = useState(false);
@@ -144,20 +142,6 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
             <span>{t('adsAwarenessContinueBtn')}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
-
-          <p className="text-center text-xs leading-relaxed text-slate-500">
-            {t('adsAwarenessNeedSpecificCta')}{' '}
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                onOpenCustomMission?.();
-              }}
-              className="font-medium text-jfu-primary underline decoration-jfu-primary/40 underline-offset-2 hover:decoration-jfu-primary cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary"
-            >
-              {t('adsAwarenessConsultMission')}
-            </button>
-          </p>
         </div>
       </div>
     </div>

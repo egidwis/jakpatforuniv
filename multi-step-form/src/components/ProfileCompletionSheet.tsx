@@ -11,7 +11,7 @@ interface ProfileCompletionSheetProps {
 }
 
 /**
- * Modal popup kelengkapan profil (Desain seragam dengan CustomMissionModal / Riset Non-Survei).
+ * Modal popup kelengkapan profil.
  * - Desktop: Centered modal popup yang ramping, rounded, dan berkelas.
  * - Mobile: Bottom sheet drawer dengan drag handle indicator.
  */
