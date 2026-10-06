@@ -2928,20 +2928,25 @@ export interface ChatSession {
   user_email: string;
   last_message_at: string;
   created_at: string;
-  tag?: 'issue' | 'feedback' | 'request' | 'request_extend' | 'request_upsell' | 'faq' | string | null;
+  tag?: 'issue' | 'feedback' | 'request' | 'request_extend' | 'request_upsell' | 'faq' | 'out_of_scope' | string | null;
   tag_label?: string | null;
   needs_attention?: boolean;
   last_message_snippet?: string | null;
   is_resolved?: boolean;
   resolved_at?: string | null;
+  /** ai = Mimin menjawab. human = admin memegang thread, Mimin diam. */
+  reply_mode?: 'ai' | 'human' | string | null;
+  taken_over_by?: string | null;
+  taken_over_at?: string | null;
 }
 
 export interface ChatMessage {
   id: string;
   session_id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'admin';
   content: string;
   created_at: string;
+  sender_email?: string | null;
   ctas?: Array<{
     id: string;
     label: string;
@@ -3226,6 +3231,80 @@ export const updateChatSessionMetadata = async (
     return null;
   }
 };
+
+export async function fetchChatReplyMode(sessionId: string): Promise<'ai' | 'human'> {
+  try {
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .select('reply_mode')
+      .eq('id', sessionId)
+      .maybeSingle();
+    if (error) return 'ai';
+    return data?.reply_mode === 'human' ? 'human' : 'ai';
+  } catch {
+    return 'ai';
+  }
+}
+
+export async function setChatReplyMode(
+  sessionId: string,
+  mode: 'ai' | 'human',
+  adminEmail: string
+): Promise<ChatSession> {
+  const patch = mode === 'human'
+    ? {
+        reply_mode: 'human',
+        taken_over_by: adminEmail,
+        taken_over_at: new Date().toISOString(),
+        is_resolved: false,
+      }
+    : {
+        reply_mode: 'ai',
+        taken_over_by: null,
+        taken_over_at: null,
+      };
+
+  const { data, error } = await supabase
+    .from('chat_sessions')
+    .update(patch)
+    .eq('id', sessionId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as ChatSession;
+}
+
+export async function saveAdminChatMessage(
+  sessionId: string,
+  content: string,
+  senderEmail: string
+): Promise<ChatMessage> {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .insert([{
+      session_id: sessionId,
+      role: 'admin',
+      content,
+      sender_email: senderEmail,
+    }])
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  const snippet = content.slice(0, 150);
+  await supabase
+    .from('chat_sessions')
+    .update({
+      last_message_at: new Date().toISOString(),
+      last_message_snippet: snippet,
+      is_resolved: false,
+    })
+    .eq('id', sessionId);
+
+  return data as ChatMessage;
+}
 
 // Resolve or reopen chat session by admin
 export const resolveChatSession = async (sessionId: string, isResolved: boolean) => {

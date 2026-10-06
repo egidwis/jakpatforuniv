@@ -749,6 +749,7 @@ const MiminAISetup: React.FC = () => {
                             <option value="request">🚀 Request / Upsell</option>
                             <option value="issue">🔴 Kendala / Issue</option>
                             <option value="feedback">💡 Saran / Feedback</option>
+                            <option value="out_of_scope">📧 Di luar SOP / Belum terjawab</option>
                             <option value="faq">💬 FAQ Umum</option>
                           </select>
                           <input
