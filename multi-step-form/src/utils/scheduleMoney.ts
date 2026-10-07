@@ -59,8 +59,8 @@ export interface MoneyLine {
    *
    * ⚠️ Ditandai terpisah dari diskon voucher karena `CostBreakdown` TIDAK
    * menjumlahkannya ke chip "Kamu hemat" (keputusan 29 Sep 2026: jangan
-   * mengklaim hemat dari harga katalog yang belum pernah ditagih). Chip-nya
-   * sendiri: "Harga perkenalan s/d …".
+   * mengklaim hemat dari harga katalog yang belum pernah ditagih). Tanggal
+   * berakhirnya disebut sekali, sebagai kalimat di bawah total.
    */
   kind?: 'intro';
   /**

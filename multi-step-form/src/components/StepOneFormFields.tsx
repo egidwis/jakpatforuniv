@@ -266,20 +266,11 @@ export function StepOneFormFields({
   const showConfig = phase === 'manual' || phase === 'locked';
   const isAuto = isAutoApprovalPath(formData);
   const voucherManual = isManualVerificationVoucher(formData.voucherCode);
-  const pathLabel = isAuto
-    ? t('surveyPathAuto')
-    : formData.hasPersonalDataQuestions
-      ? t('surveyPathManualPii')
-      : voucherManual
-        ? t('surveyPathManualVoucher')
-        : t('surveyPathManual');
-  const pathTip = isAuto
-    ? t('surveyPathAutoTip')
-    : formData.hasPersonalDataQuestions
-      ? t('surveyPathManualPiiTip')
-      : voucherManual
-        ? t('surveyPathManualVoucherTip')
-        : t('surveyPathManualTip');
+  const manualReviewTitle = formData.hasPersonalDataQuestions
+    ? t('surveyPathManualPiiTitle')
+    : voucherManual
+      ? t('surveyPathManualVoucherTitle')
+      : t('surveyPathManualTitle');
 
   const winnerTooltip = (
     <span className="leading-relaxed">
@@ -402,7 +393,7 @@ export function StepOneFormFields({
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <SectionLabel>{t('surveyInformation')}</SectionLabel>
-          {showConfig && onChangeEntry && (
+          {showConfig && isAuto && onChangeEntry && (
             <button
               type="button"
               onClick={onChangeEntry}
@@ -576,11 +567,31 @@ export function StepOneFormFields({
           </p>
         )}
 
-        {!isBlockedByPersonalData && (
+        {!isBlockedByPersonalData && isAuto && (
           <p className="mb-3 inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
-            {pathLabel}
-            <InfoTooltip content={pathTip} />
+            {t('surveyPathAuto')}
+            <InfoTooltip content={t('surveyPathAutoTip')} />
           </p>
+        )}
+
+        {!isBlockedByPersonalData && !isAuto && (
+          <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-sm font-semibold text-slate-900">{manualReviewTitle}</p>
+              {onChangeEntry && (
+                <button
+                  type="button"
+                  onClick={onChangeEntry}
+                  className="shrink-0 text-xs font-semibold text-jfu-primary hover:underline cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 rounded-sm"
+                >
+                  {t('surveyEntryChange')}
+                </button>
+              )}
+            </div>
+            <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
+              {t('surveyPathManualBody')}
+            </p>
+          </div>
         )}
 
         <div className={fieldRowListClass}>

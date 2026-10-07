@@ -130,7 +130,7 @@ function BreakdownLine({ line }: { line: MoneyLine }) {
         ) : (
           <span className="font-medium">{label}</span>
         )}
-        {hint && (
+        {hint && line.kind !== 'intro' && (
           <span className="text-xs sm:text-[13px] text-slate-500 font-normal"> ({hint})</span>
         )}
       </span>
@@ -154,8 +154,8 @@ function BreakdownLine({ line }: { line: MoneyLine }) {
  * ⚠️ Baris "Harga perkenalan" (`kind: 'intro'`) SENGAJA dikeluarkan
  * (keputusan 29 Sep 2026). Di Okt–Nov harga efektifnya persis harga lama;
  * menulis "Kamu hemat Rp400.000" terhadap harga katalog yang belum pernah
- * ditagih terbaca seperti harga coret palsu. Perkenalan punya chip sendiri
- * tanpa nominal.
+ * ditagih terbaca seperti harga coret palsu. Tanggal berakhirnya disebut
+ * sekali, sebagai kalimat di bawah total, bukan chip promo.
  */
 export function savingOf(lines: MoneyLine[] | null): number {
   return (lines ?? [])
@@ -244,9 +244,8 @@ export function CostBreakdown({
 
 
       {introUntil && (
-        <p className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 text-xs font-medium text-emerald-800">
-          <Tag className="w-3.5 h-3.5 shrink-0" />
-          {t('costIntroChip' as never, localizeDateVars({ date: introUntil }, language))}
+        <p className={`text-xs sm:text-[13px] leading-relaxed ${muted ? 'text-slate-400' : 'text-slate-600'}`}>
+          {t('costIntroLockNote', localizeDateVars({ date: introUntil }, language))}
         </p>
       )}
 
