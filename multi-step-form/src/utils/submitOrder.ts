@@ -12,6 +12,7 @@ import { MAX_REGULAR_ADS_PER_DAY, MAX_KILAT_ADS_PER_DAY } from './constants';
 import { isBookingClosedForDate, toAiringStartIso, toAiringEndIso, toLocalYmd } from './airing-window';
 import { checkoutBlocker, type CheckoutBlockerCode } from './orderReadiness';
 import { auditSubmissionForm } from './auditService';
+import { isDailyQuotaFullError } from './dailyQuotaError';
 
 /**
  * Sebab-sebab gagal yang punya kalimat sendiri untuk user. Kodenya, bukan
@@ -256,15 +257,10 @@ export async function submitOrder({
 
     return savedRecord;
   } catch (saveError) {
-    // Penolakan kuota datang dari trigger database (sql/110), bukan dari cek
-    // browser di atas. Tanpa pemetaan ini peneliti hanya melihat "gagal
-    // menyimpan", padahal tanggalnya yang penuh.
-    const quotaText = [
-      (saveError as { message?: string })?.message,
-      (saveError as { details?: string })?.details,
-      (saveError as { hint?: string })?.hint,
-    ].filter(Boolean).join(' ');
-    if (quotaText.includes('sudah penuh')) {
+    // Penolakan kuota datang dari trigger database (sql/110 → sql/111), bukan
+    // dari cek browser di atas. Tanpa pemetaan ini peneliti hanya melihat
+    // "gagal menyimpan", padahal tanggalnya yang penuh.
+    if (isDailyQuotaFullError(saveError)) {
       throw new OrderSubmitError('slot_full');
     }
     console.error('Error saat menyimpan data:', saveError);

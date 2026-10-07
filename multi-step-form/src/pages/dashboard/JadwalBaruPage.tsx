@@ -48,6 +48,7 @@ import { SchedulePicker } from '../../components/SchedulePicker';
 import { DurationPicker } from '../../components/DurationPicker';
 import { useSlotAvailability } from '../../hooks/useSlotAvailability';
 import { scheduleLockGate } from '../../utils/scheduleLockGate';
+import { isDailyQuotaFullError } from '../../utils/dailyQuotaError';
 import { newSchedulePlan, NEW_SCHEDULE_BLOCK_KEY } from '../../utils/newSchedulePlan';
 import { segmentTitleOf } from '../../utils/segmentTitle';
 import { fetchBatchContext, scheduleIdFromSourceId, type BatchContext } from '../../utils/batchContext';
@@ -434,8 +435,19 @@ export function JadwalBaruPage() {
         return;
       }
 
-      const serverMsg = e?.response?.data?.error || e?.message;
       console.error('[JadwalBaruPage] gagal mengunci jadwal:', e);
+
+      // Hari itu penuh menurut server (create_ad_schedule / trigger sql/111),
+      // padahal kalender di layar ini masih menampilkannya lowong. Jadwalnya
+      // tidak pernah lahir, jadi tidak ada yang perlu dikompensasi.
+      if (!orphanLeft && isDailyQuotaFullError(e)) {
+        toast.error(t('slotErrorFull'));
+        setPicked(null);
+        void availability.reload();
+        return;
+      }
+
+      const serverMsg = e?.response?.data?.error || e?.message;
       toast.error(
         orphanLeft
           ? t('scheduleAgainOrphanLeft')

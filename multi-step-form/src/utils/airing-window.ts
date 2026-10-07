@@ -202,6 +202,25 @@ export function toWibYmd(date: Date): string {
     return nowWib(date).ymd;
 }
 
+/** Tambah n hari ke sebuah YYYY-MM-DD tanpa melewati zona waktu sama sekali. */
+export function addDaysToYmd(ymd: string, days: number): string {
+    const [y, m, d] = ymd.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCDate(dt.getUTCDate() + days);
+    return dt.toISOString().slice(0, 10);
+}
+
+/**
+ * Hari WIB sebuah ujung jendela okupansi. Kolom DATE (`form_submissions`)
+ * sudah berupa hari kalender dan dipakai apa adanya; TIMESTAMPTZ (jadwal
+ * lanjutan) diterjemahkan ke kalender WIB. Jangan pernah lewat `new Date(ymd)`
+ * + jam lokal: di perangkat berzona barat UTC hasilnya mundur sehari
+ * (insiden 6 Okt 2026).
+ */
+export function occupancyDayYmd(value: string): string {
+    return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : toWibYmd(new Date(value));
+}
+
 /**
  * YYYY-MM-DD dari sebuah Date menurut kalender LOKAL device — dipakai untuk
  * tile kalender di wizard, yang memang dibangun dari `new Date()` lokal.

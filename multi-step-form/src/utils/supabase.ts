@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { ReviewHistoryEntry } from '../components/submissions/types';
-import { toAiringEndIso, toAiringStartIso, toWibYmd } from './airing-window';
+import { addDaysToYmd, occupancyDayYmd, toAiringEndIso, toAiringStartIso, toWibYmd } from './airing-window';
 import { isPlaceholderBannerUrl } from './page-banner';
 import { isLiveInvoice } from './billingCompare';
 import { compareLeadOrder } from './payLink';
@@ -3656,13 +3656,6 @@ export const getScheduledPageBySubmission = async (submissionId: string) => {
 };
 
 /**
- * Helper to get a string date YYYY-MM-DD from a Date object
- */
-const getDateString = (date: Date) => {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-};
-
-/**
  * Status jadwal lanjutan yang MENAHAN slot harian — `waiting_payment`, `paid`,
  * `scheduled`, `live`: semuanya kecuali `cancelled` (tidak pernah tayang) dan
  * `completed` (sudah selesai tayang). Daftar-izin, bukan daftar-tolak, supaya
@@ -3848,16 +3841,18 @@ export const fetchSlotAvailability = async (
         (excludeSourceId !== undefined && slot.id === excludeSourceId) ||
         (excludeSubmissionId !== undefined && slot.submissionId === excludeSubmissionId);
       if (slot.startDate && slot.endDate && !isExcluded) {
-        const current = new Date(slot.startDate);
-        current.setHours(0, 0, 0, 0);
-        const endDay = new Date(slot.endDate);
-        endDay.setHours(0, 0, 0, 0);
+        // Kunci hari = kalender WIB, sama dengan penghitung di database
+        // (assert_daily_ad_quota_days). Jam perangkat tidak boleh ikut campur.
+        const endYmd = occupancyDayYmd(slot.endDate);
 
         const targetCounts = slot.isExtraAd ? extraCounts : regularCounts;
 
         // end-exclusive: the end date is the hand-over day, not an aired day
-        while (current < endDay) {
-          const dateStr = getDateString(current);
+        for (
+          let dateStr = occupancyDayYmd(slot.startDate);
+          dateStr < endYmd;
+          dateStr = addDaysToYmd(dateStr, 1)
+        ) {
           targetCounts[dateStr] = (targetCounts[dateStr] || 0) + 1;
 
           if (!details[dateStr]) {
@@ -3869,8 +3864,6 @@ export const fetchSlotAvailability = async (
             isExtra: slot.isExtraAd,
             status: slot.status
           });
-
-          current.setDate(current.getDate() + 1);
         }
       }
     });
@@ -3887,13 +3880,6 @@ export const fetchSlotAvailability = async (
 // JFU Kilat — slot harian, penjadwalan, dan konversi jalur distribusi
 // ─────────────────────────────────────────────────────────────
 
-/** Tambah n hari ke sebuah YYYY-MM-DD tanpa melewati zona waktu sama sekali. */
-const addDaysToYmd = (ymd: string, days: number): string => {
-  const [y, m, d] = ymd.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCDate(dt.getUTCDate() + days);
-  return dt.toISOString().slice(0, 10);
-};
 
 export interface KilatDayAvailability {
   /** jam WIB (8|11|14|17) -> berapa order sudah mengisi gelombang itu */

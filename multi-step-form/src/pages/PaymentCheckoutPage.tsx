@@ -37,6 +37,7 @@ import { ScheduleReservationLayout } from '../components/schedule/ScheduleReserv
 import { deriveScheduleMoney } from '../utils/scheduleMoney';
 import { useSlotAvailability } from '../hooks/useSlotAvailability';
 import { scheduleLockGate } from '../utils/scheduleLockGate';
+import { isDailyQuotaFullError } from '../utils/dailyQuotaError';
 
 /**
  * Fase B dari langkah "Jadwal & Bayar": jadwal sudah terkunci, tinggal dibayar.
@@ -432,9 +433,9 @@ export function PaymentCheckoutPage() {
     if (!submission?.id) return;
     /*
       Gerbangnya sama persis dengan StepSchedule — kini lewat `scheduleLockGate`
-      alih-alih disalin. ⚠️ Dan di jalur INI ia satu-satunya yang berdiri:
-      `rebookSlotForSubmission` hanya menolak order yang sudah lunas, tidak
-      memeriksa kuota sama sekali. Tidak ada pemeriksaan ulang di server.
+      alih-alih disalin. `rebookSlotForSubmission` sendiri tidak memeriksa
+      kuota; yang menolak hari penuh adalah trigger database (sql/111), dan
+      penolakan itu ditangani di `catch` di bawah.
     */
     const verdict = scheduleLockGate({
       selected: repickDate,
@@ -457,7 +458,15 @@ export function PaymentCheckoutPage() {
       await loadSubmission();
     } catch (e) {
       console.error('Failed to rebook slot:', e);
-      toast.error(t('rebookError'));
+      if (isDailyQuotaFullError(e)) {
+        // Kalender di layar ini tertinggal dari server: hari itu baru saja
+        // penuh. Kosongkan pilihan dan muat ulang supaya ia tampil penuh.
+        toast.error(t('slotErrorFull'));
+        setRepickDate(null);
+        void availability.reload();
+      } else {
+        toast.error(t('rebookError'));
+      }
     } finally {
       setIsRebooking(false);
     }

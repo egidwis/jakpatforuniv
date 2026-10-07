@@ -22,6 +22,7 @@ import { airingDayCount, formatWibShort, formatWibTime } from '@/pages/dashboard
 import { KilatScheduleStep } from '@/components/KilatScheduleStep';
 import { DAYS_AHEAD, SlotCalendar, daysCoveredBy, nextDays } from './SlotCalendar';
 import { fetchBatchContext, type BatchContext } from '@/utils/batchContext';
+import { isDailyQuotaFullError } from '@/utils/dailyQuotaError';
 
 // ─────────────────────────────────────────────────────────────
 // Badan pemilih jadwal — dipakai BERSAMA oleh drawer Submissions dan dialog
@@ -376,6 +377,8 @@ export function ScheduleForm({
     } catch (err: any) {
       console.error('Gagal menyimpan jadwal:', err);
       toast.error(err?.message || 'Gagal menyimpan jadwal.');
+      // Ditolak trigger kuota harian: kalender ini tertinggal dari server.
+      if (isDailyQuotaFullError(err)) void loadSlots();
     } finally {
       setIsSaving(false);
     }
@@ -476,7 +479,7 @@ export function ScheduleForm({
       // 'user' adalah satu-satunya yang dilepas otomatis setelah 1 jam, dan
       // slot yang baru saja dipindah admin tidak boleh ikut kadaluwarsa.
       if (!isPaid && !alreadyCommitted) {
-        await supabase
+        const { error: holdError } = await supabase
           .from('form_submissions')
           .update({
             submission_status: 'slot_reserved',
@@ -497,6 +500,23 @@ export function ScheduleForm({
             }),
           })
           .eq('id', submissionId);
+
+        /*
+          ⚠️ Tulisan KEDUA ini bisa ditolak sendiri. Hold yang diperbarui
+          (`slot_reserved_at` baru) adalah klaim baru bagi trigger kuota harian
+          (sql/111 D4), jadi SEMUA harinya dicek — termasuk hari yang sudah ia
+          tempati. Tanggalnya sudah pindah lewat `updateScheduleDates` di atas,
+          jadi ini bukan kegagalan total: admin harus tahu statusnya tertinggal,
+          bukan melihat "berhasil".
+        */
+        if (holdError) {
+          console.error('Tanggal pindah, tapi reset hold gagal:', holdError);
+          toast.error(
+            `Tanggal sudah dipindah, tetapi status reservasinya gagal diperbarui: ${holdError.message}`,
+            { duration: 12000 },
+          );
+          if (isDailyQuotaFullError(holdError)) void loadSlots();
+        }
       }
     }
     if (dokuKill.failures.length > 0) {

@@ -18,6 +18,7 @@ import { CostBreakdown } from '../../components/CostBreakdown';
 import { ScheduleReservationLayout } from '../../components/schedule/ScheduleReservationLayout';
 import { useSlotAvailability } from '../../hooks/useSlotAvailability';
 import { scheduleLockGate } from '../../utils/scheduleLockGate';
+import { isDailyQuotaFullError } from '../../utils/dailyQuotaError';
 import { schedulePageState } from '../../utils/schedulePageState';
 import { expiryPlanFor } from '../../utils/scheduleExpiry';
 import { segmentTitleOf } from '../../utils/segmentTitle';
@@ -263,7 +264,15 @@ export function JadwalDanBayarPage() {
       navigate(`/payment/${entry.submissionId}`, { replace: true });
     } catch (e) {
       console.error('Gagal mengunci tanggal:', e);
-      toast.error(t('rebookError'));
+      if (isDailyQuotaFullError(e)) {
+        // Ditolak trigger kuota harian (sql/111): kalender tertinggal dari
+        // server. Kosongkan pilihan dan muat ulang supaya hari itu tampil penuh.
+        toast.error(t('slotErrorFull'));
+        setPicked(null);
+        void availability.reload();
+      } else {
+        toast.error(t('rebookError'));
+      }
     } finally {
       setIsWorking(false);
     }

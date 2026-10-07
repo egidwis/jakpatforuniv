@@ -82,7 +82,13 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
     setIsConfirming(true);
     try {
       const ok = await onConfirm(verdict.ymd);
-      if (!ok) setIsConfirming(false);
+      if (!ok) {
+        setIsConfirming(false);
+        // Penolakan paling umum di sini datang dari server (kuota harian,
+        // sql/111): tanggal yang baru saja ditolak masih tampak lowong
+        // sampai ketersediaannya dibaca ulang.
+        void availability.reload();
+      }
     } catch (e) {
       console.error('Failed to lock schedule:', e);
       setIsConfirming(false);
