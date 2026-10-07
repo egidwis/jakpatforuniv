@@ -122,6 +122,11 @@ export function SlotCalendar({
         const isFull = booked >= quota;
         const used = booked + (covered ? 1 : 0);
         const isOver = used > quota;
+        // Bingkai merah hanya untuk hari yang BENAR-BENAR ditempati jadwal yang
+        // sedang disusun. Hari yang sudah terlewati kuotanya tapi tidak dipilih
+        // cukup ditandai lewat angka merah; bingkainya sebelumnya tampak seperti
+        // tanggal terpilih.
+        const overflowFromThisBooking = isOver && covered;
         const isPastDate = ymd < currentWibYmd;
         const isClosed = isSlotDateClosed(ymd, isAdmin);
         const disabled = isFull || isClosed;
@@ -136,13 +141,15 @@ export function SlotCalendar({
             title={
               isClosed
                 ? (isPastDate ? 'Tanggal sudah lewat' : 'Sudah lewat batas pesan 13.00 WIB')
-                : isOver
+                : overflowFromThisBooking
                   ? `Melebihi kuota harian (${quota}) kalau jadwal ini diambil`
-                  : undefined
+                  : isOver
+                    ? `Kuota harian sudah terlewati (${used}/${quota})`
+                    : undefined
             }
             className={cn(
               'flex flex-col items-center justify-center rounded-lg border p-1 h-[70px] text-center transition-all',
-              isOver
+              overflowFromThisBooking
                 ? 'bg-red-50/70 border-red-400 ring-1 ring-red-400'
                 : isStart
                   ? 'bg-blue-50/80 border-blue-600 ring-1 ring-blue-600 shadow-sm'
@@ -159,7 +166,7 @@ export function SlotCalendar({
             <span
               className={cn(
                 'text-[13px] font-extrabold leading-tight',
-                isOver ? 'text-red-900' : isStart ? 'text-blue-900' : 'text-slate-800'
+                overflowFromThisBooking ? 'text-red-900' : isStart ? 'text-blue-900' : 'text-slate-800'
               )}
             >
               {day.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
