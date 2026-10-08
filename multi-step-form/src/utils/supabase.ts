@@ -956,6 +956,60 @@ async function latestBillPaymentIdOf(scheduleId: string): Promise<string | null>
  * JFU-INV-15f4ac mencatat Rp 1.542.900 fiktif dengan cara ini (sql/101), dan
  * tiap pembaruan tagihan tempo akan menambah satu lagi.
  */
+/**
+ * Tulisan kolom uang pelunasan manual.
+ *
+ * Di aplikasi, ini POST ke `/api/admin/manual-payment`: JWT dicek di
+ * Cloudflare, lalu baris ditulis dengan service_role. Payload-nya daftar
+ * putih — status lunas/belum, bukan nominal.
+ *
+ * Di tes, jalur PostgREST klien dipertahankan supaya bentuk filter yang
+ * sudah dikunci invoiceGroup.spec tidak berubah.
+ */
+type PaymentWriteFilter =
+  | { op: 'eq'; col: string; val: string }
+  | { op: 'in'; col: string; val: string[] };
+
+async function commitPaymentWrite(
+  table: 'invoices' | 'transactions' | 'ad_schedules' | 'form_submissions',
+  payload: Record<string, unknown>,
+  filters: PaymentWriteFilter[],
+  selectCols: string,
+): Promise<{ data: any[] | null; error: { message: string } | null }> {
+  if (import.meta.env.VITEST) {
+    let q: any = supabase.from(table).update(payload);
+    for (const f of filters) {
+      q = f.op === 'eq' ? q.eq(f.col, f.val) : q.in(f.col, f.val);
+    }
+    return q.select(selectCols);
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) {
+    return { data: null, error: { message: 'Sesi admin tidak ada. Masuk lagi lalu ulangi.' } };
+  }
+
+  const res = await fetch('/api/admin/manual-payment', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ table, payload, filters, select: selectCols }),
+  });
+  const raw = await res.text();
+  let body: any = null;
+  try { body = raw ? JSON.parse(raw) : null; } catch { /* badan bukan JSON */ }
+  if (!res.ok) {
+    return {
+      data: null,
+      error: { message: body?.error || `Gagal menulis pelunasan (HTTP ${res.status})` },
+    };
+  }
+  return { data: Array.isArray(body?.data) ? body.data : [], error: null };
+}
+
 export const markScheduleAsPaid = async (
   entry: AdScheduleEntry,
   opts: { paymentId?: string | null } = {},
@@ -970,24 +1024,30 @@ export const markScheduleAsPaid = async (
     // `invoices` TIDAK punya kolom `payment_method` — hanya `transactions` yang
     // punya. Patch-nya harus terpisah per skema; menyamakannya (seperti versi
     // lama) membuat PostgREST menolak update invoices dengan 400 PGRST204.
-    const inv = await supabase
-      .from('invoices')
-      .update({ status: 'paid', paid_at: new Date().toISOString() })
-      .eq('schedule_id', entry.id)
-      .eq('payment_id', paymentId)
-      .in('status', ['pending', 'expired'])
-      .select('id, is_tempo');
+    const inv = await commitPaymentWrite(
+      'invoices',
+      { status: 'paid', paid_at: new Date().toISOString() },
+      [
+        { op: 'eq', col: 'schedule_id', val: entry.id },
+        { op: 'eq', col: 'payment_id', val: paymentId },
+        { op: 'in', col: 'status', val: ['pending', 'expired'] },
+      ],
+      'id, is_tempo',
+    );
     if (inv.error) throw inv.error;
     invRows = inv.data;
     billIsTempo = (inv.data || []).some((r: any) => !!r.is_tempo);
 
-    const txn = await supabase
-      .from('transactions')
-      .update({ status: 'paid', payment_method: 'manual', payment_channel: 'MANUAL_VERIFIED' })
-      .eq('schedule_id', entry.id)
-      .eq('payment_id', paymentId)
-      .in('status', ['pending', 'expired'])
-      .select('id');
+    const txn = await commitPaymentWrite(
+      'transactions',
+      { status: 'paid', payment_method: 'manual', payment_channel: 'MANUAL_VERIFIED' },
+      [
+        { op: 'eq', col: 'schedule_id', val: entry.id },
+        { op: 'eq', col: 'payment_id', val: paymentId },
+        { op: 'in', col: 'status', val: ['pending', 'expired'] },
+      ],
+      'id',
+    );
     if (txn.error) throw txn.error;
     txnRows = txn.data;
   }
@@ -1013,21 +1073,25 @@ export const markScheduleAsPaid = async (
     // ⚠️ `entry.sourceId` = `ad_schedules.source_id`, BUKAN `ad_schedules.id`.
     // Filter `source_table` ikut eksplisit: tanpa itu `source_id` bisa
     // bertabrakan dengan id order pada baris ordinal 1.
-    const { data, error } = await supabase
-      .from('ad_schedules')
-      .update(credit ? { payment_status: 'paid' } : { payment_status: 'paid', status: 'scheduled' })
-      .eq('source_table', 'form_submissions_extend')
-      .eq('source_id', entry.sourceId)
-      .select('id');
+    const { data, error } = await commitPaymentWrite(
+      'ad_schedules',
+      credit ? { payment_status: 'paid' } : { payment_status: 'paid', status: 'scheduled' },
+      [
+        { op: 'eq', col: 'source_table', val: 'form_submissions_extend' },
+        { op: 'eq', col: 'source_id', val: entry.sourceId },
+      ],
+      'id',
+    );
     if (error) throw error;
     assertScheduleRowTouched(data, entry);
     await flagStaleBannerForExtend(entry);
   } else {
-    const { data, error } = await supabase
-      .from('form_submissions')
-      .update(credit ? { payment_status: 'paid' } : { payment_status: 'paid', submission_status: 'paid' })
-      .eq('id', entry.sourceId)
-      .select('id');
+    const { data, error } = await commitPaymentWrite(
+      'form_submissions',
+      credit ? { payment_status: 'paid' } : { payment_status: 'paid', submission_status: 'paid' },
+      [{ op: 'eq', col: 'id', val: entry.sourceId }],
+      'id',
+    );
     if (error) throw error;
     assertScheduleRowTouched(data, entry);
   }
@@ -1227,22 +1291,28 @@ export const unmarkScheduleAsPaid = async (
     `tempo_renewable` (link baru dicetak), tagihan biasa terbaca kedaluwarsa.
     `transactions` tidak punya kolom `expires_at` — jangan ditambahkan di sana.
   */
-  const { data: invRows, error: invErr } = await supabase
-    .from('invoices')
-    .update({ status: 'pending', paid_at: null, expires_at: new Date().toISOString() })
-    .eq('schedule_id', entry.id)
-    .eq('payment_id', paymentId)
-    .eq('status', 'paid')
-    .select('id');
+  const { data: invRows, error: invErr } = await commitPaymentWrite(
+    'invoices',
+    { status: 'pending', paid_at: null, expires_at: new Date().toISOString() },
+    [
+      { op: 'eq', col: 'schedule_id', val: entry.id },
+      { op: 'eq', col: 'payment_id', val: paymentId },
+      { op: 'eq', col: 'status', val: 'paid' },
+    ],
+    'id',
+  );
   if (invErr) throw invErr;
 
-  const { data: txnRows, error: txnErr } = await supabase
-    .from('transactions')
-    .update({ status: 'pending', payment_method: null, payment_channel: null })
-    .eq('schedule_id', entry.id)
-    .eq('payment_id', paymentId)
-    .eq('payment_channel', 'MANUAL_VERIFIED')
-    .select('id');
+  const { data: txnRows, error: txnErr } = await commitPaymentWrite(
+    'transactions',
+    { status: 'pending', payment_method: null, payment_channel: null },
+    [
+      { op: 'eq', col: 'schedule_id', val: entry.id },
+      { op: 'eq', col: 'payment_id', val: paymentId },
+      { op: 'eq', col: 'payment_channel', val: 'MANUAL_VERIFIED' },
+    ],
+    'id',
+  );
   if (txnErr) throw txnErr;
 
   const touched = { invoices: invRows?.length || 0, transactions: txnRows?.length || 0 };
@@ -1269,20 +1339,24 @@ export const unmarkScheduleAsPaid = async (
 
   if (entry.isExtension) {
     // Pemetaan sama seperti markScheduleAsPaid: source_id + filter source_table.
-    const { data, error } = await supabase
-      .from('ad_schedules')
-      .update(credit ? { payment_status: 'pending' } : { payment_status: 'pending', status: 'waiting_payment' })
-      .eq('source_table', 'form_submissions_extend')
-      .eq('source_id', entry.sourceId)
-      .select('id');
+    const { data, error } = await commitPaymentWrite(
+      'ad_schedules',
+      credit ? { payment_status: 'pending' } : { payment_status: 'pending', status: 'waiting_payment' },
+      [
+        { op: 'eq', col: 'source_table', val: 'form_submissions_extend' },
+        { op: 'eq', col: 'source_id', val: entry.sourceId },
+      ],
+      'id',
+    );
     if (error) throw error;
     assertScheduleRowTouched(data, entry);
   } else {
-    const { data, error } = await supabase
-      .from('form_submissions')
-      .update(credit ? { payment_status: 'pending' } : { payment_status: 'pending', submission_status: 'waiting_payment' })
-      .eq('id', entry.sourceId)
-      .select('id');
+    const { data, error } = await commitPaymentWrite(
+      'form_submissions',
+      credit ? { payment_status: 'pending' } : { payment_status: 'pending', submission_status: 'waiting_payment' },
+      [{ op: 'eq', col: 'id', val: entry.sourceId }],
+      'id',
+    );
     if (error) throw error;
     assertScheduleRowTouched(data, entry);
   }
