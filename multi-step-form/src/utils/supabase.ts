@@ -3320,73 +3320,47 @@ export async function fetchChatReplyMode(sessionId: string): Promise<'ai' | 'hum
   }
 }
 
+async function postAdminChat(body: Record<string, unknown>): Promise<any> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error('Sesi admin tidak ada. Masuk lagi lalu ulangi.');
+
+  const res = await fetch('/api/admin/chat', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.text();
+  let parsed: any = null;
+  try { parsed = raw ? JSON.parse(raw) : null; } catch { /* badan bukan JSON */ }
+  if (!res.ok) throw new Error(parsed?.error || `Gagal menulis chat (HTTP ${res.status})`);
+  return parsed?.data;
+}
+
 export async function setChatReplyMode(
   sessionId: string,
   mode: 'ai' | 'human',
-  adminEmail: string
+  _adminEmail: string
 ): Promise<ChatSession> {
-  const patch = mode === 'human'
-    ? {
-        reply_mode: 'human',
-        taken_over_by: adminEmail,
-        taken_over_at: new Date().toISOString(),
-        is_resolved: false,
-      }
-    : {
-        reply_mode: 'ai',
-        taken_over_by: null,
-        taken_over_at: null,
-      };
-
-  const { data, error } = await supabase
-    .from('chat_sessions')
-    .update(patch)
-    .eq('id', sessionId)
-    .select()
-    .single();
-
-  if (error) throw error;
+  const data = await postAdminChat({ action: 'mode', sessionId, mode });
   return data as ChatSession;
 }
 
 export async function saveAdminChatMessage(
   sessionId: string,
   content: string,
-  senderEmail: string
+  _senderEmail: string
 ): Promise<ChatMessage> {
-  const { data, error } = await supabase
-    .from('chat_messages')
-    .insert([{
-      session_id: sessionId,
-      role: 'admin',
-      content,
-      sender_email: senderEmail,
-    }])
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  const snippet = content.slice(0, 150);
-  await supabase
-    .from('chat_sessions')
-    .update({
-      last_message_at: new Date().toISOString(),
-      last_message_snippet: snippet,
-      is_resolved: false,
-    })
-    .eq('id', sessionId);
-
+  const data = await postAdminChat({ action: 'reply', sessionId, content });
   return data as ChatMessage;
 }
 
 // Resolve or reopen chat session by admin
 export const resolveChatSession = async (sessionId: string, isResolved: boolean) => {
-  return updateChatSessionMetadata(sessionId, {
-    is_resolved: isResolved,
-    resolved_at: isResolved ? new Date().toISOString() : null,
-    needs_attention: isResolved ? false : true
-  });
+  return postAdminChat({ action: 'resolve', sessionId, isResolved });
 };
 
 // Admin: Get all chat sessions (for internal dashboard)
@@ -5704,11 +5678,35 @@ export const markSchedulesOnCredit = async (
 ): Promise<Map<string, CreditOutcome>> => {
   const out = new Map<string, CreditOutcome>();
   if (scheduleIds.length === 0) return out;
-  const { data, error } = await supabase.rpc('mark_schedules_on_credit', {
-    p_schedule_ids: scheduleIds,
-    p_note: note?.trim() || null,
-  });
-  if (error) throw error;
+
+  // sql/113 menolak JWT browser yang mengubah submission_status jadi scheduled.
+  // RPC-nya tetap yang sama; yang memanggil adalah service_role lewat function.
+  let data: { schedule_id: string; outcome: CreditOutcome }[] | null = null;
+  if (import.meta.env.VITEST) {
+    const res = await supabase.rpc('mark_schedules_on_credit', {
+      p_schedule_ids: scheduleIds,
+      p_note: note?.trim() || null,
+    });
+    if (res.error) throw res.error;
+    data = res.data;
+  } else {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) throw new Error('Sesi admin tidak ada. Masuk lagi lalu ulangi.');
+    const res = await fetch('/api/admin/mark-on-credit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ scheduleIds, note: note?.trim() || null }),
+    });
+    const raw = await res.text();
+    let body: any = null;
+    try { body = raw ? JSON.parse(raw) : null; } catch { /* badan bukan JSON */ }
+    if (!res.ok) throw new Error(body?.error || `Gagal menandai tayang (HTTP ${res.status})`);
+    data = body?.data;
+  }
   for (const row of (data || []) as { schedule_id: string; outcome: CreditOutcome }[]) {
     out.set(row.schedule_id, row.outcome);
   }
