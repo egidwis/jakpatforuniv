@@ -423,7 +423,10 @@ export function InvoiceForm({
         ⚠️ KREDIT SESUDAH TAGIHAN, TIDAK PERNAH SEBALIKNYA (sql/102).
         Tagihannya sudah terbukti tertulis; baru sekarang izin tayangnya boleh
         lahir. Kalau langkah ini gagal, yang tersisa tagihan tempo biasa yang
-        bisa dibayar — admin cukup menekan "Tayangkan Dulu" lagi. Urutan
+        bisa dibayar — admin menekan "Tayangkan Sekarang" di kartu, yang
+        menandai kredit TANPA tagihan baru ("Tayangkan Dulu" disembunyikan
+        selama tagihan terbukanya tempo, karena menerbitkan ulang mematikan
+        link DOKU yang sudah dikirim). Urutan
         sebaliknya bisa meninggalkan iklan yang tayang tanpa catatan utang.
 
         Susulan dilewati: jadwalnya sudah lunas, RPC-nya akan menjawab
@@ -444,7 +447,7 @@ export function InvoiceForm({
         } catch (err: any) {
           toast.error(
             `Tagihan tempo terbit, tapi penandaan tayang gagal: ${err?.message || err}. `
-            + 'Iklannya BELUM dijadwalkan tayang — coba "Tayangkan Dulu" lagi.',
+            + 'Iklannya BELUM dijadwalkan tayang — tekan "Tayangkan Sekarang" di kartu jadwalnya.',
             { duration: Infinity },
           );
         }

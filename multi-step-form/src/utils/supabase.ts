@@ -4561,16 +4561,11 @@ export const cancelSchedule = async (entry: {
       // `trg_form_submissions_close_page` (sql/99) menutup halamannya begitu
       // statusnya keluar dari "tayang". `payment_status` TIDAK disentuh: masih
       // `pending`, karena utangnya masih ada.
-      const { data, error } = await supabase
-        .from('form_submissions')
-        .update({ submission_status: 'slot_cancelled', updated_at: new Date().toISOString() })
-        .eq('id', entry.submissionId)
-        .not('payment_status', 'in', unpaid)
-        .select('id');
-      if (error) throw error;
-      if (!data || data.length === 0) {
-        throw new Error('Jadwal ini tidak bisa dihentikan — kemungkinan baru saja dibayar, atau ditolak database.');
-      }
+      //
+      // ⚠️ Bukan UPDATE dari browser: sql/113 menolak JWT browser yang
+      // mengubah status `scheduled|live` (9 Okt, FJJZ5DK5). Tulisan ini lewat
+      // service_role (sql/116), dan DB mencocokkan ulang "sudah tayang".
+      await stopCreditOrThrow(entry.id, 'stop_aired');
     }
     return { attempted: 0, cancelled: 0, failures: [] };
   }
@@ -4623,6 +4618,14 @@ export const cancelSchedule = async (entry: {
         'Jadwal ini',
       ));
     }
+  } else if (entry.airOnCreditAt) {
+    // Jadwal kredit yang belum tayang berstatus `scheduled` walau belum lunas,
+    // jadi UPDATE di cabang bawah ditolak sql/113. Tulisannya SAMA persis
+    // (slot_cancelled + expired + slot dilepas), hanya lewat service_role
+    // (sql/116). Link DOKU-nya sudah dimatikan di atas; kalau langkah ini
+    // gagal, baris tempo masih `pending` dan `/bayar/` memperbaruinya — utang
+    // selamat, iklannya tidak tayang gratis.
+    await stopCreditOrThrow(entry.id, 'cancel_before_air');
   } else {
     const { data, error } = await supabase
       .from('form_submissions')
@@ -5722,6 +5725,71 @@ export const creditOutcomeReason = (o: CreditOutcome): string => ({
   no_date: 'belum bertanggal',
   not_eligible: 'belum lolos review, dibatalkan, atau statusnya tidak bisa dijadwalkan',
 }[o]);
+
+export type StopCreditMode = 'stop_aired' | 'cancel_before_air';
+export type StopCreditOutcome =
+  | 'ok' | 'not_found' | 'not_credit' | 'already_paid' | 'not_eligible' | 'mode_mismatch';
+
+/**
+ * Tulisan status "Hentikan Tayang"/"Batalkan" untuk jadwal KREDIT ordinal 1
+ * (`stop_credit_schedule`, sql/116) — satu jadwal per panggilan.
+ *
+ * sql/113 menolak JWT browser yang mengubah `submission_status` dari
+ * `scheduled|live`, dan jadwal kredit berada di sana walau belum lunas. RPC-nya
+ * hanya untuk service_role; browser memanggilnya lewat function admin, pola
+ * yang sama dengan `markSchedulesOnCredit`.
+ *
+ * `mode` dicocokkan ulang dengan `start_date <= now()` di DB: iklan yang sudah
+ * tayang tidak bisa "dibatalkan" (utang hilang), hanya "dihentikan" (K6).
+ */
+export const stopCreditSchedule = async (
+  scheduleId: string,
+  mode: StopCreditMode,
+): Promise<StopCreditOutcome> => {
+  let outcome: StopCreditOutcome | null = null;
+  if (import.meta.env.VITEST) {
+    const res = await supabase.rpc('stop_credit_schedule', {
+      p_schedule_id: scheduleId,
+      p_mode: mode,
+    });
+    if (res.error) throw res.error;
+    outcome = res.data;
+  } else {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) throw new Error('Sesi admin tidak ada. Masuk lagi lalu ulangi.');
+    const res = await fetch('/api/admin/stop-credit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ scheduleId, mode }),
+    });
+    const raw = await res.text();
+    let body: any = null;
+    try { body = raw ? JSON.parse(raw) : null; } catch { /* badan bukan JSON */ }
+    if (!res.ok) throw new Error(body?.error || `Gagal menghentikan jadwal (HTTP ${res.status})`);
+    outcome = body?.outcome ?? null;
+  }
+  return outcome ?? 'not_found';
+};
+
+/** Kalimat admin untuk hasil selain `ok`. */
+export const stopCreditReason = (o: StopCreditOutcome): string => ({
+  ok: '',
+  not_found: 'Jadwal ini tidak ditemukan.',
+  not_credit: 'Jadwal ini bukan jadwal tayang sebelum lunas.',
+  already_paid: 'Jadwal ini baru saja lunas — tidak dihentikan.',
+  not_eligible: 'Status jadwal ini sudah bukan terjadwal/tayang. Muat ulang halaman.',
+  mode_mismatch: 'Jam tayang jadwal ini baru saja lewat atau berubah. Muat ulang lalu ulangi.',
+}[o]);
+
+const stopCreditOrThrow = async (scheduleId: string | undefined, mode: StopCreditMode) => {
+  if (!scheduleId) throw new Error('Jadwal kredit tidak bisa dihentikan tanpa id jadwal.');
+  const outcome = await stopCreditSchedule(scheduleId, mode);
+  if (outcome !== 'ok') throw new Error(stopCreditReason(outcome));
+};
 
 /** Utang tempo lain milik peneliti yang sama — untuk peringatan di dialog. */
 export interface OpenTempoDebt {

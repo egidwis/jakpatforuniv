@@ -27,6 +27,7 @@ import { recordedVsBilled } from '@/utils/billingCompare';
 // lihat `scheduleCardActions.ts` untuk kenapa ketiganya tidak boleh terpisah.
 import {
   cardStateOf, planCardActions, isLateForSchedule, isEntryHoldLapsed, lapseKindOf, cardMoneyOf, orderMoneyOf,
+  isTempoAwaitingCredit,
   visibleLapseOf, unpaidCardCount,
   type LapseKind,
   type CardState, type CardAction, type CardActionPlan,
@@ -123,6 +124,12 @@ interface CardActions {
    * menyala (sql/102). Tanpa handler ini aksinya tidak ditawarkan.
    */
   onCreateTempoInvoice?: (entry: AdScheduleEntry) => void;
+  /**
+   * "Tayangkan Sekarang" — tagihan tempo sudah terbit tapi jadwalnya belum
+   * ditandai tayang (`isTempoAwaitingCredit`). Menandai kredit untuk seluruh
+   * anggota tagihannya; tidak menerbitkan tagihan atau link baru.
+   */
+  onResumeCredit?: (entry: AdScheduleEntry) => void;
   /** Menerima `entry`: pelunasan berlingkup SATU jadwal sejak sql/51. */
   onMarkPaid: ((entry: AdScheduleEntry) => void) | null;
   /** Batalkan pelunasan manual. Tombolnya hanya tampil kalau `billing.paymentChannel === 'MANUAL_VERIFIED'` — lihat gerbang di `unmarkScheduleAsPaid`. */
@@ -612,6 +619,22 @@ function BillingSection({
         (K3): yang admin butuhkan umur utangnya, untuk memutuskan kapan
         menagih lewat WhatsApp.
       */}
+      {/*
+        Anomali: tagihan tempo hidup, tapi penandaan tayangnya tertinggal —
+        halaman iklannya belum lahir dan iklannya TIDAK akan tayang. Tanpa
+        kalimat ini kartunya terbaca "menunggu pembayaran" biasa (9 Okt 2026).
+      */}
+      {isTempoAwaitingCredit(entry, billing) && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 space-y-0.5">
+          <p className="text-[11px] font-semibold text-amber-900 leading-snug">
+            Tagihan tempo sudah terbit, tapi iklan ini belum ditandai tayang
+          </p>
+          <p className="text-[11px] text-amber-800 leading-snug">
+            Iklannya tidak akan tayang sampai ditandai. Tekan «Tayangkan Sekarang» — tagihan dan link bayarnya tetap yang sama.
+          </p>
+        </div>
+      )}
+
       {state === 'airing_on_credit' && (
         <div className="rounded-lg border border-violet-200 bg-violet-50/70 px-3 py-2 space-y-0.5">
           <p className="text-[11px] font-semibold text-violet-900 leading-snug">
@@ -775,6 +798,7 @@ function CardActionBar({
       case 'invoice':
       case 'top_up':          return actions.onCreateInvoice(entry);
       case 'tempo_invoice':   return actions.onCreateTempoInvoice?.(entry);
+      case 'resume_credit':   return actions.onResumeCredit?.(entry);
       case 'mark_paid':       return actions.onMarkPaid?.(entry);
       case 'unmark_paid':     return actions.onUnmarkPaid?.(entry);
       case 'cancel_schedule': return actions.onCancelSchedule?.(entry);
@@ -928,6 +952,7 @@ function ScheduleCard({
       unmarkPaid: !!actions.onUnmarkPaid && billing?.paymentChannel === 'MANUAL_VERIFIED',
       notifySlot: !!actions.onNotifySlot,
       tempoInvoice: !!actions.onCreateTempoInvoice,
+      resumeCredit: !!actions.onResumeCredit,
     },
     /*
       Cakupan "Tandai Lunas". Diambil dari tagihan yang MASIH TERBUKA — itu
@@ -1142,10 +1167,12 @@ function ScheduleCard({
 }
 
 export function ScheduleCardList({
-  entries, billings, submission, groups = new Map(), onEditSchedule, onCreateSchedule, onCreateInvoice, onCreateTempoInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onNotifySlot, onOpenReview,
+  entries, billings, submission, groups = new Map(), onEditSchedule, onCreateSchedule, onCreateInvoice, onCreateTempoInvoice, onResumeCredit, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onNotifySlot, onOpenReview,
 }: {
   /** "Tayangkan Dulu" — lihat `CardActions.onCreateTempoInvoice`. */
   onCreateTempoInvoice?: (entry: AdScheduleEntry) => void;
+  /** "Tayangkan Sekarang" — lihat `CardActions.onResumeCredit`. */
+  onResumeCredit?: (entry: AdScheduleEntry) => void;
   entries: AdScheduleEntry[];
   billings: Map<string, ScheduleBilling>;
   /**
@@ -1279,7 +1306,7 @@ export function ScheduleCardList({
           isOnly={isOnly}
           isOpen={openId === e.id}
           onToggle={() => setOpenId((prev) => (prev === e.id ? null : e.id))}
-          actions={{ onEditSchedule, onCreateInvoice, onCreateTempoInvoice, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onNotifySlot, onOpenReview }}
+          actions={{ onEditSchedule, onCreateInvoice, onCreateTempoInvoice, onResumeCredit, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onNotifySlot, onOpenReview }}
           groups={groups}
         />
       ))}

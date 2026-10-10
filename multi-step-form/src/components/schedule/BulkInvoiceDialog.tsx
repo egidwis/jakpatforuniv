@@ -267,7 +267,8 @@ export function BulkInvoiceDialog({
         } catch (err: any) {
           toast.error(
             `Tagihan tempo terbit, tapi penandaan tayang gagal: ${err?.message || err}. `
-            + 'Iklannya BELUM dijadwalkan tayang — pakai "Tayangkan Dulu" di kartu tiap jadwal.',
+            + 'Iklannya BELUM dijadwalkan tayang — tekan "Tayangkan Sekarang" di kartu jadwalnya. '
+            + 'JANGAN "Tayangkan Dulu": itu menerbitkan tagihan baru dan mematikan link grup ini.',
             { duration: Infinity },
           );
         }

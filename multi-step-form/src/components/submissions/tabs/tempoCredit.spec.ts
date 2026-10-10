@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   planCardActions, cardStateOf, isLateForSchedule, isEntryHoldLapsed, cardMoneyOf,
+  isTempoAwaitingCredit,
 } from './scheduleCardActions';
 import { planBulkInvoice } from '@/components/schedule/bulkInvoiceCandidates';
 import { manualInvoiceLifetimeMinutes, MAX_INVOICE_MINUTES } from '@/utils/payment';
@@ -391,5 +392,84 @@ describe('tempo susulan — pesan WhatsApp', () => {
 
   it('tagihan pertama tidak berubah', () => {
     expect(invoiceReadyMessage({ ...base, tempo: true })).toMatch(/tetap tayang sesuai jadwal/);
+  });
+});
+
+/*
+  9 Okt 2026: sql/113 menolak penandaan kredit dari browser, jadi grup
+  JFU-INV-06a98b (4 pesanan) punya tagihan tempo HIDUP sementara jadwalnya
+  tertinggal "Reserved". "Tayangkan Dulu" bukan jalan pulang — ia menerbitkan
+  tagihan baru dan mematikan link DOKU grupnya.
+*/
+describe('tagihan tempo terbit, penandaan tayang tertinggal', () => {
+  const stuck = entry({
+    airOnCreditAt: null, airOnCreditNote: null, status: 'slot_reserved', startDate: future,
+  });
+  const bill = billingWith(tempoInvoice({ paymentId: 'JFU-INV-06a98b-1', expiresAt: future, tempoLinkLapsed: false }));
+  const plan = (o: { can?: Partial<typeof ALL & { resumeCredit: boolean }>; members?: number; e?: AdScheduleEntry; b?: ScheduleBilling; state?: any } = {}) => {
+    const e = o.e ?? stuck;
+    const b = o.b ?? bill;
+    const state = o.state ?? cardStateOf(e, b);
+    return planCardActions({
+      state, entry: e, billing: b, isLate: isLateForSchedule(e, state, undefined, b),
+      can: { ...ALL, resumeCredit: true, ...o.can }, openInvoiceMemberCount: o.members ?? 4,
+    });
+  };
+  const ids = (p: ReturnType<typeof planCardActions>) => [p.primary?.id, ...p.menu.map((m) => m.id)];
+
+  it('terbaca anomali', () => {
+    expect(isTempoAwaitingCredit(stuck, bill)).toBe(true);
+    // Jam dinding nyata: sebelum/sesudah 14.00 hari tayang — keduanya dicakup di bawah.
+    expect(['waiting_payment', 'hold_lapsed']).toContain(cardStateOf(stuck, bill));
+  });
+
+  it('"Tayangkan Sekarang (4 pesanan)" jadi aksi utama, tanpa "Tayangkan Dulu"', () => {
+    const p = plan();
+    expect(p.primary).toEqual({ id: 'resume_credit', label: 'Tayangkan Sekarang (4 pesanan)', warns: true });
+    expect(ids(p)).not.toContain('tempo_invoice');
+    expect(ids(p)).toContain('mark_paid');
+  });
+
+  it('satu pesanan: label tanpa hitungan, tanpa peringatan', () => {
+    expect(plan({ members: 1 }).primary).toEqual({ id: 'resume_credit', label: 'Tayangkan Sekarang', warns: false });
+  });
+
+  it('sesudah 14.00 hari tayang (hold_lapsed) tetap ditawarkan — tempo tanpa batas bayar', () => {
+    const p = plan({ state: 'hold_lapsed' });
+    expect(p.primary?.id).toBe('resume_credit');
+    expect(ids(p)).not.toContain('tempo_invoice');
+  });
+
+  it('tanpa handler: "Tayangkan Dulu" TETAP hilang (gagal-tertutup terhadap pecahnya grup)', () => {
+    const p = plan({ can: { resumeCredit: false } });
+    expect(ids(p)).not.toContain('resume_credit');
+    expect(ids(p)).not.toContain('tempo_invoice');
+  });
+
+  it('tagihan terbuka BUKAN tempo: "Tayangkan Dulu" tetap ada, tanpa "Tayangkan Sekarang"', () => {
+    const b = billingWith(tempoInvoice({ isTempo: false, tempoLinkLapsed: false, expiresAt: future }));
+    const p = plan({ b });
+    expect(isTempoAwaitingCredit(stuck, b)).toBe(false);
+    expect(ids(p)).toContain('tempo_invoice');
+    expect(ids(p)).not.toContain('resume_credit');
+  });
+
+  it('tempo SUSULAN (sudah ada uang masuk) bukan anomali', () => {
+    const b = { ...bill, paid: 527_250 };
+    expect(isTempoAwaitingCredit(stuck, b)).toBe(false);
+    expect(ids(plan({ b }))).not.toContain('resume_credit');
+  });
+
+  it('belum lolos review: tidak ditawarkan', () => {
+    const e = entry({ ...stuck, reviewStatus: 'in_review' } as any);
+    expect(ids(plan({ e, state: 'waiting_payment' }))).not.toContain('resume_credit');
+  });
+
+  it('sudah kredit: kartu airing_on_credit tidak berubah', () => {
+    const e = entry({ startDate: future });
+    expect(isTempoAwaitingCredit(e, bill)).toBe(false);
+    const p = plan({ e });
+    expect(cardStateOf(e, bill)).toBe('airing_on_credit');
+    expect(ids(p)).not.toContain('resume_credit');
   });
 });

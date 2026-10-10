@@ -69,6 +69,7 @@ export type ActionId =
   | 'schedule'        // Tentukan Jadwal / Ganti Tanggal
   | 'invoice'         // Buat Tagihan
   | 'tempo_invoice'   // Tayangkan Dulu / Buat Tagihan (tempo) — dialog tagihan dengan tempo menyala
+  | 'resume_credit'   // Tayangkan Sekarang — tagihan tempo sudah terbit, penandaan tayangnya belum
   | 'top_up'          // Tagih Susulan
   | 'mark_paid'
   | 'unmark_paid'
@@ -90,6 +91,29 @@ export interface CardActionPlan {
   primary: CardAction | null;
   /** Sisanya, dalam urutan tampil. Aksi merusak selalu di dasar. */
   menu: CardAction[];
+}
+
+/**
+ * Tagihan tempo sudah terbit, tapi jadwalnya tidak pernah ditandai tayang.
+ *
+ * ⚠️ SELALU ANOMALI. Tempo non-susulan menandai kredit tepat sesudah tagihannya
+ * tertulis; kalau langkah kedua itu gagal, tagihannya tetap hidup sementara
+ * jadwalnya tertinggal "Reserved" dan halaman iklannya tak pernah lahir. Itu
+ * yang terjadi 9 Okt 2026: sql/113 menolak tulisan statusnya dari browser,
+ * dan grup JFU-INV-06a98b (4 pesanan) macet.
+ *
+ * `paid > 0` dikecualikan: itu tempo SUSULAN pada jadwal yang sudah dibayar,
+ * yang memang tidak pernah kredit ("tempo ≠ kredit").
+ */
+export function isTempoAwaitingCredit(
+  entry: AdScheduleEntry,
+  billing: ScheduleBilling | undefined,
+): boolean {
+  return Boolean(billing?.openInvoice?.isTempo)
+    && !entry.airOnCreditAt
+    && !(billing?.paid && billing.paid > 0)
+    && !['paid', 'completed'].includes(entry.paymentStatus || '')
+    && entry.status !== 'cancelled';
 }
 
 /**
@@ -224,6 +248,11 @@ export function planCardActions(input: {
      * permukaan lain yang memakai model ini tidak ikut menawarkannya.
      */
     tempoInvoice?: boolean;
+    /**
+     * Pemanggil menyediakan "Tayangkan Sekarang" (`isTempoAwaitingCredit`).
+     * Opsional: tanpanya kartu anomali hanya kehilangan "Tayangkan Dulu".
+     */
+    resumeCredit?: boolean;
   };
   /**
    * Berapa pesanan yang ditanggung `billing.openInvoice`. 1 (atau tak diisi)
@@ -337,9 +366,40 @@ export function planCardActions(input: {
    * Syaratnya: bertanggal dan sudah lolos review. Review TIDAK boleh dilompati
    * — RPC-nya menolak juga, tapi aksi yang pasti gagal tidak boleh ditawarkan.
    */
-  const canTempo = Boolean(can.tempoInvoice) && Boolean(entry.startDate) && entry.reviewStatus === 'approved';
+  /*
+    ⚠️ DISEMBUNYIKAN SELAMA TAGIHAN TERBUKANYA TEMPO. "Tayangkan Dulu"
+    menerbitkan tagihan BARU dan `killDokuLinksForSchedule` mematikan link DOKU
+    seluruh grup lamanya — tagihan gabungan yang sudah dikirim ke peneliti
+    pecah. Kalau penandaan tayangnya yang tertinggal, jalannya
+    "Tayangkan Sekarang" (`resume_credit`), yang tidak menyentuh tagihan.
+  */
+  const canTempo = Boolean(can.tempoInvoice) && Boolean(entry.startDate) && entry.reviewStatus === 'approved'
+    && !billing?.openInvoice?.isTempo;
   const airOnCredit: CardAction = { id: 'tempo_invoice', label: 'Tayangkan Dulu' };
   const withTempo = (menu: CardAction[]) => (canTempo ? [airOnCredit, ...menu] : menu);
+
+  /*
+    "Tayangkan Sekarang" — menandai kredit untuk tagihan tempo yang SUDAH ada,
+    untuk SEMUA anggota grupnya sekaligus, tanpa tagihan atau link baru.
+    `hold_lapsed` ikut: sesudah 14.00 hari tayang, jadwal tempo yang macet
+    terbaca lewat batas bayar, padahal tempo tidak punya batas bayar.
+  */
+  if ((state === 'waiting_payment' || state === 'hold_lapsed')
+      && can.resumeCredit
+      && isTempoAwaitingCredit(entry, billing)
+      && Boolean(entry.startDate) && entry.reviewStatus === 'approved') {
+    return {
+      primary: {
+        id: 'resume_credit',
+        label: memberCount > 1 ? `Tayangkan Sekarang (${memberCount} pesanan)` : 'Tayangkan Sekarang',
+        warns: memberCount > 1,
+      },
+      menu: [
+        ...(can.markPaid ? [markPaid] : []),
+        schedule(true),
+      ],
+    };
+  }
 
   switch (state) {
     // Nol aksi penagihan — bolanya di Fase ①. Satu-satunya afordansi adalah

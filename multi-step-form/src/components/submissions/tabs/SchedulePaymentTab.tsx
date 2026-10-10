@@ -8,6 +8,7 @@ import { DetailSheetSection } from '../../data-list/DetailSheet';
 import {
   fetchAdSchedules, fetchScheduleBilling, fetchInvoiceGroups, settleScheduleAsPaid, settleGroupAsPaid,
   unmarkScheduleAsPaid, unsettleGroupAsPaid, cancelInvoice, cancelSchedule, tempoCancelBlockReason,
+  markSchedulesOnCredit, creditOutcomeReason,
   type AdScheduleEntry, type InvoiceGroup, type ScheduleBilling, type ScheduleInvoice,
 } from '@/utils/supabase';
 import { formatIDR } from '@/utils/currency';
@@ -304,6 +305,65 @@ export function SchedulePaymentTab({
       },
     });
   }, [reload, onExtendCreated]);
+
+  /**
+   * "Tayangkan Sekarang" — tagihan tempo sudah terbit, tapi penandaan tayangnya
+   * tertinggal (`isTempoAwaitingCredit`). Kasus nyatanya 9 Okt 2026: sql/113
+   * menolak penandaan dari browser, grup JFU-INV-06a98b macet "Reserved".
+   *
+   * ⚠️ SELURUH ANGGOTA TAGIHANNYA, BUKAN JADWAL INI SAJA. Satu tagihan gabungan
+   * = satu keputusan "tayang dulu"; menandai satu anggota meninggalkan sisanya
+   * macet di order lain yang tidak sedang dibuka admin. RPC-nya idempoten:
+   * yang sudah kredit tetap, yang `live` tetap `live`, yang lunas `already_paid`.
+   *
+   * Baris tagihan TIDAK disentuh — tidak ada tagihan, link DOKU, atau email
+   * baru. Itu bedanya dengan "Tayangkan Dulu", yang justru disembunyikan di
+   * keadaan ini.
+   */
+  const handleResumeCredit = useCallback((entry: AdScheduleEntry) => {
+    const open = billings.get(entry.id)?.openInvoice;
+    const group = open?.paymentId ? groups.get(open.paymentId) : undefined;
+    const targets = new Map<string, string>([[entry.id, entry.bookingId]]);
+    for (const m of group?.members ?? []) {
+      if (m.scheduleId && m.status === 'pending') targets.set(m.scheduleId, m.bookingId ?? '?');
+    }
+    const ids = [...targets.keys()];
+    const codes = [...targets.values()].map((c) => `#${c}`);
+
+    setPendingConfirm({
+      title: ids.length > 1 ? `Tayangkan ${ids.length} pesanan sekarang?` : `Tayangkan #${entry.bookingId} sekarang?`,
+      highlight: ids.length > 1 ? codes.join(', ') : undefined,
+      lines: [
+        'Tagihan temponya sudah terbit, tapi penandaan tayangnya gagal — iklannya belum dijadwalkan tayang.',
+        'Ini hanya menandai tayang sebelum lunas. Tagihan dan link bayar DOKU-nya TETAP yang sama; tidak ada tagihan baru.',
+        ids.length > 1 && 'Berlaku untuk seluruh pesanan dalam tagihan gabungan ini.',
+        'Halaman iklannya dibuat sekarang dan tayang mulai tanggal jadwalnya, 15.00 WIB.',
+      ],
+      confirmLabel: 'Ya, Tayangkan Sekarang',
+      tone: 'neutral',
+      onConfirm: async () => {
+        try {
+          const outcomes = await markSchedulesOnCredit(ids, 'Susulan: penandaan tayang sesudah tagihan tempo terbit');
+          const failed = ids.filter((id) => !['ok', 'already_paid'].includes(outcomes.get(id) ?? ''));
+          if (failed.length > 0) {
+            toast.error(
+              `${failed.length} dari ${ids.length} jadwal TIDAK ditayangkan: `
+              + failed.map((id) => `#${targets.get(id)} (${creditOutcomeReason(outcomes.get(id) ?? 'not_eligible')})`).join('; '),
+              { duration: 15000 },
+            );
+          } else {
+            toast.success(ids.length > 1
+              ? `${ids.length} pesanan ditandai tayang sebelum lunas. Tagihan temponya tetap sama.`
+              : `#${entry.bookingId} ditandai tayang sebelum lunas. Tagihan temponya tetap sama.`);
+          }
+        } catch (err: any) {
+          toast.error(`Penandaan tayang gagal: ${err?.message || err}`, { duration: 15000 });
+        }
+        reload();
+        onExtendCreated();
+      },
+    });
+  }, [billings, groups, reload, onExtendCreated]);
 
   // Pelunasan manual berlingkup SATU jadwal sejak sql/51 (`schedule_id`), jadi
   // tombolnya tinggal di dalam kartu untuk SEMUA order — tidak lagi hanya yang
@@ -754,6 +814,8 @@ export function SchedulePaymentTab({
             onCreateSchedule={onCreateSchedule}
             onCreateInvoice={onCreateInvoice}
             onCreateTempoInvoice={onCreateTempoInvoice}
+            // Permukaan yang sama dengan "Tayangkan Dulu": hanya drawer admin.
+            onResumeCredit={onCreateTempoInvoice ? handleResumeCredit : undefined}
             /*
               `lifecycle.isPaid` berlingkup ORDER dan dibaca dari transaksi
               terbaru yang dimuat saat dashboard dibuka — tempo SUSULAN yang
