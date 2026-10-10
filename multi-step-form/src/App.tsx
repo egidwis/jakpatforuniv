@@ -8,7 +8,6 @@ import { InternalDashboardWithLayout } from './components/InternalDashboardWithL
 import { useLanguage } from './i18n/LanguageContext';
 import PaymentSuccessPage from './pages/PaymentSuccessPage';
 import PaymentFailedPage from './pages/PaymentFailedPage';
-import PaymentRetryPage from './pages/PaymentRetryPage';
 import { InvoicePage } from './pages/InvoicePage';
 import LoginPage from './pages/LoginPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
@@ -52,6 +51,21 @@ function ExternalRedirect({ to }: { to: string }) {
 function RedirectPreservingQuery({ to }: { to: string }) {
   const location = useLocation();
   return <Navigate to={`${to}${location.search}${location.hash}`} replace />;
+}
+
+/**
+ * `/payment-retry?id=<submission_id>` → halaman Jadwal & Bayar order itu.
+ *
+ * ⚠️ DULU HALAMAN PUBLIK YANG MENERBITKAN TAGIHAN SENDIRI — pemicu `createPayment`
+ * kedua di luar halaman Jadwal & Bayar, tanpa countdown, tanpa kalender, dan
+ * tanpa penjaga yang sudah tumbuh di sana. DOKU tidak pernah memanggilnya
+ * (callback hanya ke `/payment-success`); yang tersisa cuma link dari
+ * `PaymentFailed`. Dialihkan, bukan dihapus, supaya link itu tidak 404.
+ */
+function PaymentRetryRedirect() {
+  const location = useLocation();
+  const id = new URLSearchParams(location.search).get('id');
+  return <Navigate to={id ? `/dashboard/payment/${encodeURIComponent(id)}` : '/dashboard'} replace />;
 }
 
 function AppContent() {
@@ -143,11 +157,11 @@ function AppContent() {
           <Route path="chat" element={<ChatPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="payment/:submissionId" element={<PaymentCheckoutPage />} />
-          {/* ⚠️ Rute lama DI ATAS sengaja TETAP HIDUP. Tiga pintu masuk
-              mengarah ke sana (MultiStepForm auto-bounce, sesudah submit, dan
-              CTA "Lanjutkan Pembayaran" di deriveOrderUiState) dan ketiganya
-              berkunci `submission_id`. Rute baru MELENGKAPI, bukan
-              menggantikan — kuncinya `ad_schedules.id`, kunci yang berbeda. */}
+          {/* ⚠️ Rute lama DI ATAS sengaja TETAP HIDUP, tapi sejak 10 Okt 2026
+              ia hanya PENERJEMAH: order → jadwal ordinal 1 → `jadwal/:scheduleId`.
+              Pintu masuknya berkunci `submission_id` (wizard sesudah kunci,
+              Kilat Place Order, "Jadwalkan Ulang" dashboard, /payment-retry).
+              Satu halaman, dua alamat. */}
           {/* ⚠️ URUTAN MENGIKAT: `jadwal/baru/...` lebih dulu. React Router v6
               memang memenangkan rute yang lebih spesifik, tapi menuliskannya di
               bawah membuat pembaca berikutnya mengira "baru" bisa terbaca
@@ -177,7 +191,7 @@ function AppContent() {
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/payment-success" element={<PaymentSuccessPage />} />
               <Route path="/payment-failed" element={<PaymentFailedPage />} />
-              <Route path="/payment-retry" element={<PaymentRetryPage />} />
+              <Route path="/payment-retry" element={<PaymentRetryRedirect />} />
               <Route path="/pages" element={<SurveyListingPage />} />
               <Route path="/pages/:slug" element={<SurveyPage />} />
               <Route path="/privacy-policy" element={<ExternalRedirect to="/homepage/privacy-policy.html" />} />

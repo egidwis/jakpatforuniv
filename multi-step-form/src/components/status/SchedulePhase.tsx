@@ -743,7 +743,9 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
     */
     const onCredit = b.state === 'airing_on_credit';
     if (b.state === 'waiting_payment' || onCredit) {
-        const isExternal = card.kind === 'original' ? b.isExternalLink : true;
+        // `payTargetFor` (airingPeriods) memutuskannya untuk KEDUA jenis kartu:
+        // halaman Jadwal & Bayar = rute SPA, `/bayar/` = Pages Function.
+        const isExternal = b.isExternalLink;
         /*
           ⚠️ AKIBAT TENGGATNYA BEDA, JADI KALIMATNYA HARUS BEDA.
           `deadlineCause` sudah dihitung sejak lama tapi tidak pernah dirender,

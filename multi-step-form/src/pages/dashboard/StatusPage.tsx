@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchAdSchedules, getSurveyPagesBySubmissionIds, fetchScheduleBilling, fetchInvoiceGroups, dismissSubmission, cancelOrder, updateFormStatus, prepareForReschedule, type AdScheduleEntry, type FormSubmission, type InvoiceGroup } from '@/utils/supabase';
+import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchAdSchedules, getSurveyPagesBySubmissionIds, fetchScheduleBilling, fetchInvoiceGroups, dismissSubmission, cancelOrder, updateFormStatus, type AdScheduleEntry, type FormSubmission, type InvoiceGroup } from '@/utils/supabase';
 import type { ReviewHistoryEntry } from '@/components/submissions/types';
-import { SURVEY_DRAFT_KEY } from '@/utils/constants';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Chip } from '@/components/ui/chip';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -604,63 +603,25 @@ export function StatusPage() {
         }
     };
 
-    const handleReschedule = async (submission: FormSubmission) => {
-        // Show loading toast
-        const loadingToast = toast.loading('Mempersiapkan jadwal ulang...');
-
-        try {
-            // First, prepare the submission for reschedule (reset slot and payment state)
-            await prepareForReschedule(submission.id!);
-
-            // Prepare recovered data for the form
-            const recoveredData = {
-                surveyUrl: submission.survey_url || '',
-                title: submission.title || '',
-                description: submission.description || '',
-                questionCount: submission.question_count || 0,
-                criteriaResponden: submission.criteria_responden || '',
-                duration: submission.duration || 1,
-                startDate: '',
-                endDate: '',
-                fullName: submission.full_name || '',
-                email: submission.email || '',
-                phoneNumber: submission.phone_number || '',
-                university: submission.university || '',
-                department: submission.department || '',
-                status: submission.status || '',
-                referralSource: submission.referral_source && submission.referral_source.startsWith('Lainnya: ') ? 'Lainnya' : (submission.referral_source || ''),
-                referralSourceOther: submission.referral_source && submission.referral_source.startsWith('Lainnya: ') ? submission.referral_source.replace('Lainnya: ', '') : '',
-                winnerCount: submission.winner_count || 0,
-                prizePerWinner: submission.prize_per_winner || 0,
-                voucherCode: submission.voucher_code || '',
-                detectedKeywords: submission.detected_keywords || [],
-                isManualEntry: submission.submission_method === 'manual',
-                // Order ini sudah pernah disetujui S&K-nya saat dipesan. Jadwal
-                // ulang mendarat langsung di langkah Jadwal — melewati Ringkasan,
-                // satu-satunya tempat kotak centang itu ada — jadi tanpa baris
-                // ini penguncian slot akan ditolak dan user terjebak.
-                termsAccepted: true,
-                isReschedule: true,
-                submissionIdToReplace: submission.id,
-            };
-
-            // Step 3 = Jadwal sejak urutan flow dibalik (1 Detail, 2 Ringkasan,
-            // 3 Jadwal). Salah angka di sini = user mendarat di layar yang salah.
-            localStorage.setItem(SURVEY_DRAFT_KEY, JSON.stringify({
-                formData: recoveredData,
-                currentStep: 3
-            }));
-
-            toast.dismiss(loadingToast);
-            toast.success('Silakan pilih slot baru untuk jadwal ulang');
-
-            // Navigate to submit page
-            navigate('/dashboard/submit-iklan');
-        } catch (error) {
-            console.error('Error preparing for reschedule:', error);
-            toast.dismiss(loadingToast);
-            toast.error('Gagal mempersiapkan jadwal ulang. Silakan coba lagi.');
-        }
+    /**
+     * "Pilih Jadwal" / "Jadwalkan Ulang" → halaman Jadwal & Bayar order itu.
+     *
+     * ⚠️ TIDAK LAGI MELEPAS SLOT DULU, DAN TIDAK LAGI MENULIS DRAFT WIZARD.
+     * Versi lama memanggil `prepareForReschedule` (mengosongkan tanggal,
+     * mematikan tagihan) SEBELUM peneliti memilih apa pun, lalu menulis draft
+     * `isReschedule` ke localStorage dan melempar ke wizard langkah 3. Dua
+     * akibatnya: peneliti yang berubah pikiran sudah kehilangan slotnya, dan
+     * draft berniat-reschedule yang tertinggal pernah menimpa survei LAIN
+     * (insiden Tri/NISMA).
+     *
+     * Sekarang slot lama baru berganti saat tanggal baru BERHASIL dikunci di
+     * halaman itu (`rebookSlotForSubmission`), dan tagihannya terbit lewat
+     * pemicu tunggal di sana. `?pilih=1` membuka kalender langsung untuk
+     * keadaan lewat 14.00; keadaan waktu habis dan belum bertanggal memang
+     * sudah berkalender.
+     */
+    const handleReschedule = (submission: FormSubmission) => {
+        navigate(`/dashboard/payment/${submission.id}?pilih=1`);
     };
 
     // Satu sumber kebenaran state UI per order (chips, callout, sort)

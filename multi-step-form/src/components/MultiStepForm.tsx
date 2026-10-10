@@ -26,7 +26,7 @@ import { ReviewSubmissionModal } from './ReviewSubmissionModal';
 // Hanya Loader2 yang tersisa dari sisi main di sini: `Menu`/`Button` ikut hilang
 // bersama header mobile lama (digantikan AppNav), dan `getTodayDate` tidak lagi
 // dipakai sejak flow order disusun ulang.
-import { Loader2 } from 'lucide-react';
+import { Clock, Loader2 } from 'lucide-react';
 
 // Fungsi untuk mendapatkan tanggal berdasarkan durasi dari hari ini
 const getEndDateFromDuration = (duration: number) => {
@@ -101,6 +101,12 @@ export function MultiStepForm() {
     adalah judul segmen + tombol Batalkan.
   */
   const [isStep1HeaderAllowed, setIsStep1HeaderAllowed] = useState(false);
+  /**
+   * Order terakhir yang masih menunggu pembayaran — untuk KARTU PENGINGAT.
+   * Dulu wizard melempar peneliti paksa ke halaman bayar (auto-bounce); itu
+   * memblokir order kedua dan terjadi tanpa penjelasan (keputusan 10 Okt 2026).
+   */
+  const [pendingPayment, setPendingPayment] = useState<{ id: string; title: string } | null>(null);
 
   // Header hidup di Step 1 (layar isian) dan Step 2 (Ringkasan) saja. Sejak
   // Step 3 user sudah masuk jalur jadwal -> bayar, dan layarnya sengaja
@@ -231,23 +237,10 @@ export function MultiStepForm() {
                 status: prev.status || latest.status || ''
               }));
               
-              // Only bounce if they haven't started filling out a fresh form (no draft data)
-              const saved = localStorage.getItem(STORAGE_KEY);
-              let hasDraftData = false;
-              if (saved) {
-                try {
-                  const parsed = JSON.parse(saved);
-                  if (parsed.formData && (parsed.formData.surveyUrl || parsed.formData.title)) {
-                    hasDraftData = true;
-                  }
-                } catch (e) {
-                  // ignore
-                }
-              }
-
-              if (!hasDraftData && latest.submission_status === 'waiting_payment') {
-                // Navigate asynchronously to ensure it happens after render cycle
-                setTimeout(() => navigate(`/dashboard/payment/${latest.id}`), 0);
+              // Pengingat, bukan lemparan: peneliti boleh membuat order baru
+              // walau order terakhirnya masih menunggu pembayaran.
+              if (latest.submission_status === 'waiting_payment' && latest.id) {
+                setPendingPayment({ id: latest.id, title: latest.title || '' });
               }
             }
           } catch (error) {
@@ -452,6 +445,26 @@ export function MultiStepForm() {
           }
           return null;
         })()}
+        {currentStep === 1 && pendingPayment && (
+          <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3 min-w-0">
+              <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-amber-950">{t('pendingPaymentReminderTitle')}</p>
+                <p className="text-xs text-amber-800 leading-relaxed truncate">
+                  {pendingPayment.title || t('pendingPaymentReminderBody')}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate(`/dashboard/payment/${pendingPayment.id}`)}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-jfu-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-jfu-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2"
+            >
+              {t('pendingPaymentReminderCta')}
+            </button>
+          </div>
+        )}
         {currentStep === 1 && (
           <StepSurveyDetails
             formData={formData}

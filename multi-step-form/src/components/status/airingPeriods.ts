@@ -13,7 +13,7 @@ import {
     type SchedulePaymentMap,
 } from './scheduleAxes';
 import { airingWindowState } from '@/utils/airing-window';
-import { payLinkPath } from '@/utils/payLink';
+import { payLinkPath, jadwalPagePath } from '@/utils/payLink';
 import { slotReleaseDeadline } from '@/utils/slotHold';
 
 /**
@@ -295,6 +295,30 @@ export const holdsPayButton = (
     || (state === 'airing_on_credit' && hasOpenBill(pay))
     || (state === 'paid' && (pay?.outstanding ?? 0) > 0 && hasOpenBill(pay));
 
+/**
+ * Ke mana tombol Bayar sebuah kartu menuju — dipanggil hanya bila kartu
+ * memang memegang tombol (`holdsPayButton` + lead/non-grup).
+ *
+ * ⚠️ NON-GRUP YANG MENUNGGU BAYAR → HALAMAN JADWAL & BAYAR (keputusan 9 Okt
+ * 2026). Di sana ada countdown, kalender beku, "Sudah bayar? Cek status", dan
+ * pilihan lewat 14.00 — dan tombolnya sendiri tetap `/bayar/<id>`.
+ *
+ * Tetap langsung ke resolver `/bayar/` (Pages Function, `<a href>`):
+ *   - lead tagihan gabungan: link DOKU-nya menagih total grup, bukan jadwal ini;
+ *   - kredit / tagihan tempo dan sisa tagihan susulan sesudah lunas: tidak ada
+ *     yang dipilih atau dihitung mundur — halaman cuma jadi satu klik ekstra.
+ */
+export function payTargetFor(
+    state: BookingState,
+    scheduleId: string,
+    inGroup: boolean,
+): { payUrl: string; isExternalLink: boolean } {
+    if (state === 'waiting_payment' && !inGroup) {
+        return { payUrl: jadwalPagePath(scheduleId), isExternalLink: false };
+    }
+    return { payUrl: payLinkPath(scheduleId), isExternalLink: true };
+}
+
 /** Tanggal yang ditagihkan tagihan basi terakhir, siap dirender. */
 function staleDateOf(pay: { staleBilledFor?: string | null } | null | undefined): Date | null {
     if (!pay?.staleBilledFor) return null;
@@ -413,20 +437,21 @@ export function buildScheduleCards(
                   tidak dirender. `AdScheduleEntry.id` sendiri non-nullable,
                   jadi cabang `null` di bawah praktis tak terjangkau; ia ditulis
                   supaya string kosong pun gagal MENUTUP, bukan gagal membuka.
+
+                  ⚠️ PEMBARUAN 10 OKT 2026: tombol non-grup yang menunggu bayar
+                  kini membuka halaman Jadwal & Bayar (`payTargetFor`), bukan
+                  resolver langsung. Aturan di atas tetap: halaman itu hanya
+                  pernah merender `/bayar/<id>`, tidak pernah URL DOKU.
                 */
-                payUrl: holdsPayButton(bookingState, payments[first.sourceId])
+                ...(holdsPayButton(bookingState, payments[first.sourceId])
                     && (firstGroup?.isLead ?? true) && first.id
-                    ? payLinkPath(first.id)
-                    : null,
+                    ? payTargetFor(bookingState, first.id, !!firstGroup)
+                    : { payUrl: null, isExternalLink: true }),
                 /*
-                  `/bayar/...` BUKAN rute SPA — ia Pages Function. Jadi ia harus
-                  dinavigasi penuh lewat `<a href>`, bukan `<Link to>` yang akan
-                  mencoba merutekannya di klien lalu mendarat di 404.
+                  `isExternalLink` ikut `payTargetFor`: `/bayar/...` BUKAN rute
+                  SPA — ia Pages Function, jadi wajib `<a href>`; halaman Jadwal
+                  & Bayar justru rute SPA (`<Link to>`).
                 */
-                // `payUrl` kini hanya bisa `/bayar/<id>` atau `null`, dan
-                // `/bayar/` SELALU Pages Function — jadi tidak ada lagi
-                // kemungkinan rute SPA yang perlu dibedakan di sini.
-                isExternalLink: true,
                 /*
                   ⚠️ CABANG `null` DULU JATUH KE "SLOT IKLAN TERBATAS" TANPA JAM.
                   Untuk ordinal 1 itu terjadi pada slot yang DIPESAN ADMIN:
@@ -520,11 +545,10 @@ export function buildScheduleCards(
                 subtotal: subtotalOf(s),
                 // Lihat catatan di cabang ordinal 1: hanya lead yang memegang
                 // link, dan link-nya perantara (`/bayar/<ad_schedules.id>`).
-                payUrl: holdsPayButton(bookingState, pay)
+                ...(holdsPayButton(bookingState, pay)
                     && (group?.isLead ?? true) && s.id
-                    ? payLinkPath(s.id)
-                    : null,
-                isExternalLink: true,
+                    ? payTargetFor(bookingState, s.id, !!group)
+                    : { payUrl: null, isExternalLink: true }),
                 /*
                   ⚠️ DULU DUA BARIS INI LITERAL `null`, DAN ITU AKAN JADI
                   KEBOHONGAN BEGITU PHASE 4 MENDARAT.

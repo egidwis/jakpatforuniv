@@ -395,6 +395,7 @@ describe('buildScheduleCards — tagihan gabungan (A1)', () => {
           dilihat (dan bisa disalin) manusia. Lihat `payLink.ts`.
         */
         expect(card.booking.payUrl).toBe('/bayar/sched-1');
+        expect(card.booking.isExternalLink).toBe(true);
         expect(card.booking.group?.total).toBe(3_330_000);
         // `amount` tetap porsi jadwal ini — dua angka, keduanya benar untuk
         // pertanyaan masing-masing. Yang dilarang cuma memakai yang satu untuk
@@ -415,8 +416,13 @@ describe('buildScheduleCards — tagihan gabungan (A1)', () => {
         const [card] = buildScheduleCards(uiOf(scheduleOf()), {}, null, t, submissionOf());
 
         expect(card.booking.group).toBeNull();
-        // Perantara juga di luar grup: satu jalur, nol cabang yang menyimpang.
-        expect(card.booking.payUrl).toBe('/bayar/sched-1');
+        /*
+          Sejak 10 Okt 2026 tombol Bayar NON-GRUP yang menunggu bayar membuka
+          halaman Jadwal & Bayar (countdown, kalender beku, cek status), bukan
+          langsung DOKU. Halaman itu sendiri hanya membuka `/bayar/<id>`.
+        */
+        expect(card.booking.payUrl).toBe('/dashboard/jadwal/sched-1');
+        expect(card.booking.isExternalLink).toBe(false);
     });
 
     it('jadwal ke-2 dst.: pengikut kehilangan tombol, lead menyimpannya', () => {
@@ -446,6 +452,26 @@ describe('buildScheduleCards — tagihan gabungan (A1)', () => {
         // Lead grup pun lewat perantara — resolver yang memutuskan siapa yang
         // diteruskan ke DOKU dan siapa yang dilempar ke halaman invoice.
         expect(lead.booking.payUrl).toBe('/bayar/sched-2');
+        expect(lead.booking.isExternalLink).toBe(true);
+    });
+
+    it('jadwal ke-2 TANPA grup yang menunggu bayar → halaman Jadwal & Bayar', () => {
+        const later = scheduleOf({
+            id: 'sched-2', ordinal: 2, isExtension: true, sourceId: 'ext-1',
+            status: 'waiting_payment',
+        });
+        const payments: SchedulePaymentMap = {
+            'ext-1': {
+                paymentUrl: 'https://pay.example/x', paymentId: 'JFU-INV-x-1',
+                scheduleId: 'sched-2',
+                status: 'pending', amount: 1_110_000, paid: 0, outstanding: 1_110_000,
+                isExpired: false, expiresAt: null, staleBilledFor: null,
+            },
+        };
+        const [, kartu] = buildScheduleCards(uiOf(scheduleOf(), [later]), payments, null, t, submissionOf());
+        expect(kartu.booking.state).toBe('waiting_payment');
+        expect(kartu.booking.payUrl).toBe('/dashboard/jadwal/sched-2');
+        expect(kartu.booking.isExternalLink).toBe(false);
     });
 });
 
@@ -606,6 +632,6 @@ describe('buildScheduleCards — ordinal 1 tanpa tagihan hidup', () => {
     it('dengan tagihan hidup, tombolnya kembali — lewat perantara', () => {
         const [card] = buildScheduleCards(uiOf(scheduleOf()), {}, null, t, submissionOf());
         expect(card.booking.state).toBe('waiting_payment');
-        expect(card.booking.payUrl).toBe('/bayar/sched-1');
+        expect(card.booking.payUrl).toBe('/dashboard/jadwal/sched-1');
     });
 });

@@ -27,6 +27,14 @@ export const payLinkPath = (scheduleId: ScheduleUuid): string =>
   `/bayar/${scheduleId}`;
 
 /**
+ * Halaman Jadwal & Bayar (rute SPA, BUKAN resolver). Tujuan tombol Bayar
+ * dashboard untuk jadwal non-grup yang menunggu bayar — halaman itu sendiri
+ * hanya pernah membuka `payLinkPath`, jadi aturan resolver tetap utuh.
+ */
+export const jadwalPagePath = (scheduleId: ScheduleUuid): string =>
+  `/dashboard/jadwal/${scheduleId}`;
+
+/**
  * Host yang PASTI menjalankan resolver `/bayar/`.
  *
  * Root `functions/_middleware.js` merutekan per-domain: `jakpatforuniv.com`
