@@ -11,10 +11,8 @@ import { toast } from 'sonner';
 import {
   CreditCard,
   AlertTriangle,
-  Clock,
   ArrowRight,
   CheckCircle,
-  CalendarCheck,
   Lock,
   Loader2,
   Info,
@@ -26,14 +24,20 @@ import {
   normalizeScheduleDate,
   paymentCutoffInstant,
   toWibYmd,
-  toAiringStartIso,
-  toAiringLastDayIso,
 } from '../utils/airing-window';
 import { slotReleaseDeadline } from '../utils/slotHold';
 import { airingDayCount } from './dashboard/schedule/scheduleModel';
 import { SchedulePicker } from '../components/SchedulePicker';
 import { CostBreakdown } from '../components/CostBreakdown';
 import { ScheduleReservationLayout } from '../components/schedule/ScheduleReservationLayout';
+import {
+  ReservationSummary,
+  LockedScheduleCard,
+  HoldCountdown,
+  AdminHoldNote,
+  MobileBarInfo,
+} from '../components/schedule/ReservationParts';
+import { lockedDateFitsHorizon } from '../utils/scheduleHorizon';
 import { deriveScheduleMoney } from '../utils/scheduleMoney';
 import { useSlotAvailability } from '../hooks/useSlotAvailability';
 import { scheduleLockGate } from '../utils/scheduleLockGate';
@@ -472,12 +476,6 @@ export function PaymentCheckoutPage() {
     }
   };
 
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  };
-
   if (isLoading) {
     return (
       <div className="pt-24 flex items-center justify-center min-h-[60vh]">
@@ -493,18 +491,11 @@ export function PaymentCheckoutPage() {
     ? toWibYmd(normalizeScheduleDate(submission.start_date))
     : null;
 
-  // Rentang tayang untuk slip. Ujungnya diambil dari helper yang sama dengan
-  // yang dipakai ringkasan di layar jadwal, supaya kedua layar tidak bisa
-  // menyebut tanggal akhir yang berbeda untuk order yang sama.
-  const fmtSlipDate = (d: Date) =>
-    d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' });
-  // Keduanya diturunkan dari `startYmd` yang sudah dinormalkan ke WIB, bukan
-  // dari kolom mentah — kalau tidak, ujung dan pangkal rentang bisa memakai
-  // dua penafsiran zona waktu yang berbeda untuk baris yang sama.
-  const airingStartLabel = startYmd ? fmtSlipDate(new Date(toAiringStartIso(startYmd))) : null;
-  const airingLastDayLabel = startYmd
-    ? fmtSlipDate(new Date(toAiringLastDayIso(startYmd, airingDays)))
-    : null;
+  // Kalender beku hanya bila tanggal terkuncinya tergambar di jendela 14 hari;
+  // selain itu kartu jadwal terkunci (`LockedScheduleCard`) jadi cadangannya.
+  const lockedFits = lockedDateFitsHorizon(startYmd);
+  const orderTotal = liveBilledAmount ?? submission.total_cost ?? 0;
+  const distMode = submission.distribution_type === 'kilat' ? 'kilat' as const : 'regular' as const;
 
   /*
     ⚠️ ENTRY SEMENTARA, bukan baris jadwal sungguhan — layar ini milik ORDER
@@ -566,6 +557,8 @@ export function PaymentCheckoutPage() {
         isBusy={isRebooking}
         orderLabel={submission.title || 'Untitled Form'}
         title={t('segmentReservation')}
+        summary={<ReservationSummary startYmd={repickDate} days={submission.duration || 1} />}
+        mobileBarInfo={<MobileBarInfo total={orderTotal} />}
         alertBanner={
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
             <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
@@ -600,15 +593,16 @@ export function PaymentCheckoutPage() {
             <SchedulePicker
               availability={availability}
               duration={submission.duration || 1}
-              mode={submission.distribution_type === 'kilat' ? 'kilat' : 'regular'}
+              mode={distMode}
               value={repickDate}
               onChange={setRepickDate}
+              showSummary={false}
             />
           </div>
         }
         cost={
           <CostBreakdown
-            total={liveBilledAmount ?? submission.total_cost ?? 0}
+            total={orderTotal}
             lines={money.lines}
             note={money.note}
             variant="compact"
@@ -646,6 +640,8 @@ export function PaymentCheckoutPage() {
       orderLabel={submission.title || 'Untitled Form'}
       title={t('paymentPhaseTitle')}
       subtitle={t('paymentPhaseSubtitle')}
+      summary={<ReservationSummary startYmd={startYmd} days={airingDays} />}
+      mobileBarInfo={<MobileBarInfo total={orderTotal} seconds={hasHoldDeadline ? timeLeft : null} />}
       alertBanner={
         isTooLateToday ? (
           <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/80 px-3.5 py-3 shadow-2xs">
@@ -658,66 +654,43 @@ export function PaymentCheckoutPage() {
         ) : undefined
       }
       calendar={
-        <div className="space-y-4">
-          {/* Timer Countdown Card */}
-          {hasHoldDeadline ? (
-            <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-5 text-center space-y-1.5 shadow-2xs">
-              <div className="inline-flex items-center gap-2 text-2xl md:text-3xl font-bold text-jfu-primary tabular-nums">
-                <Clock className="w-6 h-6 text-jfu-primary" /> {formatTime(timeLeft)}
-              </div>
-              <p className="text-xs font-medium text-slate-600">
-                {t('scheduleHoldHint')}
-              </p>
-            </div>
-          ) : (
-            <div className="flex items-start gap-2.5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <Lock className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
-              <p className="text-sm text-slate-700">{t('slotHeldByAdminLabel')}</p>
-            </div>
-          )}
-
-          {/* Locked Schedule Info */}
-          {startYmd && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2 shadow-2xs">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
-                  Jadwal Tayang Terkunci
-                </span>
-                <span className="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-lg bg-blue-50 border border-blue-100 text-jfu-primary">
-                  {airingDays} {t('days')}
-                </span>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-800">
-                <CalendarCheck className="w-4 h-4 text-jfu-primary shrink-0" />
-                <span>
-                  {airingStartLabel}
-                  {airingLastDayLabel !== airingStartLabel && ` – ${airingLastDayLabel}`}
-                </span>
-                <span className="text-slate-300">•</span>
-                <span className="text-xs font-normal text-slate-500">{t('airingStartsAt')}</span>
-              </div>
-            </div>
-          )}
-        </div>
+        /*
+          ⚠️ KALENDER BEKU, BUKAN KARTU TEKS. Saat membayar, kolom kiri tetap
+          memajang kalender yang sama dengan saat memilih — tanggal terkunci
+          bergembok, sisanya abu dan tak bisa diklik. Pindah pilih → bayar
+          mengganti isi, bukan bentuk. Kartu teks hanya cadangan untuk tanggal
+          yang tak tergambar di jendela 14 hari.
+        */
+        startYmd && lockedFits ? (
+          <SchedulePicker
+            availability={availability}
+            duration={airingDays}
+            mode={distMode}
+            value={null}
+            onChange={() => {}}
+            lockedYmd={startYmd}
+          />
+        ) : startYmd ? (
+          <LockedScheduleCard
+            startYmd={startYmd}
+            days={airingDays}
+            outsideCalendar={startYmd > toWibYmd(new Date())}
+          />
+        ) : (
+          <p className="text-sm text-slate-500">{t('summaryDateNotPicked')}</p>
+        )
       }
       cost={
         <CostBreakdown
-          total={liveBilledAmount ?? submission.total_cost ?? 0}
+          total={orderTotal}
           lines={money.lines}
           note={money.note}
           variant="compact"
           defaultOpen={false}
         />
       }
-      bottomNotice={
-        <div className="space-y-1 text-center">
-          <p className="text-xs text-slate-500 leading-relaxed">
-            {hasHoldDeadline ? t('timerConsequenceNote') : t('slotHeldByAdminNote')}
-          </p>
-        </div>
-      }
+      bottomNotice={hasHoldDeadline ? <HoldCountdown seconds={timeLeft} /> : <AdminHoldNote />}
       cta={
-        <div className="space-y-2.5 pt-1">
           <button
             type="button"
             onClick={handleProceedPayment}
@@ -737,7 +710,8 @@ export function PaymentCheckoutPage() {
               </>
             )}
           </button>
-
+      }
+      secondaryActions={
           <button
             type="button"
             onClick={handleCheckPayment}
@@ -756,7 +730,6 @@ export function PaymentCheckoutPage() {
               </>
             )}
           </button>
-        </div>
       }
     />
   );

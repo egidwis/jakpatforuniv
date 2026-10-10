@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
-import { CalendarCheck, Clock } from 'lucide-react';
-import { isBookingClosedForDate, toAiringStartIso, toAiringLastDayIso, toLocalYmd } from '../utils/airing-window';
+import { CalendarCheck, Clock, Lock } from 'lucide-react';
+import { isBookingClosedForDate, toAiringStartIso, toAiringLastDayIso } from '../utils/airing-window';
+import { wibHorizonYmds, SCHEDULE_HORIZON_DAYS } from '../utils/scheduleHorizon';
 import type { SlotAvailability } from '../hooks/useSlotAvailability';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -14,9 +15,29 @@ interface SchedulePickerProps {
   onChange: (ymd: string) => void;
   /** Sembunyikan ringkasan "Tayang … → selesai …" bila pemanggil punya versinya sendiri. */
   showSummary?: boolean;
+  /**
+   * KALENDER BEKU: tanggal (YYYY-MM-DD, hari WIB) yang sudah terkunci untuk
+   * pesanan ini. Semua tile jadi tidak interaktif, rentang terkunci disorot
+   * bergembok, dan hitungan kuota disembunyikan — saat membayar, "3/4" bukan
+   * informasi, melainkan godaan untuk mengklik tanggal yang tidak bisa diganti.
+   *
+   * Pemanggil memastikan tanggalnya memang ada di jendela 14 hari
+   * (`lockedDateFitsHorizon`); di luar itu ia memajang kartu jadwal terkunci.
+   */
+  lockedYmd?: string | null;
 }
 
-const HORIZON_DAYS = 14;
+const HORIZON_DAYS = SCHEDULE_HORIZON_DAYS;
+
+/**
+ * Tile memformat TANGGAL KALENDER, bukan instan: dibangun di tengah malam UTC
+ * dan diformat dengan `timeZone: 'UTC'`, jadi "12 Okt" tetap 12 Okt di zona
+ * perangkat mana pun. Tanggalnya sendiri sudah hari WIB (`wibHorizonYmds`).
+ */
+function calendarDateOf(ymd: string): Date {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
+}
 
 /**
  * Kalender pemilih tanggal tayang — murni presentasional.
@@ -34,6 +55,7 @@ export function SchedulePicker({
   value,
   onChange,
   showSummary = true,
+  lockedYmd = null,
 }: SchedulePickerProps) {
   const { t, language } = useLanguage();
   const { counts, maxPerDay } = availability;
@@ -47,16 +69,17 @@ export function SchedulePicker({
 
   const effectiveDuration = mode === 'kilat' ? 1 : Math.max(duration || 1, 1);
 
-  const dates = useMemo(() => {
-    const today = new Date();
-    return Array.from({ length: HORIZON_DAYS }, (_, i) => {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
-      return d;
-    });
-  }, []);
-
-  const selectedIndex = value ? dates.findIndex((d) => toLocalYmd(d) === value) : -1;
+  /*
+    ⚠️ HARI WIB, BUKAN HARI PERANGKAT. Dulu tile dibangun dari `new Date()`
+    lokal; peneliti di WITA/WIT/luar negeri dekat tengah malam melihat "Hari
+    ini" bergeser sehari dari hari yang dinilai cutoff 13.00 dan kuota harian.
+  */
+  const ymds = useMemo(() => wibHorizonYmds(), []);
+  const isFrozen = !!lockedYmd;
+  const anchor = isFrozen ? lockedYmd : value;
+  const selectedIndex = anchor ? ymds.indexOf(anchor) : -1;
+  const fmt = (ymd: string, opts: Intl.DateTimeFormatOptions) =>
+    calendarDateOf(ymd).toLocaleDateString(locale, { ...opts, timeZone: 'UTC' });
 
   /*
     ⚠️ SKELETON, BUKAN TILE BERISI NOL.
@@ -67,7 +90,8 @@ export function SchedulePicker({
     (`SlotCalendarSkeleton`); wizard tertinggal. Bentuknya ditiru dari tile
     aslinya supaya tidak ada lompatan tata letak saat data mendarat.
   */
-  if (availability.isLoading && !availability.isReady) {
+  // Kalender beku tidak memajang kuota, jadi ia tidak perlu menunggu kuota.
+  if (!isFrozen && availability.isLoading && !availability.isReady) {
     return (
       <div className="space-y-4">
         <div
@@ -92,7 +116,7 @@ export function SchedulePicker({
   return (
     <div className="space-y-4">
       <div
-        className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 py-1"
+        className={`grid ${isFrozen ? 'grid-cols-4' : 'grid-cols-2 sm:grid-cols-4'} md:grid-cols-7 py-1`}
         /* ⚠️ JARAK LEWAT STYLE INLINE, BUKAN `gap-2.5`.
            `styles.css` warisan dimuat SESUDAH Tailwind dan mendefinisikan
            `.grid { gap: 1.5rem }` polos. Pada spesifisitas yang sama, urutan
@@ -102,21 +126,26 @@ export function SchedulePicker({
            Style inline satu-satunya yang menang tanpa menyentuh berkas warisan. */
         style={{ gap: '0.75rem' }}
       >
-        {dates.map((date, i) => {
-          const ymd = toLocalYmd(date);
+        {ymds.map((ymd, i) => {
           const baseCount = counts[ymd] || 0;
           const isFull = baseCount >= maxPerDay;
           const isClosed = isBookingClosedForDate(ymd);
 
           const isSelectedInRange =
             selectedIndex !== -1 && i >= selectedIndex && i < selectedIndex + effectiveDuration;
-          const displayCount = isSelectedInRange ? baseCount + 1 : baseCount;
+          // Pesanan terkunci SUDAH termasuk dalam hitungan; jangan tambah dirinya lagi.
+          const displayCount = isSelectedInRange && !isFrozen ? baseCount + 1 : baseCount;
 
           let statusColors =
             'bg-white border-slate-200 hover:border-blue-400 hover:bg-blue-50/20 shadow-xs cursor-pointer';
           let textColor = 'text-slate-800';
 
-          if (isSelectedInRange) {
+          if (isFrozen) {
+            statusColors = isSelectedInRange
+              ? 'bg-blue-50/80 border-blue-600 ring-2 ring-blue-600/20 shadow-xs cursor-default'
+              : 'bg-slate-50/90 border-slate-200/70 cursor-default';
+            textColor = isSelectedInRange ? 'text-blue-900' : 'text-slate-500';
+          } else if (isSelectedInRange) {
             if (displayCount > maxPerDay) {
               statusColors = 'bg-red-50/80 border-red-500 ring-2 ring-red-500/20 shadow-xs';
               textColor = 'text-red-900';
@@ -155,31 +184,39 @@ export function SchedulePicker({
             tidak terjelaskan BY CONSTRUCTION. Peneliti melihat abu dan tidak
             tahu apakah penuh, terlambat, atau rusak.
           */
-          const reason = isClosed
-            ? t('slotClosedReason')
-            : isFull
-              ? t('slotFullReason')
-              : null;
+          const reason = isFrozen
+            ? (isSelectedInRange ? t('lockedTileLabel') : null)
+            : isClosed
+              ? t('slotClosedReason')
+              : isFull
+                ? t('slotFullReason')
+                : null;
           const isToday = i === 0;
           const isTomorrow = i === 1;
           const dayLabel = isToday
-            ? `${t('calendarToday')}, ${date.toLocaleDateString(locale, { day: 'numeric', month: 'long' })}`
+            ? `${t('calendarToday')}, ${fmt(ymd, { day: 'numeric', month: 'long' })}`
             : isTomorrow
-              ? `${t('calendarTomorrow')}, ${date.toLocaleDateString(locale, { day: 'numeric', month: 'long' })}`
-              : date.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
+              ? `${t('calendarTomorrow')}, ${fmt(ymd, { day: 'numeric', month: 'long' })}`
+              : fmt(ymd, { weekday: 'long', day: 'numeric', month: 'long' });
 
           return (
             <button
               key={ymd}
               type="button"
-              disabled={isFull || isClosed}
-              onClick={() => onChange(ymd)}
+              disabled={isFrozen || isFull || isClosed}
+              onClick={() => { if (!isFrozen) onChange(ymd); }}
               /* Nama aksesibel merakit tanggal + sebab; tanpa ini pembaca layar
                  mengumumkan "Sen 12 Okt 4 garis miring 4, redup" tanpa sebab. */
               aria-label={reason ? `${dayLabel} — ${reason}` : dayLabel}
               aria-pressed={isSelectedInRange || undefined}
               title={reason ?? undefined}
-              className={`group relative flex flex-col items-center justify-between p-2.5 sm:p-3 min-h-[96px] sm:min-h-[102px] rounded-2xl border transition-all duration-150 text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 ${statusColors}`}
+              /* Beku: tanpa pil kuota, jadi tile lebih pendek dan 4 kolom di
+                 ponsel — 14 tile kosong 2 kolom mendorong ringkasan dua layar
+                 ke bawah tanpa memberi informasi apa pun.
+                 `lg:px-1.5`: di desktop kalender hidup di kolom kiri 7/12 —
+                 tujuh tile ±60px. Padding samping sm:p-3 menyisakan 36px untuk
+                 "12 Okt"; kelasnya bukan milik styles.css, jadi variannya menang. */
+              className={`group relative flex flex-col items-center justify-between p-2.5 sm:p-3 lg:px-1.5 ${isFrozen ? 'min-h-[76px]' : 'min-h-[96px] sm:min-h-[102px]'} rounded-2xl border transition-all duration-150 text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 ${statusColors}`}
             >
               {/* 1. Header label: Hari ini / Besok / Nama Hari */}
               <span
@@ -195,16 +232,24 @@ export function SchedulePicker({
                   ? t('calendarToday')
                   : isTomorrow
                     ? t('calendarTomorrow')
-                    : date.toLocaleDateString(locale, { weekday: 'short' })}
+                    : fmt(ymd, { weekday: 'short' })}
               </span>
 
               {/* 2. Tanggal & Bulan: Tampil seragam untuk SEMUA 14 hari */}
               <span className={`text-sm sm:text-base font-bold leading-tight my-0.5 tracking-tight ${textColor}`}>
-                {date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+                {fmt(ymd, { day: 'numeric', month: 'short' })}
               </span>
 
-              {/* 3. Status kuota / tutup */}
-              {isClosed ? (
+              {/* 3. Status kuota / tutup — kalender beku: gembok, bukan kuota */}
+              {isFrozen ? (
+                isSelectedInRange ? (
+                  <div className="flex items-center justify-center mt-auto bg-blue-100/70 px-2 py-0.5 rounded-full border border-blue-200 text-blue-900">
+                    <Lock className="w-3 h-3" aria-hidden="true" />
+                  </div>
+                ) : (
+                  <div className="mt-auto h-[18px]" aria-hidden="true" />
+                )
+              ) : isClosed ? (
                 <div className="flex items-center gap-1 mt-auto bg-slate-200/60 px-2 py-0.5 rounded-full border border-slate-200">
                   <span className="text-[10px] font-medium text-slate-600">{t('slotClosedTodayLabel')}</span>
                 </div>
@@ -250,6 +295,12 @@ export function SchedulePicker({
         berjarak luminansi 1,18:1 — praktis identik bagi mata buta warna.
         Kata-katanya yang membawa makna; titiknya kini cuma penguat.
       */}
+      {isFrozen ? (
+        <p className="flex items-center gap-1.5 text-xs text-slate-500">
+          <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+          {t('lockedCalendarHint')}
+        </p>
+      ) : (
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500">
         <span className="flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" aria-hidden="true" />
@@ -264,8 +315,9 @@ export function SchedulePicker({
           {t('slotLegendFull')}
         </span>
       </div>
+      )}
 
-      {showSummary && value && <AiringSummary ymd={value} duration={effectiveDuration} />}
+      {showSummary && !isFrozen && value && <AiringSummary ymd={value} duration={effectiveDuration} />}
     </div>
   );
 }

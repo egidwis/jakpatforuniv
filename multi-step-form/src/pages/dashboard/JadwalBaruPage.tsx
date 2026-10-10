@@ -58,6 +58,7 @@ import { slotReleaseDeadline } from '../../utils/slotHold';
 import { formatIDR } from '../../utils/currency';
 import { CostBreakdown } from '../../components/CostBreakdown';
 import { ScheduleReservationLayout } from '../../components/schedule/ScheduleReservationLayout';
+import { ReservationSummary, MobileBarInfo } from '../../components/schedule/ReservationParts';
 import { draftScheduleMoney } from '../../utils/draftScheduleMoney';
 import { InfoTooltip } from '@/components/status/InfoTooltip';
 import { RewardRecommendationHint } from '../../components/RewardRecommendationHint';
@@ -488,6 +489,18 @@ export function JadwalBaruPage() {
       isBusy={isSaving}
       orderLabel={`${submission.title}${bookingId ? ` · #${bookingId}` : ''}`}
       title={t(seg.key, seg.vars)}
+      summary={
+        <ReservationSummary
+          startYmd={picked}
+          days={duration}
+          extraRows={
+            picked && currentPeriodBatch && !isResolvingBatch
+              ? [{ label: t('summaryPeriodLabel'), value: currentPeriodLabel }]
+              : []
+          }
+        />
+      }
+      mobileBarInfo={<MobileBarInfo total={money.total} />}
       duration={
         /* Lama tayang */
         <div className="space-y-3">
@@ -527,6 +540,7 @@ export function JadwalBaruPage() {
             mode="regular"
             value={picked}
             onChange={setPicked}
+            showSummary={false}
           />
         </div>
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Info, Lock, Clock, Pin, CreditCard, RefreshCw, AlertTriangle, Calendar, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Loader2, Info, Lock, CreditCard, RefreshCw, AlertTriangle, CheckCircle } from 'lucide-react';
 import {
   fetchAdScheduleById,
   fetchScheduleSiblings,
@@ -16,6 +16,16 @@ import { useLanguage } from '../../i18n/LanguageContext';
 import { SchedulePicker } from '../../components/SchedulePicker';
 import { CostBreakdown } from '../../components/CostBreakdown';
 import { ScheduleReservationLayout } from '../../components/schedule/ScheduleReservationLayout';
+import {
+  ReservationSummary,
+  LockedScheduleCard,
+  HoldCountdown,
+  AdminHoldNote,
+  MobileBarInfo,
+} from '../../components/schedule/ReservationParts';
+import { lockedDateFitsHorizon } from '../../utils/scheduleHorizon';
+import { toWibYmd } from '../../utils/airing-window';
+import { airingDayCount } from './schedule/scheduleModel';
 import { useSlotAvailability } from '../../hooks/useSlotAvailability';
 import { scheduleLockGate } from '../../utils/scheduleLockGate';
 import { isDailyQuotaFullError } from '../../utils/dailyQuotaError';
@@ -409,8 +419,16 @@ export function JadwalDanBayarPage() {
     : 'payment' as const;
   const seg = segmentTitleOf({ phase, ordinal: entry.ordinal });
 
-  const mmss = (s: number) =>
-    `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  /*
+    Tanggal terkunci sebagai HARI WIB + panjang tayang dari jendelanya.
+    ⚠️ Bukan `startDate.slice(0, 10)`: kolomnya TIMESTAMPTZ, dan `end_date`
+    akhir-eksklusif — potongan mentah dulu menampilkan jendela 1 hari sebagai
+    "2026-10-12 – 2026-10-13". `duration` juga bisa berbohong; panjang tayang
+    diturunkan dari start→end (`airingDayCount`), `duration` cuma cadangan.
+  */
+  const lockedYmd = entry.startDate ? toWibYmd(new Date(entry.startDate)) : null;
+  const lockedDays = airingDayCount(entry.startDate, entry.endDate) ?? entry.duration ?? 1;
+  const lockedFits = lockedDateFitsHorizon(lockedYmd);
 
   /*
     ⚠️ `released` TIDAK LAGI MEMAJANG KALENDER — jangan dikembalikan.
@@ -457,6 +475,8 @@ export function JadwalDanBayarPage() {
         isBusy={isWorking}
         orderLabel={`${entry.title} · #${entry.bookingId}`}
         title={t(seg.key, seg.vars)}
+        summary={<ReservationSummary startYmd={picked} days={entry.duration || 1} />}
+        mobileBarInfo={<MobileBarInfo total={money.total} />}
         calendar={
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-2">
@@ -481,6 +501,7 @@ export function JadwalDanBayarPage() {
               mode={entry.distributionType === 'kilat' ? 'kilat' : 'regular'}
               value={picked}
               onChange={setPicked}
+              showSummary={false}
             />
           </div>
         }
@@ -533,59 +554,36 @@ export function JadwalDanBayarPage() {
         subtitle={creditPhase === 'stopped'
           ? t('bannerSubCreditStopped')
           : creditPhase ? t('bannerSubAiringOnCredit') : t('paymentPhaseSubtitle')}
+        summary={<ReservationSummary startYmd={lockedYmd} days={lockedDays} />}
+        mobileBarInfo={
+          <MobileBarInfo
+            total={billedAmount ?? money.total}
+            seconds={!creditPhase && state.showCountdown ? timeLeft : null}
+          />
+        }
         calendar={
-          <div className="space-y-4">
-            {creditPhase ? (
-              <div className="flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                <CreditCard className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-                <p className="text-sm font-medium text-amber-950">
-                  {creditPhase === 'stopped'
-                    ? t('bannerTitleCreditStopped')
-                    : creditPhase === 'ended'
-                      ? t('bannerTitleCreditEnded')
-                      : t('bannerTitleAiringOnCredit')}
-                </p>
-              </div>
-            ) : state.showCountdown && timeLeft !== null ? (
-              <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-5 text-center space-y-1.5 shadow-2xs">
-                <div className="inline-flex items-center gap-2 text-2xl md:text-3xl font-bold text-jfu-primary tabular-nums">
-                  <Clock className="w-6 h-6 text-jfu-primary" /> {mmss(timeLeft)}
-                </div>
-                <p className="text-xs font-medium text-slate-600">
-                  {t('scheduleHoldHint')}
-                </p>
-              </div>
-            ) : (
-              <div className="flex items-start gap-2.5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <Pin className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
-                <p className="text-sm text-slate-700">
-                  {t('bookingStatusAwaitingAdminSchedule')}
-                </p>
-              </div>
-            )}
-
-            {entry.startDate && (
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2 shadow-2xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
-                    Jadwal Tayang Terkunci
-                  </span>
-                  <span className="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-lg bg-blue-50 border border-blue-100 text-jfu-primary">
-                    {entry.duration || 1} {t('days')}
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-800">
-                  <Calendar className="w-4 h-4 text-jfu-primary shrink-0" />
-                  <span>
-                    {entry.startDate.slice(0, 10)}
-                    {entry.endDate ? ` – ${entry.endDate.slice(0, 10)}` : ''}
-                  </span>
-                  <span className="text-slate-300">•</span>
-                  <span className="text-xs font-normal text-slate-500">{t('airingStartsAt')}</span>
-                </div>
-              </div>
-            )}
-          </div>
+          /*
+            Kalender beku — bentuk yang sama dengan saat memilih. Kredit yang
+            sudah tayang dan jadwal admin jauh ke depan jatuh ke kartu teks.
+          */
+          lockedYmd && lockedFits ? (
+            <SchedulePicker
+              availability={availability}
+              duration={lockedDays}
+              mode={entry.distributionType === 'kilat' ? 'kilat' : 'regular'}
+              value={null}
+              onChange={() => {}}
+              lockedYmd={lockedYmd}
+            />
+          ) : lockedYmd ? (
+            <LockedScheduleCard
+              startYmd={lockedYmd}
+              days={lockedDays}
+              outsideCalendar={lockedYmd > toWibYmd(new Date())}
+            />
+          ) : (
+            <p className="text-sm text-slate-500">{t('summaryDateNotPicked')}</p>
+          )
         }
         cost={
           <CostBreakdown
@@ -598,16 +596,29 @@ export function JadwalDanBayarPage() {
           />
         }
         bottomNotice={
-          // Kredit: "tim kami akan mengonfirmasi jadwalnya" salah — jadwalnya
-          // sudah pasti. Subjudul di atas sudah menyebut yang berlaku.
-          creditPhase ? null : (
-            <p className="text-xs text-slate-500 text-center leading-relaxed">
-              {state.showCountdown ? t('timerConsequenceNote') : t('slotHeldByAdminNote')}
-            </p>
+          /*
+            Kredit: tanpa countdown dan tanpa "tim kami akan mengonfirmasi
+            jadwalnya" — jadwalnya sudah pasti, tagihan tempo tanpa tenggat (K3).
+          */
+          creditPhase ? (
+            <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3">
+              <CreditCard className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <p className="text-sm font-medium text-amber-950">
+                {creditPhase === 'stopped'
+                  ? t('bannerTitleCreditStopped')
+                  : creditPhase === 'ended'
+                    ? t('bannerTitleCreditEnded')
+                    : t('bannerTitleAiringOnCredit')}
+              </p>
+            </div>
+          ) : state.showCountdown && timeLeft !== null ? (
+            <HoldCountdown seconds={timeLeft} />
+          ) : (
+            <AdminHoldNote />
           )
         }
         cta={
-          <div className="space-y-2.5 pt-1">
+          <>
             {/*
               ⚠️ `payUrl` HANYA PENANDA KEBERADAAN, JANGAN PERNAH JADI `href`.
 
@@ -643,7 +654,10 @@ export function JadwalDanBayarPage() {
                 {t('billNotIssuedYet')}
               </p>
             )}
-            {state.canCancel && (
+          </>
+        }
+        secondaryActions={
+          state.canCancel ? (
               <button
                 type="button"
                 onClick={handleCancel}
@@ -653,8 +667,7 @@ export function JadwalDanBayarPage() {
                 {isWorking ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 {t('cancelOrderTitle')}
               </button>
-            )}
-          </div>
+          ) : undefined
         }
       />
     );

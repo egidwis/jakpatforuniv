@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Loader2, Info, Lock, RefreshCw } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { ScheduleReservationLayout } from './schedule/ScheduleReservationLayout';
+import { ReservationSummary, MobileBarInfo } from './schedule/ReservationParts';
 import { CostBreakdown } from './CostBreakdown';
 import { calculateTotalCost } from '../utils/cost-calculator';
 import { orderMoneyLines } from '../utils/orderMoneyLines';
@@ -124,8 +125,11 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
       onBack={onBack}
       backLabel={exitMode === 'orders' ? t('backToOrders') : t('backButton')}
       isBusy={isConfirming}
+      embedded
       orderLabel={formData.title || undefined}
       title={mode === 'kilat' ? t('kilatScheduleTitle') : t(seg.key, seg.vars)}
+      summary={<ReservationSummary startYmd={selected} days={duration} />}
+      mobileBarInfo={<MobileBarInfo total={cost.totalCost} />}
       calendar={
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-2">
@@ -156,6 +160,7 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
             mode={mode}
             value={selected}
             onChange={handleSelect}
+            showSummary={false}
           />
         </div>
       }
