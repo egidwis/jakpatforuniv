@@ -5424,6 +5424,30 @@ export const fetchScheduleSiblings = async (
   return fetchAdSchedules(data.submission_id);
 };
 
+/**
+ * `ad_schedules.id` jadwal ordinal 1 sebuah ORDER — jembatan dari rute lama
+ * berkunci order (`/dashboard/payment/:submissionId`) ke halaman Jadwal & Bayar
+ * yang berkunci jadwal.
+ *
+ * Aman dipakai sebagai satu-satunya pintu: setiap order punya baris ordinal 1
+ * sejak trigger sinkron (diverifikasi 10 Okt 2026: 367/367 order 120 hari
+ * terakhir), termasuk order yang belum bertanggal. Barisnya di-upsert, jadi
+ * id-nya tetap sesudah tanggal dipilih ulang.
+ *
+ * `null` = tidak ada (atau ditolak RLS) — pemanggil menampilkan "tidak
+ * ditemukan", bukan menebak.
+ */
+export const fetchFirstScheduleId = async (submissionId: string): Promise<string | null> => {
+  const { data, error } = await supabase
+    .from('ad_schedules')
+    .select('id')
+    .eq('submission_id', submissionId)
+    .eq('ordinal', 1)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.id ?? null;
+};
+
 
 /** Satu PERISTIWA TAGIHAN — satu `payment_id`, bukan satu baris tabel. */
 export interface ScheduleInvoice {

@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Info, Lock, CreditCard, RefreshCw, AlertTriangle, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Loader2, Info, Lock, CreditCard, RefreshCw, AlertTriangle, CheckCircle, CalendarDays } from 'lucide-react';
 import {
   fetchAdScheduleById,
   fetchScheduleSiblings,
@@ -24,7 +24,7 @@ import {
   MobileBarInfo,
 } from '../../components/schedule/ReservationParts';
 import { lockedDateFitsHorizon } from '../../utils/scheduleHorizon';
-import { toWibYmd } from '../../utils/airing-window';
+import { toWibYmd, toAiringStartIso, isPaymentTooLateForDate } from '../../utils/airing-window';
 import { airingDayCount } from './schedule/scheduleModel';
 import { useSlotAvailability } from '../../hooks/useSlotAvailability';
 import { scheduleLockGate } from '../../utils/scheduleLockGate';
@@ -33,36 +33,50 @@ import { schedulePageState } from '../../utils/schedulePageState';
 import { expiryPlanFor } from '../../utils/scheduleExpiry';
 import { segmentTitleOf } from '../../utils/segmentTitle';
 import { deriveScheduleMoney } from '../../utils/scheduleMoney';
-import { slotReleaseDeadline } from '../../utils/slotHold';
+import { slotReleaseDeadline, isSlotHoldReleased } from '../../utils/slotHold';
 import { payLinkPath } from '../../utils/payLink';
 import { creditPhaseOf } from '../../components/status/scheduleAxes';
+import { isAutoReviewed } from '../../components/status/deriveOrderUiState';
+import { createPayment, GroupBillError } from '../../utils/payment';
+import { shouldAutoMint, canRepickInPlace, billExpiryFor } from '../../utils/jadwalBayarGates';
+import { repickEstimate } from '../../utils/repickPrice';
+import { formatIDR } from '../../utils/currency';
 
 /**
- * Halaman terpusat "Jadwal & Bayar" — berkunci JADWAL, bukan order.
+ * Halaman "Jadwal & Bayar" — SATU halaman untuk memilih, membayar, dan memilih
+ * ulang, berkunci JADWAL. Rute lama berkunci order (`/dashboard/payment/:id`)
+ * kini hanya menerjemahkan order → jadwal ordinal 1 lalu mendarat di sini.
  *
  * ⚠️ RUTENYA MEMBAWA `ad_schedules.id`, dan itu BUKAN kunci yang dipakai aksi
  * mana pun di bawah. Tiga kunci bertetangga yang semuanya UUID:
  *
- *   `ad_schedules.id` → rute & `payLinkUrl`
- *   `submission_id`   → `fetchAdSchedules`, `releaseExpiredSlot`
+ *   `ad_schedules.id` → rute & `payLinkPath`
+ *   `submission_id`   → `fetchAdSchedules`, `releaseExpiredSlot`, `createPayment`
  *   `source_id`       → `cancelSchedule`, `invoices.extend_id`
  *
  * Yang salah TIDAK PERNAH error — ia cuma tidak menemukan baris. Karena itu
- * halaman ini memuat `AdScheduleEntry` UTUH lebih dulu (`fetchAdScheduleById`)
- * dan menolak merender apa pun sebelum entry-nya ada.
+ * halaman ini memuat `AdScheduleEntry` UTUH lebih dulu dan menolak merender
+ * apa pun sebelum entry-nya ada.
  *
  * ⚠️ KEADAANNYA PUNYA NAMA (`schedulePageState`), bukan disimpulkan dari
- * `isExpired` di tengah render seperti `PaymentCheckoutPage`. Tanpa itu layar
- * berkedip antar-bentuk saat countdown menyentuh nol.
+ * `isExpired` di tengah render. Keputusan uangnya (terbitkan tagihan? boleh
+ * pilih ulang di tempat?) hidup di `jadwalBayarGates.ts`, teruji tanpa render.
  *
  * ⚠️ KEDALUWARSA MEMILIH PRIMITIF (`expiryPlanFor`), tidak memanggil
  * `releaseExpiredSlot` begitu saja: primitif itu berlingkup ORDER dan akan ikut
  * mematikan tagihan jadwal SAUDARA.
+ *
+ * ⚠️ TAGIHAN TERBIT DI SINI, SATU PEMICU (keputusan 19 Agu 2026). Tidak di
+ * wizard, tidak di fungsi rebook. Pilih ulang di tempat memindahkan tanggal,
+ * memuat ulang, lalu pemicu yang SAMA menerbitkan tagihan untuk tanggal baru —
+ * dan `create-payment.js` mencabut tagihan lama jadwal ini (tanggalnya beda,
+ * `is_stale`) sebelum mencetak yang baru.
  */
 export function JadwalDanBayarPage() {
   const { scheduleId } = useParams<{ scheduleId: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
 
   const [entry, setEntry] = useState<AdScheduleEntry | null>(null);
   const [siblings, setSiblings] = useState<AdScheduleEntry[]>([]);
@@ -77,18 +91,41 @@ export function JadwalDanBayarPage() {
     `payLinkPath(entry.id)`.
   */
   const [hasOpenBill, setHasOpenBill] = useState(false);
+  /** Tagihan jadwal ini BERHASIL terbaca. Gagal baca bukan bukti "belum ada". */
+  const [billingLoaded, setBillingLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [isWorking, setIsWorking] = useState(false);
+  const [isMinting, setIsMinting] = useState(false);
+  const [isCheckingPayment, setIsCheckingPayment] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
+  /**
+   * Kalender hidup lagi di keadaan bayar yang lewat 14.00 ("Pilih Tanggal
+   * Lain"). `?pilih=1` datang dari tombol "Jadwalkan Ulang" di dashboard,
+   * supaya peneliti tidak perlu mengklik niat yang sama dua kali.
+   */
+  const [repickMode, setRepickMode] = useState(searchParams.get('pilih') === '1');
+  /** (jadwal, tanggal) yang sudah dicoba diterbitkan tagihannya di sesi ini. */
+  const mintAttemptedFor = useRef<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
 
-  // Kuota ikut jenis distribusi jadwal ini. ⚠️ TANPA `excludeSubmissionId` untuk
-  // perpanjangan: jadwal pertama masih memakan kuota harinya, dan
-  // mengecualikannya membuat hari penuh tampak lowong sampai
-  // `assert_daily_ad_quota_free` (sql/86) menolaknya di server.
+  const repickAllowed = !!entry && !!submission && canRepickInPlace({
+    ordinal: entry.ordinal,
+    siblingCount: siblings.length || 1,
+    submissionStatus: submission.submission_status,
+    scheduleStatus: entry.status,
+    autoReviewed: isAutoReviewed(submission),
+  });
+
+  // Kuota ikut jenis distribusi jadwal ini. ⚠️ Order sendiri hanya dikecualikan
+  // saat PILIH ULANG order berjadwal tunggal — tanggal yang sedang ia lepas
+  // tidak boleh tampak penuh oleh dirinya sendiri. Untuk perpanjangan jangan:
+  // jadwal pertama masih memakan kuota harinya (`assert_daily_ad_quota_free`).
   const availability = useSlotAvailability(
     entry?.distributionType === 'kilat' ? 'kilat' : 'regular',
+    repickAllowed ? entry?.submissionId : undefined,
   );
 
   const load = useCallback(async () => {
@@ -106,7 +143,10 @@ export function JadwalDanBayarPage() {
       // primitif dari jumlahnya, bukan dari ordinal semata.
       const [sibs, billings, sub] = await Promise.all([
         fetchScheduleSiblings(scheduleId),
-        fetchScheduleBilling(found.submissionId).catch(() => null),
+        fetchScheduleBilling(found.submissionId).catch((e) => {
+          console.error('Gagal memuat tagihan jadwal:', e);
+          return null;
+        }),
         getFormSubmissionById(found.submissionId).catch(() => null),
       ]);
       setSiblings(sibs);
@@ -116,6 +156,7 @@ export function JadwalDanBayarPage() {
       setBilledAmount(own?.openInvoice?.amount ?? null);
       setBilledVoucher(own?.openInvoice?.voucherCode ?? null);
       setHasOpenBill(!!own?.openInvoice);
+      setBillingLoaded(billings !== null);
     } catch (e) {
       console.error('Gagal memuat jadwal:', e);
       toast.error(t('paymentLoadError'));
@@ -147,6 +188,28 @@ export function JadwalDanBayarPage() {
         owedOnCredit,
       })
     : null;
+
+  /*
+    Tanggal terkunci sebagai HARI WIB + panjang tayang dari jendelanya.
+    ⚠️ Bukan `startDate.slice(0, 10)`: kolomnya TIMESTAMPTZ, dan `end_date`
+    akhir-eksklusif — potongan mentah dulu menampilkan jendela 1 hari sebagai
+    "2026-10-12 – 2026-10-13". `duration` juga bisa berbohong; panjang tayang
+    diturunkan dari start→end (`airingDayCount`), `duration` cuma cadangan.
+  */
+  const lockedYmd = entry?.startDate ? toWibYmd(new Date(entry.startDate)) : null;
+  const lockedDays = entry ? (airingDayCount(entry.startDate, entry.endDate) ?? entry.duration ?? 1) : 1;
+  const lockedFits = lockedDateFitsHorizon(lockedYmd);
+  /**
+   * Batas bayar 14.00 WIB hari tayang sudah lewat. ⚠️ MURNI TAMPILAN — yang
+   * habis bukan reservasinya, melainkan waktu admin menyiapkan halaman iklan.
+   * Tidak pernah dipakai untuk melepas slot.
+   */
+  const tooLate = state?.screen === 'awaiting_payment' && !owedOnCredit
+    && !!lockedYmd && isPaymentTooLateForDate(lockedYmd);
+  const holdExpired = !!entry && isSlotHoldReleased({
+    slotBookedBy: entry.slotBookedBy,
+    slotReservedAt: entry.slotReservedAt,
+  });
 
   /**
    * Hold habis — lepas jadwal ini, dan HANYA jadwal ini.
@@ -205,27 +268,161 @@ export function JadwalDanBayarPage() {
   }, [entry, state?.showCountdown, handleExpired]);
 
   /**
-   * Kunci tanggal — HANYA untuk ordinal 1 yang belum pernah bertanggal.
+   * Sudah lunas? Order ke-1 dibaca dari `form_submissions` (tempat webhook
+   * menulis), perpanjangan dari barisnya sendiri. Ordinal 1 di `ad_schedules`
+   * memang ikut tersinkron, tapi sumbernya yang dibaca — satu lompatan lebih
+   * sedikit untuk salah.
+   */
+  const fetchIsPaid = useCallback(async (): Promise<boolean> => {
+    if (!entry) return false;
+    const PAID = ['paid', 'completed'];
+    if (entry.ordinal === 1) {
+      const sub = await getFormSubmissionById(entry.submissionId);
+      return PAID.includes((sub?.payment_status || '').toLowerCase());
+    }
+    const fresh = await fetchAdScheduleById(entry.id);
+    return PAID.includes((fresh?.paymentStatus || '').toLowerCase());
+  }, [entry]);
+
+  // Polling lunas — peneliti biasanya membayar di tab lain.
+  useEffect(() => {
+    if (isLoading || state?.screen !== 'awaiting_payment') return;
+    const poll = setInterval(async () => {
+      try {
+        if (await fetchIsPaid()) {
+          clearInterval(poll);
+          navigate('/dashboard?payment_status=paid');
+        }
+      } catch (e) {
+        console.warn('Payment poll failed, will retry:', e);
+      }
+    }, 5000);
+    return () => clearInterval(poll);
+  }, [isLoading, state?.screen, fetchIsPaid, navigate]);
+
+  const handleCheckPayment = async () => {
+    setIsCheckingPayment(true);
+    try {
+      if (await fetchIsPaid()) {
+        toast.success(t('checkoutPaidSuccess'));
+        setTimeout(() => navigate('/dashboard?payment_status=paid'), 1000);
+      } else {
+        toast.info(t('checkoutNotPaidYet'));
+      }
+    } catch {
+      toast.error(t('checkoutCheckError'));
+    } finally {
+      setIsCheckingPayment(false);
+    }
+  };
+
+  /** Terbitkan tagihan order ke-1. Tanpa `scheduleId` = jalur ordinal 1 server. */
+  const mintBill = useCallback(async () => {
+    if (!entry || !submission) throw new Error('entry/submission belum termuat');
+    return createPayment({
+      formSubmissionId: entry.submissionId,
+      // Server menghitung ulang nominalnya dari DB; angka ini tidak dipercaya.
+      amount: submission.total_cost || 0,
+      customerInfo: {
+        title: submission.title || 'Survey',
+        fullName: submission.full_name || 'Pengguna',
+        email: submission.email || 'user@example.com',
+        phoneNumber: submission.phone_number || '-',
+      },
+      expiredAt: billExpiryFor({
+        slotBookedBy: entry.slotBookedBy,
+        slotReservedAt: entry.slotReservedAt,
+        lockedYmd,
+      }).toISOString(),
+    });
+  }, [entry, submission, lockedYmd]);
+
+  /*
+    ── SATU PEMICU PENERBITAN TAGIHAN ──
+    Syaratnya di `shouldAutoMint` (teruji). Ref dikunci per (jadwal, tanggal):
+    satu percobaan per tanggal supaya kegagalan yang tidak terbaca hidup tidak
+    mengulang ke DOKU tanpa henti, tapi pilih ulang tanggal di tempat tetap
+    menerbitkan lagi. Kegagalan senyap — tombol bayar jadi jaring pengamannya.
+  */
+  const autoMint = !!entry && !!state && shouldAutoMint({
+    screen: state.screen,
+    ordinal: entry.ordinal,
+    slotBookedBy: entry.slotBookedBy,
+    paymentStatus: entry.paymentStatus,
+    billingLoaded,
+    hasOpenBill,
+    owedOnCredit,
+    tooLate,
+    holdExpired,
+  });
+  useEffect(() => {
+    if (!autoMint || !entry || !submission || isLoading) return;
+    const key = `${entry.id}:${entry.startDate}`;
+    if (mintAttemptedFor.current === key) return;
+    mintAttemptedFor.current = key;
+
+    setIsMinting(true);
+    (async () => {
+      try {
+        await mintBill();
+        if (mounted.current) await load();
+      } catch (e) {
+        /*
+          ⚠️ 409 TAGIHAN GABUNGAN BUKAN KEGAGALAN: pesanan ini sudah ditanggung
+          satu link bersama. `/bayar/<id>` menunjuk ke sana, jadi cukup nyatakan
+          bahwa tagihannya ADA.
+        */
+        if (e instanceof GroupBillError) {
+          if (mounted.current) setHasOpenBill(true);
+          return;
+        }
+        console.warn('[jadwal-bayar] Gagal menerbitkan tagihan otomatis:', e);
+      } finally {
+        if (mounted.current) setIsMinting(false);
+      }
+    })();
+  }, [autoMint, entry, submission, isLoading, mintBill, load]);
+
+  /**
+   * Bayar saat tagihan BELUM terbit (pemicu otomatis gagal, atau lewat 14.00
+   * dan peneliti memilih "tetap bayar"). Tab dibuka sebelum await supaya tidak
+   * kena popup blocker, lalu diarahkan ke `/bayar/<id>` — resolver yang
+   * berwenang, bukan URL DOKU mentah dari respons.
+   */
+  const handlePayWithoutBill = async () => {
+    if (!entry) return;
+    const w = window.open('about:blank', '_blank');
+    setIsMinting(true);
+    try {
+      await mintBill().catch((e) => {
+        if (e instanceof GroupBillError) return null;
+        throw e;
+      });
+      const href = payLinkPath(entry.id);
+      if (w) w.location.href = href;
+      else window.location.href = href;
+      await load();
+    } catch (e) {
+      console.error('Gagal menerbitkan tagihan:', e);
+      w?.close();
+      toast.error(t('checkoutPaymentError'));
+    } finally {
+      setIsMinting(false);
+    }
+  };
+
+  /**
+   * Kunci tanggal (keadaan `pick`) atau pilih ulang tanggal (waktu habis /
+   * lewat 14.00) — SATU primitif, `rebookSlotForSubmission`, berlingkup ORDER.
    *
-   * ⚠️ LINGKUPNYA SEKARANG TUNGGAL, dan itu hasil penghapusan sadar.
-   * Dulu di sini ada dua primitif yang dipilih `rebookPlanFor`:
-   * `rebookSlotForSubmission` (lingkup ORDER) dan `rebookSchedule` (lingkup
-   * JADWAL). Yang kedua DIHAPUS 2026-09-18 — ia satu-satunya jalur yang bisa
-   * menghidupkan kembali sebuah jadwal tanpa menerbitkan tagihannya, dan itu
-   * persis bug yang membuat peneliti terdampar pada kalimat tentang admin.
+   * ⚠️ HANYA ORDER BERJADWAL TUNGGAL (`canRepickInPlace`) atau ordinal 1 yang
+   * belum pernah bertanggal. `rebookSchedule` (lingkup jadwal) DIHAPUS
+   * 2026-09-18: ia menghidupkan jadwal tanpa menerbitkan tagihan.
    *
-   * Sejak itu layar `released` tidak lagi memajang kalender: pembatalan
-   * mengarahkan peneliti ke dashboard, dan pemesanan berikutnya lahir lewat
-   * `JadwalBaruPage` yang selalu membuat jadwal DAN tagihannya bersama.
-   *
-   * Yang tersisa di sini cuma keadaan `pick` — jadwal ordinal 1 yang belum
-   * punya tanggal sama sekali. Terukur 17 Sep: 105 baris semacam itu, SEMUANYA
-   * ordinal 1; nol perpanjangan, karena `create_ad_schedule` mewajibkan
-   * tanggal. Jadi `rebookSlotForSubmission` (lingkup ORDER) memang satu-satunya
-   * yang benar di sini, dan tidak ada lagi percabangan yang bisa salah pilih.
-   *
-   * Gerbangnya tetap `scheduleLockGate` supaya keempat pemeriksaannya tidak
-   * bercabang dari pemanggil lain.
+   * ⚠️ MEMUAT ULANG DI TEMPAT — JANGAN NAVIGATE. Dulu keadaan `pick` melempar
+   * ke `/payment/<id>` (tanpa `/dashboard`, rute tak ada, halaman kosong,
+   * tagihan tak pernah terbit — 2bb1244). Sesudah `load()`, keadaannya
+   * `awaiting_payment` dan pemicu tunggal di atas menerbitkan tagihannya.
    */
   const handleLock = async () => {
     if (!entry) return;
@@ -243,35 +440,11 @@ export function JadwalDanBayarPage() {
 
     setIsWorking(true);
     try {
-      /*
-        ⚠️ TANPA PERCABANGAN LINGKUP LAGI. Layar ini kini hanya tampil pada
-        keadaan `pick`, yang eksklusif milik ordinal 1 — jadi baris ORDER
-        (`form_submissions`) memang tempat tanggalnya tinggal.
-
-        Perpanjangan tidak pernah sampai ke sini: ia selalu lahir bertanggal
-        lewat `create_ad_schedule`, dan kalau reservasinya lepas, peneliti
-        memesan lagi lewat `JadwalBaruPage` — bukan di layar ini.
-      */
       await rebookSlotForSubmission(entry.submissionId, verdict.ymd, verdict.duration);
       toast.success(t('rebookSuccess'));
       setPicked(null);
-      /*
-        ⚠️ MENYUSUL KE HALAMAN BAYAR — JANGAN GANTI DENGAN `load()`.
-
-        `rebookSlotForSubmission` hanya mengunci TANGGAL; ia tidak menerbitkan
-        tagihan, dan itu memang benar (lingkup ORDER). Dulu baris ini `load()`,
-        jadi peneliti tertinggal di layar ini dengan jadwal `waiting_payment`
-        yang tagihannya tidak pernah lahir — kembaran persis bug 17 Sep, hanya
-        lewat pintu `pick` alih-alih `released`.
-
-        `/payment/:submissionId` punya efek auto-terbit yang menerbitkan
-        tagihannya begitu halaman dimuat, dengan umur link yang sudah dipatok
-        ke sisa hold. Satu pintu penerbitan tagihan, sama seperti JadwalBaruPage.
-
-        `replace` supaya tombol Back tidak memulangkan peneliti ke kalender
-        untuk tanggal yang baru saja ia kunci.
-      */
-      navigate(`/payment/${entry.submissionId}`, { replace: true });
+      setRepickMode(false);
+      await load();
     } catch (e) {
       console.error('Gagal mengunci tanggal:', e);
       if (isDailyQuotaFullError(e)) {
@@ -300,19 +473,9 @@ export function JadwalDanBayarPage() {
         id: entry.id,
       });
       /*
-        ⚠️ PULANG KE DASHBOARD, BUKAN MEMUAT ULANG DI TEMPAT — ini inti
-        perbaikan 2026-09-18, dan urutannya penting.
-
-        Dulu di sini `await load()`, yang membawa layar ke keadaan `released`
-        dan memajang kalender lagi. Kalender itulah pintu ke `rebookSchedule()`:
-        memilih tanggal di sana menghidupkan kembali jadwalnya TANPA
-        menerbitkan tagihan, dan peneliti terdampar pada "tagihan sedang
-        disiapkan tim kami" — kalimat tentang admin, di tengah fitur yang
-        justru dibuat supaya admin tidak diperlukan.
-
-        Sekarang pembatalan selesai di dashboard. Pesanan berikutnya lahir
-        lewat `JadwalBaruPage`, satu-satunya jalur yang membuat jadwal DAN
-        tagihannya bersama-sama.
+        ⚠️ PULANG KE DASHBOARD, BUKAN MEMUAT ULANG DI TEMPAT (perbaikan
+        2026-09-18). Pembatalan bukan "waktu habis": `canRepickInPlace` menolak
+        `slot_cancelled`, dan pesanan berikutnya lahir lewat `JadwalBaruPage`.
       */
       toast.success(t('cancelScheduleSuccess'));
       navigate('/dashboard', { replace: true });
@@ -323,7 +486,7 @@ export function JadwalDanBayarPage() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading && !entry) {
     return (
       <div className="pt-24 flex items-center justify-center min-h-[60vh]">
         <Loader2 className="w-6 h-6 animate-spin text-jfu-primary" />
@@ -349,202 +512,324 @@ export function JadwalDanBayarPage() {
 
   /*
     ⚠️ VOUCHER DIWARISKAN SAAT MENAGIH, BUKAN SAAT MENJADWALKAN.
-
-    `ad_schedules.voucher_code` untuk perpanjangan bernilai NULL — servernya
-    yang jatuh ke voucher ORDER lewat presedensi `billingVoucher ||
-    scheduleVoucher || base.voucher_code` (`create-payment.js`). Jadi
-    `deriveScheduleMoney` menghitung ulang TANPA voucher dan memulangkan baris
-    yang tidak mungkin menjumlah ke tagihannya.
-
-    Terukur pada #2KT24KKK: barisnya berbunyi Rp 300.000 + Rp 33.000, sementara
-    tagihan sungguhannya Rp 1.110 — peneliti melihat total yang membantah
-    rinciannya sendiri, tepat di layar tempat ia diminta membayar.
-
-    `invoices.voucher_code` menyimpan voucher yang BENAR-BENAR dipakai menagih,
-    jadi ia yang dioper. Sesudah ini baris-barisnya menjumlah persis ke
-    `billedAmount` (Rp 300.000 − Rp 299.000 + Rp 110).
+    `ad_schedules.voucher_code` perpanjangan bernilai NULL — servernya jatuh ke
+    voucher ORDER (`billingVoucher || scheduleVoucher || base.voucher_code`).
+    `invoices.voucher_code` menyimpan yang BENAR-BENAR dipakai menagih, jadi ia
+    yang dioper; tanpa itu rincian membantah totalnya sendiri (#2KT24KKK).
   */
-  let money = deriveScheduleMoney(
+  const money = deriveScheduleMoney(
     billedVoucher && !entry.voucherCode
       ? { ...entry, voucherCode: billedVoucher }
       : entry,
     {
       question_count: submission?.question_count ?? null,
       distribution_type: entry.distributionType,
-      /*
-        Cadangan terakhir dari presedensi server: tagihan > jadwal > ORDER.
-        Dua tingkat pertama sudah ditangani di atas; yang ini dipegang
-        `effectiveVoucher()` di dalam `deriveScheduleMoney`, sehingga layar
-        ini tidak lagi jadi satu-satunya tempat aturannya ditegakkan.
-      */
       voucher_code: submission?.voucher_code ?? null,
     },
   );
-
-  // Jika jadwal lama statusnya cancelled/released dan user sedang memilih jadwal baru (rebooking ordinal 1),
-  // deriveScheduleMoney menghasilkan 0 karena jadwal lama non-aktif.
-  // Gunakan data submission aktif agar menampilkan nominal estimasi sebenarnya, bukan Rp 0.
-  if (money.total === 0 && state.screen === 'pick' && submission) {
-    const subTotal = Number(submission.total_cost) || 0;
-    /*
-      ⚠️ TARIF DILEPAS = HARGA LAMA TIDAK BERLAKU LAGI (sql/103).
-      Slot yang dilepas/dibatalkan kehilangan `rate_locked_at`; pemesanan
-      ulangnya dikunci ke tarif HARI ITU, dan create-payment.js menagih
-      dengan tarif itu. `total_cost` tersimpan masih harga lama, jadi
-      memajangnya di sini menjanjikan angka yang tidak akan ditagih. Untuk
-      kasus itu: estimasi pada "sekarang" (totalCost 0 = cabang estimasi).
-    */
-    const rateReleased = entry.rateLockedAt == null;
-    if (subTotal > 0 || rateReleased) {
-      const activeEntry: AdScheduleEntry = {
-        ...entry,
-        status: 'waiting_payment',
-        totalCost: rateReleased ? 0 : subTotal,
-        subtotal: rateReleased ? null : (submission.subtotal ?? subTotal),
-        ppnAmount: rateReleased ? null : (submission.ppn_amount ?? 0),
-        voucherCode: billedVoucher || entry.voucherCode || submission.voucher_code || null,
-      };
-      money = deriveScheduleMoney(activeEntry, {
-        question_count: submission.question_count,
-        distribution_type: submission.distribution_type,
-        voucher_code: submission.voucher_code ?? null,
-      });
-    }
-  }
-
-  // `released` tidak pernah sampai ke sini — ia pulang ke dashboard di
-  // cabangnya sendiri di bawah, jadi tinggal dua fase yang nyata.
-  const phase = state.screen === 'pick'
-    ? 'reservation' as const
-    : 'payment' as const;
-  const seg = segmentTitleOf({ phase, ordinal: entry.ordinal });
+  const payTotal = billedAmount ?? money.total;
 
   /*
-    Tanggal terkunci sebagai HARI WIB + panjang tayang dari jendelanya.
-    ⚠️ Bukan `startDate.slice(0, 10)`: kolomnya TIMESTAMPTZ, dan `end_date`
-    akhir-eksklusif — potongan mentah dulu menampilkan jendela 1 hari sebagai
-    "2026-10-12 – 2026-10-13". `duration` juga bisa berbohong; panjang tayang
-    diturunkan dari start→end (`airingDayCount`), `duration` cuma cadangan.
+    ⚠️ HARGA SAAT MEMILIH = TARIF HARI INI (sql/103, keputusan 10 Okt).
+    Memindahkan tanggal sebelum lunas mengunci ulang tarif ke "sekarang", dan
+    yang ditagih create-payment.js adalah angka itu — bukan `total_cost` lama.
+    Bila berbeda dari yang terakhir dilihat peneliti, dua-duanya disebut.
   */
-  const lockedYmd = entry.startDate ? toWibYmd(new Date(entry.startDate)) : null;
-  const lockedDays = airingDayCount(entry.startDate, entry.endDate) ?? entry.duration ?? 1;
-  const lockedFits = lockedDateFitsHorizon(lockedYmd);
+  const quote = submission
+    ? repickEstimate(entry, submission, { voucherCode: billedVoucher || entry.voucherCode || submission.voucher_code || null })
+    : money;
+  const previousTotal = billedAmount ?? (Number(submission?.total_cost) || 0);
+  // Order yang belum pernah bertanggal ditagih dengan instan order lahir, bukan
+  // "hari ini" (lihat `repickEstimate`) — kalimat tarif-hari-ini salah untuknya.
+  const quoteAtNow = entry.startDate != null || entry.rateLockedAt == null;
+  const priceNote = !quoteAtNow
+    ? null
+    : previousTotal > 0 && previousTotal !== quote.total
+      ? t('repickPriceChange', { old: formatIDR(previousTotal), new: formatIDR(quote.total) })
+      : t('repickPriceNote');
 
-  /*
-    ⚠️ `released` TIDAK LAGI MEMAJANG KALENDER — jangan dikembalikan.
+  const locale = language === 'en' ? 'en-US' : 'id-ID';
+  const shortDate = (ymd: string) =>
+    new Date(toAiringStartIso(ymd)).toLocaleDateString(locale, {
+      weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Jakarta',
+    });
 
-    Reservasi yang sudah lepas atau dibatalkan berhenti di sini: satu banner dan
-    satu jalan keluar ke dashboard. Kalender di layar ini dulu memanggil
-    `rebookSchedule()`, satu-satunya jalur yang menghidupkan kembali sebuah
-    jadwal TANPA menerbitkan tagihannya — jadwal hidup, tagihan mati, dan layar
-    jujur berkata "tidak ada tagihan hidup".
+  const orderLabel = `${entry.title} · #${entry.bookingId}`;
+  const mode = entry.distributionType === 'kilat' ? 'kilat' as const : 'regular' as const;
 
-    Memesan lagi sekarang lewat `JadwalBaruPage`, yang selalu memanggil
-    `create_ad_schedule` DAN `createPayment`. Satu pintu, satu urutan.
+  const primaryBtn =
+    'inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
+  const secondaryBtn =
+    'inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-6 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50';
 
-    Cabang ini WAJIB berdiri sebelum cabang `pick` di bawah, karena keduanya
-    dulu berbagi satu kondisi.
-  */
+  const calendarHeader = (
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2 text-sm text-slate-600">
+        <Info className="w-4 h-4 text-slate-400 shrink-0" />
+        <span>{t('scheduleCutoffNote')}</span>
+      </div>
+      {!availability.isLoading && availability.hasError && (
+        <button
+          type="button"
+          onClick={() => void availability.reload()}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          {t('slotAvailabilityRetry')}
+        </button>
+      )}
+    </div>
+  );
+
+  const liveCalendar = (
+    <div className="space-y-4">
+      {calendarHeader}
+      <SchedulePicker
+        availability={availability}
+        duration={entry.duration || 1}
+        mode={mode}
+        value={picked}
+        onChange={setPicked}
+        showSummary={false}
+      />
+    </div>
+  );
+
+  const lockCta = (label: string) => (
+    <button
+      type="button"
+      onClick={handleLock}
+      disabled={!picked || availability.isLoading || isWorking}
+      className={primaryBtn}
+    >
+      {isWorking ? (
+        <>
+          <Loader2 className="w-4 h-4 animate-spin" />
+          {t('lockingSlotLoading')}
+        </>
+      ) : (
+        <>
+          <Lock size={15} />
+          {label}
+        </>
+      )}
+    </button>
+  );
+
+  const quoteCost = (
+    <div className="space-y-2">
+      <CostBreakdown
+        total={quote.total}
+        lines={quote.lines}
+        note={quote.note}
+        isEstimate={quote.isEstimate}
+        variant="compact"
+        defaultOpen={false}
+      />
+      {priceNote && <p className="text-xs text-slate-500 leading-relaxed">{priceNote}</p>}
+    </div>
+  );
+
+  // ── WAKTU HABIS / DIBATALKAN ───────────────────────────────────────────
   if (state.screen === 'released') {
+    /*
+      Order berjadwal tunggal yang lepas karena WAKTU: kalender hidup di tempat,
+      bentuk halaman sama. Selain itu (dibatalkan, perpanjangan, order
+      berjadwal banyak, jalur manual) TIDAK ADA kalender — banner dan jalan
+      keluar. Kalender di layar ini dulu memanggil `rebookSchedule()`, yang
+      menghidupkan jadwal tanpa tagihan; jangan dikembalikan.
+    */
+    if (repickAllowed) {
+      return (
+        <ScheduleReservationLayout
+          onBack={() => navigate('/dashboard')}
+          backLabel={t('backToOrders')}
+          isBusy={isWorking}
+          orderLabel={orderLabel}
+          title={t('segmentReservation')}
+          alertBanner={
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+              <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                <AlertTriangle size={16} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-amber-900">{t('paymentExpiredTitle')}</h3>
+                <p className="text-xs text-amber-800 leading-relaxed mt-0.5">{t('paymentExpiredHoldBody')}</p>
+              </div>
+            </div>
+          }
+          summary={<ReservationSummary startYmd={picked} days={entry.duration || 1} />}
+          mobileBarInfo={<MobileBarInfo total={quote.total} />}
+          calendar={liveCalendar}
+          cost={quoteCost}
+          cta={lockCta(t('rebookCta'))}
+        />
+      );
+    }
+
     return (
       <div className="max-w-2xl mx-auto px-6 pt-24 space-y-5">
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start gap-2.5">
           <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
           <div>
             <p className="font-semibold">{t('rebookPickTitle')}</p>
-            <p className="text-xs text-amber-800 mt-0.5">{t('paymentExpiredHoldBody')}</p>
+            <p className="text-xs text-amber-800 mt-0.5">
+              {entry.isExtension ? t('scheduleExpiredHint') : t('cancelScheduleSuccess')}
+            </p>
           </div>
         </div>
-        <p className="text-sm text-slate-600">{t('cancelScheduleSuccess')}</p>
-        <button
-          type="button"
-          onClick={() => navigate('/dashboard')}
-          className="inline-flex items-center gap-2 rounded-xl bg-jfu-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-90"
-        >
-          <ArrowLeft className="w-4 h-4" /> {t('backToOrders')}
-        </button>
+        <div className="flex flex-wrap gap-3">
+          {entry.isExtension && (
+            <button
+              type="button"
+              onClick={() => navigate(`/dashboard/jadwal/baru/${entry.submissionId}`)}
+              className="inline-flex items-center gap-2 rounded-xl bg-jfu-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-90"
+            >
+              <CalendarDays className="w-4 h-4" /> {t('bookNewScheduleCta')}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard')}
+            className={entry.isExtension
+              ? 'inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50'
+              : 'inline-flex items-center gap-2 rounded-xl bg-jfu-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-90'}
+          >
+            <ArrowLeft className="w-4 h-4" /> {t('backToOrders')}
+          </button>
+        </div>
       </div>
     );
   }
 
+  // ── BELUM BERTANGGAL ───────────────────────────────────────────────────
   if (state.screen === 'pick') {
+    const seg = segmentTitleOf({ phase: 'reservation', ordinal: entry.ordinal });
+    /*
+      Jalur review manual: tanggalnya milik tim (keputusan 25 Agu 2026) —
+      dashboard tidak memberinya tombol pilih jadwal, dan halaman ini tidak
+      boleh menjadi jalan memutarnya.
+    */
+    const selfPick = !!submission && isAutoReviewed(submission);
     return (
       <ScheduleReservationLayout
         onBack={() => navigate('/dashboard')}
         backLabel={t('backToOrders')}
         isBusy={isWorking}
-        orderLabel={`${entry.title} · #${entry.bookingId}`}
+        orderLabel={orderLabel}
         title={t(seg.key, seg.vars)}
         summary={<ReservationSummary startYmd={picked} days={entry.duration || 1} />}
-        mobileBarInfo={<MobileBarInfo total={money.total} />}
-        calendar={
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-sm text-slate-600">
-                <Info className="w-4 h-4 text-slate-400 shrink-0" />
-                <span>{t('scheduleCutoffNote')}</span>
-              </div>
-              {!availability.isLoading && availability.hasError && (
-                <button
-                  type="button"
-                  onClick={() => void availability.reload()}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  {t('slotAvailabilityRetry')}
-                </button>
-              )}
-            </div>
-            <SchedulePicker
-              availability={availability}
-              duration={entry.duration || 1}
-              mode={entry.distributionType === 'kilat' ? 'kilat' : 'regular'}
-              value={picked}
-              onChange={setPicked}
-              showSummary={false}
-            />
-          </div>
-        }
-        cost={
-          <CostBreakdown
-            total={money.total}
-            lines={money.lines}
-            note={money.note}
-            isEstimate={money.isEstimate}
-            variant="compact"
-            defaultOpen={false}
-          />
-        }
-        cta={
-          <button
-            type="button"
-            onClick={handleLock}
-            disabled={!picked || availability.isLoading || isWorking}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isWorking ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                {t('lockingSlotLoading')}
-              </>
-            ) : (
-              <>
-                <Lock size={15} />
-                {t('scheduleLockCta')}
-              </>
-            )}
-          </button>
-        }
+        mobileBarInfo={selfPick ? <MobileBarInfo total={quote.total} /> : undefined}
+        calendar={selfPick ? liveCalendar : (
+          <p className="flex items-start gap-2 text-sm text-slate-600">
+            <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+            {t('rescheduleHandledByTeam')}
+          </p>
+        )}
+        cost={quoteCost}
+        bottomNotice={selfPick ? undefined : null}
+        cta={selfPick ? lockCta(t('scheduleLockCta')) : null}
       />
     );
   }
 
+  // ── MENUNGGU PEMBAYARAN ────────────────────────────────────────────────
   if (state.screen === 'awaiting_payment') {
+    /*
+      Lewat 14.00, slot belum dilepas: DUA pilihan (keputusan 9 Okt). "Pilih
+      tanggal lain" utama, hanya bila pilih ulang di tempat sah. Slot lama baru
+      berganti saat tanggal baru BERHASIL dikunci; sebelum itu tidak ada yang
+      dilepas.
+    */
+    const offerRepick = tooLate && repickAllowed;
+    const inRepick = offerRepick && repickMode;
+
+    if (inRepick) {
+      return (
+        <ScheduleReservationLayout
+          onBack={() => navigate('/dashboard')}
+          backLabel={t('backToOrders')}
+          isBusy={isWorking}
+          orderLabel={orderLabel}
+          title={t('rebookPickTitle')}
+          summary={
+            <ReservationSummary
+              startYmd={picked}
+              days={entry.duration || 1}
+              extraRows={lockedYmd ? [{ label: t('summaryPreviousDateLabel'), value: shortDate(lockedYmd) }] : []}
+            />
+          }
+          mobileBarInfo={<MobileBarInfo total={quote.total} />}
+          calendar={liveCalendar}
+          cost={quoteCost}
+          cta={lockCta(t('rebookCta'))}
+          secondaryActions={lockedYmd ? (
+            <button type="button" onClick={() => { setRepickMode(false); setPicked(null); }} disabled={isWorking} className={secondaryBtn}>
+              {t('keepDateCta', { date: shortDate(lockedYmd) })}
+            </button>
+          ) : undefined}
+        />
+      );
+    }
+
+    /*
+      Tombol bayar. ⚠️ `href` HANYA `payLinkPath(entry.id)` — resolver
+      `/bayar/<id>` menjawab "tagihan mana yang berwenang" SAAT DIKLIK
+      (`authoritative_payment_url`, sql/85), bukan saat link dirender. Halaman
+      ini paling rawan: countdown-nya berjalan, jarak render→klik bisa satu jam.
+    */
+    const canSelfMint = entry.ordinal === 1 && entry.slotBookedBy === 'user' && !owedOnCredit && !holdExpired;
+    const payLabel = offerRepick ? t('payAnywayCta') : t('payNow');
+    const payButton = hasOpenBill ? (
+      <a
+        href={payLinkPath(entry.id)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={offerRepick ? secondaryBtn : primaryBtn}
+      >
+        <CreditCard size={16} /> {payLabel}
+      </a>
+    ) : canSelfMint ? (
+      <button
+        type="button"
+        onClick={handlePayWithoutBill}
+        disabled={isMinting}
+        className={offerRepick ? secondaryBtn : primaryBtn}
+      >
+        {isMinting ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            {t('checkoutProcessing')}
+          </>
+        ) : (
+          <>
+            <CreditCard size={16} /> {payLabel}
+          </>
+        )}
+      </button>
+    ) : (
+      /*
+        Jadwal admin / perpanjangan yang tagihannya BELUM terbit — jalur
+        `needs_admin_invoice`. Lebih jujur mengatakan apa yang ditunggu daripada
+        tombol yang mendarat di galat resolver.
+      */
+      <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm text-slate-600">
+        {t('billNotIssuedYet')}
+      </p>
+    );
+
+    const repickButton = (
+      <button type="button" onClick={() => setRepickMode(true)} className={primaryBtn}>
+        <CalendarDays size={16} /> {t('repickOtherDateCta')}
+      </button>
+    );
+
     return (
       <ScheduleReservationLayout
         onBack={() => navigate('/dashboard')}
         backLabel={t('backToOrders')}
-        orderLabel={`${entry.title} · #${entry.bookingId}`}
+        isBusy={isWorking}
+        orderLabel={orderLabel}
         title={creditPhase ? t('creditPageTitle') : t('paymentPhaseTitle')}
         /*
           ⚠️ Kredit TIDAK boleh membaca "Bayar sebelum batas waktu untuk
@@ -554,10 +839,21 @@ export function JadwalDanBayarPage() {
         subtitle={creditPhase === 'stopped'
           ? t('bannerSubCreditStopped')
           : creditPhase ? t('bannerSubAiringOnCredit') : t('paymentPhaseSubtitle')}
+        alertBanner={tooLate ? (
+          <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/80 px-3.5 py-3 shadow-2xs">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <p className="text-xs font-semibold text-amber-900">{t('paymentPastCutoffTitle')}</p>
+              <p className="text-xs text-amber-800 leading-relaxed">
+                {offerRepick ? t('pastCutoffRepickBody') : t('paymentPastCutoffBody')}
+              </p>
+            </div>
+          </div>
+        ) : undefined}
         summary={<ReservationSummary startYmd={lockedYmd} days={lockedDays} />}
         mobileBarInfo={
           <MobileBarInfo
-            total={billedAmount ?? money.total}
+            total={payTotal}
             seconds={!creditPhase && state.showCountdown ? timeLeft : null}
           />
         }
@@ -570,7 +866,7 @@ export function JadwalDanBayarPage() {
             <SchedulePicker
               availability={availability}
               duration={lockedDays}
-              mode={entry.distributionType === 'kilat' ? 'kilat' : 'regular'}
+              mode={mode}
               value={null}
               onChange={() => {}}
               lockedYmd={lockedYmd}
@@ -587,7 +883,7 @@ export function JadwalDanBayarPage() {
         }
         cost={
           <CostBreakdown
-            total={billedAmount ?? money.total}
+            total={payTotal}
             lines={money.lines}
             note={money.note}
             isEstimate={billedAmount === null && money.isEstimate}
@@ -617,57 +913,32 @@ export function JadwalDanBayarPage() {
             <AdminHoldNote />
           )
         }
-        cta={
-          <>
-            {/*
-              ⚠️ `payUrl` HANYA PENANDA KEBERADAAN, JANGAN PERNAH JADI `href`.
-
-              Sebelumnya baris ini berbunyi `href={payUrl || payLinkPath(...)}`,
-              dan URL DOKU mentah yang MENANG. Itu melewati resolver
-              `/bayar/<id>` — satu-satunya tempat yang menjawab "tagihan mana
-              yang berwenang" SAAT DIKLIK, bukan saat link dicetak
-              (`functions/bayar/[id].js` → RPC `authoritative_payment_url`,
-              sql/85). Aturan itu lahir dari insiden order `af004b84`, ketika
-              peneliti membayar lewat link tagihan jadwal yang sudah lama.
-
-              Halaman ini justru yang paling rawan: countdown-nya berjalan, jadi
-              jarak antara link dirender dan link diklik bisa satu jam penuh.
-            */}
-            {hasOpenBill ? (
-              <a
-                href={payLinkPath(entry.id)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2"
-              >
-                <CreditCard size={16} /> {t('payNow')}
-              </a>
-            ) : (
-              /*
-                Jadwalnya menunggu pembayaran, tapi tagihannya BELUM terbit —
-                jalur `needs_admin_invoice`. Sebelumnya tombolnya tetap tampil
-                dan mengirim peneliti ke resolver yang tidak punya tagihan untuk
-                ditunjuk; yang dia lihat hanyalah galat. Lebih jujur mengatakan
-                apa yang sedang ditunggu.
-              */
-              <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm text-slate-600">
-                {t('billNotIssuedYet')}
-              </p>
-            )}
-          </>
-        }
+        cta={offerRepick ? repickButton : payButton}
         secondaryActions={
-          state.canCancel ? (
-              <button
-                type="button"
-                onClick={handleCancel}
-                disabled={isWorking}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-6 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
-              >
+          <>
+            {offerRepick && payButton}
+            {!creditPhase && (hasOpenBill || canSelfMint) && (
+              <button type="button" onClick={handleCheckPayment} disabled={isCheckingPayment} className={secondaryBtn}>
+                {isCheckingPayment ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
+                    {t('checkoutCheckingStatus')}
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle size={15} className="text-slate-400" />
+                    {t('checkoutAlreadyPaid')}
+                  </>
+                )}
+              </button>
+            )}
+            {state.canCancel && (
+              <button type="button" onClick={handleCancel} disabled={isWorking} className={secondaryBtn}>
                 {isWorking ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 {t('cancelOrderTitle')}
               </button>
-          ) : undefined
+            )}
+          </>
         }
       />
     );

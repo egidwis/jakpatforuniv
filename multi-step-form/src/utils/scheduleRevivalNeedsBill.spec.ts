@@ -109,37 +109,46 @@ describe('tidak ada jalur yang menghidupkan jadwal tanpa tagihan', () => {
       tanpa tagihan hidup — layar yang persis sama dengan bug kemarin, hanya
       lewat pintu lain (`pick`, bukan `released`).
 
-      Penjaganya berbasis BENTUK: setiap handler yang memanggil
-      `rebookSlotForSubmission` wajib, di badan yang sama, menyusulkan sesuatu
-      yang menerbitkan tagihan — `createPayment` langsung, ATAU navigasi ke
-      halaman bayar yang punya efek auto-terbit.
+      Sejak 10 Okt 2026 kedua layar itu SATU halaman (`JadwalDanBayarPage`);
+      `PaymentCheckoutPage` tinggal penerjemah rute tanpa kunci tanggal. Yang
+      menerbitkan tagihan sesudah kunci adalah SATU pemicu (keputusan 19 Agu):
+      handler memuat ulang, lalu efek bergerbang `shouldAutoMint` memanggil
+      `mintBill()` → `createPayment`. Penjaganya memeriksa ketiga mata rantai
+      itu — kalau salah satu dicabut, jadwal hidup tanpa tagihan lagi.
+
+      ⚠️ `navigate('/payment/…')` TIDAK LAGI diterima: rute itu tidak pernah
+      ada (yang ada `/dashboard/payment/…`) dan itulah bug laten 2bb1244 yang
+      dulu lolos dari penjaga ini.
     */
-    const halaman = [
-      join(SRC, '..', 'pages', 'dashboard', 'JadwalDanBayarPage.tsx'),
-      join(SRC, '..', 'pages', 'PaymentCheckoutPage.tsx'),
-    ];
+    const kode = tanpaKomentar(readFileSync(
+      join(SRC, '..', 'pages', 'dashboard', 'JadwalDanBayarPage.tsx'), 'utf8',
+    ));
 
-    for (const f of halaman) {
-      const kode = tanpaKomentar(readFileSync(f, 'utf8'));
-      let i = kode.indexOf('rebookSlotForSubmission(');
-      while (i !== -1) {
-        // Badan handler sesudah panggilan kunci, sampai ujung blok try/catch.
-        const sesudah = kode.slice(i, i + 900);
-        const terbitLangsung = /createPayment\s*\(/.test(sesudah);
-        const keHalamanBayar = /navigate\(\s*[`'"]\/payment\//.test(sesudah);
-        const muatUlangYangMenerbitkan = /loadSubmission\s*\(/.test(sesudah);
-
-        expect(
-          terbitLangsung || keHalamanBayar || muatUlangYangMenerbitkan,
-          `${f.split('/').pop()}: sesudah mengunci tanggal lewat `
-          + 'rebookSlotForSubmission, tidak ada yang menerbitkan tagihannya. '
-          + 'Peneliti akan mendarat pada jadwal hidup dengan tagihan mati — '
-          + 'bug 17 Sep 2026 lewat pintu lain.',
-        ).toBe(true);
-
-        i = kode.indexOf('rebookSlotForSubmission(', i + 1);
-      }
+    // 1. Setiap kunci tanggal disusul pemuatan ulang di handler yang sama.
+    let i = kode.indexOf('rebookSlotForSubmission(');
+    expect(i, 'halaman gabungan harus tetap bisa mengunci tanggal').not.toBe(-1);
+    while (i !== -1) {
+      const sesudah = kode.slice(i, i + 600);
+      expect(
+        /await load\(\)/.test(sesudah),
+        'sesudah rebookSlotForSubmission, halaman wajib memuat ulang supaya pemicu tagihan menyala',
+      ).toBe(true);
+      expect(sesudah).not.toMatch(/navigate\(\s*[`'"]\/payment\//);
+      i = kode.indexOf('rebookSlotForSubmission(', i + 1);
     }
+
+    // 2. Pemicu tunggal ada: gerbang teruji + efek yang memanggil mintBill.
+    expect(kode).toMatch(/shouldAutoMint\(\{/);
+    const efek = kode.slice(kode.indexOf('useEffect(() => {\n    if (!autoMint'));
+    expect(efek.slice(0, 800)).toMatch(/await mintBill\(\)/);
+
+    // 3. mintBill benar-benar menerbitkan.
+    const mint = kode.slice(kode.indexOf('const mintBill'));
+    expect(mint.slice(0, 400)).toMatch(/createPayment\(/);
+
+    // 4. Penerjemah rute lama tidak lagi mengunci tanggal sendiri.
+    const penerjemah = tanpaKomentar(readFileSync(join(SRC, '..', 'pages', 'PaymentCheckoutPage.tsx'), 'utf8'));
+    expect(penerjemah).not.toMatch(/rebookSlotForSubmission|createPayment/);
   });
 
   it('`rebookPlan` sudah tidak ada — tinggal satu primitif pesan-ulang', () => {
