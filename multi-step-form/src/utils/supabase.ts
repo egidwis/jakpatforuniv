@@ -1010,6 +1010,42 @@ async function commitPaymentWrite(
   return { data: Array.isArray(body?.data) ? body.data : [], error: null };
 }
 
+/**
+ * Tulisan Product yang sql/116 cabut dari browser: bukti tayang, tautan
+ * kampanye, dan halaman survei orang lain. Tes tetap memakai klien supabase
+ * supaya rantai mock-nya tidak berubah.
+ */
+export async function adminContent(
+  body: Record<string, unknown>,
+  direct: () => PromiseLike<{ data: any; error: any }>,
+): Promise<{ data: any; error: { message: string } | null }> {
+  if (import.meta.env.VITEST) return direct();
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) return { data: null, error: { message: 'Sesi admin tidak ada. Masuk lagi lalu ulangi.' } };
+
+  const res = await fetch('/api/admin/content', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.text();
+  let parsed: any = null;
+  try { parsed = raw ? JSON.parse(raw) : null; } catch { /* badan bukan JSON */ }
+  if (!res.ok) {
+    return { data: null, error: { message: parsed?.error || `Gagal menulis (HTTP ${res.status})` } };
+  }
+  return { data: parsed?.data ?? [], error: null };
+}
+
+export function firstAdminRow(data: any): any {
+  return Array.isArray(data) ? data[0] : data;
+}
+
 export const markScheduleAsPaid = async (
   entry: AdScheduleEntry,
   opts: { paymentId?: string | null } = {},
@@ -1210,11 +1246,18 @@ async function flagStaleBannerForExtend(entry: AdScheduleEntry): Promise<void> {
   if (!rewardChanged && !bannerMissing) return;
 
   try {
-    const { data, error } = await supabase
-      .from('survey_pages')
-      .update({ requires_banner_update: true })
-      .eq('submission_id', entry.submissionId)
-      .select('id');
+    const { data, error } = await adminContent(
+      {
+        action: 'patch-pages',
+        patch: { requires_banner_update: true },
+        filters: [{ col: 'submission_id', op: 'eq', val: entry.submissionId }],
+      },
+      () => supabase
+        .from('survey_pages')
+        .update({ requires_banner_update: true })
+        .eq('submission_id', entry.submissionId)
+        .select('id'),
+    );
     if (error) throw error;
     if (!data || data.length === 0) {
       console.info(
@@ -3596,11 +3639,25 @@ export const updateScheduleDates = async (
       // terjadi SEBELUM bayar, dan menyalin tanggal barunya ke sini membuka
       // iklan yang belum dibayar. Jendelanya ditulis `ensure_survey_page`
       // saat order lunas, dengan tanggal order yang sama.
-      const { error: pageError } = await supabase
-        .from('survey_pages')
-        .update({ publish_start_date: normalizedStart, publish_end_date: normalizedEnd, updated_at: new Date().toISOString() })
-        .eq('submission_id', submissionId)
-        .is('auto_closed_at', null);
+      const { error: pageError } = await adminContent(
+        {
+          action: 'patch-pages',
+          patch: {
+            publish_start_date: normalizedStart,
+            publish_end_date: normalizedEnd,
+            updated_at: new Date().toISOString(),
+          },
+          filters: [
+            { col: 'submission_id', op: 'eq', val: submissionId },
+            { col: 'auto_closed_at', op: 'is', val: null },
+          ],
+        },
+        () => supabase
+          .from('survey_pages')
+          .update({ publish_start_date: normalizedStart, publish_end_date: normalizedEnd, updated_at: new Date().toISOString() })
+          .eq('submission_id', submissionId)
+          .is('auto_closed_at', null),
+      );
 
       // pageError is non-fatal — page may not exist yet (slot_reserved stage)
       if (pageError) {
@@ -4549,12 +4606,24 @@ export const cancelSchedule = async (entry: {
         yang ditutup — polanya sama dengan trigger itu.
       */
       if (entry.startDate) {
-        const { error: pageErr } = await supabase
-          .from('survey_pages')
-          .update({ publish_end_date: new Date().toISOString(), updated_at: new Date().toISOString() })
-          .eq('submission_id', entry.submissionId)
-          .eq('publish_start_date', entry.startDate)
-          .gt('publish_end_date', new Date().toISOString());
+        const closedAt = new Date().toISOString();
+        const { error: pageErr } = await adminContent(
+          {
+            action: 'patch-pages',
+            patch: { publish_end_date: closedAt, updated_at: closedAt },
+            filters: [
+              { col: 'submission_id', op: 'eq', val: entry.submissionId },
+              { col: 'publish_start_date', op: 'eq', val: entry.startDate },
+              { col: 'publish_end_date', op: 'gt', val: closedAt },
+            ],
+          },
+          () => supabase
+            .from('survey_pages')
+            .update({ publish_end_date: closedAt, updated_at: closedAt })
+            .eq('submission_id', entry.submissionId)
+            .eq('publish_start_date', entry.startDate)
+            .gt('publish_end_date', closedAt),
+        );
         if (pageErr) throw pageErr;
       }
     } else {

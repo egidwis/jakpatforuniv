@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { supabase } from '@/utils/supabase';
+import { adminContent, supabase } from '@/utils/supabase';
 import { isLive, compareDisplayOrder } from '@/utils/adOrdering';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
@@ -278,10 +278,14 @@ export function PublishPageManagement() {
         if (!confirm(`Yakin ingin ${action} halaman "${page.title}" dari API Mobile App?`)) return;
 
         try {
-            const { error } = await supabase
-                .from('survey_pages')
-                .update({ is_hidden: !page.is_hidden })
-                .eq('id', page.id);
+            const { error } = await adminContent(
+                {
+                    action: 'patch-pages',
+                    patch: { is_hidden: !page.is_hidden },
+                    filters: [{ col: 'id', op: 'eq', val: page.id }],
+                },
+                () => supabase.from('survey_pages').update({ is_hidden: !page.is_hidden }).eq('id', page.id),
+            );
             if (error) throw error;
             toast.success(`Halaman berhasil ${page.is_hidden ? 'ditampilkan' : 'disembunyikan'} dari Mobile App`);
             await refreshAll();

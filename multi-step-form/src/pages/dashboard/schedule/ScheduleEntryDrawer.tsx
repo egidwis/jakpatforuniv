@@ -31,6 +31,7 @@ import { bannerSavePatch, isPlaceholderBannerUrl } from '@/utils/page-banner';
 import { publicPagePath, publicPageUrl } from '@/utils/page-url';
 import { payLinkUrl } from '@/utils/payLink';
 import {
+  adminContent,
   fetchScheduleBilling,
   getScheduledPageBySubmission,
   supabase,
@@ -156,14 +157,15 @@ export function ScheduleEntryDrawer({
     setIsSaving(true);
     try {
       if (page && (form.title !== baseline.title || form.bannerUrl !== baseline.bannerUrl)) {
-        const { error } = await supabase
-          .from('survey_pages')
-          .update({
-            title: form.title,
-            ...bannerSavePatch(form.bannerUrl),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', page.id);
+        const patch = {
+          title: form.title,
+          ...bannerSavePatch(form.bannerUrl),
+          updated_at: new Date().toISOString(),
+        };
+        const { error } = await adminContent(
+          { action: 'patch-pages', patch, filters: [{ col: 'id', op: 'eq', val: page.id }] },
+          () => supabase.from('survey_pages').update(patch).eq('id', page.id),
+        );
         if (error) throw error;
       }
 
@@ -193,10 +195,14 @@ export function ScheduleEntryDrawer({
     const action = page.is_hidden ? 'menampilkan kembali' : 'menyembunyikan';
     if (!confirm(`Yakin ingin ${action} halaman "${page.title}" dari API Mobile App?`)) return;
     try {
-      const { error } = await supabase
-        .from('survey_pages')
-        .update({ is_hidden: !page.is_hidden })
-        .eq('id', page.id);
+      const { error } = await adminContent(
+        {
+          action: 'patch-pages',
+          patch: { is_hidden: !page.is_hidden },
+          filters: [{ col: 'id', op: 'eq', val: page.id }],
+        },
+        () => supabase.from('survey_pages').update({ is_hidden: !page.is_hidden }).eq('id', page.id),
+      );
       if (error) throw error;
       toast.success(`Halaman berhasil ${page.is_hidden ? 'ditampilkan' : 'disembunyikan'}.`);
       await load();

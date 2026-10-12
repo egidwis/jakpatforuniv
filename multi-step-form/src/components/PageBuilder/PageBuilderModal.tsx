@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 // import { Switch } from '@/components/ui/switch'; // Removed unused
 import { BlockEditor } from './BlockEditor';
-import { supabase, updateFormStatus } from '@/utils/supabase';
+import { adminContent, firstAdminRow, supabase, updateFormStatus } from '@/utils/supabase';
 import { airingWindowState, toAiringStartIso, toWibYmd } from '@/utils/airing-window';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -335,22 +335,21 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
             }
 
             if (existingId) {
-                // Update
-                const { error } = await supabase
-                    .from('survey_pages')
-                    .update(payload)
-                    .eq('id', existingId);
+                const { error } = await adminContent(
+                    { action: 'patch-pages', patch: payload, filters: [{ col: 'id', op: 'eq', val: existingId }] },
+                    () => supabase.from('survey_pages').update(payload).eq('id', existingId),
+                );
                 if (error) throw error;
                 toast.success('Page updated successfully');
             } else {
-                // Create
-                const { data, error } = await supabase
-                    .from('survey_pages')
-                    .insert([payload])
-                    .select('id')
-                    .single();
+                const { data, error } = await adminContent(
+                    { action: 'insert-page', patch: payload },
+                    () => supabase.from('survey_pages').insert([payload]).select('id').single(),
+                );
                 if (error) throw error;
-                setSavedPageId(data.id);
+                const created = firstAdminRow(data);
+                if (!created?.id) throw new Error('Halaman tidak tersimpan');
+                setSavedPageId(created.id);
                 toast.success('Page created successfully');
             }
 
@@ -415,10 +414,10 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
 
         setLoading(true);
         try {
-            const { error } = await supabase
-                .from('survey_pages')
-                .delete()
-                .eq('id', existingId);
+            const { error } = await adminContent(
+                { action: 'delete-page', id: existingId },
+                () => supabase.from('survey_pages').delete().eq('id', existingId),
+            );
             if (error) throw error;
             toast.success('Page deleted successfully');
             onSuccess();
@@ -444,14 +443,18 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
 
             // 1. Update survey_pages: keep published but set end date to now (completed, not drafted)
             if (existingId) {
-                const { error: pageError } = await supabase
-                    .from('survey_pages')
-                    .update({
+                const { error: pageError } = await adminContent(
+                    {
+                        action: 'patch-pages',
+                        patch: { is_published: true, publish_end_date: now, updated_at: now },
+                        filters: [{ col: 'id', op: 'eq', val: existingId }],
+                    },
+                    () => supabase.from('survey_pages').update({
                         is_published: true,
                         publish_end_date: now,
                         updated_at: now,
-                    })
-                    .eq('id', existingId);
+                    }).eq('id', existingId),
+                );
                 if (pageError) throw pageError;
             }
 
