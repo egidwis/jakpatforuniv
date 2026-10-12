@@ -249,7 +249,16 @@ export function deriveScheduleMoney(
           grossAdCost = rate.effective;
           introMatched = true;
         }
-      } else if (voucher && netAdCost != null && netAdCost > 0) {
+      } else if (voucher && netAdCost != null) {
+        /*
+          ⚠️ `netAdCost` BOLEH NEGATIF DI SINI. Voucher yang ikut memotong
+          HADIAH (JFUTGRX mematok iklan + hadiah jadi Rp 1.000) membuat
+          "subtotal − hadiah" negatif: #SWW5T4DG = 1.000 − 50.000 = −49.000.
+          Dulu syarat `> 0` membuang pencocokan ini, dan rinciannya jatuh ke
+          dua baris "Subtotal (DPP)" + PPN. Pencocokan maju tetap jujur: ia
+          hanya dipakai bila tarif + voucher menjelaskan subtotal tersimpan
+          persis — kalau tidak, bentuk lama yang tampil.
+        */
         let calculatedGross = rate.effective * duration;
         let calculatedDiscount = calculateDiscount(voucher, calculatedGross, incentive || 0, duration, voucherAt);
 
@@ -257,7 +266,7 @@ export function deriveScheduleMoney(
           grossAdCost = calculatedGross;
           discountAmount = calculatedDiscount;
           introMatched = true;
-        } else {
+        } else if (netAdCost > 0) {
           // `question_count` kosong, jadi harga kotornya tidak bisa dihitung ulang
           // — ia harus dibalik dari nilai bersih yang tersimpan.
           //

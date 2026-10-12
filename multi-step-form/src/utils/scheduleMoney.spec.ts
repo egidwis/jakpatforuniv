@@ -312,3 +312,63 @@ describe('introLine — tanggal "s/d" untuk tampilan admin', () => {
     expect(introLine(500000, 300000, null)).toEqual([]);
   });
 });
+
+describe('voucher yang ikut memotong HADIAH (JFUTGRX) — rincian tetap dipecah', () => {
+  /*
+    Bentuk persis order uji #SWW5T4DG (12 Okt 2026): 1 Qs × 2 hari, hadiah
+    Rp 25.000 × 2, voucher `jfutgrx` (tersimpan huruf kecil) memangkas SELURUH
+    subtotal — iklan + hadiah — jadi Rp 1.000.
+
+    Dulu "iklan bersih = subtotal − hadiah" = 1.000 − 50.000 = −49.000, dan
+    syarat `> 0` membuang pencocokan sama sekali: rincian jatuh ke dua baris
+    "Subtotal (DPP)" + PPN, tanpa harga sebelum diskon, hadiah, dan diskonnya.
+  */
+  const sww5 = () => entryOf({
+    ordinal: 1,
+    isExtension: false,
+    duration: 2,
+    totalCost: 1110,
+    subtotal: 1000,
+    ppnAmount: 110,
+    voucherCode: 'jfutgrx',
+    prizePerWinner: 25000,
+    winnerCount: 2,
+    status: 'waiting_payment',
+    paymentStatus: 'pending',
+    slotBookedBy: 'user',
+    submissionCreatedAt: '2026-10-12T08:53:26Z',
+    rateLockedAt: '2026-10-12T08:53:26Z',
+  });
+  const SUB = { question_count: 1, distribution_type: 'regular', voucher_code: 'jfutgrx' };
+
+  it('menampilkan harga iklan sebelum diskon, hadiah, dan diskonnya', () => {
+    const money = deriveScheduleMoney(sww5(), SUB);
+    expect(money.total).toBe(1110);
+    expect(money.isEstimate).toBe(false);
+
+    const labels = money.lines?.map((l) => l.labelKey);
+    expect(labels).toContain('costLineAd');
+    expect(labels).toContain('costLineReward');
+    expect(labels).toContain('costLineVoucherNamed');
+    expect(labels).not.toContain('costLineSubtotal');
+
+    expect(rewardLineOf(money.lines)?.amount).toBe(50000);
+    const ad = money.lines!.find((l) => l.labelKey === 'costLineAd')!;
+    expect(ad.amount).toBeGreaterThan(0);
+  });
+
+  it('baris-barisnya menjumlah PERSIS ke total yang ditagih', () => {
+    const money = deriveScheduleMoney(sww5(), SUB);
+    const sum = money.lines!.reduce((s, l) => s + l.amount, 0);
+    expect(sum).toBe(1110);
+  });
+
+  it('nominal yang tidak dijelaskan tarif + voucher tetap TIDAK ditebak', () => {
+    // Admin menagih nominal lain: subtotal 5.000 ≠ hasil JFUTGRX (1.000).
+    const money = deriveScheduleMoney(
+      entryOf({ ...sww5(), totalCost: 5550, subtotal: 5000, ppnAmount: 550 }),
+      SUB,
+    );
+    expect(money.lines?.map((l) => l.labelKey)).toEqual(['costLineSubtotal', 'costLinePpn']);
+  });
+});
