@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { supabase } from '../utils/supabase';
+import { adminContent, firstAdminRow, supabase } from '../utils/supabase';
 import { formatIDR } from '@/utils/currency';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -349,14 +349,23 @@ export function AnalyticsDashboard() {
         return;
       }
 
-      const { data, error } = await supabase.from('campaign_links').insert({
-        source_name: source,
-        description: linkDescription.trim() || null
-      }).select().single();
+      const { data, error } = await adminContent(
+        {
+          action: 'create-link',
+          sourceName: source,
+          description: linkDescription.trim() || null,
+        },
+        () => supabase.from('campaign_links').insert({
+          source_name: source,
+          description: linkDescription.trim() || null,
+        }).select().single(),
+      );
 
       if (error) throw error;
+      const created = firstAdminRow(data);
+      if (!created) throw new Error('Link tidak tersimpan');
 
-      setCampaignLinks([data, ...campaignLinks]);
+      setCampaignLinks([created, ...campaignLinks]);
       setGeneratedLink(`${window.location.origin}/c/${source}`);
       setLinkSource('');
       setLinkDescription('');
@@ -373,7 +382,10 @@ export function AnalyticsDashboard() {
   const handleDeleteLink = async (id: string) => {
     if (!confirm('Hapus link ini dari manajemen? (Data klik tidak akan terhapus)')) return;
     try {
-      const { error } = await supabase.from('campaign_links').delete().eq('id', id);
+      const { error } = await adminContent(
+        { action: 'delete-link', id },
+        () => supabase.from('campaign_links').delete().eq('id', id),
+      );
       if (error) throw error;
       setCampaignLinks(campaignLinks.filter(l => l.id !== id));
       toast.success('Link dihapus dari tabel.');

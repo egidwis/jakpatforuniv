@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { supabase, getCdnUrl } from '@/utils/supabase';
+import { adminContent, getCdnUrl, supabase } from '@/utils/supabase';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { ImageIcon, Loader2, Trash2 } from 'lucide-react';
@@ -86,18 +86,22 @@ export function usePageRespondents(pageId: string | null) {
         if (!respondent.proof_url) return;
         setDeletingId(respondent.respondent_id);
         try {
-            const filePath = getStoragePath(respondent.proof_url);
-            if (filePath) {
-                const { error: storageError } = await supabase.storage
-                    .from('page-uploads')
-                    .remove([filePath]);
-                if (storageError) console.warn('Storage delete warning:', storageError);
-            }
-
-            const { error: dbError } = await supabase
-                .from('page_respondents')
-                .update({ proof_url: null })
-                .eq('id', respondent.respondent_id);
+            const { error: dbError } = await adminContent(
+                { action: 'clear-proof', respondentId: respondent.respondent_id },
+                async () => {
+                    const filePath = getStoragePath(respondent.proof_url!);
+                    if (filePath) {
+                        const { error: storageError } = await supabase.storage
+                            .from('page-uploads')
+                            .remove([filePath]);
+                        if (storageError) console.warn('Storage delete warning:', storageError);
+                    }
+                    return supabase
+                        .from('page_respondents')
+                        .update({ proof_url: null })
+                        .eq('id', respondent.respondent_id);
+                },
+            );
             if (dbError) throw dbError;
 
             setRespondents(prev => prev.map(r =>
@@ -121,22 +125,25 @@ export function usePageRespondents(pageId: string | null) {
 
         setBulkDeleting(true);
         try {
-            const filePaths = withProof
-                .map(r => getStoragePath(r.proof_url!))
-                .filter(Boolean) as string[];
-
-            if (filePaths.length > 0) {
-                const { error: storageError } = await supabase.storage
-                    .from('page-uploads')
-                    .remove(filePaths);
-                if (storageError) console.warn('Bulk storage delete warning:', storageError);
-            }
-
-            const { error: dbError } = await supabase
-                .from('page_respondents')
-                .update({ proof_url: null })
-                .eq('page_id', pageId)
-                .not('proof_url', 'is', null);
+            const { error: dbError } = await adminContent(
+                { action: 'clear-proof', pageId },
+                async () => {
+                    const filePaths = withProof
+                        .map(r => getStoragePath(r.proof_url!))
+                        .filter(Boolean) as string[];
+                    if (filePaths.length > 0) {
+                        const { error: storageError } = await supabase.storage
+                            .from('page-uploads')
+                            .remove(filePaths);
+                        if (storageError) console.warn('Bulk storage delete warning:', storageError);
+                    }
+                    return supabase
+                        .from('page_respondents')
+                        .update({ proof_url: null })
+                        .eq('page_id', pageId)
+                        .not('proof_url', 'is', null);
+                },
+            );
             if (dbError) throw dbError;
 
             setRespondents(prev => prev.map(r => ({ ...r, proof_url: null })));
