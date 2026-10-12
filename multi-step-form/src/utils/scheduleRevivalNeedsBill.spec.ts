@@ -137,10 +137,16 @@ describe('tidak ada jalur yang menghidupkan jadwal tanpa tagihan', () => {
       i = kode.indexOf('rebookSlotForSubmission(', i + 1);
     }
 
-    // 2. Pemicu tunggal ada: gerbang teruji + efek yang memanggil mintBill.
+    // 2. Pemicu tunggal ada: gerbang teruji + efek yang menerbitkan tagihan.
+    //    Sejak 12 Okt lewat `issueBill` — gerbang satu-permintaan-berjalan
+    //    (`createInFlightGate`) yang juga ditunggu klik Bayar, supaya klik
+    //    selama tagihan disiapkan tidak menerbitkan link kedua.
     expect(kode).toMatch(/shouldAutoMint\(\{/);
     const efek = kode.slice(kode.indexOf('useEffect(() => {\n    if (!autoMint'));
-    expect(efek.slice(0, 800)).toMatch(/await mintBill\(\)/);
+    expect(efek.slice(0, 800)).toMatch(/issueBill\(\)/);
+    const terbit = kode.slice(kode.indexOf('const issueBill'));
+    expect(terbit.slice(0, 900)).toMatch(/mintGate\.current\.run\(/);
+    expect(terbit.slice(0, 900)).toMatch(/await mintBill\(\)/);
 
     // 3. mintBill benar-benar menerbitkan.
     const mint = kode.slice(kode.indexOf('const mintBill'));

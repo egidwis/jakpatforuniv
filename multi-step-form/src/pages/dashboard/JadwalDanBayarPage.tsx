@@ -48,6 +48,7 @@ import { creditPhaseOf } from '../../components/status/scheduleAxes';
 import { isAutoReviewed } from '../../components/status/deriveOrderUiState';
 import { createPayment, GroupBillError } from '../../utils/payment';
 import { shouldAutoMint, canRepickInPlace, billExpiryFor } from '../../utils/jadwalBayarGates';
+import { createInFlightGate } from '../../utils/inFlightGate';
 import { repickEstimate } from '../../utils/repickPrice';
 import { formatIDR } from '../../utils/currency';
 
@@ -106,7 +107,10 @@ export function JadwalDanBayarPage() {
   const [notFound, setNotFound] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [isWorking, setIsWorking] = useState(false);
+  /** Tagihan sedang diterbitkan (otomatis sesudah kunci, atau dari klik Bayar). */
   const [isMinting, setIsMinting] = useState(false);
+  /** Peneliti menekan Bayar dan tab-nya menunggu tagihan — cegah klik ganda. */
+  const [isOpeningPay, setIsOpeningPay] = useState(false);
   const [isCheckingPayment, setIsCheckingPayment] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
   /** Teguran zona kunci tiket — inline + toast dari kunci yang sama. */
@@ -124,6 +128,12 @@ export function JadwalDanBayarPage() {
   const [repickMode, setRepickMode] = useState(searchParams.get('pilih') === '1');
   /** (jadwal, tanggal) yang sudah dicoba diterbitkan tagihannya di sesi ini. */
   const mintAttemptedFor = useRef<string | null>(null);
+  /**
+   * ⚠️ SATU PENERBITAN BERJALAN. Klik Bayar selama pemicu otomatis masih
+   * menunggu DOKU MENUNGGU permintaan itu (`createInFlightGate`, teruji) —
+   * dulu tombolnya mati beberapa detik; menerbitkan sendiri = link kedua.
+   */
+  const mintGate = useRef(createInFlightGate<'issued' | 'group'>());
   const mounted = useRef(true);
   useEffect(() => () => { mounted.current = false; }, []);
 
@@ -371,33 +381,51 @@ export function JadwalDanBayarPage() {
     tooLate,
     holdExpired,
   });
+  /**
+   * Terbitkan tagihan lewat gerbang — dipakai pemicu otomatis DAN klik Bayar.
+   *
+   * ⚠️ TOMBOL MENYALA BEGITU TAGIHAN TERBIT, tanpa menunggu `load()`.
+   * `hasOpenBill` dinyatakan langsung; tombolnya jadi tautan `/bayar/<id>`,
+   * resolver berwenang yang mencari link yang benar di server. `load()` jalan
+   * di belakang untuk nominal & status. Dulu tombol berputar sampai empat
+   * kueri muat ulang selesai.
+   *
+   * ⚠️ 409 TAGIHAN GABUNGAN BUKAN KEGAGALAN: pesanan ini sudah ditanggung satu
+   * link bersama, dan `/bayar/<id>` menunjuk ke sana. Cukup nyatakan tagihannya
+   * ADA — TANPA `load()`, yang membaca tagihan milik jadwal ini saja dan akan
+   * membaliknya ke "belum ada".
+   */
+  const issueBill = useCallback(() => mintGate.current.run(async () => {
+    setIsMinting(true);
+    try {
+      const outcome = await mintBill().then(
+        () => 'issued' as const,
+        (e) => {
+          if (e instanceof GroupBillError) return 'group' as const;
+          throw e;
+        },
+      );
+      if (mounted.current) {
+        setHasOpenBill(true);
+        if (outcome === 'issued') void load();
+      }
+      return outcome;
+    } finally {
+      if (mounted.current) setIsMinting(false);
+    }
+  }), [mintBill, load]);
+
   useEffect(() => {
     if (!autoMint || !entry || !submission || isLoading) return;
     const key = `${entry.id}:${entry.startDate}`;
     if (mintAttemptedFor.current === key) return;
     mintAttemptedFor.current = key;
 
-    setIsMinting(true);
-    (async () => {
-      try {
-        await mintBill();
-        if (mounted.current) await load();
-      } catch (e) {
-        /*
-          ⚠️ 409 TAGIHAN GABUNGAN BUKAN KEGAGALAN: pesanan ini sudah ditanggung
-          satu link bersama. `/bayar/<id>` menunjuk ke sana, jadi cukup nyatakan
-          bahwa tagihannya ADA.
-        */
-        if (e instanceof GroupBillError) {
-          if (mounted.current) setHasOpenBill(true);
-          return;
-        }
-        console.warn('[jadwal-bayar] Gagal menerbitkan tagihan otomatis:', e);
-      } finally {
-        if (mounted.current) setIsMinting(false);
-      }
-    })();
-  }, [autoMint, entry, submission, isLoading, mintBill, load]);
+    issueBill().catch((e) => {
+      // Senyap: tombol Bayar (menerbitkan sendiri) jadi jaring pengamannya.
+      console.warn('[jadwal-bayar] Gagal menerbitkan tagihan otomatis:', e);
+    });
+  }, [autoMint, entry, submission, isLoading, issueBill]);
 
   /**
    * Bayar saat tagihan BELUM terbit (pemicu otomatis gagal, atau lewat 14.00
@@ -406,24 +434,22 @@ export function JadwalDanBayarPage() {
    * berwenang, bukan URL DOKU mentah dari respons.
    */
   const handlePayWithoutBill = async () => {
-    if (!entry) return;
+    if (!entry || isOpeningPay) return;
     const w = window.open('about:blank', '_blank');
-    setIsMinting(true);
+    setIsOpeningPay(true);
     try {
-      await mintBill().catch((e) => {
-        if (e instanceof GroupBillError) return null;
-        throw e;
-      });
+      // Pemicu otomatis masih berjalan? `issueBill` mengembalikan permintaan
+      // ITU — tab ini menunggunya, tidak menerbitkan tagihan kedua.
+      await issueBill();
       const href = payLinkPath(entry.id);
       if (w) w.location.href = href;
       else window.location.href = href;
-      await load();
     } catch (e) {
       console.error('Gagal menerbitkan tagihan:', e);
       w?.close();
       toast.error(t('checkoutPaymentError'));
     } finally {
-      setIsMinting(false);
+      if (mounted.current) setIsOpeningPay(false);
     }
   };
 
@@ -853,13 +879,25 @@ export function JadwalDanBayarPage() {
       <button
         type="button"
         onClick={handlePayWithoutBill}
-        disabled={isMinting}
+        /*
+          ⚠️ TIDAK mati selama tagihan disiapkan — klik membuka tab yang
+          menunggu tagihan yang sama. Mati hanya sesudah diklik (tab sedang
+          menunggu), supaya klik ganda tidak membuka dua tab.
+        */
+        disabled={isOpeningPay}
+        aria-busy={isMinting || isOpeningPay}
         className={offerRepick ? secondaryBtn : primaryBtn}
       >
-        {isMinting ? (
+        {isOpeningPay ? (
           <>
             <Loader2 className="w-4 h-4 animate-spin" />
             {t('checkoutProcessing')}
+          </>
+        ) : isMinting ? (
+          // Jujur: yang disiapkan TAGIHANNYA; jadwalnya sudah terkunci.
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            {t('payPreparingBill')}
           </>
         ) : (
           <>
