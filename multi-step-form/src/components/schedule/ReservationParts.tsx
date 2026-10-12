@@ -79,8 +79,13 @@ export function DeadlineRowView({ row }: { row: DeadlineRow }) {
         <TicketRowView
           label={t('ticketDeadlineLabel')}
           value={
-            <span className="inline-flex items-center gap-1.5 text-jfu-primary tabular-nums" role="timer" aria-live="off">
-              <Clock className="w-4 h-4" aria-hidden="true" />
+            /*
+              Satu tingkat di atas nilai baris lain (14px → 16px tebal), satu
+              tingkat di bawah Total (18px) — yang mendesak terbaca lebih dulu
+              tanpa menyaingi harga. `text-base` bukan kelas styles.css warisan.
+            */
+            <span className="inline-flex items-center gap-1.5 text-base font-bold leading-snug text-jfu-primary tabular-nums" role="timer" aria-live="off">
+              <Clock className="w-[18px] h-[18px]" aria-hidden="true" />
               {/* "--:--" selama timer belum berdetak — bukan catatan admin yang berkedip. */}
               {t('ticketTimeLeft', { time: row.seconds === null ? '--:--' : formatMmSs(row.seconds) })}
             </span>
