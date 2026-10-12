@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import type { SurveyFormData } from '../types';
-import { toast } from 'sonner';
 import { Loader2, Info, Lock, RefreshCw } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { ScheduleReservationLayout } from './schedule/ScheduleReservationLayout';
-import { ReservationSummary, MobileBarInfo } from './schedule/ReservationParts';
+import { TicketStub, MobileBarInfo } from './schedule/ReservationParts';
+import { useLockFeedback } from './schedule/useLockFeedback';
+import { lockGateFeedback } from '../utils/reservationTicket';
 import { CostBreakdown } from './CostBreakdown';
 import { calculateTotalCost } from '../utils/cost-calculator';
 import { orderMoneyLines } from '../utils/orderMoneyLines';
@@ -27,10 +28,11 @@ interface StepScheduleProps {
   /**
    * Ke mana "mundur" pergi.
    *
-   * `'step'` (bawaan): tombol Kembali ke langkah wizard sebelumnya — benar
-   * untuk order baru, yang memang punya Ringkasan di belakangnya.
+   * `'step'` (bawaan): pil "Ubah Pesanan" di kepala kartu, kembali ke langkah
+   * wizard sebelumnya — benar untuk order baru, yang memang punya Ringkasan di
+   * belakangnya.
    *
-   * `'orders'`: tautan teks "Kembali ke Order Saya". Dipakai saat layar ini
+   * `'orders'`: pil "My Order" di kepala kartu. Dipakai saat layar ini
    * dimasuki lewat JADWAL ULANG dari My Order: order-nya sudah ada, tidak ada
    * Ringkasan yang sah untuk dikembalikan — mundur ke step 2 menampilkan layar
    * submit untuk order yang sedang di-reset, dan CTA-nya bisa melahirkan order
@@ -58,11 +60,13 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
     formData.startDate ? String(formData.startDate).slice(0, 10) : null
   );
   const [isConfirming, setIsConfirming] = useState(false);
+  const feedback = useLockFeedback();
 
   const duration = mode === 'kilat' ? 1 : Math.max(formData.duration || 1, 1);
 
   const handleSelect = (ymd: string) => {
     setSelected(ymd);
+    feedback.clear();
     // Tanggal hanya ditulis ke formData saat onConfirm — di sini cukup
     // local state agar Step 2 tidak melihat tanggal yang belum ter-lock.
   };
@@ -74,12 +78,15 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
     // mengikat. Alasan lengkapnya ada di modulnya.
     const verdict = scheduleLockGate({ selected, duration, availability });
     if (!verdict.ok) {
-      toast.error(t(verdict.messageKey));
+      // Teguran di zona kunci + toast dari kunci yang sama. Gulir: di ponsel
+      // tombolnya di bar bawah, zonanya bisa di luar layar.
+      feedback.report(lockGateFeedback(verdict), { scroll: true });
       if (verdict.clearSelection) setSelected(null);
       if (verdict.shouldReload) void availability.reload();
       return;
     }
 
+    feedback.clear();
     setIsConfirming(true);
     try {
       const ok = await onConfirm(verdict.ymd);
@@ -123,12 +130,34 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
   return (
     <ScheduleReservationLayout
       onBack={onBack}
-      backLabel={exitMode === 'orders' ? t('backToOrders') : t('backButton')}
+      backLabel={exitMode === 'orders' ? t('backToOrdersShort') : t('editOrder')}
+      backKind={exitMode === 'orders' ? 'exit' : 'edit'}
       isBusy={isConfirming}
       embedded
-      orderLabel={formData.title || undefined}
       title={mode === 'kilat' ? t('kilatScheduleTitle') : t(seg.key, seg.vars)}
-      summary={<ReservationSummary startYmd={selected} days={duration} />}
+      cardTitle={t('scheduleCardPickTitle')}
+      subtitle={mode === 'kilat' ? undefined : t('reservationPickSubtitle')}
+      feedback={feedback}
+      stub={
+        <TicketStub
+          title={formData.title || undefined}
+          locked={false}
+          startYmd={selected}
+          days={duration}
+          // Kilat tidak tayang 15.00 dan belum melahirkan tagihan di sini —
+          // ia kembali ke Ringkasan, jadi tanpa jam mulai dan tanpa batas bayar.
+          showStartTime={mode !== 'kilat'}
+          deadline={mode === 'kilat' ? null : { kind: 'hold' }}
+        />
+      }
+      /*
+        Bayar redup sejak awal (keputusan 12 Okt): peneliti melihat ke mana
+        tiket ini berujung. Menekannya menegur di zona kunci. Kilat tidak lanjut
+        bayar di sini — ia kembali ke Ringkasan.
+      */
+      pay={mode === 'kilat'
+        ? { kind: 'note', node: <p className="text-xs text-slate-500 leading-relaxed">{t('scheduleKilatHint')}</p> }
+        : { kind: 'needs_lock' }}
       mobileBarInfo={<MobileBarInfo total={cost.totalCost} />}
       calendar={
         <div className="space-y-4">
@@ -177,10 +206,17 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
           totalLabel={t('totalPayment')}
         />
       }
-      cta={
+      lock={{
+        kind: 'lock',
+        // Kilat: catatan hold 1 jam tidak berlaku — belum ada yang ditahan.
+        hint: mode === 'kilat' ? null : undefined,
+        cta: (
         <button
+          type="button"
           onClick={handleConfirm}
-          disabled={!selected || availability.isLoading || isConfirming}
+          /* ⚠️ TIDAK mati karena tanggal kosong: klik tanpa tanggal harus
+             menegur ("pilih tanggal dulu"), bukan diam. */
+          disabled={availability.isLoading || isConfirming}
           className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-jfu-primary"
         >
           {isConfirming ? (
@@ -195,7 +231,8 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
             </>
           )}
         </button>
-      }
+        ),
+      }}
     />
   );
 }

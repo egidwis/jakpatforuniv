@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { fetchFirstScheduleId } from '../utils/supabase';
 import { useLanguage } from '../i18n/LanguageContext';
+import { TicketSkeleton } from '../components/schedule/ScheduleReservationLayout';
 
 /**
  * Rute lama berkunci ORDER (`/dashboard/payment/:submissionId`) — kini hanya
@@ -56,9 +57,7 @@ export function PaymentCheckoutPage() {
     );
   }
 
-  return (
-    <div className="pt-24 flex items-center justify-center min-h-[60vh]">
-      <Loader2 className="w-6 h-6 animate-spin text-jfu-primary" />
-    </div>
-  );
+  // Bingkai tiket yang sama dengan halaman tujuannya — wizard → kunci → bayar
+  // terbaca satu tiket yang sedang terisi, bukan spinner di antara dua halaman.
+  return <TicketSkeleton />;
 }

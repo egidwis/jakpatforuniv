@@ -49,16 +49,19 @@ import { DurationPicker } from '../../components/DurationPicker';
 import { useSlotAvailability } from '../../hooks/useSlotAvailability';
 import { scheduleLockGate } from '../../utils/scheduleLockGate';
 import { isDailyQuotaFullError } from '../../utils/dailyQuotaError';
-import { newSchedulePlan, NEW_SCHEDULE_BLOCK_KEY } from '../../utils/newSchedulePlan';
+import { newSchedulePlan } from '../../utils/newSchedulePlan';
 import { segmentTitleOf } from '../../utils/segmentTitle';
 import { fetchBatchContext, scheduleIdFromSourceId, type BatchContext } from '../../utils/batchContext';
-import { toAiringEndIso, toAiringStartIso } from '../../utils/airing-window';
+import { toAiringEndIso, toAiringStartIso, toWibYmd } from '../../utils/airing-window';
+import { airingDayCount } from './schedule/scheduleModel';
 import { createPayment } from '../../utils/payment';
 import { slotReleaseDeadline } from '../../utils/slotHold';
 import { formatIDR } from '../../utils/currency';
 import { CostBreakdown } from '../../components/CostBreakdown';
-import { ScheduleReservationLayout } from '../../components/schedule/ScheduleReservationLayout';
-import { ReservationSummary, MobileBarInfo } from '../../components/schedule/ReservationParts';
+import { ScheduleReservationLayout, TicketSkeleton } from '../../components/schedule/ScheduleReservationLayout';
+import { TicketStub, MobileBarInfo, useAiringRange } from '../../components/schedule/ReservationParts';
+import { useLockFeedback } from '../../components/schedule/useLockFeedback';
+import { lockGateFeedback, newScheduleBlockFeedback, newScheduleZoneHint, isStaleBlockFeedback } from '../../utils/reservationTicket';
 import { draftScheduleMoney } from '../../utils/draftScheduleMoney';
 import { InfoTooltip } from '@/components/status/InfoTooltip';
 import { RewardRecommendationHint } from '../../components/RewardRecommendationHint';
@@ -116,6 +119,8 @@ export function JadwalBaruPage() {
   const [batch, setBatch] = useState<BatchContext | null>(null);
   const [isResolvingBatch, setIsResolvingBatch] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  /** Teguran zona kunci tiket — inline + toast dari kunci yang sama. */
+  const feedback = useLockFeedback();
 
   /*
     ⚠️ `excludeSubmissionId` TIDAK dioper. Order ini sedang menambah jadwal
@@ -278,8 +283,36 @@ export function JadwalBaruPage() {
     [ordinal],
   );
 
+  /*
+    Jadwal TERAKHIR order ini — baris "Jadwal terakhir" di sobekan dan titik
+    penanda di kalender. Hari WIB + panjang dari start→end (`airingDayCount`),
+    bukan `startDate.slice(0, 10)`: kolomnya TIMESTAMPTZ, `end_date`
+    akhir-eksklusif, dan `duration` bisa berbohong. Jadwal yang sudah batal
+    tidak ditandai — ia tidak lagi jatuh di mana pun.
+  */
+  const latestShown = latestSchedule?.startDate
+    && !['cancelled', 'slot_cancelled'].includes((latestSchedule.status || '').toLowerCase())
+    ? latestSchedule
+    : null;
+  const latestYmd = latestShown?.startDate ? toWibYmd(new Date(latestShown.startDate)) : null;
+  const latestDays = latestShown
+    ? (airingDayCount(latestShown.startDate, latestShown.endDate) ?? latestShown.duration ?? 1)
+    : 1;
+  const latestRange = useAiringRange(latestYmd, latestDays);
+
+  const pickDate = (ymd: string) => { setPicked(ymd); feedback.clear(); };
+  const pickDuration = (days: number) => { setDuration(days); feedback.clear(); };
+
+  // Teguran blok yang sebabnya sudah hilang (hadiah kini terisi, periode selesai
+  // dibaca) dicabut sendiri — tidak menunggu tombol diklik lagi.
+  const { error: feedbackError, clear: clearFeedback } = feedback;
+  useEffect(() => {
+    if (isStaleBlockFeedback(feedbackError?.key ?? null, plan.block)) clearFeedback();
+  }, [feedbackError, plan.block, clearFeedback]);
+
   const handleLock = async () => {
-    if (!submissionId || !picked || !startIso || !endIso) return;
+    // ⚠️ Tanggal kosong TIDAK lagi pulang diam — gerbang di bawah menegurnya.
+    if (!submissionId) return;
 
     /*
       ⚠️ GERBANG YANG SAMA dengan tiga pemanggil lain
@@ -295,18 +328,22 @@ export function JadwalBaruPage() {
       availability,
     });
     if (!verdict.ok) {
-      toast.error(t(verdict.messageKey));
+      feedback.report(lockGateFeedback(verdict), { scroll: true });
       if (verdict.clearSelection) setPicked(null);
       if (verdict.shouldReload) void availability.reload();
       return;
     }
     if (!plan.canSubmit) {
-      if (plan.block) toast.error(t(NEW_SCHEDULE_BLOCK_KEY[plan.block]));
+      // Hadiah kosong = warning; periode belum/gagal terbaca = error.
+      // `saving` bukan teguran (tombolnya memang sedang bekerja).
+      const fb = newScheduleBlockFeedback(plan.block);
+      if (fb) feedback.report(fb, { scroll: true });
       return;
     }
+    // Lolos gerbang = `picked` ada, jadi keduanya terisi. Penjaga tipe saja.
+    if (!startIso || !endIso) return;
 
-
-
+    feedback.clear();
     setIsSaving(true);
     /*
       ⚠️ DIDEKLARASIKAN DI LUAR `try` DENGAN SENGAJA. Mengunci jadwal adalah dua
@@ -442,7 +479,8 @@ export function JadwalBaruPage() {
       // padahal kalender di layar ini masih menampilkannya lowong. Jadwalnya
       // tidak pernah lahir, jadi tidak ada yang perlu dikompensasi.
       if (!orphanLeft && isDailyQuotaFullError(e)) {
-        toast.error(t('slotErrorFull'));
+        // Teguran yang SAMA dengan penolakan klien `range_full`.
+        feedback.report({ key: 'slotErrorFull', tone: 'error' }, { scroll: true });
         setPicked(null);
         void availability.reload();
         return;
@@ -459,13 +497,8 @@ export function JadwalBaruPage() {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="pt-24 flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-6 h-6 animate-spin text-jfu-primary" />
-      </div>
-    );
-  }
+  // Bingkai tiket yang sama, berdenyut — bukan spinner di tengah layar.
+  if (isLoading) return <TicketSkeleton />;
 
   if (notFound || !submission) {
     return (
@@ -485,19 +518,27 @@ export function JadwalBaruPage() {
   return (
     <ScheduleReservationLayout
       onBack={() => navigate('/dashboard')}
-      backLabel={t('backToOrders')}
+      backLabel={t('backToOrdersShort')}
       isBusy={isSaving}
-      orderLabel={`${submission.title}${bookingId ? ` · #${bookingId}` : ''}`}
       title={t(seg.key, seg.vars)}
-      summary={
-        <ReservationSummary
+      cardTitle={t('scheduleCardExtensionTitle')}
+      subtitle={t('reservationPickSubtitle')}
+      feedback={feedback}
+      stub={
+        <TicketStub
+          title={submission.title || undefined}
+          bookingId={bookingId}
+          tag={t('scheduleExtensionPrefix')}
+          locked={false}
           startYmd={picked}
           days={duration}
-          extraRows={
-            picked && currentPeriodBatch && !isResolvingBatch
+          extraRows={[
+            ...(latestRange ? [{ label: t('summaryLatestScheduleLabel'), value: latestRange }] : []),
+            ...(picked && currentPeriodBatch && !isResolvingBatch
               ? [{ label: t('summaryPeriodLabel'), value: currentPeriodLabel }]
-              : []
-          }
+              : []),
+          ]}
+          deadline={{ kind: 'hold' }}
         />
       }
       mobileBarInfo={<MobileBarInfo total={money.total} />}
@@ -509,7 +550,7 @@ export function JadwalBaruPage() {
           </div>
           <DurationPicker
             value={duration}
-            onChange={setDuration}
+            onChange={pickDuration}
             disabled={isSaving}
           />
         </div>
@@ -539,8 +580,9 @@ export function JadwalBaruPage() {
             duration={duration}
             mode="regular"
             value={picked}
-            onChange={setPicked}
+            onChange={pickDate}
             showSummary={false}
+            ownRange={latestYmd ? { startYmd: latestYmd, days: latestDays } : null}
           />
         </div>
 
@@ -851,25 +893,36 @@ export function JadwalBaruPage() {
         />
 
       }
-      blockedReason={
-        plan.block && plan.block !== 'saving' && plan.block !== 'no_date' ? (
-          <p className="flex items-start gap-1.5 text-sm text-slate-500">
-            <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-            <span>{t(NEW_SCHEDULE_BLOCK_KEY[plan.block])}</span>
-          </p>
-        ) : null
-      }
-      cta={
-        <button
-          type="button"
-          onClick={handleLock}
-          disabled={!plan.canSubmit}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock size={15} />}
-          {isSaving ? t('scheduleAgainBooking') : t('scheduleLockCta')}
-        </button>
-      }
+      lock={{
+        kind: 'lock',
+        /*
+          Sebab tombol belum bisa mengunci, diucapkan PASIF sebelum diklik
+          (periode sedang dibaca, hadiah belum diisi, …) — menggantikan
+          `blockedReason` di kolom kanan. Tanpa sebab: catatan hold 1 jam.
+          Tanggal kosong bukan sebab pasif: ia baru ditegur saat diklik.
+          Aturannya di `newScheduleZoneHint`.
+        */
+        hint: (() => {
+          // Teguran merah berkalimat sama menggantikan sebab pasifnya (null).
+          const key = newScheduleZoneHint(plan.block, feedback.error?.key ?? null);
+          return key ? t(key) : key;
+        })(),
+        cta: (
+          <button
+            type="button"
+            onClick={handleLock}
+            /* ⚠️ Mati HANYA saat menyimpan. Blok lain (tanggal, hadiah,
+               periode) menegur saat diklik — tombol mati yang diam tidak
+               memberi tahu apa pun. */
+            disabled={isSaving}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock size={15} />}
+            {isSaving ? t('scheduleAgainBooking') : t('scheduleLockCta')}
+          </button>
+        ),
+      }}
+      pay={{ kind: 'needs_lock' }}
     />
   );
 }

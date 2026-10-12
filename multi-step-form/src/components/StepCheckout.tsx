@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 
 import { OrderLiveCompanion } from './order/OrderLiveCompanion';
+import { ReviewPathNotice } from './order/ReviewPathNotice';
 
 interface StepCheckoutProps {
   formData: SurveyFormData;
@@ -239,28 +240,6 @@ export function StepCheckout({
       <div className="grid lg:grid-cols-12 gap-6 items-start">
         {/* KOLOM KIRI: Survey Overview & Invoice Details (~58-60% / 7 cols) */}
         <div className="lg:col-span-7 space-y-4">
-          {/* Warning Banner for Personal Data Detection */}
-          {formData.hasPersonalDataQuestions && formData.detectedKeywords && formData.detectedKeywords.length > 0 && (
-            <div className="p-4 rounded-xl bg-amber-100/50 border border-amber-200/60 flex flex-col gap-2">
-              <div className="flex items-start gap-3">
-                <div className="p-1.5 bg-amber-200 text-amber-700 rounded-lg shrink-0">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
-                    <path d="M12 9v4" />
-                    <path d="M12 17h.01" />
-                  </svg>
-                </div>
-                <div>
-                  <h4 className="font-bold text-amber-900 text-sm">Terdeteksi Pertanyaan Data Pribadi</h4>
-                  <p className="text-sm text-amber-700 mt-1 leading-relaxed">
-                    Sistem mendeteksi form ini menanyakan: <strong className="bg-amber-200/60 px-1.5 py-0.5 rounded capitalize">{formData.detectedKeywords.join(', ')}</strong>.
-                    Sesuai <a href="/homepage/terms-conditions.html" target="_blank" rel="noopener noreferrer" className="font-bold underline decoration-amber-700/30 hover:text-amber-900 transition-colors">Syarat dan Ketentuan</a>, form ini akan memerlukan <strong>Review Manual</strong> oleh tim admin sebelum dilanjutkan ke tahap pembayaran.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Warning Banner for manual-verification vouchers (JFUFEB / ILKOMUNY) */}
           {isManualVerificationVoucher(formData.voucherCode) && (
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
@@ -432,6 +411,11 @@ export function StepCheckout({
                   </p>
                 </div>
               )}
+
+              {/* Jalur review — satu-satunya tempat di Ringkasan yang menjawab
+                  "jalur apa, kenapa, berapa lama". Dulu dibelah tiga: banner
+                  amber PII di sini, blok di kolom kanan, dan tips Kepastian Slot. */}
+              <ReviewPathNotice formData={formData} />
 
               {/* Mode JFU Kilat Active Banner */}
               {formData.isKilatUpgrade && (

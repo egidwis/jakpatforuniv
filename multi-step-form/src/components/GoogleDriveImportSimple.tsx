@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, AlertTriangle, Check, ChevronDown, Loader2, ShieldCheck } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { AlertCircle, AlertTriangle, Check, CheckCircle2, ChevronDown, Loader2, ShieldCheck } from 'lucide-react';
 import { InfoTooltip } from './status/InfoTooltip';
+import { PII_KEYWORD_KEY } from '../utils/piiKeywordLabel';
 import { simpleGoogleAuth, type AuthResult } from '../utils/google-auth-simple';
 import { googlePicker } from '../utils/google-picker-browser';
 import { googleFormsApi } from '../utils/google-forms-api-browser';
@@ -23,7 +24,22 @@ interface GoogleDriveImportSimpleProps {
   formData: SurveyFormData;
   updateFormData: (data: Partial<SurveyFormData>) => void;
   onFormDataLoaded: () => void;
-  onCancel?: () => void;
+  /**
+   * Hasil review yang memuat data pribadi — ditahan induk sampai peneliti
+   * memilih. Dirender di SINI (kartu kuning), bukan panel terpisah, supaya
+   * kotak "Data kamu aman" + baris akun tetap ada dan kerangkanya sama
+   * dengan kartu galat (keputusan 11 Okt 2026).
+   */
+  piiResult?: ImportedGoogleForm | null;
+  /** "Lanjut Diperiksa Admin" pada kartu data pribadi: pakai hasil impor itu. */
+  onAcceptPii?: () => void;
+  /**
+   * Review otomatis gagal membaca form (restricted, belum di-publish, timeout,
+   * galat lain): peneliti boleh lanjut lewat REVIEW MANUAL admin (keputusan
+   * 11 Okt 2026). Induk membawanya ke isian manual dengan link & judul terisi;
+   * jumlah pertanyaan diketik peneliti dan diverifikasi admin.
+   */
+  onContinueManual?: (draft: { surveyUrl: string; title: string }) => void;
   /** Kalau diisi, pemilih file dilewati dan form ini langsung diekstrak. */
   autoFormId?: string | null;
   /**
@@ -34,6 +50,28 @@ interface GoogleDriveImportSimpleProps {
 }
 
 const REVIEW_TIMEOUT_MS = 45000;
+
+/**
+ * Galat pembacaan form → kunci pesan untuk peneliti. Dulu pesan
+ * "tertutup/belum di-publish" dipakai juga untuk timeout, dan galat lain
+ * ditampilkan MENTAH (Inggris teknis: "API error: 500", "Form not found or
+ * you do not have access…"). Kartu galatnya satu bentuk; hanya kalimat ini
+ * yang berbeda per penyebab.
+ */
+type ImportErrorKey =
+  | 'googleErrRestricted'
+  | 'googleErrNotPublished'
+  | 'googleErrNoAccess'
+  | 'googleErrTimeout'
+  | 'googleErrGeneric';
+
+function importErrorKeyOf(message: string): ImportErrorKey {
+  if (message === 'errorFormRestricted') return 'googleErrRestricted';
+  if (message === 'errorFormNotPublished') return 'googleErrNotPublished';
+  if (message === 'review-timeout') return 'googleErrTimeout';
+  if (/not found|do not have access|access denied|permission|api error: 40[34]/i.test(message)) return 'googleErrNoAccess';
+  return 'googleErrGeneric';
+}
 
 function isGoogleAuthError(message: string): boolean {
   return /no access token|not authenticated|api error: 401|invalid authentication|login required/i.test(message);
@@ -60,7 +98,9 @@ function isGoogleAuthError(message: string): boolean {
 export function GoogleDriveImportSimple({
   updateFormData,
   onFormDataLoaded,
-  onCancel,
+  onContinueManual,
+  piiResult = null,
+  onAcceptPii,
   autoFormId,
   onReviewed,
 }: GoogleDriveImportSimpleProps) {
@@ -73,8 +113,11 @@ export function GoogleDriveImportSimple({
   const [reviewStepIndex, setReviewStepIndex] = useState(0);
   const [importedForm, setImportedForm] = useState<any>(null);
   const [failedFormTitle, setFailedFormTitle] = useState<string>('Google Form');
+  // Form yang gagal dibaca — linknya dibawa ke isian manual bila peneliti
+  // memilih lanjut direview admin. null = galat datang dari picker sendiri.
+  const [failedFormId, setFailedFormId] = useState<string | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
-  const [importError, setImportError] = useState<string | null>(null);
+  const [importError, setImportError] = useState<ImportErrorKey | null>(null);
   const [needsReauth, setNeedsReauth] = useState(false);
   const [safetyOpen, setSafetyOpen] = useState(false);
   const [reviewSlow, setReviewSlow] = useState(false);
@@ -110,12 +153,15 @@ export function GoogleDriveImportSimple({
         throw new Error(authResult.error || 'Failed to connect');
       }
 
-      if (authResult.user?.emailAddress) {
-        setGoogleEmail(authResult.user.emailAddress);
+      const connectedEmail = authResult.user?.emailAddress || '';
+      if (connectedEmail) {
+        setGoogleEmail(connectedEmail);
       }
 
       setIsAuthenticated(true);
-      toast.success(t('successConnectedGoogleDrive'));
+      // Hanya saat akun BARU disambungkan. Token yang dipulihkan dari sesi
+      // lalu tidak memicu toast — tidak ada yang baru terjadi.
+      toast.success(t('successConnectedGoogleDrive'), connectedEmail ? { description: connectedEmail } : undefined);
     } catch (error: any) {
       console.error('Error connecting:', error);
 
@@ -172,6 +218,7 @@ export function GoogleDriveImportSimple({
     setImportError(null);
     setNeedsReauth(false);
     setFailedFormTitle(fileName || 'Google Form');
+    setFailedFormId(formId);
     setIsReviewing(true);
     const minDuration = 6000 + Math.floor(Math.random() * 4001);
     stepMsRef.current = Math.floor(minDuration / 3);
@@ -212,11 +259,8 @@ export function GoogleDriveImportSimple({
     } catch (error: any) {
       if (!stillCurrent()) return;
       const errMsg = error?.message || '';
-      if (errMsg === 'review-timeout') {
-        setImportError(t('technicalIssueReasonNote'));
-        toast.error(t('errorSelectForm'));
-        return;
-      }
+      // Sesi Google kedaluwarsa BUKAN masalah kuesioner: tanpa kartu galat,
+      // baris akun berubah jadi "Hubungkan ulang".
       if (isGoogleAuthError(errMsg)) {
         setNeedsReauth(true);
         setIsAuthenticated(false);
@@ -224,11 +268,10 @@ export function GoogleDriveImportSimple({
         return;
       }
       toast.error(t('errorSelectForm'));
-      if (errMsg === 'errorFormNotPublished' || errMsg === 'errorFormRestricted') {
-        setImportError(t('technicalIssueReasonNote'));
-      } else {
-        setImportError(errMsg || t('technicalIssueReasonNote'));
+      if (errMsg && !['review-timeout', 'errorFormNotPublished', 'errorFormRestricted'].includes(errMsg)) {
+        console.error('Gagal membaca Google Form:', errMsg);
       }
+      setImportError(importErrorKeyOf(errMsg));
     } finally {
       window.clearTimeout(timeoutId);
       if (stillCurrent()) {
@@ -256,7 +299,8 @@ export function GoogleDriveImportSimple({
     } catch (error: any) {
       console.error('Error selecting form:', error);
       toast.error(t('errorSelectForm'));
-      setImportError(error?.message || t('technicalIssueReasonNote'));
+      setFailedFormId(null);
+      setImportError('googleErrGeneric');
       setIsSelecting(false);
       setIsReviewing(false);
     }
@@ -328,12 +372,22 @@ export function GoogleDriveImportSimple({
                 ? t('googleReconnect')
                 : t('googleAccountLabel')}
           </span>
+          {isAuthenticated && (
+            <CheckCircle2
+              className="w-4 h-4 shrink-0 text-emerald-600"
+              role="img"
+              aria-label={t('googleConnectedBadge')}
+            />
+          )}
         </p>
         {isAuthenticated ? (
           <button
             type="button"
             onClick={handleChangeAccount}
-            className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+            /* Tautan teks, BUKAN tombol bergaris: tombol bergaris adalah
+               bentuk "Hubungkan" saat BELUM terhubung, dan memakai bentuk yang
+               sama membuat akun yang sudah terhubung terbaca belum. */
+            className="shrink-0 rounded-md px-1 py-1 text-sm font-semibold text-slate-500 hover:text-jfu-primary hover:underline underline-offset-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary"
           >
             {t('googleChangeShort')}
           </button>
@@ -484,61 +538,60 @@ export function GoogleDriveImportSimple({
               </div>
             </div>
           ) : importError ? (
-            <div>
-              <div className="rounded-xl border border-rose-200 bg-rose-50/40 p-3 md:p-3.5">
-                <div className="flex items-start gap-3">
-                  <span className="w-8 h-8 rounded-lg bg-rose-100 text-rose-600 inline-flex items-center justify-center shrink-0 mt-0.5">
-                    <AlertCircle className="w-4 h-4" />
+            /*
+              ⚠️ SATU KERANGKA UNTUK SEMUA HASIL YANG MENGHENTIKAN RESERVASI
+              MANDIRI (keputusan 11 Okt 2026): galat baca (merah) dan data
+              pribadi (kuning, cabang di bawah). Hanya warna & baris status
+              yang beda. DULU tombol kanan galat berlabel "Saya Mengerti,
+              Lanjut Direview Admin" tapi memanggil `onCancel` — kembali ke
+              pilihan metode, tidak mengirim apa pun ke admin.
+
+              "0 Pertanyaan" sengaja tidak ditampilkan: jumlahnya tak pernah
+              terbaca, angka 0 itu klaim palsu.
+            */
+            <ReviewResultCard
+              tone="rose"
+              title={failedFormId ? t('selectedSurveyTitle') : t('googleImportErrorTitle')}
+              formTitle={failedFormTitle}
+              status={<span className="font-semibold text-rose-700">{t('statusDetectedIssue')}</span>}
+              body={<p className="text-xs text-rose-800 leading-relaxed">{t(importError)}</p>}
+              hint={t('googleImportFixHint')}
+              onPickAgain={handleSelectForm}
+              onContinueAdmin={onContinueManual ? () => onContinueManual({
+                surveyUrl: failedFormId ? `https://docs.google.com/forms/d/${failedFormId}/viewform` : '',
+                title: failedFormId ? failedFormTitle : '',
+              }) : undefined}
+            />
+          ) : piiResult ? (
+            <ReviewResultCard
+              tone="amber"
+              title={t('selectedSurveyTitle')}
+              formTitle={piiResult.title}
+              status={
+                // Teks inline, bukan flex-wrap: flex mematahkan baris SESUDAH
+                // titik pemisah dan meninggalkannya sendirian di ujung baris.
+                <span className="leading-relaxed">
+                  <span className="font-semibold text-gray-700">
+                    {piiResult.questionCount} {t('questionsCountSuffix')}
                   </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="text-sm font-bold text-[#1a1a1a]">{t('selectedSurveyTitle')}</h3>
-                    </div>
-
-                    <p
-                      className="text-xs font-medium text-gray-700 truncate mt-0.5"
-                      title={failedFormTitle}
-                    >
-                      {failedFormTitle}
-                    </p>
-
-                    <div className="mt-2 pt-2 border-t border-rose-200/60">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                        <span className="font-semibold text-gray-700">
-                          0 {t('questionsCountSuffix')}
-                        </span>
-                        <span className="text-gray-300">·</span>
-                        <span className="font-semibold text-rose-700">
-                          {t('statusDetectedIssue')}
-                        </span>
-                      </div>
-
-                      <p className="text-xs text-rose-800 mt-1.5 leading-relaxed">
-                        {importError}
-                      </p>
-                    </div>
-                  </div>
+                  <span className="text-gray-300 mx-1.5" aria-hidden="true">·</span>
+                  <span className="font-semibold text-amber-700">{t('piiDetectedTitle')}</span>
+                  <InfoTooltip content={t('piiDetectedTip')} />
+                </span>
+              }
+              body={piiResult.detectedKeywords.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {piiResult.detectedKeywords.map((keyword) => (
+                    <span key={keyword} className="rounded-full bg-white border border-amber-200 px-2 py-0.5 text-[11px] font-medium text-amber-900">
+                      {PII_KEYWORD_KEY[keyword] ? t(PII_KEYWORD_KEY[keyword]) : keyword}
+                    </span>
+                  ))}
                 </div>
-              </div>
-
-              {/* Action Buttons for Technical Issue Rejection */}
-              <div className="flex flex-col sm:flex-row gap-2.5 mt-3">
-                <button
-                  onClick={handleSelectForm}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 min-h-11 font-semibold rounded-full border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  {t('changeSelectedForm')}
-                </button>
-                <button
-                  onClick={() => {
-                    if (onCancel) onCancel();
-                  }}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 min-h-11 text-white font-semibold rounded-full bg-gradient-to-br from-jfu-primary to-jfu-light shadow-glow hover:-translate-y-0.5 transition-all"
-                >
-                  {t('personalDataContinueButton')}
-                </button>
-              </div>
-            </div>
+              ) : null}
+              hint={t('piiPickAgainHint')}
+              onPickAgain={handleSelectForm}
+              onContinueAdmin={onAcceptPii}
+            />
           ) : (
             <button
               type="button"
@@ -552,6 +605,86 @@ export function GoogleDriveImportSimple({
               {t('googlePickQuestionnaire')}
             </button>
           )}
+    </div>
+  );
+}
+
+/**
+ * Kartu hasil review yang menghentikan reservasi mandiri + dua CTA-nya.
+ * Kerangka tunggal: ikon → "Survei selesai di-review" → nama form → garis →
+ * status → isi (chip/pesan) → kalimat penjelas → [Pilih Form Lagi] →
+ * "Lanjut Diperiksa Admin" ⓘ. Warna: kuning = bisa diperbaiki (data
+ * pribadi), merah = form tidak terbaca.
+ */
+function ReviewResultCard({
+  tone,
+  title,
+  formTitle,
+  status,
+  body,
+  hint,
+  onPickAgain,
+  onContinueAdmin,
+}: {
+  tone: 'amber' | 'rose';
+  title: string;
+  formTitle: string;
+  status: ReactNode;
+  body: ReactNode;
+  hint: string;
+  onPickAgain: () => void;
+  onContinueAdmin?: () => void;
+}) {
+  const { t } = useLanguage();
+  const amber = tone === 'amber';
+  return (
+    <div>
+      <div className={`rounded-xl border p-3 md:p-3.5 ${amber ? 'border-amber-200 bg-amber-50/40' : 'border-rose-200 bg-rose-50/40'}`}>
+        <div className="flex items-start gap-3">
+          <span className={`w-8 h-8 rounded-lg inline-flex items-center justify-center shrink-0 mt-0.5 ${amber ? 'bg-amber-100 text-amber-600' : 'bg-rose-100 text-rose-600'}`}>
+            {amber ? <AlertTriangle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-bold text-[#1a1a1a]">{title}</h3>
+            <p className="text-xs font-medium text-gray-700 truncate mt-0.5" title={formTitle}>
+              {formTitle}
+            </p>
+            {/* Pemisah h-px, bukan `border-t`: `.border-t` warisan di styles.css menimpa warnanya. */}
+            <div className={`mt-2 h-px ${amber ? 'bg-amber-200/60' : 'bg-rose-200/60'}`} aria-hidden="true" />
+            <div className="pt-2 text-xs">{status}</div>
+            {body && <div className="mt-1.5">{body}</div>}
+            <p className="mt-1.5 text-xs text-slate-600 leading-relaxed">{hint}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Ukuran tombol = CTA halaman "Lanjut ke Informasi Pembayaran"
+          (StepOneFormFields: px-6 py-3.5 text-sm font-bold) supaya dua tombol
+          biru di layar yang sama sebanding. */}
+      <div className="mt-4 flex flex-col items-center gap-3">
+        <button
+          type="button"
+          onClick={onPickAgain}
+          className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-3.5 text-sm font-bold text-white transition-all hover:bg-jfu-dark shadow-xs cursor-pointer"
+        >
+          {t('googlePickFormAgain')}
+        </button>
+        {onContinueAdmin && (
+          <span className="inline-flex items-center gap-1">
+            <button
+              type="button"
+              onClick={onContinueAdmin}
+              className="py-1 text-sm font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
+            >
+              {t('googleContinueManualReview')}
+            </button>
+            {/* Tanpa ini "Lanjut Diperiksa Admin" terbaca seperti "form
+                dikirim ke admin sekarang". Yang terjadi: order pindah ke
+                jalur review manual — tanggal ditetapkan tim, bukan dipilih. */}
+            <InfoTooltip content={t('continueAdminReviewTip')} />
+          </span>
+        )}
+      </div>
     </div>
   );
 }

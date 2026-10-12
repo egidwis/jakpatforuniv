@@ -25,6 +25,12 @@ interface SchedulePickerProps {
    * (`lockedDateFitsHorizon`); di luar itu ia memajang kartu jadwal terkunci.
    */
   lockedYmd?: string | null;
+  /**
+   * Jadwal TERAKHIR order ini (perpanjangan) — penanda visual saja. Tile-nya
+   * tetap bisa dipilih bila kuotanya lowong; penanda ini cuma menjawab "jadwal
+   * yang sudah ada jatuh di mana", supaya perpanjangan tidak dipilih buta.
+   */
+  ownRange?: { startYmd: string; days: number } | null;
 }
 
 const HORIZON_DAYS = SCHEDULE_HORIZON_DAYS;
@@ -56,6 +62,7 @@ export function SchedulePicker({
   onChange,
   showSummary = true,
   lockedYmd = null,
+  ownRange = null,
 }: SchedulePickerProps) {
   const { t, language } = useLanguage();
   const { counts, maxPerDay } = availability;
@@ -78,6 +85,16 @@ export function SchedulePicker({
   const isFrozen = !!lockedYmd;
   const anchor = isFrozen ? lockedYmd : value;
   const selectedIndex = anchor ? ymds.indexOf(anchor) : -1;
+  // Jadwal terakhir boleh MULAI sebelum hari ini; yang ditandai cuma hari-hari
+  // yang masih jatuh di jendela 14 hari.
+  const ownDays = new Set<string>();
+  if (ownRange) {
+    const [y, m, d] = ownRange.startYmd.split('-').map(Number);
+    for (let k = 0; k < Math.max(ownRange.days, 1); k++) {
+      ownDays.add(new Date(Date.UTC(y, m - 1, d + k)).toISOString().slice(0, 10));
+    }
+  }
+  const showOwnLegend = !isFrozen && ymds.some((ymd) => ownDays.has(ymd));
   const fmt = (ymd: string, opts: Intl.DateTimeFormatOptions) =>
     calendarDateOf(ymd).toLocaleDateString(locale, { ...opts, timeZone: 'UTC' });
 
@@ -191,6 +208,7 @@ export function SchedulePicker({
               : isFull
                 ? t('slotFullReason')
                 : null;
+          const isOwn = !isFrozen && ownDays.has(ymd);
           const isToday = i === 0;
           const isTomorrow = i === 1;
           const dayLabel = isToday
@@ -207,7 +225,7 @@ export function SchedulePicker({
               onClick={() => { if (!isFrozen) onChange(ymd); }}
               /* Nama aksesibel merakit tanggal + sebab; tanpa ini pembaca layar
                  mengumumkan "Sen 12 Okt 4 garis miring 4, redup" tanpa sebab. */
-              aria-label={reason ? `${dayLabel} — ${reason}` : dayLabel}
+              aria-label={[dayLabel, reason, isOwn ? t('slotLegendOwn') : null].filter(Boolean).join(' — ')}
               aria-pressed={isSelectedInRange || undefined}
               title={reason ?? undefined}
               /* Beku: tanpa pil kuota, jadi tile lebih pendek dan 4 kolom di
@@ -218,6 +236,10 @@ export function SchedulePicker({
                  "12 Okt"; kelasnya bukan milik styles.css, jadi variannya menang. */
               className={`group relative flex flex-col items-center justify-between p-2.5 sm:p-3 lg:px-1.5 ${isFrozen ? 'min-h-[76px]' : 'min-h-[96px] sm:min-h-[102px]'} rounded-2xl border transition-all duration-150 text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 ${statusColors}`}
             >
+              {/* Penanda jadwal terakhir — titik di pojok, tidak menimpa warna status. */}
+              {isOwn && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-indigo-500 ring-2 ring-white" aria-hidden="true" />
+              )}
               {/* 1. Header label: Hari ini / Besok / Nama Hari */}
               <span
                 className={`text-[10px] font-bold uppercase tracking-wider truncate max-w-full ${
@@ -295,12 +317,9 @@ export function SchedulePicker({
         berjarak luminansi 1,18:1 — praktis identik bagi mata buta warna.
         Kata-katanya yang membawa makna; titiknya kini cuma penguat.
       */}
-      {isFrozen ? (
-        <p className="flex items-center gap-1.5 text-xs text-slate-500">
-          <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
-          {t('lockedCalendarHint')}
-        </p>
-      ) : (
+      {/* Kalender beku tanpa legenda: kalimat "ditahan untukmu" kini tinggal di
+          kotak zona kunci tiket, tepat di tempat tombol Kunci tadi berdiri. */}
+      {!isFrozen && (
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500">
         <span className="flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" aria-hidden="true" />
@@ -314,6 +333,12 @@ export function SchedulePicker({
           <span className="w-1.5 h-1.5 rounded-full bg-red-600" aria-hidden="true" />
           {t('slotLegendFull')}
         </span>
+        {showOwnLegend && (
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-indigo-500" aria-hidden="true" />
+            {t('slotLegendOwn')}
+          </span>
+        )}
       </div>
       )}
 

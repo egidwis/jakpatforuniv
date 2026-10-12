@@ -131,6 +131,7 @@ export function MultiStepForm() {
     isOpen: boolean;
     email: string;
     surveyTitle?: string;
+    orderId?: string;
   } | null>(null);
 
   // Save to localStorage whenever state changes
@@ -331,6 +332,7 @@ export function MultiStepForm() {
           isOpen: true,
           email: merged.email || user?.email || '',
           surveyTitle: merged.title || '',
+          orderId: saved.id,
         });
       } else {
         toast.success(t('slotLockedSuccess'));
@@ -547,6 +549,7 @@ export function MultiStepForm() {
         isOpen={!!reviewModalData?.isOpen}
         email={reviewModalData?.email || ''}
         surveyTitle={reviewModalData?.surveyTitle}
+        orderId={reviewModalData?.orderId}
         onConfirm={handleReviewModalConfirm}
       />
     </div>

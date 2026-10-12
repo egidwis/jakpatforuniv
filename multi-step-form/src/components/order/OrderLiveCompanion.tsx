@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Zap,
-  ShieldCheck,
   Info,
   CheckCircle2,
   CreditCard,
@@ -137,45 +135,9 @@ export const OrderLiveCompanion: React.FC<OrderLiveCompanionProps> = ({
 
         {/* ================= KONTEN DETAIL (MOBILE EXPANDED + SELALU TAMPIL DI DESKTOP) ================= */}
         <div className={`${isMobileExpanded ? 'block' : 'hidden'} lg:block`}>
-          {step !== 1 && (
-          <div className="p-4 sm:p-5 border-b border-slate-100">
-            <div
-              className={`rounded-xl border p-3.5 sm:p-4 transition-all ${isAuto
-                  ? 'border-emerald-200/80 bg-gradient-to-br from-emerald-50/80 via-white to-emerald-50/40'
-                  : 'border-blue-200/80 bg-gradient-to-br from-blue-50/80 via-white to-indigo-50/40'
-                }`}
-            >
-              <div className="flex items-start gap-3">
-                <div
-                  className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 shadow-2xs mt-0.5 ${isAuto
-                      ? 'bg-emerald-100 text-emerald-700 border border-emerald-200/80'
-                      : 'bg-blue-100 text-jfu-primary border border-blue-200/80'
-                    }`}
-                >
-                  {isAuto ? (
-                    <Zap className="w-4 h-4 text-emerald-600" />
-                  ) : (
-                    <ShieldCheck className="w-4 h-4 text-jfu-primary" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <span className="text-xs sm:text-sm font-bold text-slate-900 block">
-                    {isAuto ? t('reviewPathAutoTitle') : t('reviewPathManualTitle')}
-                  </span>
-
-                  <p className="mt-1 text-xs text-slate-600 leading-relaxed">
-                    {isAuto
-                      ? t('reviewPathAutoDesc')
-                      : formData.hasPersonalDataQuestions
-                        ? t('reviewPathManualSensitiveDesc')
-                        : t('reviewPathManualDefaultDesc')}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-          )}
-
+          {/* Jalur review TIDAK lagi di sini: pindah ke kartu Ringkasan Pesanan
+              (`ReviewPathNotice`) supaya terlihat di ponsel, tempat kartu ini
+              terlipat. Chip "Review Manual" di bar terlipat tetap. */}
           {/* 2. SEKSI TIPS DENGAN BOX HIJAU (URUTAN 2) */}
           <div className="p-4 sm:p-5 border-b border-slate-100">
             <div className="rounded-xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50/70 via-emerald-50/30 to-white p-3.5 sm:p-4 shadow-2xs">
@@ -210,13 +172,6 @@ export const OrderLiveCompanion: React.FC<OrderLiveCompanionProps> = ({
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
                     <span>
                       <strong className="font-semibold text-slate-800">{t('tipInvoiceContactTitle')}</strong> {t('tipInvoiceContactDesc')}
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                    <span>
-                      <strong className="font-semibold text-slate-800">{t('tipSlotCertaintyTitle')}</strong>{' '}
-                      {isAuto ? t('tipSlotCertaintyAuto') : t('tipSlotCertaintyManual')}
                     </span>
                   </li>
                 </ul>

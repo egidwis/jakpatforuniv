@@ -15,14 +15,23 @@ import type { AdScheduleEntry, FormSubmission } from '../../utils/supabase';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { SchedulePicker } from '../../components/SchedulePicker';
 import { CostBreakdown } from '../../components/CostBreakdown';
-import { ScheduleReservationLayout } from '../../components/schedule/ScheduleReservationLayout';
+import { ScheduleReservationLayout, TicketSkeleton } from '../../components/schedule/ScheduleReservationLayout';
 import {
-  ReservationSummary,
+  TicketStub,
   LockedScheduleCard,
-  HoldCountdown,
-  AdminHoldNote,
   MobileBarInfo,
 } from '../../components/schedule/ReservationParts';
+import { useLockFeedback } from '../../components/schedule/useLockFeedback';
+import { lockGateFeedback, deadlineRowOf } from '../../utils/reservationTicket';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { lockedDateFitsHorizon } from '../../utils/scheduleHorizon';
 import { toWibYmd, toAiringStartIso, isPaymentTooLateForDate } from '../../utils/airing-window';
 import { airingDayCount } from './schedule/scheduleModel';
@@ -100,6 +109,13 @@ export function JadwalDanBayarPage() {
   const [isMinting, setIsMinting] = useState(false);
   const [isCheckingPayment, setIsCheckingPayment] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
+  /** Teguran zona kunci tiket — inline + toast dari kunci yang sama. */
+  const feedback = useLockFeedback();
+  /**
+   * Dialog konfirmasi batal (keputusan 12 Okt). Tautan batal kini berdiri
+   * tepat di bawah Bayar — satu salah tekan dulu langsung membatalkan.
+   */
+  const [confirmCancel, setConfirmCancel] = useState(false);
   /**
    * Kalender hidup lagi di keadaan bayar yang lewat 14.00 ("Pilih Tanggal
    * Lain"). `?pilih=1` datang dari tombol "Jadwalkan Ulang" di dashboard,
@@ -432,12 +448,13 @@ export function JadwalDanBayarPage() {
       availability,
     });
     if (!verdict.ok) {
-      toast.error(t(verdict.messageKey));
+      feedback.report(lockGateFeedback(verdict), { scroll: true });
       if (verdict.clearSelection) setPicked(null);
       if (verdict.shouldReload) void availability.reload();
       return;
     }
 
+    feedback.clear();
     setIsWorking(true);
     try {
       await rebookSlotForSubmission(entry.submissionId, verdict.ymd, verdict.duration);
@@ -450,7 +467,8 @@ export function JadwalDanBayarPage() {
       if (isDailyQuotaFullError(e)) {
         // Ditolak trigger kuota harian (sql/111): kalender tertinggal dari
         // server. Kosongkan pilihan dan muat ulang supaya hari itu tampil penuh.
-        toast.error(t('slotErrorFull'));
+        // Teguran yang SAMA dengan penolakan klien `range_full`.
+        feedback.report({ key: 'slotErrorFull', tone: 'error' }, { scroll: true });
         setPicked(null);
         void availability.reload();
       } else {
@@ -461,6 +479,7 @@ export function JadwalDanBayarPage() {
     }
   };
 
+  /** Dipanggil dari dialog konfirmasi — tautan di sobekan hanya membukanya. */
   const handleCancel = async () => {
     if (!entry) return;
     setIsWorking(true);
@@ -477,22 +496,18 @@ export function JadwalDanBayarPage() {
         2026-09-18). Pembatalan bukan "waktu habis": `canRepickInPlace` menolak
         `slot_cancelled`, dan pesanan berikutnya lahir lewat `JadwalBaruPage`.
       */
-      toast.success(t('cancelScheduleSuccess'));
+      toast.success(entry.isExtension ? t('cancelExtensionSuccess') : t('cancelScheduleSuccess'));
       navigate('/dashboard', { replace: true });
     } catch (e: any) {
       toast.error(e?.message || t('rebookError'));
+      setConfirmCancel(false);
     } finally {
       setIsWorking(false);
     }
   };
 
-  if (isLoading && !entry) {
-    return (
-      <div className="pt-24 flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-6 h-6 animate-spin text-jfu-primary" />
-      </div>
-    );
-  }
+  // Bingkai tiket yang sama, berdenyut — bukan spinner di tengah layar.
+  if (isLoading && !entry) return <TicketSkeleton />;
 
   // ⚠️ Menolak merender tanpa entry — lihat catatan tiga kunci di kepala berkas.
   if (notFound || !entry || !state) {
@@ -554,8 +569,18 @@ export function JadwalDanBayarPage() {
       weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Jakarta',
     });
 
-  const orderLabel = `${entry.title} · #${entry.bookingId}`;
   const mode = entry.distributionType === 'kilat' ? 'kilat' as const : 'regular' as const;
+  const stubBase = {
+    title: entry.title,
+    bookingId: entry.bookingId,
+    tag: entry.isExtension ? t('scheduleExtensionPrefix') : undefined,
+    // Kilat tidak tayang 15.00 — jangan menjanjikannya.
+    showStartTime: mode !== 'kilat',
+  };
+  const pickDate = (ymd: string) => { setPicked(ymd); feedback.clear(); };
+  /** Tautan teks di sobekan (cek status, batal, tetap tanggal lama). */
+  const textLink =
+    'inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-600 underline-offset-2 transition-colors hover:text-slate-900 hover:underline disabled:opacity-50 disabled:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 rounded';
 
   const primaryBtn =
     'inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
@@ -589,7 +614,7 @@ export function JadwalDanBayarPage() {
         duration={entry.duration || 1}
         mode={mode}
         value={picked}
-        onChange={setPicked}
+        onChange={pickDate}
         showSummary={false}
       />
     </div>
@@ -599,7 +624,8 @@ export function JadwalDanBayarPage() {
     <button
       type="button"
       onClick={handleLock}
-      disabled={!picked || availability.isLoading || isWorking}
+      /* ⚠️ Tidak mati karena tanggal kosong — klik tanpa tanggal menegur. */
+      disabled={availability.isLoading || isWorking}
       className={primaryBtn}
     >
       {isWorking ? (
@@ -643,10 +669,11 @@ export function JadwalDanBayarPage() {
       return (
         <ScheduleReservationLayout
           onBack={() => navigate('/dashboard')}
-          backLabel={t('backToOrders')}
+          backLabel={t('backToOrdersShort')}
           isBusy={isWorking}
-          orderLabel={orderLabel}
           title={t('segmentReservation')}
+          cardTitle={t('scheduleCardPickTitle')}
+          subtitle={t('reservationPickSubtitle')}
           alertBanner={
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
               <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
@@ -658,11 +685,13 @@ export function JadwalDanBayarPage() {
               </div>
             </div>
           }
-          summary={<ReservationSummary startYmd={picked} days={entry.duration || 1} />}
+          feedback={feedback}
+          stub={<TicketStub {...stubBase} locked={false} startYmd={picked} days={entry.duration || 1} deadline={{ kind: 'hold' }} />}
           mobileBarInfo={<MobileBarInfo total={quote.total} />}
           calendar={liveCalendar}
           cost={quoteCost}
-          cta={lockCta(t('rebookCta'))}
+          lock={{ kind: 'lock', cta: lockCta(t('rebookCta')) }}
+          pay={{ kind: 'needs_lock' }}
         />
       );
     }
@@ -714,11 +743,23 @@ export function JadwalDanBayarPage() {
     return (
       <ScheduleReservationLayout
         onBack={() => navigate('/dashboard')}
-        backLabel={t('backToOrders')}
+        backLabel={t('backToOrdersShort')}
         isBusy={isWorking}
-        orderLabel={orderLabel}
         title={t(seg.key, seg.vars)}
-        summary={<ReservationSummary startYmd={picked} days={entry.duration || 1} />}
+        cardTitle={selfPick ? t('scheduleCardPickTitle') : t('scheduleCardLockedTitle')}
+        subtitle={selfPick ? t('reservationPickSubtitle') : undefined}
+        feedback={feedback}
+        stub={
+          <TicketStub
+            {...stubBase}
+            // Jalur manual: tanggalnya milik tim — chip "Belum dikunci" dan
+            // batas bayar 1 jam tidak berlaku untuknya.
+            locked={!selfPick}
+            startYmd={selfPick ? picked : null}
+            days={entry.duration || 1}
+            deadline={selfPick ? { kind: 'hold' } : null}
+          />
+        }
         mobileBarInfo={selfPick ? <MobileBarInfo total={quote.total} /> : undefined}
         calendar={selfPick ? liveCalendar : (
           <p className="flex items-start gap-2 text-sm text-slate-600">
@@ -727,8 +768,10 @@ export function JadwalDanBayarPage() {
           </p>
         )}
         cost={quoteCost}
-        bottomNotice={selfPick ? undefined : null}
-        cta={selfPick ? lockCta(t('scheduleLockCta')) : null}
+        /* Jalur manual: kalimat "ditangani tim" sudah berdiri di slot kalender,
+           jadi tanpa zona kunci dan tanpa Bayar. */
+        lock={selfPick ? { kind: 'lock', cta: lockCta(t('scheduleLockCta')) } : null}
+        pay={selfPick ? { kind: 'needs_lock' } : { kind: 'none' }}
       />
     );
   }
@@ -748,26 +791,43 @@ export function JadwalDanBayarPage() {
       return (
         <ScheduleReservationLayout
           onBack={() => navigate('/dashboard')}
-          backLabel={t('backToOrders')}
+          backLabel={t('backToOrdersShort')}
           isBusy={isWorking}
-          orderLabel={orderLabel}
           title={t('rebookPickTitle')}
-          summary={
-            <ReservationSummary
+          cardTitle={t('scheduleCardPickTitle')}
+          subtitle={t('reservationPickSubtitle')}
+          feedback={feedback}
+          stub={
+            <TicketStub
+              {...stubBase}
+              locked={false}
               startYmd={picked}
               days={entry.duration || 1}
               extraRows={lockedYmd ? [{ label: t('summaryPreviousDateLabel'), value: shortDate(lockedYmd) }] : []}
+              deadline={{ kind: 'hold' }}
             />
           }
           mobileBarInfo={<MobileBarInfo total={quote.total} />}
           calendar={liveCalendar}
           cost={quoteCost}
-          cta={lockCta(t('rebookCta'))}
-          secondaryActions={lockedYmd ? (
-            <button type="button" onClick={() => { setRepickMode(false); setPicked(null); }} disabled={isWorking} className={secondaryBtn}>
-              {t('keepDateCta', { date: shortDate(lockedYmd) })}
-            </button>
-          ) : undefined}
+          lock={{
+            kind: 'lock',
+            cta: lockCta(t('rebookCta')),
+            // Slot lama BELUM dilepas — kembali ke sana tanpa mengubah apa pun.
+            secondary: lockedYmd ? (
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => { setRepickMode(false); setPicked(null); feedback.clear(); }}
+                  disabled={isWorking}
+                  className={textLink}
+                >
+                  {t('keepDateCta', { date: shortDate(lockedYmd) })}
+                </button>
+              </div>
+            ) : undefined,
+          }}
+          pay={{ kind: 'needs_lock' }}
         />
       );
     }
@@ -825,12 +885,13 @@ export function JadwalDanBayarPage() {
     );
 
     return (
+      <>
       <ScheduleReservationLayout
         onBack={() => navigate('/dashboard')}
-        backLabel={t('backToOrders')}
+        backLabel={t('backToOrdersShort')}
         isBusy={isWorking}
-        orderLabel={orderLabel}
         title={creditPhase ? t('creditPageTitle') : t('paymentPhaseTitle')}
+        cardTitle={t('scheduleCardLockedTitle')}
         /*
           ⚠️ Kredit TIDAK boleh membaca "Bayar sebelum batas waktu untuk
           mengamankan jadwal tayang" — tagihan tempo tanpa tenggat (K3), dan
@@ -850,7 +911,26 @@ export function JadwalDanBayarPage() {
             </div>
           </div>
         ) : undefined}
-        summary={<ReservationSummary startYmd={lockedYmd} days={lockedDays} />}
+        feedback={feedback}
+        stub={
+          <TicketStub
+            {...stubBase}
+            locked
+            startYmd={lockedYmd}
+            days={lockedDays}
+            /*
+              Baris yang SAMA dengan "1 jam setelah dikunci" sebelum kunci —
+              kini countdown, ditahan tim, atau status kredit. Kredit: tanpa
+              tenggat (K3), jadi yang tampil statusnya, bukan batas bayar.
+            */
+            deadline={deadlineRowOf({
+              locked: true,
+              creditPhase,
+              showCountdown: state.showCountdown,
+              timeLeft,
+            })}
+          />
+        }
         mobileBarInfo={
           <MobileBarInfo
             total={payTotal}
@@ -891,56 +971,90 @@ export function JadwalDanBayarPage() {
             defaultOpen={false}
           />
         }
-        bottomNotice={
-          /*
-            Kredit: tanpa countdown dan tanpa "tim kami akan mengonfirmasi
-            jadwalnya" — jadwalnya sudah pasti, tagihan tempo tanpa tenggat (K3).
-          */
-          creditPhase ? (
-            <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3">
-              <CreditCard className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-              <p className="text-sm font-medium text-amber-950">
-                {creditPhase === 'stopped'
-                  ? t('bannerTitleCreditStopped')
-                  : creditPhase === 'ended'
-                    ? t('bannerTitleCreditEnded')
-                    : t('bannerTitleAiringOnCredit')}
-              </p>
-            </div>
-          ) : state.showCountdown && timeLeft !== null ? (
-            <HoldCountdown seconds={timeLeft} />
-          ) : (
-            <AdminHoldNote />
-          )
-        }
-        cta={offerRepick ? repickButton : payButton}
+        /*
+          Zona kunci sesudah dikunci: kotak "ditahan untukmu" di tempat tombol
+          Kunci tadi berdiri. Lewat 14.00 (dan pilih ulang sah): "Pilih Tanggal
+          Lain" jadi aksi utama zona ini. Kredit: tanpa zona — jadwalnya sudah
+          pasti, bahkan mungkin sudah tayang.
+        */
+        lock={creditPhase
+          ? null
+          : offerRepick
+            ? { kind: 'action', cta: repickButton }
+            : { kind: 'held', hint: state.showCountdown ? t('timerConsequenceNote') : null }}
+        /*
+          ⚠️ `payButton` TIDAK DIUBAH — tiga cabangnya (tagihan terbit → `/bayar/`,
+          boleh mint → `handlePayWithoutBill`, selain itu catatan) tetap
+          satu-satunya yang memutuskan. Di sini cuma dipilih slotnya: tombol
+          sungguhan = `ready`, catatan "tagihan belum terbit" = `note`.
+        */
+        pay={hasOpenBill || canSelfMint ? { kind: 'ready', cta: payButton } : { kind: 'note', node: payButton }}
         secondaryActions={
-          <>
-            {offerRepick && payButton}
-            {!creditPhase && (hasOpenBill || canSelfMint) && (
-              <button type="button" onClick={handleCheckPayment} disabled={isCheckingPayment} className={secondaryBtn}>
-                {isCheckingPayment ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
-                    {t('checkoutCheckingStatus')}
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle size={15} className="text-slate-400" />
-                    {t('checkoutAlreadyPaid')}
-                  </>
-                )}
-              </button>
-            )}
-            {state.canCancel && (
-              <button type="button" onClick={handleCancel} disabled={isWorking} className={secondaryBtn}>
-                {isWorking ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                {t('cancelOrderTitle')}
-              </button>
-            )}
-          </>
+          (!creditPhase && (hasOpenBill || canSelfMint)) || state.canCancel ? (
+            <>
+              {!creditPhase && (hasOpenBill || canSelfMint) && (
+                <button type="button" onClick={handleCheckPayment} disabled={isCheckingPayment} className={textLink}>
+                  {isCheckingPayment ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />
+                      {t('checkoutCheckingStatus')}
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle size={14} className="text-slate-400" />
+                      {t('checkoutAlreadyPaid')}
+                    </>
+                  )}
+                </button>
+              )}
+              {state.canCancel && (
+                <button type="button" onClick={() => setConfirmCancel(true)} disabled={isWorking} className={`${textLink} text-slate-500 hover:text-rose-700`}>
+                  {entry.isExtension ? t('btnCancelExtension') : t('btnCancelOrder')}
+                </button>
+              )}
+            </>
+          ) : undefined
         }
       />
+      {/*
+        Konfirmasi batal — pola dialog batal order di StatusPage. Kunci
+        `cancelOrderConfirm*` (order TERSIMPAN), BUKAN `cancelOrderTitle/Body`
+        (itu membuang DRAFT, menjanjikan "data hilang"). Perpanjangan punya
+        kalimatnya sendiri: hanya jadwal itu yang dilepas, iklan utamanya jalan.
+      */}
+      <Dialog open={confirmCancel} onOpenChange={(open) => { if (!open && !isWorking) setConfirmCancel(false); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {entry.isExtension ? t('cancelExtensionConfirmTitle') : t('cancelOrderConfirmTitle')}
+            </DialogTitle>
+            <DialogDescription className="pt-1 leading-relaxed">
+              <strong className="font-semibold text-gray-900">{entry.title || t('untitledSurvey')}</strong>
+              {' — '}
+              {entry.isExtension ? t('cancelExtensionConfirmBody') : t('cancelOrderConfirmBody')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmCancel(false)}
+              disabled={isWorking}
+              className="max-md:w-full rounded-full"
+            >
+              {t('cancel')}
+            </Button>
+            <Button
+              onClick={() => void handleCancel()}
+              disabled={isWorking}
+              className="max-md:w-full rounded-full bg-slate-700 hover:bg-slate-800 text-white font-semibold"
+            >
+              {isWorking && <Loader2 className="w-4 h-4 animate-spin" />}
+              {entry.isExtension ? t('cancelExtensionConfirmAction') : t('cancelOrderConfirmAction')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      </>
     );
   }
 

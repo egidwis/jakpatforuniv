@@ -202,7 +202,9 @@ function AppContent() {
           </PublicLayout>
         } />
       </Routes>
-      <Toaster position="top-right" />
+      {/* Di BAWAH navbar sticky (AppNav: h-14 ponsel, h-16 md) + jarak 12–16px.
+          Bawaan sonner (24px / 16px dari atas) menindih navbar. */}
+      <Toaster position="top-right" offset={{ top: 80 }} mobileOffset={{ top: 68 }} />
     </div>
   );
 }

@@ -185,7 +185,8 @@ export function StatusPage() {
         const paymentStatus = searchParams.get('payment_status');
 
         if (status === 'survey_submitted') {
-            toast.success('Survey berhasil dikirim! Menunggu review admin.');
+            // Tanpa toast: modal "Order Berhasil Dikirim" sudah mengumumkannya
+            // sesaat sebelum peneliti diantar ke sini. Param tetap dibersihkan.
             // Clear params
             setSearchParams(params => {
                 params.delete('status');

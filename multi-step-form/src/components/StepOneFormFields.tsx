@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { SurveyFormData } from '../types';
+import type { TranslationKey } from '../i18n/translations';
 import {
   ArrowLeft,
   CalendarDays,
@@ -12,6 +13,7 @@ import {
   Trophy,
   Type,
   Users,
+  AlertCircle,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -38,7 +40,7 @@ import {
 } from '../utils/prizeRecommendation';
 import { formatIDR } from '../utils/currency';
 
-export type SurveyEntryPhase = 'choice' | 'import' | 'pii' | 'manual' | 'locked';
+export type SurveyEntryPhase = 'choice' | 'import' | 'manual' | 'locked';
 
 interface StepOneFormFieldsProps {
   formData: SurveyFormData;
@@ -56,10 +58,7 @@ interface StepOneFormFieldsProps {
   onChangeEntry?: () => void;
   importSlot?: ReactNode;
   pendingImport?: ImportedGoogleForm | null;
-  awaitingReimport?: boolean;
   onEditGoogleForm?: () => void;
-  onAcceptManualReview?: () => void;
-  onReimport?: () => void;
 }
 
 interface FormErrors {
@@ -81,18 +80,6 @@ const isValidUrl = (url: string): boolean => {
   }
 };
 
-const PII_KEYWORD_KEY: Record<string, string> = {
-  email: 'piiKwEmail',
-  phone: 'piiKwPhone',
-  'full name': 'piiKwName',
-  name: 'piiKwName',
-  address: 'piiKwAddress',
-  'nik/id': 'piiKwNik',
-  'file upload': 'piiKwFile',
-  'e-wallet/hadiah': 'piiKwWallet',
-  'email otomatis': 'piiKwCollectEmail',
-};
-
 function isGoogleFormUrl(url: string): boolean {
   return /docs\.google\.com\/forms|forms\.gle/i.test(url);
 }
@@ -111,10 +98,7 @@ export function StepOneFormFields({
   onChangeEntry,
   importSlot,
   pendingImport,
-  awaitingReimport = false,
   onEditGoogleForm,
-  onAcceptManualReview,
-  onReimport,
 }: StepOneFormFieldsProps) {
   const { t } = useLanguage();
   const prevQuestionCountRef = useRef(formData.questionCount);
@@ -123,7 +107,10 @@ export function StepOneFormFields({
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
   const surveyCardRef = useRef<HTMLDivElement>(null);
-  const [pathError, setPathError] = useState<string | undefined>();
+  // KUNCI i18n, bukan kalimat jadi: kalimat yang diterjemahkan saat submit
+  // tidak ikut berganti bila bahasa diubah sesudahnya (pernah tampil
+  // "Pilih metode review dulu." di UI Inggris).
+  const [pathError, setPathError] = useState<TranslationKey | undefined>();
   const surveyUrlRef = useRef<HTMLTextAreaElement>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const criteriaRespondenRef = useRef<HTMLTextAreaElement>(null);
@@ -250,8 +237,14 @@ export function StepOneFormFields({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isBlockedByPersonalData) return;
-    if (phase === 'choice' || phase === 'import' || phase === 'pii') {
-      setPathError(phase === 'pii' ? t('surveyEntryPiiPending') : t('surveyEntryChooseFirst'));
+    if (phase === 'choice' || phase === 'import') {
+      // Hasil impor ber-data pribadi menunggu pilihan peneliti (kartu kuning
+      // di layar impor): tegur dengan kalimat yang sesuai.
+      const messageKey: TranslationKey = phase === 'import' && pendingImport ? 'surveyEntryPiiPending' : 'surveyEntryChooseFirst';
+      setPathError(messageKey);
+      // Toast juga: di desktop tombol ini ada di kolom kanan, jauh dari kartu
+      // yang menunggu pilihan — teguran inline saja mudah terlewat.
+      toast.warning(t(messageKey));
       surveyCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
@@ -387,6 +380,10 @@ export function StepOneFormFields({
         </div>
       )}
 
+      {/* Pembungkus: kartu + teguran di bawahnya satu anak `space-y-4`,
+          supaya teguran menempel 8px di bawah kartu (margin negatif kalah
+          oleh `space-y-4` warisan styles.css). */}
+      <div>
       <div
         ref={surveyCardRef}
         className="rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-xs p-5 md:p-6 shadow-[0_4px_20px_-2px_rgba(24,124,255,0.06),0_12px_32px_-4px_rgba(0,0,0,0.04)] overflow-hidden"
@@ -481,7 +478,6 @@ export function StepOneFormFields({
               </span>
             </button>
 
-            {pathError && <p className="text-xs font-medium text-rose-700">{pathError}</p>}
 
             <p className="pt-2 text-center text-xs text-slate-500">
               {t('surveyEntryNoForm')}{' '}
@@ -503,48 +499,6 @@ export function StepOneFormFields({
               {t('surveyEntryBackToMethods')}
             </button>
             {importSlot}
-          </div>
-        )}
-
-        {phase === 'pii' && pendingImport && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-            <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-950">
-              {t('piiDetectedTitle')}
-              <InfoTooltip content={t('piiDetectedTip')} />
-            </p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {pendingImport.detectedKeywords.map((keyword) => (
-                <span key={keyword} className="rounded-full bg-white border border-amber-200 px-2 py-0.5 text-[11px] font-medium text-amber-900">
-                  {PII_KEYWORD_KEY[keyword] ? t(PII_KEYWORD_KEY[keyword] as 'piiKwEmail') : keyword}
-                </span>
-              ))}
-            </div>
-            <div className="mt-4 flex flex-col gap-2">
-              {awaitingReimport ? (
-                <p className="text-sm text-amber-950">
-                  {t('piiReimportPrompt')}{' '}
-                  <button type="button" onClick={onReimport} className="font-semibold text-jfu-primary hover:underline cursor-pointer">
-                    {t('piiReimportAction')}
-                  </button>
-                </p>
-              ) : (
-                <button
-                  type="button"
-                  onClick={onEditGoogleForm}
-                  className="inline-flex items-center justify-center rounded-xl bg-jfu-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-jfu-dark cursor-pointer"
-                >
-                  {t('piiEditGoogle')}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={onAcceptManualReview}
-                className="text-sm font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
-              >
-                {t('piiContinueManual')}
-              </button>
-            </div>
-            {pathError && <p className="mt-2 text-xs font-medium text-rose-700">{pathError}</p>}
           </div>
         )}
 
@@ -698,6 +652,17 @@ export function StepOneFormFields({
         )}
           </>
         )}
+      </div>
+
+      {/* Teguran "pilih metode dulu" berdiri DI LUAR kartu, berikon — pola
+          `RowFooter` (SurveyFieldRow): kotak menandai bagiannya, galat adalah
+          komentar tentangnya. Dulu dua salinan di dalam kartu, tanpa ikon. */}
+      {pathError && (phase === 'choice' || phase === 'import') && (
+        <p role="alert" className="mt-2 flex items-start gap-1.5 px-1 text-xs font-medium leading-relaxed text-rose-600">
+          <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" aria-hidden="true" />
+          <span>{t(pathError)}</span>
+        </p>
+      )}
       </div>
 
       {showConfig && (

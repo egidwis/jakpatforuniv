@@ -63,9 +63,7 @@ export function StepSurveyDetails({
     initialPhase(formData, searchParams.get('method')),
   );
   const [pendingImport, setPendingImport] = useState<ImportedGoogleForm | null>(null);
-  const [reimportId, setReimportId] = useState<string | null>(null);
   const [importRun, setImportRun] = useState(0);
-  const [awaitingReimport, setAwaitingReimport] = useState(false);
   const [showConfirmSwitch, setShowConfirmSwitch] = useState(false);
   const [profileSheetOpen, setProfileSheetOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<'import' | 'manual' | null>(null);
@@ -98,17 +96,14 @@ export function StepSurveyDetails({
       detectedKeywords: imported.detectedKeywords,
     }));
     setPendingImport(null);
-    setReimportId(null);
-    setAwaitingReimport(false);
     setPhase('locked');
   };
 
   const handleReviewed = (imported: ImportedGoogleForm) => {
     if (imported.hasPersonalDataQuestions) {
+      // Tetap di layar impor: kartu kuning dirender GoogleDriveImportSimple
+      // (`piiResult`), berkerangka sama dengan kartu galat.
       setPendingImport(imported);
-      setReimportId(null);
-      setAwaitingReimport(false);
-      setPhase('pii');
       return;
     }
     commitImport(imported);
@@ -126,7 +121,6 @@ export function StepSurveyDetails({
       return;
     }
     if (action === 'import') {
-      setReimportId(null);
       setPhase('import');
     } else {
       updateFormData({ isManualEntry: true });
@@ -138,7 +132,6 @@ export function StepSurveyDetails({
     profileGateRef.current = Promise.resolve(true);
     setProfileSheetOpen(false);
     if (pendingAction === 'import') {
-      setReimportId(null);
       setPhase('import');
     } else if (pendingAction === 'manual') {
       updateFormData({ isManualEntry: true });
@@ -154,14 +147,12 @@ export function StepSurveyDetails({
     }
     updateFormData(CLEARED_SURVEY);
     setPendingImport(null);
-    setReimportId(null);
     setPhase('choice');
   };
 
   const confirmChange = () => {
     updateFormData(CLEARED_SURVEY);
     setPendingImport(null);
-    setReimportId(null);
     setShowConfirmSwitch(false);
     setPhase('choice');
   };
@@ -183,16 +174,10 @@ export function StepSurveyDetails({
       hasPersonalDataQuestions: true,
       detectedKeywords: formData.detectedKeywords || [],
     });
-    setAwaitingReimport(true);
-    setPhase('pii');
-  };
-
-  const startReimport = () => {
-    if (!pendingImport) return;
-    setReimportId(pendingImport.formId);
     setImportRun((n) => n + 1);
     setPhase('import');
   };
+
 
   const profileSheet = (
     <ProfileCompletionSheet
@@ -216,10 +201,7 @@ export function StepSurveyDetails({
           onChooseManual={() => { void ensureProfile('manual'); }}
           onChangeEntry={isJfuImport ? undefined : requestChange}
           pendingImport={pendingImport}
-          awaitingReimport={awaitingReimport}
           onEditGoogleForm={reviseAccepted}
-          onAcceptManualReview={() => pendingImport && commitImport(pendingImport)}
-          onReimport={startReimport}
           onCancelOrder={onCancelOrder}
           importSlot={phase === 'import' ? (
             <GoogleDriveImportSimple
@@ -228,11 +210,24 @@ export function StepSurveyDetails({
               updateFormData={updateFormData}
               onFormDataLoaded={() => {}}
               onReviewed={handleReviewed}
-              onCancel={() => {
-                setReimportId(null);
-                setPhase(pendingImport ? 'pii' : 'choice');
+              piiResult={pendingImport}
+              onAcceptPii={() => pendingImport && commitImport(pendingImport)}
+              onContinueManual={({ surveyUrl, title }) => {
+                // Datang dari panel PII ("Pilih Form Lagi") lalu gagal dibaca:
+                // pakai hasil impor PII yang sudah terbaca — sama persis dengan
+                // "Lanjut Diperiksa Admin" di panel itu, jumlah pertanyaannya
+                // sudah diketahui.
+                if (pendingImport) {
+                  commitImport(pendingImport);
+                  return;
+                }
+                // Selain itu → isian MANUAL. Survei lama dibersihkan
+                // (CLEARED_SURVEY, isManualEntry: true); jumlah pertanyaan
+                // diketik peneliti dan diverifikasi admin — ia menentukan
+                // harga, jadi tidak diisi tebakan.
+                updateFormData({ ...CLEARED_SURVEY, surveyUrl, title });
+                setPhase('manual');
               }}
-              autoFormId={reimportId}
             />
           ) : null}
         />

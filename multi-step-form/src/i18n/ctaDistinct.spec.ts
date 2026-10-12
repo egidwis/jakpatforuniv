@@ -55,3 +55,35 @@ describe('CTA — kata kerjanya menyebut yang TERJADI SEKARANG', () => {
     expect(translations.en.summaryCtaReview).toBe('Send for Review');
   });
 });
+
+/*
+  Satu layar tiket reservasi (12 Okt 2026): badan memegang Kunci, sobekan
+  memegang Bayar — dan keduanya terlihat BERSAMAAN sebelum tanggal dikunci.
+  Dua tombol sekata di satu layar adalah tabrakan yang paling mahal: Bayar
+  redup yang berbunyi seperti Kunci membuat peneliti mengira ia sudah mengunci.
+*/
+const CTA_SATU_TIKET = [
+  'scheduleLockCta',
+  'rebookCta',
+  'scheduleConfirmKilatCta',
+  'payNow',
+  'payAnywayCta',
+  'repickOtherDateCta',
+] as const;
+
+describe('CTA satu tiket reservasi — nol pasangan sekata', () => {
+  for (const lang of ['en', 'id'] as const) {
+    it(`${lang}: setiap CTA berbunyi berbeda`, () => {
+      const dipakai = new Map<string, string>();
+      for (const key of CTA_SATU_TIKET) {
+        const teks = translations[lang][key].trim().toLowerCase();
+        const sebelumnya = dipakai.get(teks);
+        expect(
+          sebelumnya,
+          `"${translations[lang][key]}" dipakai oleh ${sebelumnya} DAN ${key}`,
+        ).toBeUndefined();
+        dipakai.set(teks, key);
+      }
+    });
+  }
+});
