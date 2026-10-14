@@ -30,6 +30,8 @@ export interface PageData {
     form_submissions?: {
         title: string;
         full_name: string;
+        /** Email biodata order — ikut dicari di katalog. */
+        email?: string | null;
         auth_user_id?: string | null;
         university?: string;
         prize_per_winner?: number;
@@ -43,6 +45,8 @@ export interface PageData {
         distribution_type?: string | null;
     };
     owner_name?: string;
+    /** Email akun pemilik (`profiles`), ditempel bersama `owner_name`. */
+    owner_email?: string;
     page_respondents?: { count: number }[];
     requires_banner_update?: boolean;
 }

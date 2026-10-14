@@ -4,6 +4,7 @@ import { addDaysToYmd, occupancyDayYmd, toAiringEndIso, toAiringStartIso, toWibY
 import { isPlaceholderBannerUrl } from './page-banner';
 import { isLiveInvoice } from './billingCompare';
 import { compareLeadOrder } from './payLink';
+import { BOOKING_ID_RE, SHORT_ID_RE, UUID_RE } from './idPatterns';
 import {
   calculateAdCostPerDay,
   calculateTotalAdCost,
@@ -2524,10 +2525,6 @@ export const getAllFormSubmissions = async () => {
   }
 };
 
-const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-const SHORT_ID_RE = /^[0-9a-fA-F]{8}$/;
-/** Bentuk `booking_id` (sql/51): 8 karakter, alfabet tanpa `0 O 1 I L U`. */
-const BOOKING_ID_RE = /^[23456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/;
 
 /**
  * Rentang uuid yang memuat seluruh nilai berawalan `hex` (8 hex pertama).
@@ -2567,7 +2564,7 @@ const uuidPrefixRange = (hex: string): [string, string] => [
  * `SHORT_ID_RE` — sekitar 1 dari 580 kode. Karena itu keduanya TIDAK dipilih
  * salah satu: yang cocok dicari semua, lalu hasilnya digabung.
  */
-const submissionIdsForBookingId = async (
+export const submissionIdsForBookingId = async (
   cleanCode: string,
   isFullUuid: boolean,
   isHexId: boolean

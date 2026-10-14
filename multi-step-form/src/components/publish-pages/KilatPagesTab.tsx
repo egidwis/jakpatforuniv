@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Check, ChevronRight, Copy, ExternalLink, Loader2, Search, Zap } from 'lucide-react';
+import { Check, ChevronRight, Copy, ExternalLink, Loader2, Search, X, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { shortOrderId, type PageData } from './types';
 import { publicPagePath, publicPageUrl } from '@/utils/page-url';
+import { matchesSearch, pageHaystack, searchTokens } from './catalogSearch';
+import { useBookingCodeMatches } from './useCatalogLookups';
 
 // ─────────────────────────────────────────────────────────────
 // Kilat — daftar tautan pendaratan push notification.
@@ -66,15 +68,20 @@ export function KilatPagesTab({ kilatPages, loading, actions, onSelectPage }: Pr
     const [query, setQuery] = useState('');
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
+    // Pencocok yang sama dengan "Semua Page": ID order, Booking ID, email, dan
+    // tautan yang ditempel ikut cocok — bukan hanya judul/slug/nama.
+    const haystacks = useMemo(
+        () => new Map(kilatPages.map(p => [p.id, pageHaystack(p)])),
+        [kilatPages],
+    );
+    const { matches: codeMatches, pending: lookingUpCodes } = useBookingCodeMatches(query);
     const visible = useMemo(() => {
-        const q = query.trim().toLowerCase();
-        if (!q) return kilatPages;
+        const tokens = searchTokens(query);
+        if (tokens.length === 0) return kilatPages;
         return kilatPages.filter(p =>
-            (p.title || '').toLowerCase().includes(q) ||
-            (p.slug || '').toLowerCase().includes(q) ||
-            (p.owner_name || '').toLowerCase().includes(q)
+            matchesSearch(haystacks.get(p.id) ?? '', tokens, p.submission_id, codeMatches)
         );
-    }, [kilatPages, query]);
+    }, [kilatPages, haystacks, query, codeMatches]);
 
     const handleCopy = (page: PageData) => {
         const url = publicPageUrl(page.slug);
@@ -100,9 +107,21 @@ export function KilatPagesTab({ kilatPages, loading, actions, onSelectPage }: Pr
                     <input
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Cari judul, slug, peneliti…"
-                        className="w-full h-8 pl-8 pr-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-400"
+                        placeholder="Cari judul, #ID order, Booking ID, peneliti, link…"
+                        className="w-full h-8 pl-8 pr-7 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-400"
                     />
+                    {query && (
+                        <button
+                            type="button"
+                            onClick={() => setQuery('')}
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                            title="Kosongkan pencarian"
+                        >
+                            {lookingUpCodes
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <X className="w-3.5 h-3.5" />}
+                        </button>
+                    )}
                 </div>
 
                 <div className="ml-auto flex items-center gap-1">{actions}</div>
@@ -121,7 +140,8 @@ export function KilatPagesTab({ kilatPages, loading, actions, onSelectPage }: Pr
             {/* ── Header kolom ── */}
             <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 bg-gray-50 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
                 <span className={COL.num}>#</span>
-                <span className={COL.id}>Page ID</span>
+                {/* Isinya ID ORDER (`shortOrderId`) — jangkar yang sama dengan Submissions & Schedule. */}
+                <span className={COL.id}>Order ID</span>
                 <span className={COL.page}>Page</span>
                 <span className={COL.wave}>Gelombang</span>
                 <span className={COL.actions}>Aksi</span>
@@ -141,7 +161,9 @@ export function KilatPagesTab({ kilatPages, loading, actions, onSelectPage }: Pr
                         </p>
                         <p className="text-xs text-gray-400 mt-1 max-w-sm">
                             {query
-                                ? 'Coba kata kunci lain, atau kosongkan pencarian.'
+                                ? (lookingUpCodes
+                                    ? 'Masih mencocokkan Booking ID…'
+                                    : 'Coba ID order (# + 8 karakter), Booking ID, nama peneliti, atau tempel link halaman.')
                                 : 'Halaman Kilat terbit otomatis begitu order Kilat lunas.'}
                         </p>
                     </div>
