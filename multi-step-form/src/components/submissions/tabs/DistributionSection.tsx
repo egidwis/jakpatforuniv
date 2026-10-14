@@ -3,7 +3,7 @@ import { AlertTriangle, Calendar, Zap } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../ui/dialog';
 import { DetailSheetSection } from '../../data-list/DetailSheet';
-import { calculateTotalAdCost, calculateIncentiveCost, calculateDiscount, calculateAdCostPerDay, calculatePpn, getKilatAddonCost, voucherInstantOf } from '../../../utils/cost-calculator';
+import { calculateTotalAdCost, calculateIncentiveCost, calculateDiscount, calculatePpn, kilatSubtotalAt, voucherInstantOf } from '../../../utils/cost-calculator';
 import type { SurveySubmission, PaymentState, ExistingPage } from '../types';
 import { deriveLifecycle } from '../lifecycle';
 import { DistributionAction } from '../CampaignActions';
@@ -43,9 +43,7 @@ export function DistributionSection({
   const previewAt = voucherInstantOf(submission.submittedAt);
   const previewIncentive = calculateIncentiveCost(submission.winnerCount || 0, submission.prize_per_winner || 0);
   const previewKilatSubtotal =
-    calculateAdCostPerDay(submission.questionCount || 0, previewAt) +
-    getKilatAddonCost(submission.voucher_code) +
-    previewIncentive;
+    kilatSubtotalAt(submission.questionCount || 0, previewAt, submission.voucher_code, previewIncentive);
   const previewRegularAdCost = calculateTotalAdCost(submission.questionCount || 0, submission.duration || 0, previewAt);
   const previewRegularSubtotal =
     previewRegularAdCost +

@@ -17,6 +17,7 @@
 // duplication is unavoidable: Pages Functions can't import from src/. The
 // client copy only renders estimates; THIS copy decides what gets charged.
 
+// Add-on Kilat — HANYA rumus lama (instan tarif < KILAT_TARIFF_FROM).
 const KILAT_ADDON_COST = 200000;
 const KILAT_ADDON_COST_VOUCHER = 200000;
 
@@ -88,6 +89,41 @@ export const AD_RATE_SCHEDULE = [
   },
 ];
 
+// Tarif JFU Kilat per GELOMBANG (Phase 5 Task 5.1). Cermin literal
+// KILAT_TARIFF_FROM + KILAT_RATE_SCHEDULE di src/utils/constants.ts — WAJIB
+// identik; rateSchedule.spec.ts membandingkan keduanya. `null` = tabel belum
+// berlaku: semua Kilat memakai rumus lama (tarif harian + add-on, tanpa voucher).
+export const KILAT_TARIFF_FROM = null;
+
+export const KILAT_RATE_SCHEDULE = [
+  {
+    from: '2026-10-01T00:00:00+07:00',
+    list: [500000, 875000, 1250000, 1625000, 2000000],
+    effective: [375000, 500000, 750000, 1000000, 1250000],
+    introUntil: '2026-11-30',
+  },
+  {
+    from: '2026-12-01T00:00:00+07:00',
+    list: [500000, 875000, 1250000, 1625000, 2000000],
+    effective: [400000, 700000, 1000000, 1300000, 1600000],
+    introUntil: '2026-12-31',
+  },
+  {
+    from: '2027-01-01T00:00:00+07:00',
+    list: [500000, 875000, 1250000, 1625000, 2000000],
+    effective: [500000, 875000, 1250000, 1625000, 2000000],
+    introUntil: null,
+  },
+];
+
+// Kode yang berlaku untuk Kilat: 12 kode ambassador + JFUTGRX. Cermin
+// KILAT_VOUCHER_CODES (diturunkan dari VOUCHER_CATALOG) di cost-calculator.ts.
+export const KILAT_VOUCHER_CODES = [
+  'JFUTYR', 'SEKARJFU', 'ADINDAJFU', 'RAJAJFU', 'SACIJFU', 'JFUGITA',
+  'JFUTANIA', 'JFUEDO', 'JFURAISA', 'JFUANA', 'JFUSALSA', 'JFUNATALIA',
+  'JFUTGRX',
+];
+
 function tierIndexOf(questionCount) {
   if (questionCount <= 15) return 0;
   if (questionCount <= 30) return 1;
@@ -113,6 +149,45 @@ export function calculateAdCostPerDay(questionCount, atMs) {
     if (e.from === null || atMs >= Date.parse(e.from)) entry = e;
   }
   return entry.effective[tierIndexOf(questionCount)];
+}
+
+/**
+ * Tarif satu gelombang Kilat sebelum voucher. Cermin `kilatRateAt()` di
+ * cost-calculator.ts: sebelum `tariffFrom` → tarif harian Iklan + add-on
+ * (rumus lama); sesudahnya → KILAT_RATE_SCHEDULE, add-on 0.
+ *
+ * `tariffFrom` hanya diisi tes; produksi selalu memakai KILAT_TARIFF_FROM.
+ */
+export function kilatRateAt(questionCount, atMs, tariffFrom = KILAT_TARIFF_FROM) {
+  if (typeof atMs !== 'number' || Number.isNaN(atMs)) {
+    throw new Error('rate_instant_missing');
+  }
+  const active = tariffFrom !== null && atMs >= Date.parse(tariffFrom);
+  if (!active) {
+    return { effective: calculateAdCostPerDay(questionCount, atMs), addon: KILAT_ADDON_COST, legacy: true };
+  }
+  if (!questionCount) return { effective: 0, addon: 0, legacy: false };
+  let entry = KILAT_RATE_SCHEDULE[0];
+  for (const e of KILAT_RATE_SCHEDULE) {
+    if (e.from === null || atMs >= Date.parse(e.from)) entry = e;
+  }
+  return { effective: entry.effective[tierIndexOf(questionCount)], addon: 0, legacy: false };
+}
+
+/**
+ * Diskon voucher Kilat. Cermin `calculateKilatDiscount()` di cost-calculator.ts:
+ * ambassador = 10% tarif Kilat, JFUTGRX = total dipatok Rp 1.000, kode lain 0,
+ * dan selalu 0 pada rumus lama.
+ */
+export function calculateKilatDiscount(voucherCode, kilatAdCost, incentiveCost, legacy) {
+  if (!voucherCode || legacy) return 0;
+  const code = String(voucherCode).toUpperCase();
+  if (!KILAT_VOUCHER_CODES.includes(code)) return 0;
+  if (code === 'JFUTGRX') {
+    const totalBeforeDiscount = kilatAdCost + incentiveCost;
+    return totalBeforeDiscount > 1000 ? totalBeforeDiscount - 1000 : 0;
+  }
+  return kilatAdCost * 0.1;
 }
 
 /**
@@ -352,7 +427,7 @@ function orderInstant(sub) {
 
 // Mirrors calculateTotalCost(SurveyFormData) but takes the snake_case DB row.
 // Returns { subtotal, ppn, total } — `total` (subtotal + PPN) is what gets charged.
-export function computeTotalCostFromSubmission(sub) {
+export function computeTotalCostFromSubmission(sub, kilatTariffFrom = KILAT_TARIFF_FROM) {
   const questionCount = Number(sub.question_count) || 0;
   const duration = Number(sub.duration) || 0;
   const winnerCount = Number(sub.winner_count) || 0;
@@ -364,13 +439,12 @@ export function computeTotalCostFromSubmission(sub) {
 
   let subtotal;
   if (isKilat) {
-    // Kilat: base rate (no duration multiplier) + add-on + incentive, no discount
-    const adCostBase = calculateAdCostPerDay(questionCount, sub.rate_instant);
-    const kilatAddon =
-      voucherCode && voucherCode.toUpperCase() === 'JFUSUHUD'
-        ? KILAT_ADDON_COST_VOUCHER
-        : KILAT_ADDON_COST;
-    subtotal = adCostBase + kilatAddon + incentiveCost;
+    // Kilat: satu gelombang, tanpa pengali durasi. Rumus lama (tarif harian +
+    // add-on, tanpa voucher) atau tabel Kilat — `kilatRateAt` yang memilih.
+    const rate = kilatRateAt(questionCount, sub.rate_instant, kilatTariffFrom);
+    const kilatAdCost = rate.effective + rate.addon;
+    const discount = calculateKilatDiscount(voucherCode, kilatAdCost, incentiveCost, rate.legacy);
+    subtotal = kilatAdCost + incentiveCost - discount;
   } else {
     const adCost = calculateAdCostPerDay(questionCount, sub.rate_instant) * duration;
     const discount = calculateDiscount(voucherCode, adCost, incentiveCost, duration, orderInstant(sub));
@@ -404,7 +478,7 @@ export function computeTotalCostFromSubmission(sub) {
  *
  * Dikunci create-payment-schedule-price.spec.ts.
  */
-export function buildNoteItems(sub, pricingSub) {
+export function buildNoteItems(sub, pricingSub, kilatTariffFrom = KILAT_TARIFF_FROM) {
   // Milik ORDER.
   const noteQuestionCount = Number(sub.question_count) || 0;
   const noteIsKilat = sub.distribution_type === 'kilat';
@@ -419,18 +493,34 @@ export function buildNoteItems(sub, pricingSub) {
 
   const noteItems = [];
   if (noteIsKilat) {
-    noteItems.push({
-      name: 'Jakpat for Universities (ads)',
-      qty: 1,
-      price: calculateAdCostPerDay(noteQuestionCount, pricingSub.rate_instant),
-      category: 'Jakpat for Universities (ads)',
-    });
-    noteItems.push({
-      name: 'Add-on JFU Kilat',
-      qty: 1,
-      price: noteVoucherCode && noteVoucherCode.toUpperCase() === 'JFUSUHUD' ? KILAT_ADDON_COST_VOUCHER : KILAT_ADDON_COST,
-      category: 'Lainnya',
-    });
+    const rate = kilatRateAt(noteQuestionCount, pricingSub.rate_instant, kilatTariffFrom);
+    if (rate.legacy) {
+      // Rumus lama — dua baris, persis seperti yang dulu ditagih.
+      noteItems.push({
+        name: 'Jakpat for Universities (ads)',
+        qty: 1,
+        price: rate.effective,
+        category: 'Jakpat for Universities (ads)',
+      });
+      noteItems.push({
+        name: 'Add-on JFU Kilat',
+        qty: 1,
+        price: noteVoucherCode && noteVoucherCode.toUpperCase() === 'JFUSUHUD' ? KILAT_ADDON_COST_VOUCHER : KILAT_ADDON_COST,
+        category: 'Lainnya',
+      });
+    } else {
+      // Tabel Kilat — satu baris tarif gelombang, diskon voucher dilebur ke
+      // harganya (pola yang sama dengan `discountedPerDay` Iklan di bawah).
+      const discount = calculateKilatDiscount(noteVoucherCode, rate.effective, noteWinnerCount * notePrizePerWinner, false);
+      if (rate.effective > 0) {
+        noteItems.push({
+          name: 'JFU Kilat (1 gelombang)',
+          qty: 1,
+          price: Math.max(0, rate.effective - discount),
+          category: 'Jakpat for Universities (ads)',
+        });
+      }
+    }
   } else {
     // Instan tarif yang SAMA dengan `amount` — kalau beda, rincian kwitansi
     // tidak lagi menjumlah ke subtotal yang ditagih.

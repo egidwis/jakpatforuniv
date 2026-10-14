@@ -6,12 +6,11 @@ import { isLiveInvoice } from './billingCompare';
 import { compareLeadOrder } from './payLink';
 import { BOOKING_ID_RE, SHORT_ID_RE, UUID_RE } from './idPatterns';
 import {
-  calculateAdCostPerDay,
   calculateTotalAdCost,
   calculateIncentiveCost,
   calculateDiscount,
   calculatePpn,
-  getKilatAddonCost,
+  kilatSubtotalAt,
   voucherInstantOf,
   rateInstantOf,
 } from './cost-calculator';
@@ -2721,9 +2720,7 @@ export const recomputeOrderPrice = async (
   let subtotal: number;
   if (sub.distribution_type === 'kilat') {
     subtotal =
-      calculateAdCostPerDay(questionCount, rateAt) +
-      getKilatAddonCost(sub.voucher_code) +
-      incentiveCost;
+      kilatSubtotalAt(questionCount, rateAt, sub.voucher_code, incentiveCost);
   } else {
     const adCost = calculateTotalAdCost(questionCount, duration, rateAt);
     const discount = calculateDiscount(
@@ -2782,7 +2779,7 @@ export const previewOrderPrice = async (
   const rateAt = await firstScheduleRateInstant(submissionId, sub.created_at ?? null);
   let subtotal: number;
   if (sub.distribution_type === 'kilat') {
-    subtotal = calculateAdCostPerDay(questionCount, rateAt) + getKilatAddonCost(sub.voucher_code) + incentiveCost;
+    subtotal = kilatSubtotalAt(questionCount, rateAt, sub.voucher_code, incentiveCost);
   } else {
     const adCost = calculateTotalAdCost(questionCount, duration, rateAt);
     const discount = calculateDiscount(
@@ -4222,9 +4219,7 @@ export const convertDistributionType = async (
   let subtotal: number;
   if (target === 'kilat') {
     subtotal =
-      calculateAdCostPerDay(questionCount, rateAt) +
-      getKilatAddonCost(sub.voucher_code) +
-      incentiveCost;
+      kilatSubtotalAt(questionCount, rateAt, sub.voucher_code, incentiveCost);
   } else {
     const adCost = calculateTotalAdCost(questionCount, duration, rateAt);
     // Voucher dinilai pada tanggal order lahir: memindahkan jalur distribusi

@@ -1,6 +1,6 @@
 import {
-  adRateAt, calculateAdCostPerDay, calculateDiscount, calculateIncentiveCost, getKilatAddonCost,
-  rateInstantOf, tierIndexOf,
+  adRateAt, calculateAdCostPerDay, calculateDiscount, calculateIncentiveCost, calculateKilatDiscount,
+  getKilatAddonCost, kilatRateAt, rateInstantOf, tierIndexOf,
 } from '@/utils/cost-calculator';
 import { AD_TIER_LABELS } from '@/utils/constants';
 import { formatYmdId, toWibYmd } from '@/utils/airing-window';
@@ -101,8 +101,13 @@ export function buildOrderInvoiceItems(
   // yang tidak cocok. Sebelum cabang ini ada, invoice Kilat dari dashboard
   // admin memakai rumus regular — add-on Rp 200.000 tidak pernah tertagih
   // dan base rate justru dikali durasi yang tidak berarti.
+  //
+  // Sejak KILAT_TARIFF_FROM: satu baris tarif gelombang Kilat, diskon voucher
+  // Kilat (ambassador 10%) dilebur ke harganya — bentuk yang sama dengan
+  // `buildNoteItems` di create-payment.js.
   if (input.isKilat) {
-    const kilatItems: InvoiceItem[] = [{
+    const kilatRate = kilatRateAt(questionCount, input.rateInstantMs);
+    const kilatItems: InvoiceItem[] = kilatRate.legacy ? [{
       id: nextId(),
       name: 'Jakpat for Universities (ads)',
       qty: 1,
@@ -114,6 +119,14 @@ export function buildOrderInvoiceItems(
       qty: 1,
       price: getKilatAddonCost(input.voucherCode || undefined),
       category: 'Lainnya',
+    }] : [{
+      id: nextId(),
+      name: 'JFU Kilat (1 gelombang)',
+      qty: 1,
+      price: Math.max(0, kilatRate.effective - calculateKilatDiscount(
+        input.voucherCode, kilatRate.effective, winnerCount * prizePerWinner, input.rateInstantMs,
+      )),
+      category: 'Jakpat for Universities (ads)',
     }];
     if (prizePerWinner > 0 && winnerCount > 0) {
       kilatItems.push({
@@ -318,16 +331,19 @@ export function rateContextOf(input: {
   if (!questionCount) return null;
   const nowMs = input.nowMs ?? Date.now();
   const atMs = rateInstantOf(input.rateLockedAt, nowMs);
-  const { list, effective, introUntil } = adRateAt(questionCount, atMs);
+  const kilatRate = input.isKilat ? kilatRateAt(questionCount, atMs) : null;
+  const kilatTariff = kilatRate != null && !kilatRate.legacy;
+  const { list, effective, introUntil } = kilatTariff ? kilatRate : adRateAt(questionCount, atMs);
   const isLocked = !Number.isNaN(Date.parse(input.rateLockedAt ?? ''));
   const lock = isLocked
     ? `dikunci ${formatYmdId(toWibYmd(new Date(atMs)))}`
     : 'belum dikunci — memakai tarif hari ini';
-  let text = `Tarif ${AD_TIER_LABELS[tierIndexOf(questionCount)]} soal, ${lock}: ${formatIDR(effective)}/hari`;
+  const unit = kilatTariff ? '/gelombang (tarif Kilat)' : '/hari';
+  let text = `Tarif ${AD_TIER_LABELS[tierIndexOf(questionCount)]} soal, ${lock}: ${formatIDR(effective)}${unit}`;
   if (introUntil) {
     text += ` · normal ${formatIDR(list)} · harga perkenalan s/d ${formatYmdId(introUntil)}`;
   }
-  if (input.isKilat) text += ' · Kilat: tarif 1× + add-on';
+  if (input.isKilat && !kilatTariff) text += ' · Kilat: tarif 1× + add-on';
   return text;
 }
 

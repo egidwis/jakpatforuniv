@@ -1,4 +1,6 @@
 export const MAX_REGULAR_ADS_PER_DAY = 4;
+// Add-on JFU Kilat — HANYA untuk rumus lama (instan tarif < KILAT_TARIFF_FROM).
+// Lihat KILAT_RATE_SCHEDULE di bawah.
 export const KILAT_ADDON_COST = 200000;
 export const KILAT_ADDON_COST_VOUCHER = 200000;
 export const MAX_EXTRA_ADS_PER_DAY = 4;
@@ -85,6 +87,48 @@ export const AD_RATE_SCHEDULE: readonly AdRateEntry[] = [
     from: '2027-01-01T00:00:00+07:00',
     list: [200000, 350000, 500000, 650000, 800000],
     effective: [200000, 350000, 500000, 650000, 800000],
+    introUntil: null,
+  },
+];
+
+// Tarif JFU Kilat per GELOMBANG, BERTANGGAL (keputusan 14 Okt 2026, Phase 5
+// Task 5.1). Tabel sendiri per tier — BUKAN lagi "tarif harian Iklan + add-on".
+//
+// Aturannya: Kilat efektif = 2,5 × tarif harian Iklan efektif pada tanggal yang
+// sama (harga Iklan 2 hari + 25%), sehingga Kilat tidak pernah lebih murah dari
+// Iklan multi-hari. `from` sengaja sejajar dengan AD_RATE_SCHEDULE; invarian
+// 2,5× dikunci rateSchedule.spec.ts.
+//
+// ⚠️ TABEL INI BARU BERLAKU SEJAK `KILAT_TARIFF_FROM`. Selama ia `null`, semua
+// order Kilat (termasuk "Jadikan Kilat" admin) memakai RUMUS LAMA:
+// tarif Iklan efektif × 1 + KILAT_ADDON_COST, tanpa diskon voucher. Tanggalnya
+// diisi literal di commit buka pintu (Task 5.9) — jangan berlaku surut: order
+// yang sudah dikutip dengan rumus lama tidak boleh ditagih berbeda saat dibayar.
+//
+// Instan pembanding = instan TARIF (`rate_locked_at`, lihat `rateInstantOf`),
+// sama dengan Iklan.
+//
+// DUPLICATED sebagai literal di functions/api/doku/create-payment.js — WAJIB
+// diubah bersamaan; rateSchedule.spec.ts membandingkan keduanya.
+export const KILAT_TARIFF_FROM: string | null = null;
+
+export const KILAT_RATE_SCHEDULE: readonly AdRateEntry[] = [
+  {
+    from: '2026-10-01T00:00:00+07:00',
+    list: [500000, 875000, 1250000, 1625000, 2000000],
+    effective: [375000, 500000, 750000, 1000000, 1250000],
+    introUntil: '2026-11-30',
+  },
+  {
+    from: '2026-12-01T00:00:00+07:00',
+    list: [500000, 875000, 1250000, 1625000, 2000000],
+    effective: [400000, 700000, 1000000, 1300000, 1600000],
+    introUntil: '2026-12-31',
+  },
+  {
+    from: '2027-01-01T00:00:00+07:00',
+    list: [500000, 875000, 1250000, 1625000, 2000000],
+    effective: [500000, 875000, 1250000, 1625000, 2000000],
     introUntil: null,
   },
 ];

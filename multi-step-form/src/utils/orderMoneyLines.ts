@@ -36,7 +36,18 @@ export function orderMoneyLines(
 ): MoneyLine[] {
   const lines: MoneyLine[] = [];
 
-  lines.push({
+  // Tabel tarif Kilat (sejak KILAT_TARIFF_FROM): satu baris "JFU Kilat · 1
+  // gelombang", tanpa add-on. Rumus lama tetap "Iklan" + baris add-on di bawah.
+  if (ctx.isKilat && calc.kilatTariff) {
+    lines.push({
+      label: 'JFU Kilat',
+      labelKey: 'costLineKilat',
+      hint: `${ctx.questionCount} Qs · 1 gelombang`,
+      hintKey: 'costHintQsOneWave',
+      hintVars: { q: ctx.questionCount },
+      amount: calc.adCostList ?? calc.adCost,
+    });
+  } else lines.push({
     label: 'Iklan',
     labelKey: 'costLineAd',
     // Kilat selesai ~2 jam, jadi durasinya tidak berlaku — menyebut "× 1 hari"
