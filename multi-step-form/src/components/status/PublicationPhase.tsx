@@ -194,10 +194,10 @@ export function PublicationPhase({ cards, pageInfo, isCancelled }: PublicationPh
                     </div>
                     <Link
                         to="/dashboard/analyzer/new"
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white border border-blue-200/90 hover:border-blue-300 hover:bg-blue-50 text-jfu-primary font-bold text-sm shadow-2xs transition-all shrink-0 active:scale-95"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white border border-blue-200/90 hover:border-blue-300 hover:bg-blue-50 text-jfu-primary font-semibold text-xs shadow-2xs transition-all shrink-0 active:scale-95"
                     >
                         <span>{t('publicationCtaBtn')}</span>
-                        <ArrowRight className="w-4 h-4" />
+                        <ArrowRight className="w-3.5 h-3.5" />
                     </Link>
                 </div>
             )}
