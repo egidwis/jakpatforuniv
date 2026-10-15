@@ -4,6 +4,7 @@ import { addDaysToYmd, occupancyDayYmd, toAiringEndIso, toAiringStartIso, toWibY
 import { isPlaceholderBannerUrl } from './page-banner';
 import { isLiveInvoice } from './billingCompare';
 import { compareLeadOrder } from './payLink';
+import { BOOKING_ID_RE, SHORT_ID_RE, UUID_RE } from './idPatterns';
 import {
   calculateAdCostPerDay,
   calculateTotalAdCost,
@@ -567,22 +568,6 @@ export interface FormSubmissionExtend {
   is_extra_ad?: boolean;
   created_at?: string;
   updated_at?: string;
-}
-
-export interface ScheduledAd {
-  id?: string;
-  form_submission_id: string;
-  start_date: string;
-  end_date: string;
-  ad_link: string;
-  notes?: string;
-  google_calendar_event_id?: string;
-  is_extra_ad?: boolean;
-  created_at?: string;
-  created_by?: string;
-  // Joins
-  form_title?: string; // from form_submissions
-  researcher_name?: string; // from form_submissions
 }
 
 // Fungsi untuk menyimpan form submission (with duplicate detection)
@@ -2598,10 +2583,6 @@ export const getAllFormSubmissions = async () => {
   }
 };
 
-const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-const SHORT_ID_RE = /^[0-9a-fA-F]{8}$/;
-/** Bentuk `booking_id` (sql/51): 8 karakter, alfabet tanpa `0 O 1 I L U`. */
-const BOOKING_ID_RE = /^[23456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/;
 
 /**
  * Rentang uuid yang memuat seluruh nilai berawalan `hex` (8 hex pertama).
@@ -2641,7 +2622,7 @@ const uuidPrefixRange = (hex: string): [string, string] => [
  * `SHORT_ID_RE` — sekitar 1 dari 580 kode. Karena itu keduanya TIDAK dipilih
  * salah satu: yang cocok dicari semua, lalu hasilnya digabung.
  */
-const submissionIdsForBookingId = async (
+export const submissionIdsForBookingId = async (
   cleanCode: string,
   isFullUuid: boolean,
   isHexId: boolean
@@ -3627,8 +3608,9 @@ export const toggleAISkillActive = async (id: string, currentStatus: boolean): P
 };
 
 // ============= SCHEDULING FUNCTIONS =============
-// NOTE: scheduled_ads table is ARCHIVED. All scheduling now uses
-// survey_pages (source of truth) + form_submissions (slot reservation & sync).
+// Tabel lama `scheduled_ads` dipensiunkan 10 Apr 2026 (sql/09) dan DIHAPUS
+// lewat sql/ops_drop_tabel_arsip.sql. Jadwal hidup di form_submissions
+// (reservasi) + ad_schedules (cermin & jadwal ke-2 dst.) + survey_pages (jendela halaman).
 
 /**
  * Update schedule dates in both form_submissions and survey_pages (if page exists).

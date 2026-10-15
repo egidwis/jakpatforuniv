@@ -10,8 +10,10 @@ import { PageCatalogTab } from './publish-pages/PageCatalogTab';
 import { KilatPagesTab } from './publish-pages/KilatPagesTab';
 import { PageDetailDrawer } from './publish-pages/PageDetailDrawer';
 import { isKilatPage, type PageData } from './publish-pages/types';
+import { DEFAULT_CATALOG_VIEW, type CatalogView } from './publish-pages/catalogSearch';
 import { toast } from 'sonner';
 import { fetchProfileNames } from '../utils/profileNames';
+import { fetchAllRows } from '../utils/fetchAllRows';
 
 // ─────────────────────────────────────────────────────────────
 // Pages — TEMPAT KERJA sumbu HALAMAN.
@@ -20,7 +22,8 @@ import { fetchProfileNames } from '../utils/profileNames';
 // page iklan dari submission, mengundi pemenang, dan mengatur urutan feed. Dua
 // yang pertama sudah pergi — page iklan dibuat & diterbitkan otomatis oleh
 // `ensure_survey_page()` (sql/40), dan pengundian pindah ke platform pihak ketiga
-// lewat /api/respondents, sehingga `survey_winners` beku sejak 5 Mei 2026.
+// lewat /api/respondents. Tabel lama `survey_winners` (beku sejak 5 Mei 2026)
+// dihapus lewat sql/ops_drop_tabel_arsip.sql.
 //
 // Pembagian dengan papan Schedule, supaya keduanya tidak menjawab pertanyaan yang
 // sama dengan dua jawaban berbeda:
@@ -39,8 +42,6 @@ import { fetchProfileNames } from '../utils/profileNames';
 
 type Tab = 'live' | 'kilat' | 'catalog';
 
-const CATALOG_LIMIT = 100;
-
 /**
  * Sama dengan PAGE_SELECT, tapi join-nya `!inner` supaya `.eq()` pada
  * `form_submissions.distribution_type` benar-benar menyaring baris induk.
@@ -52,6 +53,7 @@ const PAGE_SELECT_KILAT = `
     form_submissions!inner (
         title,
         full_name,
+        email,
         auth_user_id,
         university,
         prize_per_winner,
@@ -69,6 +71,7 @@ const PAGE_SELECT = `
     form_submissions (
         title,
         full_name,
+        email,
         auth_user_id,
         university,
         prize_per_winner,
@@ -82,9 +85,52 @@ const PAGE_SELECT = `
 `;
 
 /**
- * Nama pemilik diselesaikan SESUDAH query, dari `profiles` — bukan kolom di
- * `survey_pages`. Itu sebabnya pencarian katalog di server hanya menjangkau judul
- * dan slug: nama peneliti tidak ada di tabel yang sedang dicari.
+ * Indeks katalog "Semua Page" — SELURUH halaman, dalam bentuk ringan.
+ *
+ * Kolom yang dibaca baris katalog dan drawer saja. Dua yang sengaja TIDAK ikut:
+ *
+ *  - `blocks` — isi halaman, bagian terberat tiap baris. Karena itu Page Builder
+ *    tidak pernah dibuka dari baris ini (lihat `openPageBuilder`).
+ *  - `page_respondents(count)` — ±9 ms per halaman, ±4,5 detik untuk semua;
+ *    dihitung hanya untuk baris yang tampil (`useRespondentCounts`).
+ *
+ * Terukur 14 Okt 2026: 490 halaman ≈ 524 KB JSON (±80 KB gzip), dimuat sekali.
+ * Tinjau ulang di ±3.000 halaman (±3 MB) — di sana pencarian perlu kembali ke
+ * server.
+ */
+const CATALOG_INDEX_SELECT = `
+    id,
+    slug,
+    title,
+    submission_id,
+    created_at,
+    is_published,
+    is_hidden,
+    is_extra_ad,
+    views_count,
+    banner_url,
+    publish_start_date,
+    publish_end_date,
+    display_order,
+    custom_fields,
+    requires_banner_update,
+    form_submissions (
+        title,
+        full_name,
+        email,
+        auth_user_id,
+        university,
+        prize_per_winner,
+        winner_count,
+        criteria_responden,
+        distribution_type
+    )
+`;
+
+/**
+ * Nama & email pemilik diselesaikan SESUDAH query, dari `profiles` — bukan kolom
+ * di `survey_pages`. Karena itu pencarian katalog berjalan di browser: nama
+ * peneliti tidak ada di tabel yang di-query.
  */
 async function decorateOwners(rows: any[]): Promise<PageData[]> {
     const ownerNames = await fetchProfileNames(
@@ -97,6 +143,7 @@ async function decorateOwners(rows: any[]): Promise<PageData[]> {
         p.owner_name = authId
             ? (ownerNames.get(authId)?.name || '')
             : (p.form_submissions?.full_name || '');
+        p.owner_email = authId ? (ownerNames.get(authId)?.email || '') : '';
     });
     return rows as PageData[];
 }
@@ -112,9 +159,13 @@ export function PublishPageManagement() {
 
     const [catalogPages, setCatalogPages] = useState<PageData[]>([]);
     const [catalogLoading, setCatalogLoading] = useState(true);
-    const [catalogTotal, setCatalogTotal] = useState<number | null>(null);
-    const [catalogQuery, setCatalogQuery] = useState('');
-    const [debouncedQuery, setDebouncedQuery] = useState('');
+    /** Naik tiap indeks selesai dimuat — mereset cache hitung responden. */
+    const [catalogVersion, setCatalogVersion] = useState(0);
+    /** `now` bersama untuk chip status & saringan status — satu jam untuk keduanya. */
+    const [catalogLoadedAt, setCatalogLoadedAt] = useState(() => Date.now());
+    const catalogRequestRef = useRef(0);
+    // Di induk, bukan di tab, supaya pencarian & saringan bertahan saat pindah tab.
+    const [catalogView, setCatalogView] = useState<CatalogView>(DEFAULT_CATALOG_VIEW);
 
     const [selectedPage, setSelectedPage] = useState<PageData | null>(null);
     const [isPageBuilderOpen, setIsPageBuilderOpen] = useState(false);
@@ -219,43 +270,43 @@ export function PublishPageManagement() {
         }
     }, []);
 
-    /** Katalog — 100 terbaru; pencarian dikirim ke server, bukan disaring di klien. */
-    const fetchCatalog = useCallback(async (query: string) => {
+    /**
+     * Katalog — SELURUH halaman sebagai indeks ringan; cari, saring, dan paginasi
+     * berjalan di browser (catalogSearch.ts). Terbaru dibuat di atas; `id` sebagai
+     * pemecah seri supaya `.range()` di `fetchAllRows` tidak melompati baris.
+     */
+    const fetchCatalog = useCallback(async () => {
+        const request = ++catalogRequestRef.current;
         setCatalogLoading(true);
         try {
-            let q = supabase
+            const rows = await fetchAllRows(() => supabase
                 .from('survey_pages')
-                .select(PAGE_SELECT, { count: 'exact' })
+                .select(CATALOG_INDEX_SELECT)
                 .order('created_at', { ascending: false })
-                .limit(CATALOG_LIMIT);
-
-            const term = query.trim();
-            if (term) {
-                const safe = term.replace(/[%,()]/g, ' ');
-                q = q.or(`title.ilike.%${safe}%,slug.ilike.%${safe}%`);
-            }
-
-            const { data, error, count } = await q;
-            if (error) throw error;
-            setCatalogPages(await decorateOwners(data || []));
-            setCatalogTotal(count ?? null);
+                .order('id', { ascending: true }));
+            const decorated = await decorateOwners(rows);
+            // Muat ulang yang lebih baru sudah jalan — jangan timpa dengan yang lama.
+            if (request !== catalogRequestRef.current) return;
+            setCatalogPages(decorated);
+            setCatalogLoadedAt(Date.now());
+            setCatalogVersion(v => v + 1);
         } catch (error) {
             console.error('Error fetching page catalog:', error);
-            toast.error('Gagal memuat katalog halaman');
+            if (request === catalogRequestRef.current) toast.error('Gagal memuat katalog halaman');
         } finally {
-            setCatalogLoading(false);
+            if (request === catalogRequestRef.current) setCatalogLoading(false);
         }
+    }, []);
+
+    /** Halaman kembali ke 1 setiap kueri/saringan berubah — kecuali yang berubah memang halamannya. */
+    const updateCatalogView = useCallback((patch: Partial<CatalogView>) => {
+        setCatalogView(v => ({ ...v, ...patch, page: patch.page ?? 1 }));
     }, []);
 
     useEffect(() => { void fetchLive(); }, [fetchLive]);
 
-    useEffect(() => {
-        const t = setTimeout(() => setDebouncedQuery(catalogQuery), 300);
-        return () => clearTimeout(t);
-    }, [catalogQuery]);
-
     useEffect(() => { void fetchKilat(); }, [fetchKilat]);
-    useEffect(() => { void fetchCatalog(debouncedQuery); }, [fetchCatalog, debouncedQuery]);
+    useEffect(() => { void fetchCatalog(); }, [fetchCatalog]);
 
     /**
      * Drawer memegang snapshot halaman, jadi ia harus ikut segar setiap kali data
@@ -270,8 +321,8 @@ export function PublishPageManagement() {
     }, [livePages, catalogPages]);
 
     const refreshAll = useCallback(async () => {
-        await Promise.all([fetchLive(), fetchKilat(), fetchCatalog(debouncedQuery)]);
-    }, [fetchLive, fetchKilat, fetchCatalog, debouncedQuery]);
+        await Promise.all([fetchLive(), fetchKilat(), fetchCatalog()]);
+    }, [fetchLive, fetchKilat, fetchCatalog]);
 
     const handleToggleHide = async (page: PageData) => {
         const action = page.is_hidden ? 'menampilkan kembali' : 'menyembunyikan';
@@ -302,10 +353,31 @@ export function PublishPageManagement() {
      *
      * Hapus halaman dan End Campaign tinggal DI DALAM Page Builder — sengaja tidak
      * ada afordans hapus baru di daftar.
+     *
+     * ⚠️ BARIS UTUH SELALU DIAMBIL ULANG SEBELUM BUILDER DIBUKA. Baris katalog
+     * adalah indeks ringan TANPA `blocks`, dan builder membaca
+     * `initialData.blocks || {}` — membuka dari baris ringan lalu menyimpan akan
+     * MENGHAPUS isi halaman. Berlaku untuk semua jalur (katalog, drawer, Iklan
+     * Live) supaya invariannya tinggal di satu tempat. Gagal ambil → builder
+     * tidak dibuka.
      */
-    const openPageBuilder = (page: PageData | null) => {
+    const openPageBuilder = async (page: PageData | null) => {
+        let full: PageData | null = null;
+        if (page) {
+            const { data, error } = await supabase
+                .from('survey_pages')
+                .select(PAGE_SELECT)
+                .eq('id', page.id)
+                .single();
+            if (error || !data) {
+                console.error('Error loading full page for builder:', error);
+                toast.error('Gagal memuat isi halaman — coba lagi');
+                return;
+            }
+            full = data as PageData;
+        }
         setSelectedPage(null);
-        setBuilderPage(page);
+        setBuilderPage(full);
         setIsPageBuilderOpen(true);
     };
 
@@ -369,7 +441,7 @@ export function PublishPageManagement() {
                 {/* Membuat halaman bukan aksi milik salah satu tab — ia berlaku di
                     kedua-duanya, jadi tempatnya di baris tab, bukan di dalam kartu. */}
                 <Button
-                    onClick={() => openPageBuilder(null)}
+                    onClick={() => void openPageBuilder(null)}
                     size="sm"
                     className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white ml-auto mb-1.5"
                 >
@@ -401,9 +473,10 @@ export function PublishPageManagement() {
                     <PageCatalogTab
                         pages={catalogPages}
                         loading={catalogLoading}
-                        query={catalogQuery}
-                        onQueryChange={setCatalogQuery}
-                        totalCount={catalogTotal}
+                        loadedAt={catalogLoadedAt}
+                        version={catalogVersion}
+                        view={catalogView}
+                        onViewChange={updateCatalogView}
                         actions={actions}
                         onSelectPage={setSelectedPage}
                     />

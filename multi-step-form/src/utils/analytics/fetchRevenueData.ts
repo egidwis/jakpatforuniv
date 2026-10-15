@@ -32,30 +32,11 @@
 
 import { supabase } from '../supabase';
 import type { DateRange } from './types';
+import { fetchAllRows } from '../fetchAllRows';
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /** Baris mentah dari PostgREST. Bentuk kolomnya divalidasi di lapisan hitung, bukan di sini. */
 type AnyRow = Record<string, any>;
-
-/**
- * PostgREST membatasi satu respons di 1000 baris. Tanpa paginasi, batas itu tidak
- * memunculkan error — ia hanya diam-diam memotong hasil. Kolom yang dipilih sengaja
- * eksplisit: `select('*')` pada `transactions` ikut menarik `note` yang berisi payload
- * invoice panjang untuk tiap baris.
- */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-async function fetchAllRows(buildQuery: () => any, batchSize = 1000): Promise<AnyRow[]> {
-    const all: AnyRow[] = [];
-    let from = 0;
-    for (;;) {
-        const { data, error } = await buildQuery().range(from, from + batchSize - 1);
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        all.push(...data);
-        if (data.length < batchSize) break;
-        from += batchSize;
-    }
-    return all;
-}
 
 /*
  * Hanya kolom yang BENAR-BENAR dibaca lapisan hitung.

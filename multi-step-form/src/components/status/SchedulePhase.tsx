@@ -3,8 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
 import {
     AlertCircle,
+    ArrowRight,
     Bookmark,
     CalendarClock,
+    CalendarPlus,
     CalendarRange,
     ChevronDown,
     Clock,
@@ -13,7 +15,6 @@ import {
     FileText,
     Gift,
     Layers,
-    Plus,
     RotateCcw,
     Ticket,
 } from 'lucide-react';
@@ -1148,14 +1149,38 @@ export function SchedulePhase({ submission, cards, entries, onReschedule, active
 
                     {showScheduleAgain && (
                         <div className="mt-3">
-                            <Button
-                                variant="outline"
+                            <div
+                                role="button"
+                                tabIndex={0}
                                 onClick={() => navigate(`/dashboard/jadwal/baru/${submission.id}`)}
-                                className="w-full text-xs font-semibold text-slate-700 border border-dashed border-slate-300 bg-slate-50/60 hover:bg-slate-100/80 hover:border-blue-400 hover:text-blue-700 rounded-xl min-h-11 px-4 gap-2 transition-all shadow-none justify-center cursor-pointer"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        navigate(`/dashboard/jadwal/baru/${submission.id}`);
+                                    }
+                                }}
+                                className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:px-4 sm:py-3 rounded-xl bg-gradient-to-r from-blue-50/80 via-blue-50/40 to-white border border-blue-200/90 hover:border-blue-300 hover:shadow-xs transition-all cursor-pointer text-left active:scale-[0.99]"
                             >
-                                <Plus className="w-4 h-4 shrink-0 text-slate-400" />
-                                <span>{t('scheduleAdAgain')}</span>
-                            </Button>
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-9 h-9 rounded-lg bg-blue-100 text-jfu-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                        <CalendarPlus className="w-4.5 h-4.5 text-jfu-primary" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-jfu-primary transition-colors leading-tight">
+                                            {t('scheduleExtendCardTitle')}
+                                        </p>
+                                        <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 leading-snug">
+                                            {t('scheduleExtendCardDesc')}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-end shrink-0 sm:self-center">
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-jfu-primary text-white group-hover:bg-jfu-dark font-semibold text-xs shadow-2xs transition-all shrink-0">
+                                        <span>{t('scheduleExtendCardBtn')}</span>
+                                        <ArrowRight className="w-3.5 h-3.5" />
+                                    </span>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </>
