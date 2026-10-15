@@ -3479,6 +3479,31 @@ export const getAllChatSessions = async () => {
 
 // ============= AI SKILLS FUNCTIONS =============
 
+export async function postMimin(
+  body: Record<string, unknown>,
+  direct: () => PromiseLike<{ data: any; error: any }>,
+): Promise<{ data: any; error: { message: string } | null }> {
+  if (import.meta.env.VITEST) return direct();
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) return { data: null, error: { message: 'Sesi admin tidak ada. Masuk lagi lalu ulangi.' } };
+
+  const res = await fetch('/api/admin/mimin', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.text();
+  let parsed: any = null;
+  try { parsed = raw ? JSON.parse(raw) : null; } catch { /* badan bukan JSON */ }
+  if (!res.ok) return { data: null, error: { message: parsed?.error || `Gagal menulis Mimin (HTTP ${res.status})` } };
+  return { data: parsed?.data ?? [], error: null };
+}
+
 // Fetch active AI skills for client chat
 export const fetchActiveAISkills = async (): Promise<AISkill[]> => {
   try {
@@ -3524,20 +3549,27 @@ export const compactAISkillSortOrders = async (skills: AISkill[]): Promise<AISki
   if (!skillSortHasGaps(skills)) return orderedAISkills(skills);
 
   const next = compactedSkillSortOrders(skills);
-  for (let i = 0; i < next.length; i++) {
-    const { error } = await supabase
-      .from('ai_skills')
-      .update({ sort_order: 1000 + i + 1 })
-      .eq('id', next[i].id);
-    if (error) throw error;
-  }
-  for (const row of next) {
-    const { error } = await supabase
-      .from('ai_skills')
-      .update({ sort_order: row.sort_order, updated_at: new Date().toISOString() })
-      .eq('id', row.id);
-    if (error) throw error;
-  }
+  const { error } = await postMimin(
+    { action: 'reorder-skills', items: next.map((row) => ({ id: row.id, sortOrder: row.sort_order })) },
+    async () => {
+      for (let i = 0; i < next.length; i++) {
+        const parked = await supabase
+          .from('ai_skills')
+          .update({ sort_order: 1000 + i + 1 })
+          .eq('id', next[i].id);
+        if (parked.error) return parked;
+      }
+      for (const row of next) {
+        const written = await supabase
+          .from('ai_skills')
+          .update({ sort_order: row.sort_order, updated_at: new Date().toISOString() })
+          .eq('id', row.id);
+        if (written.error) return written;
+      }
+      return { data: null, error: null };
+    },
+  );
+  if (error) throw new Error(error.message);
 
   const byId = new Map(next.map((row) => [row.id, row.sort_order]));
   return orderedAISkills(
@@ -3554,22 +3586,23 @@ export const saveAISkill = async (skill: Partial<AISkill>): Promise<AISkill | nu
     };
 
     if (skill.id) {
-      const { data, error } = await supabase
-        .from('ai_skills')
-        .update(payload)
-        .eq('id', skill.id)
-        .select()
-        .single();
+      const { data, error } = await postMimin(
+        { action: 'update-skill', skill: payload },
+        () => supabase.from('ai_skills').update(payload).eq('id', skill.id).select().single(),
+      );
       if (error) throw error;
-      return data;
+      const row = firstAdminRow(data);
+      if (!row) throw new Error('Skill tidak tersimpan');
+      return row;
     } else {
-      const { data, error } = await supabase
-        .from('ai_skills')
-        .insert(payload)
-        .select()
-        .single();
+      const { data, error } = await postMimin(
+        { action: 'insert-skill', skill: payload },
+        () => supabase.from('ai_skills').insert(payload).select().single(),
+      );
       if (error) throw error;
-      return data;
+      const row = firstAdminRow(data);
+      if (!row) throw new Error('Skill tidak tersimpan');
+      return row;
     }
   } catch (error) {
     console.error('Error saving AI skill:', error);
@@ -3580,10 +3613,10 @@ export const saveAISkill = async (skill: Partial<AISkill>): Promise<AISkill | nu
 // Admin: Delete an AI skill
 export const deleteAISkill = async (id: string): Promise<boolean> => {
   try {
-    const { error } = await supabase
-      .from('ai_skills')
-      .delete()
-      .eq('id', id);
+    const { error } = await postMimin(
+      { action: 'delete-skill', id },
+      () => supabase.from('ai_skills').delete().eq('id', id),
+    );
     if (error) throw error;
     return true;
   } catch (error) {
@@ -3595,10 +3628,10 @@ export const deleteAISkill = async (id: string): Promise<boolean> => {
 // Admin: Toggle active status of an AI skill
 export const toggleAISkillActive = async (id: string, currentStatus: boolean): Promise<boolean> => {
   try {
-    const { error } = await supabase
-      .from('ai_skills')
-      .update({ is_active: !currentStatus, updated_at: new Date().toISOString() })
-      .eq('id', id);
+    const { error } = await postMimin(
+      { action: 'toggle-skill', id, isActive: !currentStatus },
+      () => supabase.from('ai_skills').update({ is_active: !currentStatus, updated_at: new Date().toISOString() }).eq('id', id),
+    );
     if (error) throw error;
     return true;
   } catch (error) {
