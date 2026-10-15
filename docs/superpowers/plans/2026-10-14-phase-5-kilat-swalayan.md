@@ -1,6 +1,6 @@
 # Phase 5 — Kilat swalayan: peneliti memesan Kilat sendiri
 
-> **STATUS NYATA (15 Okt 2026):** 🟡 **R1 selesai di branch** `feat/kilat-tarif-bertanggal` (tarif Kilat 5.1 tidur, `KILAT_TARIFF_FROM = null`, + audit invoice/kwitansi), belum di-merge. 🟡 **R2 selesai di branch** `feat/kilat-fondasi-gelombang` (di atas R1): `sql/117` ditulis & diuji PGlite (20 kasus + mutan), **belum diterapkan**; kode 5.4 tanpa sinkron halaman. Urutan rilis: R1 deploy → gerbang R1 → terapkan sql/117 → push R2. R3–R8 ⬜.
+> **STATUS NYATA (15 Okt 2026):** 🟡 **R1 selesai di branch** `feat/kilat-tarif-bertanggal` (tarif Kilat 5.1 tidur, `KILAT_TARIFF_FROM = null`, + audit invoice/kwitansi), belum di-merge. 🟡 **R2 selesai di branch** `feat/kilat-fondasi-gelombang` (di atas R1): `sql/117` ditulis & diuji PGlite (20 kasus + mutan), **belum diterapkan**; kode 5.4 tanpa sinkron halaman. **`sql/117` DITERAPKAN & diverifikasi produksi 15 Okt** (CHECK 8/11/14/15/17, 2 trigger, ACL tanpa anon); kode R2 belum di-push. 🟡 **R4 bagian SQL di branch** `feat/kilat-undian-siaran` (di atas R2): `sql/118` ditulis & diuji PGlite (20 kasus, rollback md5-identik), **belum diterapkan** — dry-run prod: 20 order bergeser jendela undian (19 Kilat lama + 1 Iklan berjam kustom; 18 berhalaman), 0 perubahan status/`can_select_winners`, 0 `period_batch` perpanjangan berubah. Toggle siaran diwujudkan sebagai 3 RPC `service_role` (`kilat_broadcast_start/_end/_undo`), konsumen UI/Pages Function R4 belum dikerjakan. Urutan rilis: R1 deploy → gerbang R1 → push R2 → R3 → R4 (terapkan sql/118 lalu push). R3, R5–R8 ⬜.
 >
 > Berkas ini salinan rencana yang disetujui di sesi chat 14–15 Okt. Bagian **Gelombang rilis** menentukan urutan eksekusi; nomor task (5.1–5.10) tetap jadi rujukan isi.
 
@@ -167,6 +167,7 @@ Berlaku untuk **semua** order Kilat sejak tanggal mulai, termasuk yang dibuat ad
 - **Cron pelepas** (`release_expired_order_slots`, `sql/94`): ikut meng-NULL-kan `kilat_slot_hour`.
 
 ### 5.3 — Undian & halaman buta jenis (`sql/118_undian_buta_jenis.sql`, setelah `sql/117`)
+> *Dikerjakan 15 Okt (branch `feat/kilat-undian-siaran`): `sql/118` memuat 5.3 **dan** bagian SQL 5.4b (kolom siaran, penjaga+reset, backfill 17) plus RPC toggle `kilat_broadcast_start/_end/_undo` — logika satu-arah, "boleh terlambat", dan "batal hanya tanpa responden" ditegakkan DB, bukan Pages Function. Satu rumus jendela `airing_window_start/_end` dipakai undian, `ensure_survey_page` (lewat `kilat_page_window`) dan RPC toggle. Snapshot keluaran undian sebelum migrasi disimpan di `backup.r118_rewards_before` untuk laporan tim undian (R7).*
 Temuan 14 Okt (baca-saja di produksi):
 - `/api/respondents` **sudah buta jenis**: tidak ada filter `distribution_type`, dan Mode 2 (`get_batch_rewards`) hanya membungkus `get_batch_rewards_bulk`. Satu implementasi, **`respondents.js` tidak diubah**.
 - Asimetrinya ada di **sumber jendela**: kaki ordinal 1 membaca `form_submissions` + `airing_instant_of_date` (15.00 terpatok), kaki perpanjangan membaca instan nyata `ad_schedules`. Akibatnya Kilat dan **131 order Iklan berjam kustom** (`airing_hour_wib`) dilaporkan berjendela 15.00.
