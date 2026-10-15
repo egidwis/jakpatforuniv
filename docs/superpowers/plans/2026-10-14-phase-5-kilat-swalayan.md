@@ -1,6 +1,6 @@
 # Phase 5 — Kilat swalayan: peneliti memesan Kilat sendiri
 
-> **STATUS NYATA (15 Okt 2026, sore):** urutan eksekusi & progres tiap rilis ada di **§Peta rilis** tepat di bawah. Ringkas: R1 & R2 selesai di branch (belum push); `sql/117` dan `sql/118` **sudah diterapkan** di produksi; R3–R8 belum dikerjakan kecuali SQL R4.
+> **STATUS NYATA (15 Okt 2026, sore):** urutan eksekusi & progres tiap rilis ada di **§Peta rilis** tepat di bawah. Ringkas: R1, R2 & R3 selesai di branch (belum push); `sql/117` dan `sql/118` **sudah diterapkan** di produksi; R4 tinggal kode; R5–R8 belum dikerjakan.
 >
 > Berkas ini salinan rencana yang disetujui di sesi chat 14–15 Okt. Bagian **Gelombang rilis** menentukan urutan eksekusi; nomor task (5.1–5.10) tetap jadi rujukan isi.
 
@@ -14,7 +14,7 @@ Kerjakan dari atas ke bawah. Satu rilis = satu branch dari `main` (R2 dan R4 sem
 |---|---|---|---|---|---|
 | 1 | **R1 — Tarif tidur** | 5.1 | — | 🟡 Kode selesai di `feat/kilat-tarif-bertanggal` (`c86c9e9`, `e64db33`), belum push | Merge → push → gerbang: adu ulang `total_cost` order Kilat belum lunas |
 | 2 | **R2 — Fondasi gelombang** | 5.2, 5.4 | `sql/117` ✅ diterapkan & diverifikasi 15 Okt | 🟡 Kode selesai di `feat/kilat-fondasi-gelombang` (`2ec405c`, di atas R1), belum push | Push setelah gerbang R1 → pantau 48 jam galat `kilat_wave_*` |
-| 3 | **R3 — Libur & badge** | 5.4b (libur + badge tanpa hitungan siaran) | — (tabel libur sudah ada dari `sql/117`) | ⬜ | Pages Function `/api/admin/holidays`, halaman Hari Libur, banner peneliti, badge tab Iklan/Kilat |
+| 3 | **R3 — Libur & badge** | 5.4b (libur + badge tanpa hitungan siaran) | — (tabel libur sudah ada dari `sql/117`) | 🟡 Kode selesai di `feat/kilat-libur-badge` (di atas R4-SQL), belum push | Push → admin mengisi libur Okt 2026–Jan 2027 di menu **Hari Libur** → gerbang: badge = hitungan manual (15 Okt: Iklan 22 = 13 review + 9 penjadwalan, Kilat 0) |
 | 4 | **R4 — Undian & siaran** | 5.3, 5.4b (toggle siaran), sinkron halaman 5.4 | `sql/118` ✅ diterapkan & diverifikasi 15 Okt (lebih awal dari kodenya, lihat catatan) | 🟡 SQL selesai di `feat/kilat-undian-siaran` (`4213f8b`); kode belum | Aksi `broadcast-*` di `/api/admin/content` → toggle di tab Page → sinkron halaman `updateKilatSchedule` → badge "belum disiarkan" |
 | 5 | **R5 — Pintu tersembunyi** | 5.5, 5.6, 5.8 | — | ⬜ | Di balik bendera `KILAT_SELF_SERVE_OPEN = false` |
 | 6 | **R6 — Jalur bayar Kilat** | 5.7 | — | ⬜ | Termasuk cermin helper waktu di `create-payment.js` dan cabut peringatan "pakai 15.00" di picker admin |
@@ -224,6 +224,7 @@ Perubahan:
   Pastikan `contentGate.js` menerima patch ini.
 
 ### 5.4b — Kalender libur operasional & badge admin (sebelum 5.9) · **[R3 + toggle siaran di R4]**
+> *Dikerjakan R3, 15 Okt (branch `feat/kilat-libur-badge`): `functions/api/admin/holidays.js` (+gerbang & spec yang memanggil handler), `utils/operationalHolidays.ts` + `nextWorkingDay` di `airing-window.ts`, halaman admin `pages/internal-dash/HolidaysPage.tsx` (menu **Hari Libur**), `AdminHolidayBanner` di dashboard (`StatusPage` = dashboard + status order) dan chat Mimin, badge tab Iklan/Kilat + filter **Perlu Ditangani** dari `utils/adminQueue.ts`. Penyimpangan yang disadari: predikat badge membaca kolom `form_submissions`, bukan `deriveOrderUiState` (butuh jadwal + peta bayar per order); `review` hanya baris **tanpa tanggal** karena 398 baris `in_review` bertanggal adalah artefak pra-review (Mei 2025–Jan 2026). Pemilih jenis versi mobile tidak ada, jadi filter mobile memuat kedua jenis.*
 Tabel libur masuk `sql/117` (dibaca trigger 5.2). **Kolom siaran + trigger reset + backfill masuk `sql/118`**, bersama rumus undian yang membacanya, supaya kolom, pembaca, dan toggle-nya hidup di rilis yang sama (R4). Berlaku untuk Iklan dan Kilat.
 
 - **Tabel `operational_holidays`** (`holiday_date` PK, `label`, `is_active`, `updated_at`, `updated_by`):

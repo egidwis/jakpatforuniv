@@ -39,6 +39,7 @@ import {
 import { faqsForSkill, formatLinkedFaqsForPrompt } from '@/utils/miminSkillFaqs';
 import { ensureFaqListUi } from '@/utils/miminFaqUi';
 import { mergeIncomingMessage, normalizeReplyMode, toModelHistory } from '@/utils/miminHandoff';
+import { AdminHolidayBanner } from '@/components/status/AdminHolidayBanner';
 
 interface ChatCta {
     id: string;
@@ -1023,6 +1024,7 @@ function parseMiminResponse(
                                     </div>
                                 </div>
                             </CardHeader>
+                            <AdminHolidayBanner className="mx-3 mt-3 shrink-0" />
 
                             {replyMode === 'human' && (
                                 <div className="px-4 py-2 bg-sky-50 text-sky-900 text-xs border-b border-sky-100">

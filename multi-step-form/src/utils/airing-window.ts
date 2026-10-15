@@ -254,6 +254,23 @@ export function nextWibWorkdays(count: number, now: Date = new Date()): string[]
     return days;
 }
 
+/**
+ * Hari kerja tim admin berikutnya SESUDAH `fromYmd`: Senin–Jumat dan bukan
+ * tanggal libur aktif (`operational_holidays`, Phase 5 §5.4b). Dipakai banner
+ * "admin libur" untuk menyebut kapan review/komplain dilayani lagi.
+ * `activeHolidays` = himpunan YMD yang saklarnya aktif.
+ */
+export function nextWorkingDay(fromYmd: string, activeHolidays: ReadonlySet<string>): string {
+    let ymd = addDaysToYmd(fromYmd, 1);
+    // Batas pengaman: kalender libur yang tak masuk akal (mis. sebulan penuh
+    // aktif) tidak boleh membuat loop tak berujung.
+    for (let i = 0; i < 366; i++) {
+        if (isWeekdayYmd(ymd) && !activeHolidays.has(ymd)) return ymd;
+        ymd = addDaysToYmd(ymd, 1);
+    }
+    return ymd;
+}
+
 /** YYYY-MM-DD dari sebuah Date menurut kalender WIB. */
 export function toWibYmd(date: Date): string {
     return nowWib(date).ymd;

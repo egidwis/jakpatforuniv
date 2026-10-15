@@ -843,7 +843,11 @@ export const translations = {
     chatAboutOrder: "Ask Mimin",
 
     // Dashboard revamp — next-step callout
-    calloutReviewManual: "Your survey is being reviewed by our admin — max 2 working days (Mon–Fri). We'll notify you by email.",
+    calloutReviewManual: "Your survey is being reviewed by our admin — max 2 working days (Mon–Fri, excluding team holidays). We'll notify you by email.",
+    // Kalender libur operasional (Phase 5 §5.4b)
+    adminHolidayTitle: "Our admin team is off today ({label})",
+    adminHolidayTitleNoLabel: "Our admin team is off today",
+    adminHolidayBody: "Ads keep airing automatically. Manual reviews & scheduling, issue reports and complaints will be handled from {date}.",
     calloutDetectedKeywords: "Detected:",
     calloutChooseSchedule: "Your survey is approved! Pick an airing schedule to continue.",
     calloutPayBefore: "Complete your payment before",
@@ -2112,7 +2116,11 @@ export const translations = {
     chatAboutOrder: "Tanya Mimin",
 
     // Dashboard revamp — callout langkah berikutnya
-    calloutReviewManual: "Survei kamu sedang direview admin — maksimal 2 hari kerja (Senin–Jumat). Hasilnya kami kabari via email.",
+    calloutReviewManual: "Survei kamu sedang direview admin — maksimal 2 hari kerja (Senin–Jumat, tidak termasuk hari libur tim). Hasilnya kami kabari via email.",
+    // Kalender libur operasional (Phase 5 §5.4b)
+    adminHolidayTitle: "Hari ini tim admin libur ({label})",
+    adminHolidayTitleNoLabel: "Hari ini tim admin libur",
+    adminHolidayBody: "Iklan tetap tayang otomatis. Review & penjadwalan manual, lapor kendala dan komplain dilayani mulai {date}.",
     calloutDetectedKeywords: "Terdeteksi:",
     calloutChooseSchedule: "Survei kamu disetujui! Pilih jadwal tayang untuk melanjutkan.",
     calloutPayBefore: "Selesaikan pembayaran sebelum",

@@ -2830,9 +2830,16 @@ export const getFormSubmissionsPaginated = async (
    *
    * Alasannya sejajar dengan pengecualian pencarian ID di bawah.
    */
-  statusIn?: string[]
+  statusIn?: string[],
+  /**
+   * Antrean "Perlu Ditangani" (badge tab Iklan/Kilat, `adminQueue.ts`): daftar
+   * id yang menunggu admin, berapa pun umurnya — jadi filter bulan dilewati,
+   * dengan alasan yang sama dengan `statusIn`. Array kosong = antrean kosong.
+   */
+  idIn?: string[]
 ) => {
   try {
+    if (idIn && idIn.length === 0) return { data: [], count: 0 };
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
@@ -2899,7 +2906,12 @@ export const getFormSubmissionsPaginated = async (
       query = query.in('submission_status', statusIn!);
     }
 
-    if (startDate && endDate && !isIdSearch && !isStatusQueue) {
+    const isIdQueue = !!idIn;
+    if (isIdQueue) {
+      query = query.in('id', idIn!);
+    }
+
+    if (startDate && endDate && !isIdSearch && !isStatusQueue && !isIdQueue) {
       query = query.gte('created_at', startDate).lte('created_at', endDate);
     }
 

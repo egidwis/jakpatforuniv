@@ -35,6 +35,7 @@ import { groupInfoFor } from '@/components/status/invoiceGroups';
 import { CreateOrderCards, ProductCardGrid } from '@/components/CreateOrderCards';
 import { deriveOrderUiState, getActiveDashboardPhase, type OrderGroup } from '@/components/status/deriveOrderUiState';
 import { AdsEntryModal } from '@/components/AdsEntryModal';
+import { AdminHolidayBanner } from '@/components/status/AdminHolidayBanner';
 import { ProfileCompletionSheet } from '@/components/ProfileCompletionSheet';
 import { isProfileGateSatisfied } from '@/components/ProfileForm';
 
@@ -701,6 +702,9 @@ export function StatusPage() {
             <div className="max-w-5xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-10 space-y-6">
                 {/* Hub produk — jalur masuk Buat Order selalu konsisten terlihat di atas */}
                 <CreateOrderCards onOpenAdsModal={() => setIsAdsModalOpen(true)} />
+
+                {/* Hari libur tim admin (Phase 5 §5.4b) — hanya pada tanggal libur aktif */}
+                <AdminHolidayBanner />
 
                 {/* Header bagian Dashboard beserta filter dan refresh */}
                 <div className="flex items-center justify-between gap-3 pt-2 pb-1">

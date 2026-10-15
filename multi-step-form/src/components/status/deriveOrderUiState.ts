@@ -382,7 +382,7 @@ export function describeOrderForChat(submission: FormSubmission, ui: OrderUiStat
 
     const statusText: Record<OrderCalloutState, string> = {
         revision: 'perlu revisi karena belum sesuai syarat & ketentuan (mis. menanyakan data pribadi responden); user bisa ajukan ulang dari halaman Order Saya',
-        review_manual: 'sedang direview admin (maksimal 2 hari kerja, hari kerja Senin-Jumat)',
+        review_manual: 'sedang direview admin (maksimal 2 hari kerja, hari kerja Senin-Jumat; hari libur tim admin tidak dihitung)',
         cancelled: 'pesanan DIBATALKAN dan tidak akan tayang; tagihan yang sempat terbit tidak berlaku lagi. Kalau user masih ingin mengiklankan survei ini, ia perlu membuat pesanan baru — bukan mengajukan ulang yang ini',
         choose_schedule: 'sudah disetujui, menunggu user memilih jadwal tayang di halaman Order Saya',
         awaiting_admin_schedule: 'sudah disetujui admin; tim Jakpat yang akan menetapkan jadwal tayang lalu menerbitkan tagihan. User TIDAK perlu memilih jadwal sendiri, cukup menunggu',
