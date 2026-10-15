@@ -1461,7 +1461,13 @@ async function applyPaidSchedule(sb, target, appStatus, encodedInvoice) {
     // Record a one-time voucher redemption (e.g. ILKOMUNY) on confirmed
     // payment. The UNIQUE(auth_user_id, voucher_code) constraint in
     // voucher_redemptions (sql/35) is the authoritative "once per account"
-    // gate; ignore-duplicates makes a repeat a harmless no-op.
+    // gate.
+    //
+    // ⚠️ `on_conflict` WAJIB menyebut kunci UNIQUE itu. Tanpanya PostgREST
+    // memakai PRIMARY KEY (`id`, selalu baru) sebagai target ON CONFLICT, jadi
+    // `ignore-duplicates` tidak pernah menyala: pembayaran kedua dari akun yang
+    // sama menabrak UNIQUE → 409 → peringatan di log untuk hal yang wajar.
+    // Dengan kunci yang benar, pengulangan = INSERT … ON CONFLICT DO NOTHING.
     // Efek sekunder — ditelan sendiri, alasan sama seperti blok banner di atas.
     if (formPaymentStatus === 'paid') {
       try {
@@ -1475,7 +1481,7 @@ async function applyPaidSchedule(sb, target, appStatus, encodedInvoice) {
         const code = sub && sub.voucher_code ? String(sub.voucher_code).toUpperCase() : null;
         const LIMITED_VOUCHERS = ['ILKOMUNY'];
         if (sub && sub.auth_user_id && code && LIMITED_VOUCHERS.includes(code)) {
-          const vrRes = await fetch(`${sb.url}/rest/v1/voucher_redemptions`, {
+          const vrRes = await fetch(`${sb.url}/rest/v1/voucher_redemptions?on_conflict=auth_user_id,voucher_code`, {
             method: 'POST',
             headers: { ...sb.headers, 'Prefer': 'resolution=ignore-duplicates' },
             body: JSON.stringify({

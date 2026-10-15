@@ -1,0 +1,219 @@
+-- ============================================================================
+-- ops — DROP DUA TABEL ARSIP: scheduled_ads & survey_winners
+-- ============================================================================
+--
+-- Keputusan pemilik produk 15 Okt 2026: dua tabel arsip ini dibuang supaya
+-- tidak lagi disangka bagian dari sistem yang hidup.
+--
+--   scheduled_ads   Penjadwalan lama. Dipensiunkan 10 Apr 2026 (sql/09).
+--                   51 baris (28 Jan – 10 Apr 2026). Isinya duplikat jadwal di
+--                   ad_schedules, tanggal basi sebelum dijadwalkan ulang, satu
+--                   baris uji, dan ID event Google Calendar dari integrasi yang
+--                   sudah mati. Tidak ada yang layak dipindah ke ad_schedules
+--                   (baris ordinal 1 = cermin yang ditulis ulang trigger;
+--                   baris sisipan = jadwal hantu yang dibaca undian & tagihan).
+--   survey_winners  Pemenang undian lama. Beku sejak 5 Mei 2026 (sql/43) —
+--                   pengundian pindah ke platform pihak ketiga lewat
+--                   /api/respondents. 267 baris (73 halaman), SEMUANYA memuat
+--                   nomor e-wallet. Pembaca terakhir (modal "Arsip Pemenang")
+--                   dicabut di commit 411052f (9 Agu 2026, sudah live). Datanya
+--                   sudah dipindahkan ke sistem undian di luar dashboard
+--                   (pernyataan pemilik produk, 15 Okt 2026).
+--
+-- ── BUKTI TIDAK ADA PEMAKAI (diperiksa 15 Okt 2026, baca saja) ─────────────
+--
+--   • Kode: nol pembaca/penulis di src/ dan functions/ (tipe TS `ScheduledAd`
+--     yang tersisa dihapus di commit yang sama dengan berkas ini).
+--   • Database: nol trigger, fungsi, view, cron, publikasi realtime, dan FK
+--     masuk ke kedua tabel (Langkah 1b mengulanginya).
+--   • API: log edge tiga jendela 24 jam (8, 11, dan 14–15 Okt) — ±275 ribu
+--     permintaan REST, NOL ke /rest/v1/scheduled_ads maupun
+--     /rest/v1/survey_winners.
+--
+-- ── URUTAN ──────────────────────────────────────────────────────────────────
+--
+--   Tidak ada kode hidup yang membaca kedua tabel, jadi berkas ini boleh
+--   dijalankan SEBELUM atau SESUDAH push branch chore/bersihkan-tabel-arsip.
+--
+--   0. Cadangan (pilihan, dari Table Editor → Export → CSV):
+--        scheduled_ads  — disarankan; tidak memuat data pribadi.
+--        survey_winners — datanya sudah dipindah, jadi tidak wajib. Kalau
+--                         tetap diekspor: itu data finansial pribadi (nomor
+--                         e-wallet + nama). Jangan simpan di repo, chat, atau
+--                         drive bersama; hapus setelah yakin.
+--   1. Pra-cek  → 2. DROP  → 3. Verifikasi.
+--
+--   ⚠️ Sesudah COMMIT, isinya hanya bisa kembali dari CSV di atas atau PITR
+--   (memulihkan SELURUH proyek ke satu titik waktu — jalan terakhir).
+--
+--   Jalankan di SQL Editor Supabase. JANGAN lewat MCP.
+--
+-- ── BERKAS HISTORIS YANG TIDAK BOLEH DIPUTAR ULANG SESUDAH INI ─────────────
+--
+--   sql/08_create_survey_winners.sql, sql/09_submission_status_migration.sql,
+--   sql/15_secure_survey_winners.sql, sql/43_survey_winners_archive.sql,
+--   sql/add_extra_ad_column.sql (bagian 2), dan bagian snapshot
+--   survey_winners di sql/ops_cleanup_test_account_tegarerputra.sql — semuanya
+--   menyebut tabel yang sudah tidak ada dan akan gagal.
+-- ============================================================================
+
+
+-- ============================================================================
+-- LANGKAH 1 — PRA-CEK (baca saja)
+-- ============================================================================
+--
+-- 1a. Isi tabel masih PERSIS seperti saat diperiksa 15 Okt 2026.
+--     Harapan: scheduled_ads 51 true, survey_winners 267 true.
+--     `false` = ada yang menulis/menghapus sejak itu → berhenti, laporkan dulu.
+--
+-- SELECT 'scheduled_ads' AS tabel, count(*) AS baris,
+--        md5(string_agg(row_to_json(s)::text, '|' ORDER BY s.id))
+--          = '0de32fd2ea5e14c7dc98319ed0218b2a' AS sama
+-- FROM public.scheduled_ads s
+-- UNION ALL
+-- SELECT 'survey_winners', count(*),
+--        md5(string_agg(row_to_json(w)::text, '|' ORDER BY w.id))
+--          = '3b9b25d97fa7367b648830a2d324097a'
+-- FROM public.survey_winners w;
+--
+-- 1b. Tidak ada objek yang bergantung pada kedua tabel. Harapan: 0 baris.
+--     Ada baris = berhenti; DROP di Langkah 2 juga akan menolak (RESTRICT),
+--     tapi lebih baik tahu sebabnya sebelum mencoba.
+--
+-- SELECT 'fk_masuk' AS jenis, conrelid::regclass::text AS objek
+-- FROM pg_constraint
+-- WHERE confrelid IN ('public.scheduled_ads'::regclass, 'public.survey_winners'::regclass)
+-- UNION ALL
+-- SELECT DISTINCT 'view', dv.oid::regclass::text
+-- FROM pg_depend d
+-- JOIN pg_rewrite r ON r.oid = d.objid
+-- JOIN pg_class dv ON dv.oid = r.ev_class
+-- WHERE d.refobjid IN ('public.scheduled_ads'::regclass, 'public.survey_winners'::regclass)
+--   AND dv.oid NOT IN ('public.scheduled_ads'::regclass, 'public.survey_winners'::regclass)
+-- UNION ALL
+-- SELECT 'fungsi', n.nspname || '.' || p.proname
+-- FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+-- WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+--   AND (p.prosrc ILIKE '%scheduled_ads%' OR p.prosrc ILIKE '%survey_winners%')
+-- UNION ALL
+-- SELECT 'trigger', tgrelid::regclass::text || '.' || tgname
+-- FROM pg_trigger
+-- WHERE NOT tgisinternal
+--   AND tgrelid IN ('public.scheduled_ads'::regclass, 'public.survey_winners'::regclass)
+-- UNION ALL
+-- SELECT 'cron', jobname
+-- FROM cron.job
+-- WHERE command ILIKE '%scheduled_ads%' OR command ILIKE '%survey_winners%'
+-- UNION ALL
+-- SELECT 'publikasi', pubname
+-- FROM pg_publication_tables
+-- WHERE schemaname = 'public' AND tablename IN ('scheduled_ads', 'survey_winners');
+--
+-- 1c. Catat angka ini untuk dibandingkan di Langkah 3c (tabel induk tidak
+--     boleh ikut tersentuh).
+--
+-- SELECT (SELECT count(*) FROM public.form_submissions) AS form_submissions,
+--        (SELECT count(*) FROM public.survey_pages)     AS survey_pages;
+
+
+-- ============================================================================
+-- LANGKAH 2 — DROP (satu transaksi)
+-- ============================================================================
+
+BEGIN;
+
+-- RESTRICT (bawaan), BUKAN CASCADE: kalau ternyata ada objek yang bergantung,
+-- DROP gagal keras dan tidak ada apa pun yang ikut terhapus. FK milik kedua
+-- tabel ini sendiri (→ form_submissions, → survey_pages) ikut hilang; tabel
+-- induknya tidak disentuh.
+DROP TABLE public.scheduled_ads RESTRICT;
+DROP TABLE public.survey_winners RESTRICT;
+
+-- Supabase memuat ulang cache skema PostgREST otomatis setelah DDL; ini
+-- hanya sabuk pengaman (dikirim saat COMMIT).
+NOTIFY pgrst, 'reload schema';
+
+COMMIT;
+
+
+-- ============================================================================
+-- LANGKAH 3 — VERIFIKASI (baca saja)
+-- ============================================================================
+--
+-- 3a. Kedua tabel sudah tidak ada. Harapan: dua NULL.
+--
+-- SELECT to_regclass('public.scheduled_ads')  AS scheduled_ads,
+--        to_regclass('public.survey_winners') AS survey_winners;
+--
+-- 3b. Tidak ada policy yatim. Harapan: 0 baris.
+--
+-- SELECT tablename, policyname FROM pg_policies
+-- WHERE schemaname = 'public' AND tablename IN ('scheduled_ads', 'survey_winners');
+--
+-- 3c. Tabel induk utuh. Harapan: angka SAMA dengan Langkah 1c.
+--
+-- SELECT (SELECT count(*) FROM public.form_submissions) AS form_submissions,
+--        (SELECT count(*) FROM public.survey_pages)     AS survey_pages;
+--
+-- 3d. Dashboard admin: buka Submissions, Pages, dan Schedule — semuanya harus
+--     termuat seperti biasa (tidak ada yang membaca kedua tabel sejak Agu).
+
+
+-- ============================================================================
+-- ROLLBACK — STRUKTUR SAJA. Isi kembali dari CSV (Langkah 0) lewat Table
+-- Editor → Import data from CSV. Tanpa CSV, isinya hanya bisa kembali lewat
+-- PITR seluruh proyek. Definisi di bawah = produksi 15 Okt 2026.
+-- ============================================================================
+--
+-- BEGIN;
+--
+-- CREATE TABLE public.scheduled_ads (
+--   id                       uuid        NOT NULL DEFAULT uuid_generate_v4(),
+--   form_submission_id       uuid,
+--   start_date               timestamptz NOT NULL,
+--   end_date                 timestamptz NOT NULL,
+--   ad_link                  text,
+--   notes                    text,
+--   google_calendar_event_id text,
+--   created_at               timestamptz DEFAULT now(),
+--   created_by               text,
+--   is_extra_ad              boolean     DEFAULT false,
+--   CONSTRAINT scheduled_ads_pkey PRIMARY KEY (id),
+--   CONSTRAINT scheduled_ads_form_submission_id_fkey FOREIGN KEY (form_submission_id)
+--     REFERENCES public.form_submissions(id) ON DELETE CASCADE
+-- );
+-- ALTER TABLE public.scheduled_ads ENABLE ROW LEVEL SECURITY;
+-- CREATE POLICY "Admins can manage scheduled ads" ON public.scheduled_ads
+--   FOR ALL TO public
+--   USING ((auth.jwt() ->> 'email') = 'product@jakpat.net')
+--   WITH CHECK ((auth.jwt() ->> 'email') = 'product@jakpat.net');
+-- COMMENT ON TABLE public.scheduled_ads IS
+--   'ARCHIVED (2026-04-10) — dipulihkan dari rollback sql/ops_drop_tabel_arsip.sql.';
+--
+-- CREATE TABLE public.survey_winners (
+--   id               uuid        NOT NULL DEFAULT gen_random_uuid(),
+--   page_id          uuid,
+--   jakpat_id        text        NOT NULL,
+--   respondent_name  text,
+--   reward_amount    integer,
+--   reward_status    text        DEFAULT 'selected',
+--   ewallet_provider text,
+--   e_wallet_number  text,
+--   selected_at      timestamptz DEFAULT now(),
+--   selected_by      text,
+--   notes            text,
+--   CONSTRAINT survey_winners_pkey PRIMARY KEY (id),
+--   CONSTRAINT survey_winners_page_id_jakpat_id_key UNIQUE (page_id, jakpat_id),
+--   CONSTRAINT survey_winners_page_id_fkey FOREIGN KEY (page_id)
+--     REFERENCES public.survey_pages(id) ON DELETE CASCADE
+-- );
+-- CREATE INDEX idx_survey_winners_page_id   ON public.survey_winners (page_id);
+-- CREATE INDEX idx_survey_winners_jakpat_id ON public.survey_winners (jakpat_id);
+-- ALTER TABLE public.survey_winners ENABLE ROW LEVEL SECURITY;
+-- CREATE POLICY "Admin reads survey_winners archive" ON public.survey_winners
+--   FOR SELECT TO authenticated
+--   USING ((auth.jwt() ->> 'email') = 'product@jakpat.net');
+-- COMMENT ON TABLE public.survey_winners IS
+--   'ARSIP BEKU (sejak 2026-05-05) — dipulihkan dari rollback sql/ops_drop_tabel_arsip.sql.';
+--
+-- COMMIT;

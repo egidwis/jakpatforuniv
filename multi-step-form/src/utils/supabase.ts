@@ -570,22 +570,6 @@ export interface FormSubmissionExtend {
   updated_at?: string;
 }
 
-export interface ScheduledAd {
-  id?: string;
-  form_submission_id: string;
-  start_date: string;
-  end_date: string;
-  ad_link: string;
-  notes?: string;
-  google_calendar_event_id?: string;
-  is_extra_ad?: boolean;
-  created_at?: string;
-  created_by?: string;
-  // Joins
-  form_title?: string; // from form_submissions
-  researcher_name?: string; // from form_submissions
-}
-
 // Fungsi untuk menyimpan form submission (with duplicate detection)
 export const saveFormSubmission = async (formData: FormSubmission) => {
   try {
@@ -3550,8 +3534,9 @@ export const toggleAISkillActive = async (id: string, currentStatus: boolean): P
 };
 
 // ============= SCHEDULING FUNCTIONS =============
-// NOTE: scheduled_ads table is ARCHIVED. All scheduling now uses
-// survey_pages (source of truth) + form_submissions (slot reservation & sync).
+// Tabel lama `scheduled_ads` dipensiunkan 10 Apr 2026 (sql/09) dan DIHAPUS
+// lewat sql/ops_drop_tabel_arsip.sql. Jadwal hidup di form_submissions
+// (reservasi) + ad_schedules (cermin & jadwal ke-2 dst.) + survey_pages (jendela halaman).
 
 /**
  * Update schedule dates in both form_submissions and survey_pages (if page exists).

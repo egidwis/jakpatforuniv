@@ -22,7 +22,8 @@ import { fetchAllRows } from '../utils/fetchAllRows';
 // page iklan dari submission, mengundi pemenang, dan mengatur urutan feed. Dua
 // yang pertama sudah pergi — page iklan dibuat & diterbitkan otomatis oleh
 // `ensure_survey_page()` (sql/40), dan pengundian pindah ke platform pihak ketiga
-// lewat /api/respondents, sehingga `survey_winners` beku sejak 5 Mei 2026.
+// lewat /api/respondents. Tabel lama `survey_winners` (beku sejak 5 Mei 2026)
+// dihapus lewat sql/ops_drop_tabel_arsip.sql.
 //
 // Pembagian dengan papan Schedule, supaya keduanya tidak menjawab pertanyaan yang
 // sama dengan dua jawaban berbeda:
