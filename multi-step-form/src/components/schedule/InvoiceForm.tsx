@@ -13,7 +13,7 @@ import { payLinkUrl } from '@/utils/payLink';
 import { toWibYmd } from '@/utils/airing-window';
 import {
   getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, supabase,
-  markSchedulesOnCredit, creditOutcomeReason, fetchOpenTempoDebt,
+  markSchedulesOnCredit, creditOutcomeReason, fetchOpenTempoDebt, writeExtensionBillAmounts,
   type AdScheduleEntry, type OpenTempoDebt,
 } from '@/utils/supabase';
 import { formatIDR } from '@/utils/currency';
@@ -523,22 +523,19 @@ export function InvoiceForm({
         menimpa harga tercatat dengan angka susulan.
       */
       if (entry.isExtension && !isTopUp) {
-        await supabase
-          .from('ad_schedules')
-          .update({
-            total_cost: grandTotal,
-            subtotal,
-            ppn_amount: ppn,
-            /*
-              ⚠️ TEMPO: HANYA NOMINALNYA. Blok ini berjalan SESUDAH
-              `markSchedulesOnCredit` di atas; menulis `waiting_payment` di sini
-              menimpa `scheduled`/`live` yang baru saja diberikan, dan
-              `cron_activate_extends` tidak akan pernah menayangkannya.
-            */
-            ...(tempo ? {} : { status: 'waiting_payment', payment_status: 'pending' }),
-          })
-          .eq('source_table', 'form_submissions_extend')
-          .eq('source_id', entry.sourceId);
+        /*
+          ⚠️ TEMPO: HANYA NOMINALNYA. Blok ini berjalan SESUDAH
+          `markSchedulesOnCredit` di atas; menulis `waiting_payment` di sini
+          menimpa `scheduled`/`live` yang baru saja diberikan, dan
+          `cron_activate_extends` tidak akan pernah menayangkannya.
+        */
+        if (!entry.sourceId) throw new Error('Jadwal perpanjangan tidak punya id.');
+        await writeExtensionBillAmounts(entry.sourceId, {
+          totalCost: grandTotal,
+          subtotal,
+          ppnAmount: ppn,
+          waitingPayment: !tempo,
+        });
       }
 
       // Baru DI SINI link-nya boleh keluar: jumlah barisnya sudah terbukti.

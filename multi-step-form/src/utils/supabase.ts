@@ -1046,6 +1046,80 @@ export function firstAdminRow(data: any): any {
   return Array.isArray(data) ? data[0] : data;
 }
 
+/**
+ * Status tayang order dan nominal tagihan perpanjangan. sql/113 menolak JWT
+ * browser untuk keduanya. Tes tetap memakai klien supabase.
+ */
+async function postAiring(
+  body: Record<string, unknown>,
+  direct: () => PromiseLike<{ data: any; error: any }>,
+): Promise<{ error: { message: string } | null }> {
+  if (import.meta.env.VITEST) {
+    const res = await direct();
+    return { error: res.error ? { message: res.error.message || String(res.error) } : null };
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) return { error: { message: 'Sesi admin tidak ada. Masuk lagi lalu ulangi.' } };
+
+  const res = await fetch('/api/admin/airing', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.text();
+  let parsed: any = null;
+  try { parsed = raw ? JSON.parse(raw) : null; } catch { /* badan bukan JSON */ }
+  if (!res.ok) return { error: { message: parsed?.error || `Gagal menulis tayang (HTTP ${res.status})` } };
+  return { error: null };
+}
+
+export async function setSubmissionAiringStatus(
+  submissionId: string,
+  status: 'scheduled' | 'live' | 'completed',
+): Promise<void> {
+  const { error } = await postAiring(
+    { action: 'submission-status', submissionId, status },
+    () => supabase.from('form_submissions').update({ submission_status: status }).eq('id', submissionId),
+  );
+  if (error) throw new Error(error.message);
+}
+
+export async function writeExtensionBillAmounts(
+  sourceId: string,
+  amounts: { totalCost: number; subtotal: number; ppnAmount: number; waitingPayment: boolean },
+): Promise<void> {
+  const patch: Record<string, unknown> = {
+    total_cost: amounts.totalCost,
+    subtotal: amounts.subtotal,
+    ppn_amount: amounts.ppnAmount,
+  };
+  if (amounts.waitingPayment) {
+    patch.status = 'waiting_payment';
+    patch.payment_status = 'pending';
+  }
+  const { error } = await postAiring(
+    {
+      action: 'extension-bill',
+      sourceId,
+      totalCost: amounts.totalCost,
+      subtotal: amounts.subtotal,
+      ppnAmount: amounts.ppnAmount,
+      waitingPayment: amounts.waitingPayment,
+    },
+    () => supabase
+      .from('ad_schedules')
+      .update(patch)
+      .eq('source_table', 'form_submissions_extend')
+      .eq('source_id', sourceId),
+  );
+  if (error) throw new Error(error.message);
+}
+
 export const markScheduleAsPaid = async (
   entry: AdScheduleEntry,
   opts: { paymentId?: string | null } = {},
