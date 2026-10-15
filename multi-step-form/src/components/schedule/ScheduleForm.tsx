@@ -649,6 +649,7 @@ export function ScheduleForm({
         initialYmd={entry.startDate ? toWibYmd(new Date(entry.startDate)) : null}
         initialHour={entry.kilatSlotHour}
         isRescheduling
+        isPaid={entry.paymentStatus === 'paid' || entry.paymentStatus === 'completed'}
         onCancel={onCancel}
         onScheduled={onDone}
         /* Jalur Kilat memakai penyimpannya sendiri (`updateKilatSchedule`), jadi

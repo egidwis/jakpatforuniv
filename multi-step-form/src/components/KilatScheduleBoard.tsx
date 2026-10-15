@@ -133,6 +133,17 @@ export function KilatScheduleBoard({ onOpenSubmission, embedded = false }: Kilat
         return map;
     }, [entries]);
 
+    /*
+      Baris gelombang = jam yang dijual SEKARANG (11/15) + jam lama yang
+      memang terisi di minggu ini. Order Agu–Sep 2026 tercatat di 08/14/17;
+      tanpa ini mereka hilang dari papan begitu jamnya dipensiunkan (sql/117).
+    */
+    const visibleHours = useMemo(() => {
+        const hours = new Set<number>(KILAT_SLOT_HOURS);
+        entries.forEach((e) => { if (e.hour !== null) hours.add(e.hour); });
+        return [...hours].sort((a, b) => a - b);
+    }, [entries]);
+
     const unassignedByYmd = useMemo(() => {
         const map = new Map<string, KilatScheduleEntry[]>();
         entries.forEach((e) => {
@@ -249,7 +260,7 @@ export function KilatScheduleBoard({ onOpenSubmission, embedded = false }: Kilat
                                 </div>
 
                                 {/* Baris per gelombang */}
-                                {KILAT_SLOT_HOURS.map((hour) => (
+                                {visibleHours.map((hour) => (
                                     <div key={hour} className="[display:grid] grid-cols-[92px_repeat(5,minmax(0,1fr))] gap-2 mb-2">
                                         <div className="flex items-center justify-center text-center text-[11px] font-bold text-amber-800 bg-amber-50 rounded-lg border border-amber-200 px-1">
                                             {formatHour(hour)} WIB

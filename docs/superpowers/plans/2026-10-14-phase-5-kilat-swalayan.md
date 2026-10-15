@@ -1,6 +1,6 @@
 # Phase 5 — Kilat swalayan: peneliti memesan Kilat sendiri
 
-> **STATUS NYATA (15 Okt 2026):** 🟡 **R1 dikerjakan** di branch `feat/kilat-tarif-bertanggal`: tarif Kilat 5.1 ditanam dengan `KILAT_TARIFF_FROM = null`. Tidak ada rupiah yang berubah, belum di-merge, nol SQL. R2–R8 ⬜.
+> **STATUS NYATA (15 Okt 2026):** 🟡 **R1 selesai di branch** `feat/kilat-tarif-bertanggal` (tarif Kilat 5.1 tidur, `KILAT_TARIFF_FROM = null`, + audit invoice/kwitansi), belum di-merge. 🟡 **R2 selesai di branch** `feat/kilat-fondasi-gelombang` (di atas R1): `sql/117` ditulis & diuji PGlite (20 kasus + mutan), **belum diterapkan**; kode 5.4 tanpa sinkron halaman. Urutan rilis: R1 deploy → gerbang R1 → terapkan sql/117 → push R2. R3–R8 ⬜.
 >
 > Berkas ini salinan rencana yang disetujui di sesi chat 14–15 Okt. Bagian **Gelombang rilis** menentukan urutan eksekusi; nomor task (5.1–5.10) tetap jadi rujukan isi.
 
@@ -188,7 +188,7 @@ Perubahan:
 
 ### 5.4 — Aturan waktu & konstanta (+ admin)
 - **`constants.ts`**: `KILAT_SLOT_HOURS = [11, 15]`, sehingga `MAX_KILAT_ADS_PER_DAY` = 4. Tambah `KILAT_BOOKING_LEAD_MIN = 120`, `KILAT_PAY_LEAD_MIN = 60`, dan bendera `KILAT_SELF_SERVE_OPEN = false`.
-- **`airing-window.ts`**: `kilatWaveInstant`, `isKilatWaveBookable`, `kilatPayDeadline`. Semuanya sadar WIB dan dicermin di `create-payment.js` dengan spec paritas.
+- **`airing-window.ts`**: `kilatWaveInstant`, `isKilatWaveBookable`, `kilatPayDeadline` (+ `kilatBookingClosesAt`, `nextWibWorkdays`). Semuanya sadar WIB. *(Dikerjakan R2, 15 Okt: cermin `create-payment.js` DITUNDA ke R6 — server belum punya helper WIB apa pun dan konsumennya baru ada di 5.7; spec paritasnya ikut R6. Batas pesan klien ⇄ `kilat_booking_closes_at` sql/117 dikunci `kilatWaveRules.spec.ts`.)*
 - **Admin**: `KilatScheduleStep` dan `KilatScheduleBoard` memakai jam baru, sementara jam lama tetap dirender untuk riwayat. Di jalur manual, admin tetap boleh menugaskan gelombang setelah cutoff (trigger melewatkan admin), tetapi picker admin memberi peringatan bila sisa waktu bayar peneliti < 60 menit.
 - **Data lama (dicek 14 Okt)**: tidak ada order Kilat bertanggal ke depan. Ada 3 order Kilat lama `slot_reserved`/`pending` bertanggal lampau dengan jam 11/14/17 (`e56f4853`, `4a112eae`, `be488b57`). Trigger 5.2 tidak boleh menolak UPDATE non-klaim pada baris ini (cron, catatan admin).
 - **`updateKilatSchedule`**: sinkron jendela halaman lewat `adminContent({action:'patch-pages'})`:

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Loader2, Zap, Calendar, Info } from 'lucide-react';
+import { Loader2, Zap, Calendar, Info, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
@@ -9,7 +9,13 @@ import {
     type KilatDayAvailability,
 } from '../utils/supabase';
 import { KILAT_SLOT_HOURS, KILAT_QUOTA_PER_SLOT } from '../utils/constants';
-import { toLocalYmd } from '../utils/airing-window';
+import {
+    formatWibTime,
+    kilatBookingClosesAt,
+    kilatPayDeadline,
+    kilatWaveInstant,
+    nextWibWorkdays,
+} from '../utils/airing-window';
 
 // ─────────────────────────────────────────────────────────────
 // Penjadwalan JFU Kilat — sengaja TIDAK memakai kalender 14-hari milik iklan
@@ -17,8 +23,9 @@ import { toLocalYmd } from '../utils/airing-window';
 //
 //   iklan regular : tayang 15.00 WIB, berjalan `duration` × 24 jam, kuota
 //                   per-HARI, tujuh hari seminggu.
-//   JFU Kilat     : empat gelombang push (08/11/14/17 WIB), ~2 jam,
-//                   kuota per-GELOMBANG, hanya Senin–Jumat.
+//   JFU Kilat     : dua gelombang push (11/15 WIB), kuota per-GELOMBANG,
+//                   hanya Senin–Jumat (sql/117 menegakkan kuotanya untuk
+//                   admin juga — gelombang penuh ditolak database).
 //
 // Mencangkokkan Kilat ke kalender regular berarti menyembunyikan perbedaan itu
 // di balik dropdown jam yang isinya 96 pilihan 15-menit — 92 di antaranya tidak
@@ -34,6 +41,12 @@ interface KilatScheduleStepProps {
     initialYmd?: string | null;
     initialHour?: number | null;
     isRescheduling: boolean;
+    /**
+     * Order sudah lunas? Menentukan peringatan batas bayar: gelombang yang
+     * ditugaskan terlalu mepet menyisakan < 60 menit bagi peneliti untuk
+     * membayar. `undefined` = tidak diketahui, peringatan tetap tampil.
+     */
+    isPaid?: boolean;
     onCancel: () => void;
     onScheduled: () => void;
     onRemoveSchedule?: () => void;
@@ -52,23 +65,15 @@ interface KilatScheduleStepProps {
 }
 
 /**
- * Sabtu & Minggu tidak dirender sama sekali, bukan dirender lalu di-disable.
- * Tile yang tidak pernah bisa diklik hanya menambah lebar grid dan mengundang
- * pertanyaan "kenapa abu-abu?".
+ * Tanggal YMD sebagai Date untuk DITAMPILKAN (format id-ID, zona WIB). Tengah
+ * hari WIB supaya tidak ada zona device yang menggesernya ke hari lain.
+ *
+ * Sabtu & Minggu tidak dirender sama sekali (`nextWibWorkdays`), bukan
+ * dirender lalu di-disable: tile yang tidak pernah bisa diklik hanya menambah
+ * lebar grid dan mengundang pertanyaan "kenapa abu-abu?".
  */
-function nextWorkdays(count: number): Date[] {
-    const days: Date[] = [];
-    const cursor = new Date();
-    cursor.setHours(0, 0, 0, 0);
-    while (days.length < count) {
-        const dow = cursor.getDay();
-        if (dow !== 0 && dow !== 6) {
-            days.push(new Date(cursor));
-        }
-        cursor.setDate(cursor.getDate() + 1);
-    }
-    return days;
-}
+const dateOfYmd = (ymd: string) => new Date(`${ymd}T12:00:00+07:00`);
+const WIB = { timeZone: 'Asia/Jakarta' } as const;
 
 const formatHour = (h: number) => `${String(h).padStart(2, '0')}.00`;
 
@@ -77,6 +82,7 @@ export function KilatScheduleStep({
     initialYmd,
     initialHour,
     isRescheduling,
+    isPaid,
     onCancel,
     onScheduled,
     onRemoveSchedule,
@@ -88,7 +94,9 @@ export function KilatScheduleStep({
     const [selectedYmd, setSelectedYmd] = useState<string | null>(initialYmd || null);
     const [selectedHour, setSelectedHour] = useState<number | null>(initialHour ?? null);
 
-    const workdays = nextWorkdays(WORKDAYS_AHEAD);
+    const workdays = nextWibWorkdays(WORKDAYS_AHEAD);
+    const nowMs = Date.now();
+    const isWavePast = (ymd: string, hour: number) => nowMs >= kilatWaveInstant(ymd, hour).getTime();
 
     useEffect(() => {
         let cancelled = false;
@@ -143,9 +151,23 @@ export function KilatScheduleStep({
         }
     };
 
-    const selectedDate = selectedYmd
-        ? workdays.find((d) => toLocalYmd(d) === selectedYmd) || new Date(`${selectedYmd}T00:00:00`)
-        : null;
+    const selectedDate = selectedYmd ? dateOfYmd(selectedYmd) : null;
+
+    /*
+      Peringatan bayar — hanya untuk order yang belum lunas, karena gelombang
+      dipesan admin tetap harus dibayar peneliti sebelum batas bayarnya.
+      Sisa < 60 menit ⇔ sudah lewat batas pesan peneliti (H-2 jam): trigger
+      sql/117 melewatkan admin, jadi penugasan semepet ini tetap tersimpan.
+    */
+    const payWarning = (() => {
+        if (isPaid || !selectedYmd || selectedHour === null) return null;
+        if (nowMs <= kilatBookingClosesAt(selectedYmd, selectedHour).getTime()) return null;
+        const deadline = kilatPayDeadline(selectedYmd, selectedHour);
+        const minutesLeft = Math.floor((deadline.getTime() - nowMs) / 60000);
+        return minutesLeft > 0
+            ? `Peneliti hanya punya ${minutesLeft} menit untuk membayar (batas bayar ${formatWibTime(deadline.toISOString())} WIB).`
+            : `Batas bayar gelombang ini (${formatWibTime(deadline.toISOString())} WIB) sudah lewat. Pastikan order ini memang dibayar di luar sistem.`;
+    })();
 
     return (
         <div className="max-w-3xl mx-auto space-y-6">
@@ -179,8 +201,8 @@ export function KilatScheduleStep({
                     </div>
                 ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 py-1 px-1">
-                        {workdays.map((date) => {
-                        const ymd = toLocalYmd(date);
+                        {workdays.map((ymd) => {
+                        const date = dateOfYmd(ymd);
                         const used = dayTotal(ymd);
                         const isFull = used >= dayCapacity;
                         const isSelected = selectedYmd === ymd;
@@ -207,10 +229,10 @@ export function KilatScheduleStep({
                                     }`}
                             >
                                 <span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">
-                                    {date.toLocaleDateString('id-ID', { weekday: 'short' })}
+                                    {date.toLocaleDateString('id-ID', { ...WIB, weekday: 'short' })}
                                 </span>
                                 <span className={`font-extrabold text-[15px] leading-tight mb-1 ${isSelected ? 'text-amber-900' : 'text-slate-800'}`}>
-                                    {date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                                    {date.toLocaleDateString('id-ID', { ...WIB, day: 'numeric', month: 'short' })}
                                 </span>
                                 <div className="flex items-center gap-1 mt-auto bg-slate-100/50 px-1.5 py-0.5 rounded-full border border-slate-100">
                                     <div className={`w-1 h-1 rounded-full ${isFull ? 'bg-red-500' : used > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`} />
@@ -240,20 +262,21 @@ export function KilatScheduleStep({
                         Pilih tanggal dulu untuk melihat gelombang yang tersisa.
                     </p>
                 ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 gap-3">
                         {KILAT_SLOT_HOURS.map((hour) => {
                             const used = hourUsage(selectedYmd, hour);
                             const isFull = used >= KILAT_QUOTA_PER_SLOT;
+                            const isPast = isWavePast(selectedYmd, hour);
                             const isSelected = selectedHour === hour;
                             return (
                                 <button
                                     key={hour}
                                     type="button"
-                                    disabled={isFull && !isSelected}
+                                    disabled={(isFull || isPast) && !isSelected}
                                     onClick={() => setSelectedHour(hour)}
                                     className={`flex flex-col items-center justify-center gap-1 h-[68px] rounded-xl border transition-all focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 ${isSelected
                                         ? 'bg-amber-50 border-amber-600 ring-1 ring-amber-600 shadow-md'
-                                        : isFull
+                                        : isFull || isPast
                                             ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
                                             : 'bg-white border-slate-200 hover:border-amber-400 shadow-sm'
                                         }`}
@@ -262,11 +285,30 @@ export function KilatScheduleStep({
                                         {formatHour(hour)} WIB
                                     </span>
                                     <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${isFull ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
-                                        {used}/{KILAT_QUOTA_PER_SLOT} {isFull ? '· penuh' : 'terisi'}
+                                        {isPast ? 'sudah lewat' : `${used}/${KILAT_QUOTA_PER_SLOT} ${isFull ? '· penuh' : 'terisi'}`}
                                     </span>
                                 </button>
                             );
                         })}
+                    </div>
+                )}
+                {payWarning && (
+                    <div className="flex items-start gap-2 p-2.5 bg-red-50 border border-red-200 rounded-lg text-red-800 text-xs">
+                        <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                        <span>{payWarning}</span>
+                    </div>
+                )}
+                {/* ⚠️ SEMENTARA, hapus di rilis R6 (jalur bayar Kilat). Sampai itu,
+                    tagihan Kilat masih memakai batas bayar Iklan 14.00 WIB —
+                    gelombang 11.00 yang belum lunas bisa terbayar SESUDAH
+                    tayang. Aturan jeda R2→R6 di rencana Phase 5. */}
+                {!isPaid && selectedHour === 11 && (
+                    <div className="flex items-start gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs">
+                        <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                        <span>
+                            Untuk order yang belum lunas, pakai gelombang <strong>15.00</strong> dulu: link bayar
+                            Kilat masih memakai batas bayar 14.00 WIB, jadi gelombang 11.00 bisa terbayar sesudah tayang.
+                        </span>
                     </div>
                 )}
                 {selectedYmd && dayUsage(selectedYmd).unassigned > 0 && (
@@ -289,7 +331,7 @@ export function KilatScheduleStep({
                         <span className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider mb-0.5">Tanggal</span>
                         <span className="font-bold text-gray-900">
                             {selectedDate
-                                ? selectedDate.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })
+                                ? selectedDate.toLocaleDateString('id-ID', { ...WIB, weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })
                                 : '-'}
                         </span>
                     </div>

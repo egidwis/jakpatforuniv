@@ -5,22 +5,36 @@ export const KILAT_ADDON_COST = 200000;
 export const KILAT_ADDON_COST_VOUCHER = 200000;
 export const MAX_EXTRA_ADS_PER_DAY = 4;
 
-// Gelombang push JFU Kilat: empat kali sehari, dua order per gelombang, HANYA
-// Senin–Jumat. Iklan regular tidak punya konsep ini — ia tayang serentak 15.00
+// Gelombang push JFU Kilat: DUA kali sehari (11.00 & 15.00 WIB, keputusan 5 Okt
+// 2026), dua order per gelombang, HANYA Senin–Jumat dan bukan hari libur
+// operasional. Iklan regular tidak punya konsep ini — ia tayang serentak 15.00
 // WIB dan berjalan kelipatan 24 jam (lihat airing-window.ts).
 //
-// Jamnya DUPLICATED sebagai CHECK constraint di sql/42_kilat_slots.sql — WAJIB
-// diubah bersamaan, kalau tidak database menolak jam yang baru.
+// DICERMINKAN di database (sql/117) — WAJIB diubah bersamaan:
+//   KILAT_SLOT_HOURS        ↔ kilat_wave_hours()      (trigger klaim peneliti)
+//   KILAT_QUOTA_PER_SLOT    ↔ max_kilat_per_wave()    (trigger kuota, SEMUA penulis)
+//   KILAT_BOOKING_LEAD_MIN  ↔ kilat_booking_closes_at()
+// kilatWaveRules.spec.ts membandingkan keduanya.
 //
-// Aturan hari kerja sengaja hidup di UI penjadwalan saja (KilatScheduleStep),
-// bukan sebagai constraint: hari libur nasional tidak terwakili oleh nomor hari,
-// dan constraint akan mengunci baris lama yang terlanjur jatuh di akhir pekan.
-export const KILAT_SLOT_HOURS = [8, 11, 14, 17] as const;
+// Jam lama 08/14/17 tetap sah di CHECK database demi riwayat (19 order lunas
+// Agu–Sep 2026); papan admin tetap merender barisnya bila sebuah minggu
+// memuatnya. Pilihan BARU hanya 11/15.
+export const KILAT_SLOT_HOURS = [11, 15] as const;
 export const KILAT_QUOTA_PER_SLOT = 2;
 
-// Turunan, bukan angka lepas — dulu 5, yang tidak pernah cocok dengan pembagian
-// slot mana pun. Dipakai wizard user, yang memesan Kilat per-hari tanpa memilih
-// jam; slotnya ditugaskan admin belakangan lewat kolom kilat_slot_hour.
+/** Pesan paling lambat 2 jam sebelum gelombang: 11.00 → 09.00, 15.00 → 13.00. */
+export const KILAT_BOOKING_LEAD_MIN = 120;
+/** Bayar paling lambat 1 jam sebelum gelombang: 11.00 → 10.00, 15.00 → 14.00. */
+export const KILAT_PAY_LEAD_MIN = 60;
+
+/**
+ * Pintu Kilat swalayan untuk peneliti (Phase 5). `false` sampai rilis R7 —
+ * selama itu order Kilat hanya lahir lewat "Jadikan Kilat" oleh admin.
+ */
+export const KILAT_SELF_SERVE_OPEN = false;
+
+// Turunan, bukan angka lepas. Dipakai cek ketersediaan per-hari di jalur Kilat
+// lama (JFUSUHUD, sudah mati); pemilih gelombang R5 menghitung per gelombang.
 export const MAX_KILAT_ADS_PER_DAY = KILAT_SLOT_HOURS.length * KILAT_QUOTA_PER_SLOT;
 
 // Banner cadangan untuk halaman iklan yang belum punya banner sendiri.

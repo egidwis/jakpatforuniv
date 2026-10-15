@@ -3966,7 +3966,7 @@ export const fetchSlotAvailability = async (
 
 
 export interface KilatDayAvailability {
-  /** jam WIB (8|11|14|17) -> berapa order sudah mengisi gelombang itu */
+  /** jam WIB (11|15; riwayat juga 8|14|17) -> berapa order sudah mengisi gelombang itu */
   byHour: Record<number, number>;
   /** order Kilat di tanggal ini yang slotnya belum ditugaskan admin */
   unassigned: number;

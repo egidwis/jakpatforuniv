@@ -13,6 +13,8 @@
  * sama persis untuk instant yang sama.
  */
 
+import { KILAT_BOOKING_LEAD_MIN, KILAT_PAY_LEAD_MIN, KILAT_SLOT_HOURS } from './constants';
+
 export const AIRING_HOUR_WIB = 15;
 export const BOOKING_CUTOFF_HOUR_WIB = 13;
 export const PAYMENT_CUTOFF_HOUR_WIB = 14;
@@ -195,6 +197,61 @@ export function isPaymentTooLateForDate(ymd: string, now: Date = new Date()): bo
     if (ymd < wib.ymd) return true;
     if (ymd > wib.ymd) return false;
     return wib.hour >= PAYMENT_CUTOFF_HOUR_WIB;
+}
+
+// ─────────────────────────────────────────────────────────────
+// JFU Kilat — gelombang push (Phase 5)
+//
+// Kilat tidak mengikuti jam 15.00/13.00/14.00 di atas: tiap gelombang punya
+// batas pesan H-2 jam dan batas bayar H-1 jam sendiri. Batas pesan dicerminkan
+// di sql/117 (`kilat_booking_closes_at`) dan ditegakkan trigger untuk peneliti.
+// ─────────────────────────────────────────────────────────────
+
+/** Instan gelombang Kilat `hour`.00 WIB pada tanggal `ymd`. */
+export function kilatWaveInstant(ymd: string, hour: number): Date {
+    return wibInstant(ymd, hour);
+}
+
+/** Batas pesan gelombang: H-2 jam (11.00 → 09.00, 15.00 → 13.00 WIB). */
+export function kilatBookingClosesAt(ymd: string, hour: number): Date {
+    return new Date(kilatWaveInstant(ymd, hour).getTime() - KILAT_BOOKING_LEAD_MIN * 60000);
+}
+
+/** Batas bayar gelombang: H-1 jam (11.00 → 10.00, 15.00 → 14.00 WIB). */
+export function kilatPayDeadline(ymd: string, hour: number): Date {
+    return new Date(kilatWaveInstant(ymd, hour).getTime() - KILAT_PAY_LEAD_MIN * 60000);
+}
+
+/** Senin–Jumat menurut kalender (tanggal YMD tidak punya zona). */
+export function isWeekdayYmd(ymd: string): boolean {
+    const dow = new Date(`${ymd}T00:00:00.000Z`).getUTCDay();
+    return dow !== 0 && dow !== 6;
+}
+
+/**
+ * Bisakah peneliti memesan gelombang ini sekarang? Aturan yang sama dengan
+ * trigger `validate_kilat_wave_claim` (sql/117), minus hari libur — itu datang
+ * dari `get_kilat_wave_occupancy`. Tepat di detik batas masih boleh.
+ */
+export function isKilatWaveBookable(ymd: string, hour: number, now: Date = new Date()): boolean {
+    return (KILAT_SLOT_HOURS as readonly number[]).includes(hour)
+        && isWeekdayYmd(ymd)
+        && now.getTime() <= kilatBookingClosesAt(ymd, hour).getTime();
+}
+
+/**
+ * `count` hari kerja (Senin–Jumat) mulai hari ini menurut kalender WIB —
+ * bukan kalender device, yang di zona barat UTC bisa tertinggal sehari
+ * (insiden 6 Okt 2026).
+ */
+export function nextWibWorkdays(count: number, now: Date = new Date()): string[] {
+    const days: string[] = [];
+    let ymd = toWibYmd(now);
+    while (days.length < count) {
+        if (isWeekdayYmd(ymd)) days.push(ymd);
+        ymd = addDaysToYmd(ymd, 1);
+    }
+    return days;
 }
 
 /** YYYY-MM-DD dari sebuah Date menurut kalender WIB. */
