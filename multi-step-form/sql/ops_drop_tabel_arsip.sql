@@ -2,6 +2,9 @@
 -- ops — DROP DUA TABEL ARSIP: scheduled_ads & survey_winners
 -- ============================================================================
 --
+-- ✅ DITERAPKAN 15 Okt 2026 (diverifikasi: to_regclass kedua tabel NULL, 0 policy
+--    yatim, form_submissions 1.162 & survey_pages 491 utuh).
+--
 -- Keputusan pemilik produk 15 Okt 2026: dua tabel arsip ini dibuang supaya
 -- tidak lagi disangka bagian dari sistem yang hidup.
 --
