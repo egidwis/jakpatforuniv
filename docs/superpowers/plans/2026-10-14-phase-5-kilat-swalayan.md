@@ -315,7 +315,7 @@ Prasyarat: pintu Kilat sudah terbuka, dan minimal satu order Kilat swalayan suda
   - ⚠️ Perubahan signature menuntut DROP/CREATE + hibah ulang + verifikasi `proacl`; hindari overload ganda. Baca definisi live dulu.
 - **Gerbang**: cabut blok `'kilat'` di `canScheduleAgain.ts:50` (`order_inactive` dan `quota_held` tetap). Kartu Perpanjang di `SchedulePhase.tsx:988` tampil untuk Kilat sebagai **"Pesan gelombang lagi"**, tanpa durasi.
 - **`JadwalBaruPage`** memakai `KilatWavePicker` (5.5), lalu mengalir ke Jadwal & Bayar, yang sudah sadar gelombang sejak 5.7.
-- **Harga**: tanpa kode baru. `pricingRowForSchedule` memakai jenis distribusi order, sehingga tabel Kilat 5.1 dipakai pada `rate_locked_at` jadwal, dan hadiah hanya ditagih bila `is_new_period`. Kunci dengan tes untuk kasus bulan sama vs bulan baru.
+- **Harga**: tanpa kode baru. `pricingRowForSchedule` memakai jenis distribusi order, sehingga tabel Kilat 5.1 dipakai pada `rate_locked_at` jadwal, dan hadiah hanya ditagih bila `is_new_period`. Kunci dengan tes untuk kasus bulan sama vs bulan baru. ⚠️ Pengecualian (temuan audit invoice 15 Okt): prefill invoice admin jadwal perpanjangan (`buildExtensionInvoiceItems`, `invoiceItems.ts`) masih menghitung tarif harian Iklan × durasi, sedangkan server (`buildNoteItems`) sudah memakai tabel Kilat. Tambahkan cabang Kilat (satu baris "JFU Kilat (1 gelombang)" + voucher Kilat) dan tes paritas admin = server.
 - **Admin**:
   - `fetchKilatSchedule`/`KilatScheduleBoard` membaca kedua kaki dari `ad_schedules`;
   - `ScheduleForm` untuk baris perpanjangan Kilat memakai `KilatScheduleStep`, atau mengunci edit.

@@ -24,7 +24,7 @@ vi.mock('./constants', async (importOriginal) => ({
 const { calculateTotalCost, getVoucherInfo, kilatRateAt } = await import('./cost-calculator');
 const { deriveScheduleMoney } = await import('./scheduleMoney');
 const { orderMoneyLines } = await import('./orderMoneyLines');
-const { buildOrderInvoiceItems } = await import('../components/schedule/invoiceItems');
+const { buildOrderInvoiceItems, describeVoucher } = await import('../components/schedule/invoiceItems');
 const { buildMiminPricingSection } = await import('./miminPricing');
 // @ts-ignore -- Pages Function tanpa deklarasi tipe
 const server = await import('../../functions/api/doku/create-payment.js');
@@ -120,6 +120,34 @@ describe('kwitansi (transactions.note)', () => {
       expect(items.some((i: { name: string }) => i.name === 'Add-on JFU Kilat')).toBe(false);
       expect(sum(items)).toBe(priced.subtotal);
     }
+  });
+});
+
+describe('JFUTGRX: rincian menjumlah ke Rp1.000', () => {
+  test('kwitansi server = satu baris biaya uji, sama dengan prefill admin', () => {
+    const { priced, items } = serverPriced(RILIS, { voucher_code: 'JFUTGRX' });
+    expect(priced.subtotal).toBe(1_000);
+    expect(items).toEqual([{ name: 'System Testing Fee (JFUTGRX)', qty: 1, price: 1_000, category: 'Lainnya' }]);
+    const admin = buildOrderInvoiceItems({
+      questionCount: 40, duration: 1, winnerCount: 2, prizePerWinner: 25000,
+      voucherCode: 'JFUTGRX', isKilat: true, rateInstantMs: RILIS, voucherInstantMs: RILIS,
+    }).items;
+    expect(admin.map(({ name, qty, price, category }) => ({ name, qty, price, category }))).toEqual(items);
+  });
+});
+
+describe('label voucher di form invoice admin (order Kilat)', () => {
+  const input = { adCost: 0, incentiveCost: 50_000, duration: 1 };
+  const kilat = { adCost: 750_000, rateInstantMs: RILIS };
+  test('ambassador: 10% dari tarif Kilat', () => {
+    expect(describeVoucher('JFUGITA', input, kilat)).toMatchObject({ discount: 75_000 });
+    expect(describeVoucher('JFUGITA', input, kilat)?.label).toContain('JFU Kilat');
+  });
+  test('JFUTGRX: label biaya uji', () => {
+    expect(describeVoucher('JFUTGRX', input, kilat)?.label).toContain('Rp 1.000');
+  });
+  test.each(['JFUFEB', 'ILKOMUNY', 'TEGARGANTENG'])('%s: tidak mengubah harga Kilat → null', (code) => {
+    expect(describeVoucher(code, { adCost: 750_000, incentiveCost: 50_000, duration: 1 }, kilat)).toBeNull();
   });
 });
 

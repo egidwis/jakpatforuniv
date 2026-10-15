@@ -4,6 +4,7 @@ import {
   adRateAt, calculateTotalCost, kilatRateAt, KILAT_VOUCHER_CODES, VOUCHER_CATALOG,
 } from './cost-calculator';
 import type { SurveyFormData } from '../types';
+import { buildOrderInvoiceItems, describeVoucher } from '../components/schedule/invoiceItems';
 // @ts-ignore -- Pages Function tanpa deklarasi tipe
 import * as server from '../../functions/api/doku/create-payment.js';
 
@@ -27,6 +28,7 @@ const INSTANTS = [
   T('2027-06-01T00:00:00+07:00'),
 ];
 const QS = [1, 15, 16, 30, 31, 50, 51, 70, 71];
+const sumOf = (items: { qty: number; price: number }[]) => items.reduce((a, i) => a + i.qty * i.price, 0);
 
 describe('paritas klien ⇄ server', () => {
   test('tanggal mulai sama-sama null (tarif Kilat belum menyala)', () => {
@@ -124,5 +126,41 @@ describe('selama tidur: rumus lama persis', () => {
     ]);
     const sum = items.reduce((a: number, i: { qty: number; price: number }) => a + i.qty * i.price, 0);
     expect(sum).toBe(server.computeTotalCostFromSubmission(row).subtotal);
+  });
+
+  test('JFUTGRX tidak memotong Kilat lama: prefill admin = kwitansi server (harga penuh)', () => {
+    const at = T('2026-12-10T10:00:00+07:00');
+    const order = {
+      id: 'o', created_at: new Date(at).toISOString(), question_count: 40, duration: 1,
+      winner_count: 2, prize_per_winner: 25000, voucher_code: 'JFUTGRX', distribution_type: 'kilat',
+    };
+    const row = server.pricingRowForSchedule(order, null, null, at);
+    const serverItems = server.buildNoteItems(order, row);
+    const admin = buildOrderInvoiceItems({
+      questionCount: 40, duration: 1, winnerCount: 2, prizePerWinner: 25000,
+      voucherCode: 'JFUTGRX', isKilat: true, rateInstantMs: at, voucherInstantMs: at,
+    }).items;
+    expect(admin.map(({ name, qty, price }) => ({ name, qty, price })))
+      .toEqual(serverItems.map(({ name, qty, price }: { name: string; qty: number; price: number }) => ({ name, qty, price })));
+    expect(sumOf(admin)).toBe(server.computeTotalCostFromSubmission(row).subtotal);
+  });
+
+  test.each(['JFUGITA', 'JFUTGRX', 'JFUFEB'])('label voucher admin untuk Kilat lama: %s → null (tidak mengubah harga)', (code) => {
+    const at = T('2026-12-10T10:00:00+07:00');
+    expect(describeVoucher(code, { adCost: 300_000, incentiveCost: 50_000, duration: 1 }, { adCost: 500_000, rateInstantMs: at })).toBeNull();
+  });
+});
+
+describe('JFUTGRX Iklan: kwitansi menjumlah ke subtotal', () => {
+  test('satu baris biaya uji Rp1.000', () => {
+    const at = T('2026-12-10T10:00:00+07:00');
+    const order = {
+      id: 'o', created_at: new Date(at).toISOString(), question_count: 40, duration: 3,
+      winner_count: 2, prize_per_winner: 25000, voucher_code: 'JFUTGRX', distribution_type: 'regular',
+    };
+    const row = server.pricingRowForSchedule(order, null, null, at);
+    const items = server.buildNoteItems(order, row);
+    expect(server.computeTotalCostFromSubmission(row).subtotal).toBe(1_000);
+    expect(items).toEqual([{ name: 'System Testing Fee (JFUTGRX)', qty: 1, price: 1_000, category: 'Lainnya' }]);
   });
 });

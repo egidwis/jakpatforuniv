@@ -492,8 +492,22 @@ export function buildNoteItems(sub, pricingSub, kilatTariffFrom = KILAT_TARIFF_F
   const noteVoucherCode = pricingSub.voucher_code || undefined;
 
   const noteItems = [];
+  const noteIncentive = noteWinnerCount * notePrizePerWinner;
+  // JFUTGRX mematok iklan + hadiah jadi Rp 1.000 — tak bisa dipecah ke baris
+  // iklan & hadiah tanpa harga negatif (dulu: iklan Rp0 + hadiah penuh, jumlah
+  // ≠ subtotal). Satu baris biaya uji, sama dengan prefill invoice admin
+  // (`buildOrderInvoiceItems`). Hanya bila potongannya MEMANG berlaku: Kilat
+  // rumus lama tidak menerima voucher, jadi tetap rincian penuh.
+  const testingFee = (base) => {
+    if (!noteVoucherCode || noteVoucherCode.toUpperCase() !== 'JFUTGRX') return false;
+    const total = base + noteIncentive;
+    if (total <= 1000) return false;
+    noteItems.push({ name: 'System Testing Fee (JFUTGRX)', qty: 1, price: 1000, category: 'Lainnya' });
+    return true;
+  };
   if (noteIsKilat) {
     const rate = kilatRateAt(noteQuestionCount, pricingSub.rate_instant, kilatTariffFrom);
+    if (!rate.legacy && testingFee(rate.effective)) return noteItems;
     if (rate.legacy) {
       // Rumus lama — dua baris, persis seperti yang dulu ditagih.
       noteItems.push({
@@ -511,7 +525,7 @@ export function buildNoteItems(sub, pricingSub, kilatTariffFrom = KILAT_TARIFF_F
     } else {
       // Tabel Kilat — satu baris tarif gelombang, diskon voucher dilebur ke
       // harganya (pola yang sama dengan `discountedPerDay` Iklan di bawah).
-      const discount = calculateKilatDiscount(noteVoucherCode, rate.effective, noteWinnerCount * notePrizePerWinner, false);
+      const discount = calculateKilatDiscount(noteVoucherCode, rate.effective, noteIncentive, false);
       if (rate.effective > 0) {
         noteItems.push({
           name: 'JFU Kilat (1 gelombang)',
@@ -525,7 +539,8 @@ export function buildNoteItems(sub, pricingSub, kilatTariffFrom = KILAT_TARIFF_F
     // Instan tarif yang SAMA dengan `amount` — kalau beda, rincian kwitansi
     // tidak lagi menjumlah ke subtotal yang ditagih.
     const adCostBase = calculateAdCostPerDay(noteQuestionCount, pricingSub.rate_instant);
-    const discount = calculateDiscount(noteVoucherCode, adCostBase * noteDuration, noteWinnerCount * notePrizePerWinner, noteDuration, orderInstant(sub));
+    if (testingFee(adCostBase * noteDuration)) return noteItems;
+    const discount = calculateDiscount(noteVoucherCode, adCostBase * noteDuration, noteIncentive, noteDuration, orderInstant(sub));
     const discountedPerDay = discount > 0 && noteDuration > 0 ? Math.max(0, adCostBase - Math.ceil(discount / noteDuration)) : adCostBase;
     if (adCostBase > 0 && noteDuration > 0) {
       noteItems.push({

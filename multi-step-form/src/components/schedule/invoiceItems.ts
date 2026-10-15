@@ -1,6 +1,6 @@
 import {
   adRateAt, calculateAdCostPerDay, calculateDiscount, calculateIncentiveCost, calculateKilatDiscount,
-  getKilatAddonCost, kilatRateAt, rateInstantOf, tierIndexOf,
+  getKilatAddonCost, isKilatTariffActive, KILAT_VOUCHER_CODES, kilatRateAt, rateInstantOf, tierIndexOf,
 } from '@/utils/cost-calculator';
 import { AD_TIER_LABELS } from '@/utils/constants';
 import { formatYmdId, toWibYmd } from '@/utils/airing-window';
@@ -80,7 +80,10 @@ export function buildOrderInvoiceItems(
   const winnerCount = input.winnerCount || 0;
   const prizePerWinner = input.prizePerWinner || 0;
 
-  if (input.voucherCode?.toUpperCase() === 'JFUTGRX') {
+  // JFUTGRX tidak berlaku untuk Kilat rumus lama (tanpa voucher) — server
+  // menagihnya harga penuh, jadi prefill pun harus penuh.
+  const kilatLegacy = !!input.isKilat && kilatRateAt(questionCount, input.rateInstantMs).legacy;
+  if (input.voucherCode?.toUpperCase() === 'JFUTGRX' && !kilatLegacy) {
     return {
       items: [{
         id: nextId(),
@@ -294,10 +297,29 @@ export function newBlankItem(): InvoiceItem {
  */
 export function describeVoucher(
   voucherCode: string | null | undefined,
-  input: { adCost: number; incentiveCost: number; duration: number }
+  input: { adCost: number; incentiveCost: number; duration: number },
+  /**
+   * Order Kilat (jadwal pertama): tarif gelombangnya + instan tarif. Voucher
+   * Kilat punya aturan sendiri (`calculateKilatDiscount`) — tanpa ini label
+   * memakai aturan Iklan dan menjanjikan potongan yang tidak pernah diterapkan
+   * ke item.
+   */
+  kilat?: { adCost: number; rateInstantMs: number },
 ): { discount: number; label: string } | null {
   const code = (voucherCode || '').trim();
   if (!code) return null;
+  if (kilat) {
+    if (!isKilatTariffActive(kilat.rateInstantMs) || !KILAT_VOUCHER_CODES.includes(code.toUpperCase())) return null;
+    if (code.toUpperCase() === 'JFUTGRX') {
+      return { discount: 0, label: 'Voucher uji sistem — tagihan dipatok Rp 1.000' };
+    }
+    const discount = calculateKilatDiscount(code, kilat.adCost, input.incentiveCost, kilat.rateInstantMs);
+    if (discount <= 0) return null;
+    return {
+      discount,
+      label: `Potongan Rp ${discount.toLocaleString('id-ID')} (10% tarif Kilat) diterapkan ke baris JFU Kilat`,
+    };
+  }
   if (code.toUpperCase() === 'JFUTGRX') {
     return { discount: 0, label: 'Voucher uji sistem — tagihan dipatok Rp 1.000' };
   }
