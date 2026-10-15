@@ -1,4 +1,4 @@
-import { pageFilterQuery, validateAdminContent } from './contentGate.js';
+import { BROADCAST_RPC, broadcastRpcArgs, pageFilterQuery, validateAdminContent } from './contentGate.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -103,6 +103,25 @@ export async function onRequest(context) {
   try { body = await request.json(); } catch { return json(400, { error: 'Body bukan JSON' }); }
   const invalid = validateAdminContent(body);
   if (invalid) return json(400, { error: invalid });
+
+  if (BROADCAST_RPC[body.action]) {
+    // Galat RPC dibawa utuh beserta HINT-nya (broadcast_too_early, _finished,
+    // _has_respondents, …) supaya tab Page bisa menyebut alasannya.
+    const res = await fetch(`${url}/rest/v1/rpc/${BROADCAST_RPC[body.action]}`, {
+      method: 'POST',
+      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(broadcastRpcArgs(body.action, body.scheduleId, email)),
+    });
+    const raw = await res.text();
+    let data = null;
+    try { data = raw ? JSON.parse(raw) : null; } catch { data = null; }
+    if (!res.ok) {
+      const message = data?.message || data?.error || `PostgREST HTTP ${res.status}`;
+      console.error('[admin-content]', body.action, message);
+      return json(400, { error: message, hint: data?.hint ?? null });
+    }
+    return json(200, { data });
+  }
 
   try {
     if (body.action === 'clear-proof') {

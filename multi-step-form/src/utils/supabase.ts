@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { ReviewHistoryEntry } from '../components/submissions/types';
-import { addDaysToYmd, occupancyDayYmd, toAiringEndIso, toAiringStartIso, toWibYmd } from './airing-window';
+import { addDaysToYmd, kilatWaveInstant, occupancyDayYmd, toAiringEndIso, toAiringStartIso, toWibYmd } from './airing-window';
 import { isPlaceholderBannerUrl } from './page-banner';
 import { isLiveInvoice } from './billingCompare';
 import { compareLeadOrder } from './payLink';
@@ -4104,8 +4104,54 @@ export const updateKilatSchedule = async (
     await updateFormStatus(submissionId, 'slot_reserved');
   }
 
+  await syncKilatPageWindow(submissionId, ymd, hour);
+
   return true;
 };
+
+/**
+ * Jendela halaman Kilat ikut gelombang yang baru (Phase 5 §5.4, rilis R4).
+ *
+ * Halaman hanya lahir saat lunas, jadi order belum lunas tidak punya apa pun
+ * untuk disinkronkan. Kolom siaran di `ad_schedules` sudah di-NULL-kan trigger
+ * sql/118 begitu tanggalnya berubah, jadi jendela kembali ke jendela sementara
+ * [gelombang, +24 jam) sampai toggle dinyalakan lagi.
+ *
+ * ⚠️ Halaman Kilat LAMA (`publish_end_date` NULL, 17 baris, keputusan 7 Okt)
+ * hanya digeser awalnya — tautannya sudah tertanam di survei Jakpat dan tidak
+ * boleh diberi tanggal mati. Halaman yang ditutup sistem (`auto_closed_at`,
+ * sql/99) tidak disentuh.
+ */
+async function syncKilatPageWindow(submissionId: string, ymd: string, hour: number) {
+  const { data: pages, error } = await supabase
+    .from('survey_pages')
+    .select('id, publish_end_date')
+    .eq('submission_id', submissionId)
+    .is('auto_closed_at', null);
+  if (error) throw error;
+
+  const startIso = kilatWaveInstant(ymd, hour).toISOString();
+  const endIso = kilatWaveInstant(addDaysToYmd(ymd, 1), hour).toISOString();
+  for (const page of pages ?? []) {
+    const patch: Record<string, string> = page.publish_end_date == null
+      ? { publish_start_date: startIso, updated_at: new Date().toISOString() }
+      : { publish_start_date: startIso, publish_end_date: endIso, updated_at: new Date().toISOString() };
+    const { error: writeError } = await adminContent(
+      {
+        action: 'patch-pages',
+        patch,
+        filters: [
+          { col: 'id', op: 'eq', val: page.id },
+          { col: 'auto_closed_at', op: 'is', val: null },
+        ],
+      },
+      () => supabase.from('survey_pages').update(patch).eq('id', page.id).is('auto_closed_at', null).select(),
+    );
+    if (writeError) {
+      throw new Error(`Gelombang tersimpan, tapi jendela halaman gagal digeser: ${writeError.message}`);
+    }
+  }
+}
 
 /**
  * Pindahkan sebuah order antara jalur iklan regular dan JFU Kilat.
@@ -5117,6 +5163,15 @@ export interface AdScheduleEntry {
   distributionType: string | null;
   /** Gelombang push Kilat (8/11/14/17 WIB). NULL = regular ATAU Kilat belum ditugaskan. */
   kilatSlotHour: number | null;
+  /**
+   * Toggle siaran Kilat (sql/118 U6/U7). Opsional karena hanya
+   * `fetchAdSchedules` yang membacanya. NULL/absen = belum disiarkan; 'backfill'
+   * di `broadcastBy` = 17 gelombang lama yang diisi migrasi.
+   */
+  broadcastAt?: string | null;
+  broadcastBy?: string | null;
+  broadcastEndedAt?: string | null;
+  broadcastEndedBy?: string | null;
   /** Yang BENAR-BENAR ditagih untuk jadwal ini. 981 dari 983 baris terisi. */
   totalCost: number;
   /**
@@ -5297,6 +5352,7 @@ export const fetchAdSchedules = async (
         prize_per_winner, winner_count, additional_prize_per_winner, is_new_period, period_batch,
         slot_booked_by, slot_reserved_at, created_at, rate_locked_at,
         air_on_credit_at, air_on_credit_note,
+        broadcast_at, broadcast_by, broadcast_ended_at, broadcast_ended_by,
         form_submissions!ad_schedules_submission_id_fkey ( title, full_name, university, created_at )
       `, { count: 'exact' });
 
@@ -5414,6 +5470,10 @@ export const fetchAdSchedules = async (
         : (page?.placeholderBanner ?? false),
       airOnCreditAt: row.air_on_credit_at ?? null,
       airOnCreditNote: row.air_on_credit_note ?? null,
+      broadcastAt: row.broadcast_at ?? null,
+      broadcastBy: row.broadcast_by ?? null,
+      broadcastEndedAt: row.broadcast_ended_at ?? null,
+      broadcastEndedBy: row.broadcast_ended_by ?? null,
     };
   });
 };

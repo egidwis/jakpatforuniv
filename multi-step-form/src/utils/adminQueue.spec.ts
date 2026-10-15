@@ -18,6 +18,9 @@ vi.mock('./supabase', () => {
       is: (...a: any[]) => { entry.filters.push(['is', ...a]); return b; },
       or: (...a: any[]) => { entry.filters.push(['or', ...a]); return b; },
       in: (...a: any[]) => { entry.filters.push(['in', ...a]); return b; },
+      not: (...a: any[]) => { entry.filters.push(['not', ...a]); return b; },
+      neq: (...a: any[]) => { entry.filters.push(['neq', ...a]); return b; },
+      lte: (...a: any[]) => { entry.filters.push(['lte', ...a]); return b; },
       eq: (...a: any[]) => { entry.filters.push(['eq', ...a]); return b; },
       then: (res: any) => res({ data: tables[table] ?? [], error: null }),
     };
@@ -105,5 +108,21 @@ describe('fetchAdminQueue', () => {
     const or = calls[0].filters.find((f) => f[0] === 'or')[1] as string;
     expect(or).toContain('start_date.gte.2026-10-16');
     expect(calls.some((c) => c.table === 'transactions')).toBe(false);
+  });
+
+  test('tab Kilat + gelombang lunas yang toggle-nya sudah bisa dinyalakan (R4)', async () => {
+    tables.form_submissions = [];
+    tables.ad_schedules = [
+      // 14.00 WIB hari ini, lunas, belum nyala, sekarang 13.30 → dihitung
+      { submission_id: 'w1', start_date: '2026-10-15T07:00:00Z', end_date: '2026-10-16T07:00:00Z', kilat_slot_hour: 14, payment_status: 'paid', air_on_credit_at: null, broadcast_at: null },
+      // belum lunas → tidak
+      { submission_id: 'w2', start_date: '2026-10-15T07:00:00Z', end_date: '2026-10-16T07:00:00Z', kilat_slot_hour: 14, payment_status: 'pending', air_on_credit_at: null, broadcast_at: null },
+    ];
+    const q = await fetchAdminQueue(new Date('2026-10-15T06:30:00Z'));
+    expect(q.kilat).toEqual(['w1']);
+    const ad = calls.find((c) => c.table === 'ad_schedules')!;
+    expect(ad.filters).toContainEqual(['is', 'broadcast_at', null]);
+    expect(ad.filters).toContainEqual(['lte', 'start_date', '2026-10-15T07:30:00.000Z']);
+    expect(ad.filters).toContainEqual(['eq', 'distribution_type', 'kilat']);
   });
 });
