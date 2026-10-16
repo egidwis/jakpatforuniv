@@ -65,7 +65,6 @@ describe('CTA — kata kerjanya menyebut yang TERJADI SEKARANG', () => {
 const CTA_SATU_TIKET = [
   'scheduleLockCta',
   'rebookCta',
-  'scheduleConfirmKilatCta',
   'payNow',
   'payAnywayCta',
   'repickOtherDateCta',

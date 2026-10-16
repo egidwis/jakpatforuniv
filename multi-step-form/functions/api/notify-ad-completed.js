@@ -1,4 +1,5 @@
 import { sendMail } from './_mail.js';
+import { scheduleKindOf } from './_kilatScheduleInfo.js';
 
 // Dipanggil oleh pg_cron/pg_net di Supabase saat jadwal iklan survei selesai tayang,
 // wajib membawa ?k=<CRON_NOTIFY_SECRET> yang valid.
@@ -15,28 +16,36 @@ export async function onRequestPost(context) {
     }
 
     try {
-        const { email, full_name, title, ordinal, booking_id } = await request.json();
+        const { email, full_name, title, ordinal, booking_id, schedule_id } = await request.json();
 
         if (!email) {
             return new Response(JSON.stringify({ error: 'Missing email' }), { status: 400 });
         }
 
         const isExtension = Number(ordinal) > 1;
+        // Kilat = satu gelombang push, bukan "periode penayangan" (Phase 5 §5.8).
+        const kind = await scheduleKindOf(env, schedule_id);
         const name = full_name || 'Kak';
         const surveyLine = title ? ` <strong>${title}</strong>` : '';
         const bookingTag = booking_id ? ` (Kode: <code>${booking_id}</code>)` : '';
 
-        const subject = isExtension
-            ? '[Jakpat for Univ] Periode Perpanjangan Selesai! Waktunya Olah Data di JFU AI Analyzer 📊'
-            : '[Jakpat for Univ] Survei Selesai! Waktunya Olah Data di JFU AI Analyzer 📊';
+        const subject = kind.isKilat
+            ? '[Jakpat for Univ] Gelombang JFU Kilat Selesai! Waktunya Olah Data di JFU AI Analyzer 📊'
+            : isExtension
+                ? '[Jakpat for Univ] Periode Perpanjangan Selesai! Waktunya Olah Data di JFU AI Analyzer 📊'
+                : '[Jakpat for Univ] Survei Selesai! Waktunya Olah Data di JFU AI Analyzer 📊';
 
-        const headline = isExtension
-            ? 'Periode Perpanjangan Selesai Ditayangkan! 🎉'
-            : 'Survei Anda Telah Selesai Ditayangkan! 🎉';
+        const headline = kind.isKilat
+            ? 'Gelombang JFU Kilat Selesai! 🎉'
+            : isExtension
+                ? 'Periode Perpanjangan Selesai Ditayangkan! 🎉'
+                : 'Survei Anda Telah Selesai Ditayangkan! 🎉';
 
-        const leadText = isExtension
-            ? `Periode penayangan iklan perpanjangan survei${surveyLine}${bookingTag} telah <strong>resmi selesai</strong> dan responden tambahan Jakpat telah terkumpul.`
-            : `Periode penayangan iklan survei${surveyLine} telah <strong>resmi selesai</strong> dan responden Jakpat telah terkumpul.`;
+        const leadText = kind.isKilat
+            ? `Gelombang push JFU Kilat untuk survei${surveyLine}${bookingTag} telah <strong>selesai</strong> dan responden Jakpat telah terkumpul.`
+            : isExtension
+                ? `Periode penayangan iklan perpanjangan survei${surveyLine}${bookingTag} telah <strong>resmi selesai</strong> dan responden tambahan Jakpat telah terkumpul.`
+                : `Periode penayangan iklan survei${surveyLine} telah <strong>resmi selesai</strong> dan responden Jakpat telah terkumpul.`;
 
         const result = await sendMail(env, {
             to: email,

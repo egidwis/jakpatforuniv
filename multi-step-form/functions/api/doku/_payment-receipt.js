@@ -116,6 +116,25 @@ function formatDateIndo(dateInput) {
   });
 }
 
+/**
+ * Baris jadwal di kuitansi (PDF & email). JFU Kilat = satu gelombang
+ * (Phase 5 §5.8): "19 Okt 2026 · Gelombang 11.00 WIB" — durasi Kilat tidak
+ * pernah tampil ke peneliti, jadi "(1 Hari) (Kilat)" yang lama tidak dipakai.
+ */
+export function receiptScheduleLabel({ start, end, duration, distributionType, kilatSlotHour }) {
+  if (distributionType === 'kilat') {
+    if (!start) return 'Belum dijadwalkan (JFU Kilat)';
+    const wave = kilatSlotHour == null
+      ? 'JFU Kilat'
+      : `Gelombang ${String(kilatSlotHour).padStart(2, '0')}.00 WIB`;
+    return `${formatDateIndo(start)} · ${wave}`;
+  }
+  const dur = duration || 1;
+  if (start && end) return `${formatDateIndo(start)} — ${formatDateIndo(end)} (${dur} Hari)`;
+  if (start) return `${formatDateIndo(start)} (${dur} Hari)`;
+  return 'Belum dijadwalkan';
+}
+
 function formatDateTimeIndo(dateInput) {
   if (!dateInput) return '-';
   const d = new Date(dateInput);
@@ -528,7 +547,7 @@ export async function sendPaymentReceipt(env, { invoiceNumber, amount, paymentCh
     if (sourceIds.length > 0) {
       try {
         const schedRes = await fetch(
-          `${url}/rest/v1/ad_schedules?source_id=in.(${sourceIds.map((s) => `"${encodeURIComponent(s)}"`).join(',')})&select=source_id,start_date,end_date,duration,distribution_type`,
+          `${url}/rest/v1/ad_schedules?source_id=in.(${sourceIds.map((s) => `"${encodeURIComponent(s)}"`).join(',')})&select=source_id,start_date,end_date,duration,distribution_type,kilat_slot_hour`,
           { headers }
         );
         if (schedRes.ok) {
@@ -558,15 +577,13 @@ export async function sendPaymentReceipt(env, { invoiceNumber, amount, paymentCh
       const dur = sched?.duration || sub?.duration || 1;
       const dist = sched?.distribution_type || sub?.distribution_type || 'regular';
 
-      let scheduleStr = 'Belum dijadwalkan';
-      if (start && end) {
-        scheduleStr = `${formatDateIndo(start)} — ${formatDateIndo(end)} (${dur} Hari)`;
-      } else if (start) {
-        scheduleStr = `${formatDateIndo(start)} (${dur} Hari)`;
-      }
-      if (dist === 'kilat') {
-        scheduleStr += ' (Kilat)';
-      }
+      const scheduleStr = receiptScheduleLabel({
+        start,
+        end,
+        duration: dur,
+        distributionType: dist,
+        kilatSlotHour: sched?.kilat_slot_hour ?? sub?.kilat_slot_hour ?? null,
+      });
 
       const rowAmount = Number(r.amount || 0);
       const rowSubtotal = Number(r.subtotal ?? (rowAmount - Number(r.ppn_amount || 0)));

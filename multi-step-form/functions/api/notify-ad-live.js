@@ -1,4 +1,5 @@
 import { sendMail } from './_mail.js';
+import { scheduleKindOf, waveLabel } from './_kilatScheduleInfo.js';
 
 // Dipanggil oleh pg_cron/pg_net di Supabase (lihat sql/48_ad_live_notifications.sql),
 // bukan dari frontend — karena itu wajib membawa ?k=<CRON_NOTIFY_SECRET> yang valid.
@@ -26,13 +27,15 @@ export async function onRequestPost(context) {
     }
 
     try {
-        const { email, full_name, title, start_date, end_date, ordinal, booking_id } = await request.json();
+        const { email, full_name, title, start_date, end_date, ordinal, booking_id, schedule_id } = await request.json();
 
         if (!email) {
             return new Response(JSON.stringify({ error: 'Missing email' }), { status: 400 });
         }
 
         const isExtension = Number(ordinal) > 1;
+        // Kilat = satu gelombang push, tanpa durasi (Phase 5 §5.8).
+        const kind = await scheduleKindOf(env, schedule_id);
         const name = full_name || 'Kak';
         const surveyLine = title ? ` <strong>${title}</strong>` : ' kamu';
         const bookingTag = booking_id ? ` (Kode: <code>${booking_id}</code>)` : '';
@@ -41,21 +44,29 @@ export async function onRequestPost(context) {
         const startText = startInstant ? WIB_DATE_FORMATTER.format(startInstant) : null;
         const endText = endInstant ? WIB_DATE_FORMATTER.format(endInstant) : null;
         const startTimeText = startInstant ? WIB_TIME_FORMATTER.format(startInstant) : null;
-        const windowLine = startText && endText
-            ? `<p>Iklan tayang mulai <strong>${startText}</strong> pukul ${startTimeText} WIB sampai <strong>${endText}</strong>.</p>`
-            : '';
+        const windowLine = kind.isKilat
+            ? (startText ? `<p>Gelombang push <strong>${startText}</strong> · ${waveLabel(kind.hour)}.</p>` : '')
+            : startText && endText
+                ? `<p>Iklan tayang mulai <strong>${startText}</strong> pukul ${startTimeText} WIB sampai <strong>${endText}</strong>.</p>`
+                : '';
 
-        const subject = isExtension
-            ? '[Jakpat for Univ] Iklan perpanjangan surveimu mulai tayang hari ini 🚀'
-            : '[Jakpat for Univ] Iklan surveimu mulai tayang hari ini 🚀';
+        const subject = kind.isKilat
+            ? '[Jakpat for Univ] Gelombang JFU Kilat surveimu dimulai hari ini ⚡'
+            : isExtension
+                ? '[Jakpat for Univ] Iklan perpanjangan surveimu mulai tayang hari ini 🚀'
+                : '[Jakpat for Univ] Iklan surveimu mulai tayang hari ini 🚀';
 
-        const headline = isExtension
-            ? 'Iklan Perpanjangan Survei Mulai Ditayangkan! 🚀'
-            : 'Iklan Survei Mulai Ditayangkan! 🚀';
+        const headline = kind.isKilat
+            ? 'Gelombang JFU Kilat Dimulai! ⚡'
+            : isExtension
+                ? 'Iklan Perpanjangan Survei Mulai Ditayangkan! 🚀'
+                : 'Iklan Survei Mulai Ditayangkan! 🚀';
 
-        const leadText = isExtension
-            ? `Jadwal perpanjangan survei${surveyLine}${bookingTag} sekarang sudah <strong>mulai aktif ditayangkan</strong> ke panel responden Jakpat.`
-            : `Kuesioner survei${surveyLine} sekarang sudah <strong>mulai aktif ditayangkan</strong> ke panel responden Jakpat.`;
+        const leadText = kind.isKilat
+            ? `Survei${surveyLine}${bookingTag} masuk <strong>gelombang push JFU Kilat</strong> hari ini. Tim kami mengirim push notification ke responden Jakpat pada gelombang ini.`
+            : isExtension
+                ? `Jadwal perpanjangan survei${surveyLine}${bookingTag} sekarang sudah <strong>mulai aktif ditayangkan</strong> ke panel responden Jakpat.`
+                : `Kuesioner survei${surveyLine} sekarang sudah <strong>mulai aktif ditayangkan</strong> ke panel responden Jakpat.`;
 
         const result = await sendMail(env, {
             to: email,

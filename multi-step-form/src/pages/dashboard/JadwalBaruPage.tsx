@@ -515,6 +515,27 @@ export function JadwalBaruPage() {
     );
   }
 
+  /*
+    ⚠️ PENJAGA KILAT — sampai Phase 5 §5.10 (extend Kilat). Kartu "Perpanjang"
+    sudah tersembunyi untuk Kilat (`SchedulePhase`), tapi alamat ini bisa
+    dibuka langsung, dan kalendernya kalender HARI Iklan: perpanjangan Kilat
+    harus memilih GELOMBANG (`KilatWavePicker`), bukan tanggal × durasi.
+  */
+  if (submission.distribution_type === 'kilat') {
+    return (
+      <div className="max-w-3xl mx-auto px-6 pt-24 text-center space-y-4">
+        <p className="text-sm text-slate-600">{t('kilatExtendNotYet')}</p>
+        <button
+          type="button"
+          onClick={() => navigate('/dashboard')}
+          className="inline-flex items-center gap-2 text-sm font-semibold text-jfu-primary hover:underline"
+        >
+          <ArrowLeft className="w-4 h-4" /> {t('backToOrders')}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <ScheduleReservationLayout
       onBack={() => navigate('/dashboard')}

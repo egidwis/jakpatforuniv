@@ -107,7 +107,8 @@ export const OrderLiveCompanion: React.FC<OrderLiveCompanionProps> = ({
                 </span>
               </div>
               <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
-                <span>{formData.duration} {t('days')}</span>
+                {/* Kilat tanpa durasi (Phase 5 §5.8). */}
+                <span>{formData.isKilatUpgrade ? t('kilatSummaryValue') : `${formData.duration} ${t('days')}`}</span>
                 {step !== 1 && (
                   <>
                     <span>•</span>

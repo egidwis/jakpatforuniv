@@ -76,7 +76,7 @@ export function DistributionSection({
         />
         <p className="text-[11px] text-gray-400">
           {isKilat
-            ? 'Kilat: push notifikasi langsung ke responden, ~2 jam, tanpa halaman iklan.'
+            ? 'Kilat: push notifikasi ke responden pada satu gelombang (11.00 / 15.00 WIB, Senin–Jumat); halaman tidak tampil di daftar iklan publik.'
             : 'Untuk user yang sudah submit sebagai iklan biasa tapi ingin pindah ke Kilat.'}
         </p>
       </DetailSheetSection>

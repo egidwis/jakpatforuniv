@@ -41,6 +41,7 @@ import { formatIDR } from '@/utils/currency';
 import { CostBreakdown } from '@/components/CostBreakdown';
 import { isAutoReviewed } from './deriveOrderUiState';
 import { nowWib, toWibYmd } from '@/utils/airing-window';
+import { formatWaveHour } from '@/utils/kilatWaves';
 
 const WIB = 'Asia/Jakarta';
 
@@ -203,8 +204,15 @@ const formatDateRangeTrigger = (start: Date | null, end: Date | null) => {
     return null;
 };
 
+/**
+ * Kilat = satu gelombang (Phase 5 §5.8): judulnya TANGGAL GELOMBANG saja.
+ * `endDate`-nya +24 jam (akhir-eksklusif) dan terbaca "19 – 20 Okt" kalau ikut
+ * dirangkai seperti Iklan.
+ */
+const triggerEndOf = (card: ScheduleCard) => (card.info?.isKilat ? card.startDate : card.endDate);
+
 function getScheduleTriggerTitle(card: ScheduleCard, t: (k: TranslationKey) => string): string {
-    const dateRangeText = formatDateRangeTrigger(card.startDate, card.endDate);
+    const dateRangeText = formatDateRangeTrigger(card.startDate, triggerEndOf(card));
     if (dateRangeText) {
         return dateRangeText;
     }
@@ -714,7 +722,8 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                 tone="slate"
                 icon={<CalendarClock className={bannerIcon} />}
                 title={t('bannerTitleAwaitingAdminSchedule')}
-                lines={[t('bannerSubAwaitingAdminSchedule')]}
+                // Kilat: tim menugaskan GELOMBANG, bukan tanggal tayang.
+                lines={[t(card.info?.isKilat ? 'bannerSubAwaitingAdminWave' : 'bannerSubAwaitingAdminSchedule')]}
             />
         );
     }
@@ -1034,7 +1043,7 @@ export function SchedulePhase({ submission, cards, entries, onReschedule, active
                             const ticketBadge = cards.length > 1
                                 ? t('scheduleTicketNumbered', { index: String(index + 1) })
                                 : t('ticketScheduleLabel');
-                            const dateRangeText = formatDateRangeTrigger(card.startDate, card.endDate);
+                            const dateRangeText = formatDateRangeTrigger(card.startDate, triggerEndOf(card));
                             const mutedTitle = card.booking.state === 'in_review' || card.booking.state === 'cancelled';
                             const pendingReview = card.booking.state === 'in_review';
 
@@ -1044,7 +1053,12 @@ export function SchedulePhase({ submission, cards, entries, onReschedule, active
                             const kilatHourPending = !!card?.info?.isKilat && card.info.kilatSlotHour == null;
 
                             let timeSubtext = '';
-                            if (card.startDate) {
+                            if (card.startDate && card.info?.isKilat) {
+                                // Tanggal + gelombang saja — durasi Kilat tidak pernah tampil (keputusan 7 Okt).
+                                timeSubtext = card.info.kilatSlotHour == null
+                                    ? t('scheduleKilatHourPending')
+                                    : t('kilatWaveLabel', { hour: formatWaveHour(card.info.kilatSlotHour) });
+                            } else if (card.startDate) {
                                 const timePart = startTimeWib ? t('airingStartTimeAt', { time: startTimeWib }) : kilatHourPending ? t('scheduleKilatHourPending') : '';
                                 const durPart = `${duration} Hari (${totalHours} Jam)`;
                                 timeSubtext = timePart ? `${timePart} • ${durPart}` : durPart;

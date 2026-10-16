@@ -341,9 +341,15 @@ export function KilatScheduleStep({
                             {selectedHour !== null ? `${formatHour(selectedHour)} WIB` : '-'}
                         </span>
                     </div>
+                    {/* Kilat tanpa durasi (Phase 5 §5.8) — yang berguna bagi admin
+                        adalah kapan peneliti paling lambat membayar. */}
                     <div className="flex-1 flex flex-col justify-center bg-white px-3 py-2.5 rounded-md border border-gray-100 shadow-sm">
-                        <span className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider mb-0.5">Durasi</span>
-                        <span className="font-bold text-gray-900">~2 jam</span>
+                        <span className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider mb-0.5">Batas bayar</span>
+                        <span className="font-bold text-gray-900">
+                            {selectedYmd && selectedHour !== null
+                                ? `${formatWibTime(kilatPayDeadline(selectedYmd, selectedHour).toISOString())} WIB`
+                                : '-'}
+                        </span>
                     </div>
                 </div>
             </div>

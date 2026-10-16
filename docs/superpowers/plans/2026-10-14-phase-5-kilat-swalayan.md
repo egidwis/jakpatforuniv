@@ -1,6 +1,6 @@
 # Phase 5 — Kilat swalayan: peneliti memesan Kilat sendiri
 
-> **STATUS NYATA (16 Okt 2026):** strategi rilis **diubah** — seluruh Phase 5 dikerjakan di **satu branch `feat/kilat-swalayan`** dan dirilis di akhir dengan **tiga push** (A → Uji → B) (lihat §Peta pengerjaan & rilis tepat di bawah). R1–R4 selesai di branch itu (belum push); `sql/117` dan `sql/118` **sudah diterapkan** di produksi; berikutnya R5.
+> **STATUS NYATA (16 Okt 2026):** strategi rilis **diubah** — seluruh Phase 5 dikerjakan di **satu branch `feat/kilat-swalayan`** dan dirilis di akhir dengan **tiga push** (A → Uji → B) (lihat §Peta pengerjaan & rilis tepat di bawah). R1–R5 selesai di branch itu (belum push); `sql/117` dan `sql/118` **sudah diterapkan** di produksi; berikutnya R6. ⚠️ Satu keputusan terbuka sebelum Push Uji: JFUTGRX pada rumus lama (lihat §Rilis → Push Uji).
 >
 > Berkas ini salinan rencana yang disetujui di sesi chat 14–15 Okt. R1–R8 kini **tahap pengerjaan** di satu branch, bukan rilis terpisah; nomor task (5.1–5.10) tetap jadi rujukan isi.
 
@@ -16,8 +16,8 @@
 | 2 | **R2 — Fondasi gelombang** | 5.2, 5.4 | `sql/117` ✅ live 15 Okt | ✅ Kode (`2ec405c`) | Picker admin 11/15; 3 order macet (`e56f4853`, `4a112eae`, `be488b57`) tetap bisa disentuh |
 | 3 | **R3 — Libur & badge** | 5.4b (libur + badge) | — (tabel dari `sql/117`) | ✅ Kode (`0eb5395`) | Simpan/matikan libur di menu **Hari Libur** (butuh `wrangler pages dev`); banner di dashboard & chat; badge = hitungan manual (15 Okt: Iklan 22 = 13 review + 9 penjadwalan, Kilat 0) |
 | 4 | **R4 — Undian & siaran** | 5.3, 5.4b (toggle), sinkron halaman 5.4 | `sql/118` ✅ live 15 Okt | ✅ Kode (`4213f8b` SQL, `c42362a`) | Linimasa toggle pada **order uji**; sisa kecil: status siaran ringkas di `KilatScheduleBoard` |
-| 5 | **R5 — Pintu tersembunyi** | 5.5, 5.6, 5.8 | — | ⬜ berikutnya | Wizard Kilat lewat `?product=kilat` (admin) sampai Jadwal & Bayar |
-| 6 | **R6 — Jalur bayar Kilat** | 5.7 | — | ⬜ | Cermin helper waktu di `create-payment.js`; cabut peringatan "pakai 15.00" di picker admin; tagihan terbit sekali lalu dibatalkan (DOKU sandbox) |
+| 5 | **R5 — Pintu tersembunyi** | 5.5, 5.6, 5.8 | — | ✅ Kode (`59c7913`, commit 5.8 menyusul) | Kartu Kilat → modal → `?product=kilat` (admin; `KILAT_PILOT_EMAILS` kosong) → Step 3 pemilih gelombang → Jadwal & Bayar. Tagihan yang terbit di sana masih berbatas bayar 14.00 sampai R6 — uji lokal tanpa bayar |
+| 6 | **R6 — Jalur bayar Kilat** | 5.7 | — | ⬜ berikutnya | Cermin helper waktu di `create-payment.js`; cabut peringatan "pakai 15.00" di picker admin; **pilih ulang gelombang di badan tiket Jadwal & Bayar** (`KilatWavePicker` + `handleLock`, dipindah dari 5.5 karena butuh `rebookSlotForSubmission` sadar gelombang); tagihan terbit sekali lalu dibatalkan (DOKU sandbox) |
 | 7 | **R7 — Uji nyata & buka pintu (disiapkan)** | 5.9 | — | ⬜ | Dua commit kecil yang **tidak ikut Push A**: pilot akun uji (`KILAT_PILOT_EMAILS`) = Push Uji, lalu buka pintu = Push B |
 | 8 | **R8 — Extend Kilat** | 5.10 | `sql/119` (nomor dicek ulang ke `origin/main`) | ⬜ | Kode ikut Push A terkunci; **dibuka untuk akun uji di Push Uji** (prasyarat 5.10 dipenuhi di sana), untuk semua di Push B |
 
@@ -274,10 +274,12 @@ Tabel libur masuk `sql/117` (dibaca trigger 5.2). **Kolom siaran + trigger reset
   - email "mulai tayang"/"selesai" tetap memakai instan jadwal (selisih dengan toggle diterima).
 
 ### 5.5 — Pemilih gelombang peneliti · **[R5]**
+> **STATUS NYATA (16 Okt):** ✅ `KilatWavePicker`, `useKilatWaveAvailability`, util murni `kilatWaves.ts` (`kilatWaveDays`, `kilatLockGate`) — `59c7913`. Dipakai Step 3 wizard. Pemakaian di badan tiket Jadwal & Bayar **dipindah ke R6** (butuh `handleLock` sadar gelombang). Hari libur dirender tertutup ("Libur"), akhir pekan tidak dirender.
 - **`KilatWavePicker`** + hook **`useKilatWaveAvailability`** (lewat RPC okupansi `get_kilat_wave_occupancy`, 5.2). Menampilkan 10 hari kerja × 2 gelombang beserta sisa kuota. Gelombang yang penuh atau lewat cutoff dinonaktifkan. Hanya satu gelombang yang bisa dipilih. Logika grid diambil dari `KilatScheduleStep`.
 - Dipakai di **Step 3 wizard** (`StepSchedule mode="kilat"`, posisi yang sama dengan kalender Iklan) dan di badan tiket **Jadwal & Bayar** untuk mode Kilat. Di 5.10 juga dipakai `JadwalBaruPage`.
 
 ### 5.6 — Pintu masuk & wizard (di balik bendera) · **[R5]**
+> **STATUS NYATA (16 Okt):** ✅ `59c7913`. Gerbang satu tempat `canUseKilatSelfServe` (bendera / admin / `KILAT_PILOT_EMAILS`, kosong). Modal = `AdsEntryModal product="kilat"` + `KilatRateBlock` (angka dari `kilatRateAt`, jadi rumus lama selama `KILAT_TARIFF_FROM` null). Jenis order dijaga `applyOrderProduct` (juga sesudah impor Google Form di wizard). `submitOrder` Kilat: INSERT `start_date` YMD, `end_date` +1, `kilat_slot_hour`, `duration` 1; cek okupansi gelombang; galat `kilat_wave_*` dipetakan sebelum kuota harian (pesan penuhnya juga memuat "sudah penuh"). Voucher non-Kilat tidak disimpan; `isAutoApprovalPath` mengabaikan JFUFEB/ILKOMUNY untuk Kilat.
 - **Kartu Kilat** (`CreateOrderCards.tsx:22`) membuka modal mekanisme Kilat sendiri, sejajar `AdsEntryModal`: push di gelombang pilihan, satu gelombang, dan **tabel tarif Kilat 5.1** (varian `RateTable`/`RateNoticeBlock`). Lalu gerbang profil, lalu `/dashboard/submit-iklan?product=kilat`. `?product=kilat` diabaikan selama bendera mati, kecuali untuk admin.
 - **Satu pintu, alur identik Iklan**:
   - jenis order ditetapkan oleh pintu yang dipakai;
@@ -310,6 +312,8 @@ Tabel libur masuk `sql/117` (dibaca trigger 5.2). **Kolom siaran + trigger reset
 - **Webhook** tidak diubah.
 
 ### 5.8 — Copy tanpa durasi & kebersihan · **[R5]**
+> **STATUS NYATA (16 Okt):** ✅ Ringkasan (kartu "Distribusi · 1 gelombang push"), companion, sobekan tiket (wizard & Jadwal & Bayar), kartu jadwal `SchedulePhase` (judul = tanggal gelombang, subteks = "Gelombang HH.00 WIB", banner `awaiting_admin_schedule` menyebut gelombang); kuitansi `receiptScheduleLabel` ("20 Okt 2026 · Gelombang 11.00 WIB"); email tayang/selesai varian Kilat lewat `scheduleKindOf` (membaca `ad_schedules` dengan service role dari `schedule_id` payload — **tanpa SQL**; gagal baca = copy Iklan); `send-invoice-ready-email.js` diperiksa, tanpa teks durasi. Prompt bawaan Mimin dibetulkan (dulu "landing page publik, tanpa antre"); ⚠️ `ai_settings.system_prompt` di DB tetap menang — perlu dicek manual. Penjaga Kilat di `JadwalBaruPage` sampai 5.10. 31 kunci i18n Kilat mati dihapus. Copy admin "~2 jam" / "tanpa halaman iklan" dibetulkan. `SchedulePicker mode="kilat"` (pilih ulang di Jadwal & Bayar) ikut R6.
+> **Untuk pemilik produk (copy pemasaran):** kartu produk "Untuk kecepatan maksimal — Distribusi ekspres dengan push notification…" dipertahankan; klaim "~2 jam" / "hasil 2 hari dalam 2 jam" sudah tidak tampil di mana pun ke peneliti (kunci `kilatUpgradeTagline`/`kilatBenefitFast` terhapus). Bila mau klaim waktu di modal/kartu, putuskan kalimatnya dulu.
 - **Layar peneliti** hanya menampilkan **tanggal + "Gelombang HH.00 WIB"**. Yang dibuang: "{n} hari", "N×24 Jam", "Tayang penuh selama 1 hari", `kilatDuration`/`kilatInstant24h`, dan "Mulai 15.00 WIB" untuk Kilat. Lokasinya: `StepCheckout.tsx:342-345`, `SchedulePicker`, `OrderLiveCompanion`, sobekan tiket, `SchedulePhase`, `translations.ts`.
 - **Email & kuitansi** (temuan tinjauan 14 Okt): `functions/api/doku/_payment-receipt.js:558-568` menulis "(1 Hari) (Kilat)". Untuk Kilat ganti dengan "tanggal · Gelombang HH.00 WIB". Subjek `notify-ad-live.js:49-50` ("Iklan surveimu mulai tayang") diberi varian Kilat. Periksa juga `notify-ad-completed.js` dan `send-invoice-ready-email.js`.
 - **Copy pemasaran** (mis. "~2 jam", "hasil 2 hari dalam 2 jam") disodorkan ke pemilik produk.
@@ -379,6 +383,7 @@ Prasyarat: minimal satu order Kilat swalayan sudah tayang serta dibayar dengan b
 - admin membuat order Kilat lewat wizard sampai Jadwal & Bayar; tagihan terbit sekali lalu dibatalkan (tanpa bayar sungguhan).
 
 **Push Uji — order swalayan sungguhan, hanya akun uji (ditambahkan 16 Okt).** Satu commit kecil: `KILAT_PILOT_EMAILS` (daftar literal akun uji) membuka kartu Kilat, wizard, dan kartu "Pesan gelombang lagi" **hanya** untuk email itu; semua peneliti lain tetap melihat `comingSoon`. `KILAT_TARIFF_FROM` **tetap `null`** — tarif baru mulai bersamaan dengan pintu dibuka (keputusan 14 Okt), dan tagihan uji memakai JFUTGRX (Rp1.000) sehingga angka tarif tidak teruji lewat bayar mana pun; angka tarif dijaga tes paritas dan dicek tampilannya pada build Push B.
+- ⚠️ **KEPUTUSAN TERBUKA (temuan 16 Okt): JFUTGRX tidak memotong apa pun selama `KILAT_TARIFF_FROM` null.** `calculateKilatDiscount` (klien) dan salinannya di `create-payment.js` mengembalikan 0 untuk semua voucher pada rumus lama — keputusan "order Kilat lama tetap tanpa diskon". Jadi bayar nyata di Push Uji akan menagih harga penuh rumus lama (≈ Rp350rb–Rp700rb + hadiah + PPN), bukan Rp1.000. Pilihan: (A) JFUTGRX berlaku juga pada rumus lama (klien + server + tes paritas); di produksi hanya 1 order Kilat ber-JFUTGRX: `e56f4853` (order macet, jadwal 14 Sep lewat, `pending` Rp444.000) — tidak bisa ditagih ulang karena jadwalnya lewat; (B) isi `KILAT_TARIFF_FROM` di Push Uji (membatalkan keputusan 14 Okt); (C) bayar uji dengan harga penuh. Usulan: **A**, dikerjakan bersama R6 (jalur uang).
 - ⚠️ Akun uji **wajib bukan email admin**: trigger klaim `sql/117` dan `create-payment.js` melewatkan email admin, jadi order dari akun admin tidak menguji jalur peneliti sama sekali.
 - Uji di produksi (pemilik produk, akun uji):
   1. kartu Kilat → modal → wizard → pilih gelombang 15.00 → Kunci → tiket Jadwal & Bayar (tagihan terbit sekali);
