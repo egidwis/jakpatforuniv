@@ -10,15 +10,19 @@ import { checkoutBlocker, type CheckoutBlockerCode } from './orderReadiness';
  * bentuknya "nomor step yang dipulihkan sudah berubah arti", dan itu mustahil
  * ditangkap dengan membaca komponennya.
  *
- * Penomoran step yang BERLAKU SEKARANG:
- *   1 Detail Survei · 2 Ringkasan · 3 Jadwal Tayang · 4 Jadwal Kilat
+ * Penomoran step yang BERLAKU SEKARANG — sama untuk Iklan dan Kilat:
+ *   1 Detail Survei · 2 Ringkasan · 3 Jadwal (kalender Iklan / gelombang Kilat)
  *
  * Sejarahnya, karena draft lama tidak ikut mati saat urutannya diubah:
  *   v1  (`survey_form_draft`)  1 Survei, 2 Biodata, 3 Jadwal, 4 Review, 5 Kilat
  *   v2 lama (s/d 2026-08-10)   1 Survei, 2 Jadwal,  3 Review, 4 Kilat
+ *   v2 (s/d Phase 5 R5)        1 Survei, 2 Ringkasan, 3 Jadwal, 4 Jadwal Kilat
+ *
+ * Step 4 "Jadwal Kilat" dicabut (Phase 5 §5.6): draft yang berhenti di sana
+ * dijepit ke 3 — layar yang kini memuat pemilih gelombang Kilat.
  */
 const FIRST_STEP = 1;
-const LAST_STEP = 4;
+const LAST_STEP = 3;
 const SUMMARY_STEP = 2;
 const SCHEDULE_STEP = 3;
 
@@ -31,7 +35,7 @@ export interface DraftStorage {
 export interface RestoredDraft {
   /** Apa adanya dari draft — penggabungan dengan nilai default milik pemanggil. */
   formData?: Partial<SurveyFormData>;
-  /** Sudah dijepit ke 1..4 DAN sudah dijamin tidak melewati gerbang Ringkasan. */
+  /** Sudah dijepit ke 1..3 DAN sudah dijamin tidak melewati gerbang Ringkasan. */
   currentStep: number;
 }
 
@@ -49,7 +53,7 @@ const LEGACY_STEP_MAP: Record<number, number> = {
   2: 1, // Biodata   → layarnya sudah tidak ada
   3: 3, // Jadwal    → Jadwal Tayang
   4: 2, // Review    → Ringkasan
-  5: 4, // Kilat     → Jadwal Kilat
+  5: 3, // Kilat     → Jadwal (pemilih gelombang)
 };
 
 const clampStep = (step: unknown): number =>

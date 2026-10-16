@@ -472,6 +472,8 @@ export interface FormSubmission {
   created_at?: string;
   updated_at?: string;
   distribution_type?: 'regular' | 'kilat';
+  /** Gelombang Kilat (jam WIB). NULL = belum ditugaskan / bukan Kilat. */
+  kilat_slot_hour?: number | null;
   ai_prescreening?: any;
 }
 
@@ -3976,6 +3978,25 @@ export const fetchSlotAvailability = async (
 // JFU Kilat — slot harian, penjadwalan, dan konversi jalur distribusi
 // ─────────────────────────────────────────────────────────────
 
+
+/**
+ * Okupansi gelombang Kilat tanpa identitas (sql/117 `get_kilat_wave_occupancy`,
+ * hibah `authenticated`). Dipakai pemilih peneliti DAN cek terakhir
+ * `submitOrder` — satu sumber, supaya keduanya tidak berbeda pendapat.
+ */
+export const fetchKilatWaveOccupancy = async (
+  fromYmd: string,
+  toYmd: string,
+  excludeSubmissionId?: string,
+) => {
+  const { data, error } = await supabase.rpc('get_kilat_wave_occupancy', {
+    p_from: fromYmd,
+    p_to: toYmd,
+    p_exclude_submission_id: excludeSubmissionId ?? null,
+  });
+  if (error) throw error;
+  return data as unknown;
+};
 
 export interface KilatDayAvailability {
   /** jam WIB (11|15; riwayat juga 8|14|17) -> berapa order sudah mengisi gelombang itu */

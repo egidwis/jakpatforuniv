@@ -6,15 +6,62 @@ import {
   Clock,
   ShieldCheck,
   ArrowRight,
+  Zap,
+  Layers,
+  AlarmClock,
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import type { TranslationKey } from '../i18n/translations';
 import { RateNoticeBlock } from './RateNotice';
+import { KilatRateBlock } from './KilatRateTable';
 
 export interface AdsEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
   onContinue: () => void;
+  /**
+   * Produk yang sedang dibuka pintunya. Kilat memakai cangkang yang sama
+   * (Phase 5 §5.6) — yang berbeda hanya tiga poin mekanisme, tabel tarif, dan
+   * kalimat persetujuannya.
+   */
+  product?: 'ads' | 'kilat';
 }
+
+type Copy = {
+  icon: typeof Radio;
+  title: TranslationKey;
+  subtitle: TranslationKey;
+  points: Array<{ icon: typeof Users; title: TranslationKey; desc: TranslationKey }>;
+  checkbox: TranslationKey;
+  cta: TranslationKey;
+};
+
+const COPY: Record<'ads' | 'kilat', Copy> = {
+  ads: {
+    icon: Radio,
+    title: 'adsAwarenessModalTitle',
+    subtitle: 'adsAwarenessModalSubtitle',
+    points: [
+      { icon: Users, title: 'adsAwarenessPoint1Title', desc: 'adsAwarenessPoint1Desc' },
+      { icon: Clock, title: 'adsAwarenessPoint2Title', desc: 'adsAwarenessPoint2Desc' },
+      { icon: ShieldCheck, title: 'adsAwarenessPoint3Title', desc: 'adsAwarenessPoint3Desc' },
+    ],
+    checkbox: 'adsAwarenessCheckboxLabel',
+    cta: 'adsAwarenessContinueBtn',
+  },
+  kilat: {
+    icon: Zap,
+    title: 'kilatEntryModalTitle',
+    subtitle: 'kilatEntryModalSubtitle',
+    points: [
+      { icon: Zap, title: 'kilatEntryPoint1Title', desc: 'kilatEntryPoint1Desc' },
+      { icon: Layers, title: 'kilatEntryPoint2Title', desc: 'kilatEntryPoint2Desc' },
+      { icon: AlarmClock, title: 'kilatEntryPoint3Title', desc: 'kilatEntryPoint3Desc' },
+    ],
+    checkbox: 'kilatEntryCheckboxLabel',
+    cta: 'kilatEntryContinueBtn',
+  },
+};
 
 /**
  * Pintu masuk iklan survei: hanya penjelasan mekanisme tayang, tarif, dan
@@ -24,8 +71,11 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
   isOpen,
   onClose,
   onContinue,
+  product = 'ads',
 }) => {
   const { t } = useLanguage();
+  const copy = COPY[product];
+  const HeaderIcon = copy.icon;
   const [hasAcknowledged, setHasAcknowledged] = useState(false);
 
   useEffect(() => {
@@ -66,14 +116,14 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
         <div className="px-5 sm:px-7 py-4 sm:py-4.5 border-b border-gray-100 bg-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-jfu-primary text-white flex items-center justify-center shadow-md shadow-jfu-primary/25 shrink-0">
-              <Radio className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
+              <HeaderIcon className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
             </div>
             <div className="min-w-0">
               <h2 className="text-sm sm:text-base font-extrabold text-gray-900 leading-tight truncate">
-                {t('adsAwarenessModalTitle')}
+                {t(copy.title)}
               </h2>
               <p className="text-[11px] sm:text-xs text-gray-500 truncate mt-0.5">
-                {t('adsAwarenessModalSubtitle')}
+                {t(copy.subtitle)}
               </p>
             </div>
           </div>
@@ -89,30 +139,18 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
 
         <div className="overflow-y-auto px-5 sm:px-7 py-5 sm:py-6 flex-1 min-h-0 overscroll-contain">
           <ul className="space-y-6">
-            <li className="flex items-start gap-2.5">
-              <Users className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-slate-900">{t('adsAwarenessPoint1Title')}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-slate-600">{t('adsAwarenessPoint1Desc')}</p>
-              </div>
-            </li>
-            <li className="flex items-start gap-2.5">
-              <Clock className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-slate-900">{t('adsAwarenessPoint2Title')}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-slate-600">{t('adsAwarenessPoint2Desc')}</p>
-              </div>
-            </li>
-            <li className="flex items-start gap-2.5">
-              <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-slate-900">{t('adsAwarenessPoint3Title')}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-slate-600">{t('adsAwarenessPoint3Desc')}</p>
-              </div>
-            </li>
+            {copy.points.map(({ icon: Icon, title, desc }) => (
+              <li key={title} className="flex items-start gap-2.5">
+                <Icon className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-slate-900">{t(title)}</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-slate-600">{t(desc)}</p>
+                </div>
+              </li>
+            ))}
           </ul>
           <div className="mt-6">
-            <RateNoticeBlock />
+            {product === 'kilat' ? <KilatRateBlock /> : <RateNoticeBlock />}
           </div>
         </div>
 
@@ -125,7 +163,7 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
               className="mt-0.5 size-4 shrink-0 rounded border-slate-300 text-jfu-primary focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 cursor-pointer accent-jfu-primary"
             />
             <span className="text-sm leading-relaxed text-slate-700">
-              {t('adsAwarenessCheckboxLabel')}
+              {t(copy.checkbox)}
             </span>
           </label>
 
@@ -139,7 +177,7 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
                 : 'bg-slate-100 text-slate-600 cursor-not-allowed'
             }`}
           >
-            <span>{t('adsAwarenessContinueBtn')}</span>
+            <span>{t(copy.cta)}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>

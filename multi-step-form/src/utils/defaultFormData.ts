@@ -33,10 +33,7 @@ export const DEFAULT_SURVEY_FORM_DATA: SurveyFormData = {
 
   // JFU Kilat
   isKilatUpgrade: false,
-  kilatStartDate: '',
-  kilatStartTime: '',
-  regularStartDateBackup: '',
-  regularStartTimeBackup: '',
+  kilatSlotHour: null,
 };
 
 /**

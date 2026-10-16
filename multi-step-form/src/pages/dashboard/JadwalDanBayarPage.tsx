@@ -600,8 +600,10 @@ export function JadwalDanBayarPage() {
     title: entry.title,
     bookingId: entry.bookingId,
     tag: entry.isExtension ? t('scheduleExtensionPrefix') : undefined,
-    // Kilat tidak tayang 15.00 — jangan menjanjikannya.
+    // Kilat tidak tayang 15.00 — jangan menjanjikannya. Barisnya menyebut
+    // gelombang, bukan lama tayang (Phase 5 §5.8).
     showStartTime: mode !== 'kilat',
+    kilatWaveHour: mode === 'kilat' ? entry.kilatSlotHour : undefined,
   };
   const pickDate = (ymd: string) => { setPicked(ymd); feedback.clear(); };
   /** Tautan teks di sobekan (cek status, batal, tetap tanggal lama). */

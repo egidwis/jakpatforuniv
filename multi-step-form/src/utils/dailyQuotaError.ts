@@ -14,3 +14,22 @@ export function isDailyQuotaFullError(err: unknown): boolean {
     .filter((v): v is string => typeof v === 'string')
     .some((v) => v.includes('sudah penuh'));
 }
+
+/**
+ * Penolakan gelombang Kilat dari database (sql/117): kuota per gelombang
+ * (`enforce_kilat_wave_quota`) dan klaim peneliti (`validate_kilat_wave_claim`).
+ *
+ * ⚠️ WAJIB DICEK SEBELUM `isDailyQuotaFullError`: pesan gelombang penuh juga
+ * memuat "sudah penuh", jadi cadangan teks di sana akan menelannya sebagai
+ * kuota harian Iklan. Di sini hanya HINT yang dipercaya.
+ */
+export type KilatWaveErrorKind = 'full' | 'closed' | 'invalid';
+
+export function kilatWaveErrorKind(err: unknown): KilatWaveErrorKind | null {
+  if (!err || typeof err !== 'object') return null;
+  const hint = (err as { hint?: unknown }).hint;
+  if (hint === 'kilat_wave_full') return 'full';
+  if (hint === 'kilat_wave_closed') return 'closed';
+  if (hint === 'kilat_wave_invalid') return 'invalid';
+  return null;
+}

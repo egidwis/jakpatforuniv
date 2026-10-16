@@ -50,7 +50,9 @@ const AVAILABILITY_TIMEOUT_MS = 15_000;
  */
 export function useSlotAvailability(
   mode: 'regular' | 'kilat' = 'regular',
-  excludeSubmissionId?: string
+  excludeSubmissionId?: string,
+  /** `false` = jangan mengambil apa pun (pemanggil sedang merender pemilih gelombang Kilat). */
+  enabled: boolean = true,
 ): SlotAvailability {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -85,8 +87,8 @@ export function useSlotAvailability(
   }, [mode, excludeSubmissionId]);
 
   useEffect(() => {
-    reload();
-  }, [reload]);
+    if (enabled) reload();
+  }, [reload, enabled]);
 
   /**
    * Ditelusuri lewat tanggal kalender sungguhan, bukan indeks di dalam jendela

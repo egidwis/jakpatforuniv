@@ -33,6 +33,14 @@ export const KILAT_PAY_LEAD_MIN = 60;
  */
 export const KILAT_SELF_SERVE_OPEN = false;
 
+/**
+ * Akun uji yang boleh memakai pintu Kilat sebelum dibuka untuk semua (Push
+ * Uji, rencana Phase 5 §Rilis). Huruf kecil. ⚠️ JANGAN email admin: trigger
+ * sql/117 dan create-payment.js melewati pemeriksaan untuk admin, jadi order
+ * admin tidak menguji jalur peneliti. Dikosongkan lagi di Push B.
+ */
+export const KILAT_PILOT_EMAILS: readonly string[] = [];
+
 // Turunan, bukan angka lepas. Dipakai cek ketersediaan per-hari di jalur Kilat
 // lama (JFUSUHUD, sudah mati); pemilih gelombang R5 menghitung per gelombang.
 export const MAX_KILAT_ADS_PER_DAY = KILAT_SLOT_HOURS.length * KILAT_QUOTA_PER_SLOT;

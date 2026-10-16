@@ -18,7 +18,7 @@ const staleDraft: Partial<SurveyFormData> = {
   prizePerWinner: 50000,
   voucherCode: 'JFUFEB',
   isKilatUpgrade: true,
-  kilatStartDate: '2026-10-05',
+  kilatSlotHour: 15,
   termsAccepted: true,
   customFormId: 'jfu-123',
   flaggedPersonalDataQuestions: ['NIK'],
@@ -46,7 +46,7 @@ describe('formDataForImportedSurvey — survei baru = order baru', () => {
   it('tidak membawa voucher, Kilat, jadwal, hadiah, atau S&K order lama', () => {
     expect(next.voucherCode).toBe(DEFAULT_SURVEY_FORM_DATA.voucherCode);
     expect(next.isKilatUpgrade).toBe(false);
-    expect(next.kilatStartDate).toBe('');
+    expect(next.kilatSlotHour).toBeNull();
     expect(next.startDate).toBe('');
     expect(next.endDate).toBe('');
     expect(next.duration).toBe(DEFAULT_SURVEY_FORM_DATA.duration);

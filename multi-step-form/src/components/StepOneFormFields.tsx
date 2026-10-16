@@ -258,7 +258,8 @@ export function StepOneFormFields({
 
   const showConfig = phase === 'manual' || phase === 'locked';
   const isAuto = isAutoApprovalPath(formData);
-  const voucherManual = isManualVerificationVoucher(formData.voucherCode);
+  // Kilat: voucher verifikasi manual tidak berlaku (ditolak di Ringkasan).
+  const voucherManual = !formData.isKilatUpgrade && isManualVerificationVoucher(formData.voucherCode);
   const manualReviewTitle = formData.hasPersonalDataQuestions
     ? t('surveyPathManualPiiTitle')
     : voucherManual
@@ -320,7 +321,8 @@ export function StepOneFormFields({
    */
   const availability = useSlotAvailability('regular');
   const openStartDays = useMemo(() => {
-    if (!isGoogleImport || availability.isLoading) return null;
+    // Kilat tanpa durasi dan berkuota per gelombang — ramalan per hari ini salah alamat.
+    if (!isGoogleImport || formData.isKilatUpgrade || availability.isLoading) return null;
     const days = Math.max(formData.duration || 1, 1);
     if (days > 30) return null;
     const today = new Date();
@@ -332,7 +334,7 @@ export function StepOneFormFields({
       if (!isBookingClosedForDate(ymd) && availability.isRangeAvailable(ymd, days)) open++;
     }
     return open;
-  }, [isGoogleImport, availability.isLoading, availability.isRangeAvailable, formData.duration]);
+  }, [isGoogleImport, availability.isLoading, availability.isRangeAvailable, formData.duration, formData.isKilatUpgrade]);
 
   return (
     <form onSubmit={handleSubmit} noValidate>
@@ -671,6 +673,9 @@ export function StepOneFormFields({
         <SectionLabel>{t('surveyConfiguration')}</SectionLabel>
 
         <div className={fieldRowListClass}>
+          {/* Pengecualian 1 alur Kilat (Phase 5 §5.6): tanpa pilihan durasi.
+              `duration` dipaksa 1 oleh `applyOrderProduct` dan tidak tampil. */}
+          {!formData.isKilatUpgrade && (
           <FieldBlock
             icon={CalendarDays}
             label={t('surveyDurationLabel')}
@@ -710,6 +715,7 @@ export function StepOneFormFields({
               }}
             />
           </FieldBlock>
+          )}
 
           <FieldBlock
             icon={Users}

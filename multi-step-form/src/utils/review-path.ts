@@ -32,6 +32,9 @@ export function isAutoApprovalPath(formData: SurveyFormData): boolean {
     !formData.isManualEntry &&
     !formData.hasPersonalDataQuestions &&
     formData.surveyUrl.includes('docs.google.com/forms') &&
-    !isManualVerificationVoucher(formData.voucherCode)
+    // ⚠️ Kilat: JFUFEB/ILKOMUNY TIDAK berlaku dan tidak disimpan (`submitOrder`,
+    // Phase 5 §5.1), jadi tidak boleh membelokkan order ke antrean admin.
+    // `isAutoReviewed` di sisi baris tetap sepakat: kodenya tak pernah sampai DB.
+    (formData.isKilatUpgrade || !isManualVerificationVoucher(formData.voucherCode))
   );
 }

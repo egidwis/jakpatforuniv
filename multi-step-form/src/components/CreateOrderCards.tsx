@@ -19,7 +19,9 @@ interface Product {
 
 const PRODUCTS: Product[] = [
     { id: 'ads', icon: BarChart3, titleKey: 'productAdsTitle', hookKey: 'productAdsHook', descKey: 'productAdsDesc', isActionModal: true },
-    { id: 'kilat', icon: Zap, titleKey: 'productKilatTitle', hookKey: 'productKilatHook', descKey: 'productKilatDesc', comingSoon: true },
+    // `comingSoon` dicabut per akun oleh pemanggil (`onOpenKilatModal`), bukan
+    // di sini: pintu Kilat dibuka bertahap — admin & akun uji dulu (Phase 5 §5.6).
+    { id: 'kilat', icon: Zap, titleKey: 'productKilatTitle', hookKey: 'productKilatHook', descKey: 'productKilatDesc', isActionModal: true, comingSoon: true },
 ];
 
 /**
@@ -27,13 +29,21 @@ const PRODUCTS: Product[] = [
  * hub "Buat Order" (saat user punya order) dan empty state Order Saya (saat
  * belum ada order, sebagai pengganti tombol generik "Buat Order Pertama").
  */
-export function ProductCardGrid({ onOpenAdsModal }: { onOpenAdsModal?: () => void }) {
+export function ProductCardGrid({
+    onOpenAdsModal,
+    onOpenKilatModal,
+}: {
+    onOpenAdsModal?: () => void;
+    /** Diisi HANYA untuk akun yang boleh memesan Kilat (`canUseKilatSelfServe`). */
+    onOpenKilatModal?: () => void;
+}) {
     const { t } = useLanguage();
     const visible = PRODUCTS.filter((p) => !p.hidden);
 
     const renderProductCard = (product: Product) => {
         const Icon = product.icon;
-        const isComingSoon = !!product.comingSoon;
+        const onOpen = product.id === 'kilat' ? onOpenKilatModal : onOpenAdsModal;
+        const isComingSoon = !!product.comingSoon && !(product.id === 'kilat' && onOpenKilatModal);
 
         const inner = (
             <div className="flex flex-col items-start gap-2.5 w-full h-full">
@@ -81,12 +91,12 @@ export function ProductCardGrid({ onOpenAdsModal }: { onOpenAdsModal?: () => voi
             </div>
         );
 
-        if (product.isActionModal) {
+        if (product.isActionModal && !isComingSoon) {
             return (
                 <button
                     key={product.id}
                     type="button"
-                    onClick={onOpenAdsModal}
+                    onClick={onOpen}
                     className="h-full rounded-2xl bg-gradient-to-r from-jfu-primary to-jfu-light text-white p-4 sm:p-5 shadow-md shadow-jfu-primary/20 hover:shadow-lg hover:shadow-jfu-primary/30 hover:-translate-y-0.5 transition-all duration-200 group flex flex-col border-0 text-left cursor-pointer w-full"
                 >
                     {inner}
@@ -127,7 +137,13 @@ export function ProductCardGrid({ onOpenAdsModal }: { onOpenAdsModal?: () => voi
 /**
  * Hub produk di homepage — Versi A: Clean card dengan heading sejajar My Order
  */
-export function CreateOrderCards({ onOpenAdsModal }: { onOpenAdsModal?: () => void }) {
+export function CreateOrderCards({
+    onOpenAdsModal,
+    onOpenKilatModal,
+}: {
+    onOpenAdsModal?: () => void;
+    onOpenKilatModal?: () => void;
+}) {
     const { t } = useLanguage();
 
     return (
@@ -137,7 +153,7 @@ export function CreateOrderCards({ onOpenAdsModal }: { onOpenAdsModal?: () => vo
                     {t('createNewOrder')}
                 </h2>
             </div>
-            <ProductCardGrid onOpenAdsModal={onOpenAdsModal} />
+            <ProductCardGrid onOpenAdsModal={onOpenAdsModal} onOpenKilatModal={onOpenKilatModal} />
         </div>
     );
 }

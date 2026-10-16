@@ -5,6 +5,7 @@ import type { TranslationKey } from '../../i18n/translations';
 import { toAiringStartIso, toAiringLastDayIso } from '../../utils/airing-window';
 import { formatIDR } from '../../utils/currency';
 import type { DeadlineRow } from '../../utils/reservationTicket';
+import { formatWaveHour } from '../../utils/kilatWaves';
 
 /**
  * Potongan bersama tiket reservasi. Dulu countdown dan kartu "Jadwal Tayang
@@ -140,6 +141,7 @@ export function TicketStub({
   startYmd,
   days,
   showStartTime = true,
+  kilatWaveHour,
   extraRows = [],
   deadline,
 }: {
@@ -153,6 +155,12 @@ export function TicketStub({
   days: number;
   /** Kilat tidak tayang 15.00 — jangan menjanjikannya. */
   showStartTime?: boolean;
+  /**
+   * Jadwal JFU Kilat: baris tanggal menyebut GELOMBANG, bukan lama tayang
+   * (keputusan 7 Okt: durasi Kilat tidak pernah tampil ke peneliti).
+   * `undefined` = bukan Kilat; `null` = Kilat yang gelombangnya belum dipilih.
+   */
+  kilatWaveHour?: number | null;
   extraRows?: TicketRow[];
   deadline?: DeadlineRow | null;
 }) {
@@ -180,7 +188,13 @@ export function TicketStub({
         <TicketRowView
           label={t('summaryDateLabel')}
           value={range ?? <span className="font-normal text-slate-400">{t('summaryDateNotPicked')}</span>}
-          sub={showStartTime ? `${daysLabel} · ${t('airingStartsAt')}` : daysLabel}
+          sub={
+            kilatWaveHour !== undefined
+              ? kilatWaveHour === null
+                ? t('kilatWaveNotPicked')
+                : t('kilatWaveLabel', { hour: formatWaveHour(kilatWaveHour) })
+              : showStartTime ? `${daysLabel} · ${t('airingStartsAt')}` : daysLabel
+          }
         />
         {extraRows.map((row) => <TicketRowView key={row.label} {...row} />)}
         {deadline && <DeadlineRowView row={deadline} />}

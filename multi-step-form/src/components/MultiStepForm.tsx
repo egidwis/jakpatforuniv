@@ -8,10 +8,11 @@ import { SURVEY_DRAFT_KEY, LEGACY_SURVEY_DRAFT_KEY } from '../utils/constants';
 import { DEFAULT_SURVEY_FORM_DATA } from '../utils/defaultFormData';
 import { restoreDraft } from '../utils/draftRestore';
 import { isAutoApprovalPath as computeIsAutoApprovalPath } from '../utils/review-path';
-import { isBookingClosedForDate } from '../utils/airing-window';
+import { isBookingClosedForDate, isKilatWaveBookable } from '../utils/airing-window';
 import { restoredDraftDuration } from '../utils/draftDuration';
 import { calculateTotalCost } from '../utils/cost-calculator';
 import { submitOrder, orderSubmitErrorKey } from '../utils/submitOrder';
+import { applyOrderProduct, doorProductOf } from '../utils/orderProduct';
 import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
 import { useLanguage } from '../i18n/LanguageContext';
 import { getCustomFormById } from '../utils/customForms';
@@ -54,12 +55,26 @@ export function MultiStepForm() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [isPrefillLoading, setIsPrefillLoading] = useState(() => !!searchParams.get('custom_form_id'));
 
+  /*
+    Jenis order = pintu yang dipakai (Phase 5 §5.6). Dibaca SEKALI saat mount:
+    `AuthProvider` baru merender anak setelah sesi terbaca, jadi email sudah
+    ada di sini. Parameter tetap di URL supaya muat ulang tidak membalik
+    produk; parameter dari akun yang belum boleh dibuang (lihat efek di bawah).
+  */
+  const [product] = useState(() => doorProductOf(searchParams.get('product'), user?.email));
+
   // Initialize state from localStorage if available
-  const [currentStep, setCurrentStep] = useState<number>(() => readDraft().currentStep);
+  const [currentStep, setCurrentStep] = useState<number>(() => {
+    const draft = readDraft();
+    // Draft produk lain (mis. draft Iklan dibuka lewat pintu Kilat) mulai dari
+    // Detail: konfigurasi Step 1 kedua produk tidak sama.
+    const draftKilat = !!draft.formData?.isKilatUpgrade;
+    return draftKilat === (product === 'kilat') ? draft.currentStep : 1;
+  });
 
   const [formData, setFormData] = useState<SurveyFormData>(() => {
     const draft = readDraft();
-    if (!draft.formData) return defaultFormData;
+    if (!draft.formData) return applyOrderProduct(defaultFormData, product);
 
     const merged = { ...defaultFormData, ...draft.formData };
 
@@ -81,13 +96,38 @@ export function MultiStepForm() {
     // dibuang hanya tanggal yang sudah basi: hari yang lewat, atau hari-H yang
     // sudah menembus batas pemesanan 13.00 WIB.
     const ymd = merged.startDate ? String(merged.startDate).slice(0, 10) : '';
-    if (!ymd || isBookingClosedForDate(ymd)) {
+    const hour = merged.kilatSlotHour;
+    const stale = !ymd || (merged.isKilatUpgrade
+      // Gelombang Kilat basi menurut batas pesannya sendiri (H-2 jam), bukan 13.00.
+      ? hour == null || !isKilatWaveBookable(ymd, hour)
+      : isBookingClosedForDate(ymd));
+    if (stale) {
       merged.startDate = '';
       merged.endDate = '';
       merged.startTime = '';
+      merged.kilatSlotHour = null;
     }
-    return merged;
+    return applyOrderProduct(merged, product);
   });
+
+  // `?product=kilat` dari akun yang belum boleh: buang parameternya supaya
+  // alamatnya jujur — wizard ini wizard Iklan.
+  useEffect(() => {
+    if (product !== 'kilat' && searchParams.has('product')) {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('product');
+        return next;
+      }, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Produk dijaga terus: impor Google Form survei lain memulai dari nilai awal
+  // (selalu Iklan), dan durasi Kilat tidak boleh lepas dari 1.
+  useEffect(() => {
+    setFormData((prev) => applyOrderProduct(prev, product));
+  }, [product, formData.isKilatUpgrade, formData.duration]);
 
   /*
     Step 1 punya sub-layar (pilih metode / import Google Form) yang sengaja
@@ -255,8 +295,10 @@ export function MultiStepForm() {
   }, [user]);
 
   /*
-   * Skema step: 1 = Detail Survei, 2 = Ringkasan, 3 = Jadwal Tayang,
-   * 4 = Jadwal Kilat.
+   * Skema step: 1 = Detail Survei, 2 = Ringkasan, 3 = Jadwal Tayang — SAMA
+   * untuk Iklan dan Kilat (Phase 5 §5.6). Kilat berbeda hanya di isi Step 1
+   * (tanpa durasi) dan Step 3 (pemilih gelombang). Step 4 "Jadwal Kilat" dan
+   * jalan memutarnya kembali ke Ringkasan sudah dicabut.
    *
    * Ringkasan sengaja mendahului Jadwal. Percabangan otomatis/manual jadi
    * berada di SATU titik — akhir Ringkasan — bukan tersebar di dua tempat
@@ -351,38 +393,6 @@ export function MultiStepForm() {
   const handleReviewModalConfirm = () => {
     setReviewModalData(null);
     navigate('/dashboard?status=survey_submitted', { replace: true });
-  };
-
-  const goToKilatSchedule = () => {
-    updateFormData({
-      regularStartDateBackup: formData.startDate,
-      regularStartTimeBackup: formData.startTime,
-      startDate: '',
-      startTime: '',
-    });
-    setCurrentStep(4);
-    window.scrollTo(0, 0);
-  };
-
-  const undoKilatUpgrade = () => {
-    updateFormData({
-      isKilatUpgrade: false,
-      startDate: formData.regularStartDateBackup || '',
-      startTime: formData.regularStartTimeBackup || '',
-      kilatStartDate: '',
-      kilatStartTime: '',
-      regularStartDateBackup: '',
-      regularStartTimeBackup: '',
-    });
-  };
-
-  // Dipakai StepSchedule (mode kilat). Dulu `UnifiedHeader` ikut memanggilnya
-  // — komponen itu sudah dicabut, jadi sekarang pemanggilnya tinggal satu.
-  // Kembalinya ke Ringkasan, yang kini step 2.
-  const handleKilatBack = () => {
-    undoKilatUpgrade();
-    setCurrentStep(2);
-    window.scrollTo(0, 0);
   };
 
   const cancelOrder = () => {
@@ -484,8 +494,6 @@ export function MultiStepForm() {
             nextStep={nextStep}
             onSubmitOrder={submitOrderAndRoute}
             onBack={prevStep}
-            onUpgradeKilat={goToKilatSchedule}
-            onUndoKilat={undoKilatUpgrade}
             onCancelOrder={cancelOrder}
           />
         )}
@@ -493,7 +501,16 @@ export function MultiStepForm() {
         {currentStep === 3 && (
           <StepSchedule
             formData={formData}
-            onConfirm={(ymd) => submitOrderAndRoute({ startDate: ymd, startTime: '15:00' })}
+            mode={formData.isKilatUpgrade ? 'kilat' : 'regular'}
+            onConfirm={(ymd, kilatHour) =>
+              kilatHour == null
+                ? submitOrderAndRoute({ startDate: ymd, startTime: '15:00' })
+                : submitOrderAndRoute({
+                    startDate: ymd,
+                    startTime: `${String(kilatHour).padStart(2, '0')}:00`,
+                    kilatSlotHour: kilatHour,
+                  })
+            }
             /*
               Jadwal ulang mendarat LANGSUNG di sini (StatusPage menulis draft
               currentStep 3) — step 2 di belakangnya adalah Ringkasan submit
@@ -514,35 +531,13 @@ export function MultiStepForm() {
                 : () => {
                     // Jadwal belum ter-lock — bersihkan agar Step 2 tahu bahwa
                     // user masih perlu memilih jadwal, bukan langsung submit.
-                    updateFormData({ startDate: '', endDate: '', startTime: '' });
+                    updateFormData({ startDate: '', endDate: '', startTime: '', kilatSlotHour: null });
                     prevStep();
                   }
             }
           />
         )}
 
-        {currentStep === 4 && (
-          <StepSchedule
-            formData={formData}
-            mode="kilat"
-            onBack={handleKilatBack}
-            onConfirm={async (ymd) => {
-              // Kilat memilih tanggalnya lebih dulu, lalu kembali ke Ringkasan
-              // untuk konfirmasi akhir — di sana CTA-nya langsung mengunci &
-              // membayar, karena jadwalnya sudah ada.
-              updateFormData({
-                isKilatUpgrade: true,
-                startDate: ymd,
-                startTime: '15:00',
-                kilatStartDate: ymd,
-                kilatStartTime: '15:00',
-              });
-              setCurrentStep(2);
-              window.scrollTo(0, 0);
-              return true;
-            }}
-          />
-        )}
       </div>
 
       <ReviewSubmissionModal
