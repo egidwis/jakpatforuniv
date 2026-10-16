@@ -176,17 +176,19 @@ export function kilatRateAt(questionCount, atMs, tariffFrom = KILAT_TARIFF_FROM)
 
 /**
  * Diskon voucher Kilat. Cermin `calculateKilatDiscount()` di cost-calculator.ts:
- * ambassador = 10% tarif Kilat, JFUTGRX = total dipatok Rp 1.000, kode lain 0,
- * dan selalu 0 pada rumus lama.
+ * ambassador = 10% tarif Kilat (0 pada rumus lama), JFUTGRX = total dipatok
+ * Rp 1.000 (juga pada rumus lama), kode lain 0.
  */
 export function calculateKilatDiscount(voucherCode, kilatAdCost, incentiveCost, legacy) {
-  if (!voucherCode || legacy) return 0;
+  if (!voucherCode) return 0;
   const code = String(voucherCode).toUpperCase();
   if (!KILAT_VOUCHER_CODES.includes(code)) return 0;
+  // JFUTGRX = Rp 1.000 juga pada rumus lama (opsi A, 16 Okt); ambassador tidak.
   if (code === 'JFUTGRX') {
     const totalBeforeDiscount = kilatAdCost + incentiveCost;
     return totalBeforeDiscount > 1000 ? totalBeforeDiscount - 1000 : 0;
   }
+  if (legacy) return 0;
   return kilatAdCost * 0.1;
 }
 
@@ -496,8 +498,8 @@ export function buildNoteItems(sub, pricingSub, kilatTariffFrom = KILAT_TARIFF_F
   // JFUTGRX mematok iklan + hadiah jadi Rp 1.000 — tak bisa dipecah ke baris
   // iklan & hadiah tanpa harga negatif (dulu: iklan Rp0 + hadiah penuh, jumlah
   // ≠ subtotal). Satu baris biaya uji, sama dengan prefill invoice admin
-  // (`buildOrderInvoiceItems`). Hanya bila potongannya MEMANG berlaku: Kilat
-  // rumus lama tidak menerima voucher, jadi tetap rincian penuh.
+  // (`buildOrderInvoiceItems`). Berlaku juga untuk Kilat rumus lama (opsi A,
+  // 16 Okt): basisnya tarif + add-on, persis `calculateKilatDiscount`.
   const testingFee = (base) => {
     if (!noteVoucherCode || noteVoucherCode.toUpperCase() !== 'JFUTGRX') return false;
     const total = base + noteIncentive;
@@ -507,7 +509,7 @@ export function buildNoteItems(sub, pricingSub, kilatTariffFrom = KILAT_TARIFF_F
   };
   if (noteIsKilat) {
     const rate = kilatRateAt(noteQuestionCount, pricingSub.rate_instant, kilatTariffFrom);
-    if (!rate.legacy && testingFee(rate.effective)) return noteItems;
+    if (testingFee(rate.effective + rate.addon)) return noteItems;
     if (rate.legacy) {
       // Rumus lama — dua baris, persis seperti yang dulu ditagih.
       noteItems.push({

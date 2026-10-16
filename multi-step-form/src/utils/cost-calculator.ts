@@ -314,8 +314,12 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
  * Hanya kode yang `kilatEligible` di VOUCHER_CATALOG yang bekerja:
  *   - kode ambassador → 10% dari TARIF Kilat (`kilatAdCost`), bukan dari hadiah;
  *   - JFUTGRX         → total (iklan + hadiah) dipatok Rp 1.000, sama seperti Iklan.
- * Kode lain = 0. Sebelum KILAT_TARIFF_FROM (rumus lama) selalu 0 — order Kilat
- * lama memang dikutip tanpa diskon.
+ * Kode lain = 0.
+ *
+ * Sebelum KILAT_TARIFF_FROM (rumus lama): kode ambassador = 0 (order Kilat lama
+ * memang dikutip tanpa diskon), TETAPI JFUTGRX tetap Rp 1.000 — voucher uji
+ * internal, dipakai bayar DOKU nyata di Push Uji (keputusan 16 Okt, opsi A).
+ * Pada rumus lama `kilatAdCost` = tarif + add-on, jadi add-on ikut terpatok.
  *
  * `rateAtMs` = instan tarif (yang memilih rumus). Kode yang berlaku untuk Kilat
  * tidak punya masa berlaku, jadi instan voucher tidak dibutuhkan.
@@ -326,13 +330,14 @@ export function calculateKilatDiscount(
   incentiveCost: number,
   rateAtMs: number,
 ): number {
-  if (!voucherCode || !isKilatTariffActive(rateAtMs)) return 0;
+  if (!voucherCode) return 0;
   const code = voucherCode.toUpperCase();
   if (!KILAT_VOUCHER_CODES.includes(code)) return 0;
   if (code === 'JFUTGRX') {
     const totalBeforeDiscount = kilatAdCost + incentiveCost;
     return totalBeforeDiscount > 1000 ? totalBeforeDiscount - 1000 : 0;
   }
+  if (!isKilatTariffActive(rateAtMs)) return 0;
   return kilatAdCost * 0.1;
 }
 
@@ -486,10 +491,12 @@ export function getVoucherInfo(
   // supaya JFUFEB/ILKOMUNY tidak bisa membelokkan order Kilat ke antrean
   // review manual. Kode resmi lain diberi pesan khusus, bukan "tidak dikenal".
   if (product === 'kilat') {
+    if (upperCode === 'JFUTGRX') return { isValid: true };
     if (KILAT_VOUCHER_CODES.includes(upperCode)) {
-      return upperCode === 'JFUTGRX'
-        ? { isValid: true }
-        : { isValid: true, message: 'Diskon 10% dari tarif JFU Kilat (kode ambassador)', discount: 10 };
+      // Kode ambassador baru memotong sejak tarif Kilat baru (opsi A, 16 Okt).
+      return isKilatTariffActive(atMs)
+        ? { isValid: true, message: 'Diskon 10% dari tarif JFU Kilat (kode ambassador)', discount: 10 }
+        : { isValid: false, message: 'Kode ambassador belum memotong harga JFU Kilat saat ini.', isError: false };
     }
     if (OFFICIAL_VOUCHER_CODES.includes(upperCode)) {
       return {

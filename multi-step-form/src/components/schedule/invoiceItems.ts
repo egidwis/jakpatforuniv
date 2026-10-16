@@ -80,10 +80,9 @@ export function buildOrderInvoiceItems(
   const winnerCount = input.winnerCount || 0;
   const prizePerWinner = input.prizePerWinner || 0;
 
-  // JFUTGRX tidak berlaku untuk Kilat rumus lama (tanpa voucher) — server
-  // menagihnya harga penuh, jadi prefill pun harus penuh.
-  const kilatLegacy = !!input.isKilat && kilatRateAt(questionCount, input.rateInstantMs).legacy;
-  if (input.voucherCode?.toUpperCase() === 'JFUTGRX' && !kilatLegacy) {
+  // JFUTGRX berlaku juga untuk Kilat rumus lama (opsi A, 16 Okt) — satu baris
+  // biaya uji, sama dengan `buildNoteItems` di create-payment.js.
+  if (input.voucherCode?.toUpperCase() === 'JFUTGRX') {
     return {
       items: [{
         id: nextId(),
@@ -309,10 +308,10 @@ export function describeVoucher(
   const code = (voucherCode || '').trim();
   if (!code) return null;
   if (kilat) {
-    if (!isKilatTariffActive(kilat.rateInstantMs) || !KILAT_VOUCHER_CODES.includes(code.toUpperCase())) return null;
     if (code.toUpperCase() === 'JFUTGRX') {
       return { discount: 0, label: 'Voucher uji sistem — tagihan dipatok Rp 1.000' };
     }
+    if (!isKilatTariffActive(kilat.rateInstantMs) || !KILAT_VOUCHER_CODES.includes(code.toUpperCase())) return null;
     const discount = calculateKilatDiscount(code, kilat.adCost, input.incentiveCost, kilat.rateInstantMs);
     if (discount <= 0) return null;
     return {

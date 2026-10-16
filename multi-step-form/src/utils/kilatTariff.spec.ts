@@ -1,8 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { AD_RATE_SCHEDULE, KILAT_RATE_SCHEDULE, KILAT_TARIFF_FROM } from './constants';
-import {
-  adRateAt, calculateTotalCost, kilatRateAt, KILAT_VOUCHER_CODES, VOUCHER_CATALOG,
-} from './cost-calculator';
+import { adRateAt, calculateTotalCost, kilatRateAt, KILAT_VOUCHER_CODES, VOUCHER_CATALOG, getVoucherInfo } from './cost-calculator';
 import type { SurveyFormData } from '../types';
 import { buildOrderInvoiceItems, describeVoucher } from '../components/schedule/invoiceItems';
 // @ts-ignore -- Pages Function tanpa deklarasi tipe
@@ -89,7 +87,7 @@ describe('selama tidur: rumus lama persis', () => {
     }
   });
 
-  test.each(['', 'JFUGITA', 'JFUTGRX', 'JFUFEB', 'ILKOMUNY', 'TEGARGANTENG', 'JFUSUHUD'])(
+  test.each(['', 'JFUGITA', 'JFUFEB', 'ILKOMUNY', 'TEGARGANTENG', 'JFUSUHUD'])(
     'voucher %s tidak memotong apa pun; klien = server',
     (voucherCode) => {
       for (const at of INSTANTS) {
@@ -128,7 +126,23 @@ describe('selama tidur: rumus lama persis', () => {
     expect(sum).toBe(server.computeTotalCostFromSubmission(row).subtotal);
   });
 
-  test('JFUTGRX tidak memotong Kilat lama: prefill admin = kwitansi server (harga penuh)', () => {
+  test('JFUTGRX pada rumus lama: total dipatok Rp1.000 (opsi A, 16 Okt); klien = server', () => {
+    for (const at of INSTANTS) {
+      for (const q of QS) {
+        const client = calculateTotalCost(formOf({ questionCount: q, voucherCode: 'JFUTGRX' }), at);
+        expect(client.kilatTariff).toBe(false);
+        expect(client).toMatchObject({ subtotal: 1_000, totalCost: 1_110 });
+        const priced = server.computeTotalCostFromSubmission(server.pricingRowForSchedule({
+          question_count: q, duration: 1, winner_count: 2, prize_per_winner: 25000,
+          voucher_code: 'JFUTGRX', distribution_type: 'kilat', created_at: new Date(at).toISOString(),
+        }, null, null, at));
+        expect(priced.subtotal).toBe(1_000);
+        expect(priced.total).toBe(client.totalCost);
+      }
+    }
+  });
+
+  test('JFUTGRX Kilat lama: prefill admin = kwitansi server (satu baris biaya uji)', () => {
     const at = T('2026-12-10T10:00:00+07:00');
     const order = {
       id: 'o', created_at: new Date(at).toISOString(), question_count: 40, duration: 1,
@@ -142,10 +156,17 @@ describe('selama tidur: rumus lama persis', () => {
     }).items;
     expect(admin.map(({ name, qty, price }) => ({ name, qty, price })))
       .toEqual(serverItems.map(({ name, qty, price }: { name: string; qty: number; price: number }) => ({ name, qty, price })));
+    expect(admin.map(({ name, price }) => [name, price])).toEqual([['System Testing Fee (JFUTGRX)', 1_000]]);
     expect(sumOf(admin)).toBe(server.computeTotalCostFromSubmission(row).subtotal);
   });
 
-  test.each(['JFUGITA', 'JFUTGRX', 'JFUFEB'])('label voucher admin untuk Kilat lama: %s → null (tidak mengubah harga)', (code) => {
+  test('label voucher admin Kilat lama: JFUTGRX = biaya uji', () => {
+    const at = T('2026-12-10T10:00:00+07:00');
+    expect(describeVoucher('JFUTGRX', { adCost: 300_000, incentiveCost: 50_000, duration: 1 }, { adCost: 500_000, rateInstantMs: at })?.label)
+      .toBe('Voucher uji sistem — tagihan dipatok Rp 1.000');
+  });
+
+  test.each(['JFUGITA', 'JFUFEB'])('label voucher admin untuk Kilat lama: %s → null (tidak mengubah harga)', (code) => {
     const at = T('2026-12-10T10:00:00+07:00');
     expect(describeVoucher(code, { adCost: 300_000, incentiveCost: 50_000, duration: 1 }, { adCost: 500_000, rateInstantMs: at })).toBeNull();
   });
@@ -162,5 +183,17 @@ describe('JFUTGRX Iklan: kwitansi menjumlah ke subtotal', () => {
     const items = server.buildNoteItems(order, row);
     expect(server.computeTotalCostFromSubmission(row).subtotal).toBe(1_000);
     expect(items).toEqual([{ name: 'System Testing Fee (JFUTGRX)', qty: 1, price: 1_000, category: 'Lainnya' }]);
+  });
+});
+
+describe('getVoucherInfo form Kilat selama rumus lama (opsi A, 16 Okt)', () => {
+  const at = T('2026-12-10T10:00:00+07:00');
+  test('JFUTGRX sah; kode ambassador belum memotong (bukan galat)', () => {
+    expect(getVoucherInfo('JFUTGRX', 1, at, 'kilat')).toEqual({ isValid: true });
+    const amb = KILAT_VOUCHER_CODES.find((c) => c !== 'JFUTGRX')!;
+    expect(getVoucherInfo(amb, 1, at, 'kilat')).toMatchObject({ isValid: false, isError: false });
+  });
+  test('kode non-Kilat tetap ditolak sebagai galat', () => {
+    expect(getVoucherInfo('JFUFEB', 1, at, 'kilat')).toMatchObject({ isValid: false, isError: true });
   });
 });
