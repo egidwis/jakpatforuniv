@@ -15,7 +15,7 @@ import { isTempoBillLocked } from '@/utils/supabase';
 import { InvoiceGroupPanel } from './InvoiceGroupPanel';
 import { formatIDR } from '@/utils/currency';
 import { copyToClipboard } from '../types';
-import { isPaymentTooLateForDate, paymentCutoffInstant, toWibYmd } from '@/utils/airing-window';
+import { isPayDeadlinePassed, payDeadlineFor, toWibYmd } from '@/utils/airing-window';
 // Derivasi chip diimpor, TIDAK disalin. Papan Schedule dan drawer ini harus
 // menamai keadaan yang sama dengan nama yang sama.
 import { isUnscheduled, formatWibShort, formatWibTime } from '@/pages/dashboard/schedule/scheduleModel';
@@ -179,14 +179,16 @@ function InvoiceRow({
   // Tagihan tempo tidak punya batas bayar (sql/102) — tanggal tayang yang sudah
   // lewat justru keadaan normalnya, bukan alasan mencoret.
   const tempo = inv.isTempo;
-  const isLate = !inv.isPaid && !tempo && ymd ? isPaymentTooLateForDate(ymd) : false;
+  // Kilat (R6): batas bayar = gelombang − 60 menit, bukan 14.00.
+  const kilatHour = entry.distributionType === 'kilat' ? entry.kilatSlotHour ?? null : null;
+  const isLate = !inv.isPaid && !tempo && ymd ? isPayDeadlinePassed(ymd, kilatHour) : false;
   const isHoldExpired = !inv.isPaid && !tempo && (
     Boolean(isHoldLapsed) ||
     entry.paymentStatus === 'expired' ||
     isEntryHoldLapsed(entry) ||
     isLate
   );
-  const cutoff = ymd && !tempo ? paymentCutoffInstant(ymd) : null;
+  const cutoff = ymd && !tempo ? payDeadlineFor(ymd, kilatHour) : null;
   /** Dibatalkan KARENA DIPERBARUI `/bayar/`, bukan oleh admin. */
   const renewedTo = inv.status.toLowerCase() === 'cancelled' ? group?.supersededBy ?? null : null;
 

@@ -124,6 +124,80 @@ export const KILAT_VOUCHER_CODES = [
   'JFUTGRX',
 ];
 
+// ── BATAS BAYAR GELOMBANG KILAT (Phase 5 §5.7, R6) ─────────────────────
+//
+// Cermin `kilatWaveInstant`/`kilatPayDeadline` (airing-window.ts) dan
+// `KILAT_PAY_LEAD_MIN` (constants.ts) — Pages Function tidak bisa mengimpor
+// dari src/, jadi disalin dan paritasnya diuji (`kilatPaymentGate.spec.ts`).
+//
+// ⚠️ INSTAN GELOMBANG DIHITUNG DARI TANGGAL WIB + `kilat_slot_hour`, BUKAN
+// dibaca dari jam `ad_schedules.start_date`. Diukur 16 Okt 2026: 20 dari 21
+// cermin Kilat bertanggal memang memegang instan gelombangnya, tapi satu
+// (e56f4853, gelombang 11.00) bercermin 15.00 — sisa sebelum sinkron jam
+// gelombang. Membaca jamnya akan memberi baris itu batas bayar 4 jam terlambat.
+
+/** Batas bayar = gelombang − 60 menit. Cermin `KILAT_PAY_LEAD_MIN`. */
+export const KILAT_PAY_LEAD_MIN = 60;
+const WIB_OFFSET_MS = 7 * 3_600_000;
+
+/** Tanggal kalender WIB (YYYY-MM-DD) dari sebuah instan; `null` bila tak terbaca. */
+export function wibYmdOf(value) {
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms + WIB_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/** Instan gelombang `hour`.00 WIB pada tanggal `ymd`, dalam ms. */
+export function kilatWaveInstantMs(ymd, hour) {
+  const [y, m, d] = String(ymd).split('-').map(Number);
+  return Date.UTC(y, m - 1, d, hour) - WIB_OFFSET_MS;
+}
+
+/**
+ * Boleh menerbitkan tagihan untuk gelombang ini? Kilat TIDAK punya "tetap
+ * bayar" seperti Iklan lewat 14.00 — push gelombang yang terlewat tidak bisa
+ * "dikonfirmasi tanggal barunya" oleh tim; peneliti memilih gelombang lain.
+ *
+ * Tepat di detik batas masih boleh (`now >`), sama dengan klien
+ * (`isPayDeadlinePassed`) dan dengan batas pesan di sql/117.
+ *
+ * @param {{ startDate: string | null | undefined, kilatHour: number | string | null | undefined }} wave
+ * @returns {{ ok: true, deadlineMs: number } | { ok: false, code: 'kilat_wave_missing' | 'kilat_pay_closed', error: string, deadlineMs?: number }}
+ */
+export function kilatPaymentGate(wave, nowMs = Date.now()) {
+  const hour = wave?.kilatHour == null ? NaN : Number(wave.kilatHour);
+  const ymd = wave?.startDate ? wibYmdOf(wave.startDate) : null;
+  if (!ymd || !Number.isInteger(hour)) {
+    return {
+      ok: false,
+      code: 'kilat_wave_missing',
+      error: 'Order Kilat ini belum punya gelombang. Pilih gelombang dulu di halaman Jadwal & Bayar.',
+    };
+  }
+  const deadlineMs = kilatWaveInstantMs(ymd, hour) - KILAT_PAY_LEAD_MIN * 60_000;
+  if (nowMs > deadlineMs) {
+    return {
+      ok: false,
+      code: 'kilat_pay_closed',
+      deadlineMs,
+      error: 'Batas bayar gelombang Kilat ini sudah lewat (1 jam sebelum gelombang). Pilih gelombang lain di halaman Jadwal & Bayar.',
+    };
+  }
+  return { ok: true, deadlineMs };
+}
+
+/**
+ * Umur link DOKU (menit) untuk Kilat: tidak boleh melewati batas bayar.
+ * Lantai 1 menit — `payment_due_date: 0` di DOKU berarti "pakai setelan
+ * dashboard", bukan "mati seketika" (lihat `dokuLifetimeMinutes`, payment.ts).
+ * Akibatnya link yang terbit di menit terakhir bisa hidup ≤ 60 detik melewati
+ * batas; itu lebih murah daripada link tanpa umur.
+ */
+export function kilatDueMinutes(requestedMinutes, deadlineMs, nowMs = Date.now()) {
+  const left = Math.floor((deadlineMs - nowMs) / 60_000);
+  return Math.max(1, Math.min(requestedMinutes, left));
+}
+
 function tierIndexOf(questionCount) {
   if (questionCount <= 15) return 0;
   if (questionCount <= 30) return 1;
@@ -809,7 +883,7 @@ export async function onRequest(context) {
       const schedRes = await fetch(
         `${supabaseUrl}/rest/v1/ad_schedules?id=eq.${encodeURIComponent(scheduleId)}` +
           `&select=id,submission_id,source_id,ordinal,status,payment_status,` +
-          `slot_booked_by,slot_reserved_at,start_date,end_date,duration,` +
+          `slot_booked_by,slot_reserved_at,start_date,end_date,duration,kilat_slot_hour,` +
           `prize_per_winner,winner_count,additional_prize_per_winner,is_new_period,voucher_code,` +
           // ⚠️ Kolom sql/103. Belum diterapkan = SELECT ini ditolak = SEMUA
           // checkout jadwal ke-2 dst. 502. SQL-nya wajib mendahului deploy.
@@ -896,6 +970,41 @@ export async function onRequest(context) {
       }
     } catch (e) {
       console.warn('[create-payment] Pemeriksaan kredit gagal — dilanjutkan seperti biasa:', e);
+    }
+
+    /*
+      ── KILAT: GELOMBANG WAJIB ADA & BATAS BAYARNYA BELUM LEWAT (R6) ──────
+      Sesudah penjaga kredit (tagihan tempo menjawab lebih dulu) dan SEBELUM
+      penulisan apa pun — koreksi `total_cost`, pencabutan tagihan lama, DOKU.
+      Gagal membaca jadwal = 502, bukan lolos: menebak di sini menerbitkan link
+      untuk gelombang yang mungkin sudah lewat.
+
+      Jadwal ke-2 dst. (5.10) membawa gelombangnya sendiri di baris jadwal;
+      ordinal 1 dibaca dari cerminnya.
+    */
+    let kilatDeadlineMs = null;
+    if (sub.distribution_type === 'kilat') {
+      let wave = schedule ? { startDate: schedule.start_date, kilatHour: schedule.kilat_slot_hour } : null;
+      if (!wave) {
+        const waveRes = await fetch(
+          `${supabaseUrl}/rest/v1/ad_schedules?submission_id=eq.${encodeURIComponent(formSubmissionId)}` +
+            `&ordinal=eq.1&select=start_date,kilat_slot_hour&limit=1`,
+          { headers: sbHeaders }
+        );
+        if (!waveRes.ok) {
+          console.error(`[create-payment] Gagal membaca gelombang Kilat ${formSubmissionId} (status ${waveRes.status}).`);
+          return json({ error: 'Could not read Kilat wave' }, 502);
+        }
+        const waveRows = await waveRes.json();
+        const row = Array.isArray(waveRows) ? waveRows[0] : null;
+        wave = { startDate: row?.start_date ?? null, kilatHour: row?.kilat_slot_hour ?? null };
+      }
+      const verdict = kilatPaymentGate(wave);
+      if (!verdict.ok) {
+        console.warn(`[create-payment] Kilat ${formSubmissionId} ditolak: ${verdict.code}.`);
+        return json({ error: verdict.error, [verdict.code]: true }, 409);
+      }
+      kilatDeadlineMs = verdict.deadlineMs;
     }
 
     // ── TAGIHAN YANG SUDAH ADA — dibaca SEKALI, dipakai dua kali ──────────
@@ -1080,7 +1189,10 @@ export async function onRequest(context) {
       }
     }
 
-    const dueDate = Number(paymentDueDate) > 0 ? Math.round(Number(paymentDueDate)) : 60;
+    const requestedDue = Number(paymentDueDate) > 0 ? Math.round(Number(paymentDueDate)) : 60;
+    // Kilat: link tidak boleh hidup melewati gelombang − 60 menit, berapa pun
+    // umur yang diminta browser (yang tidak dipercaya).
+    const dueDate = kilatDeadlineMs !== null ? kilatDueMinutes(requestedDue, kilatDeadlineMs) : requestedDue;
 
     // ── Jendela yang DITAGIHKAN — dibaca dari `ad_schedules`, BUKAN dari
     //    `form_submissions`.
@@ -1185,7 +1297,11 @@ export async function onRequest(context) {
           r.invoice_url &&
           Number(r.amount) === amount &&
           sameInstant(r.billed_start_date, billedStartDate) &&
-          r.expires_at && new Date(r.expires_at).getTime() > Date.now()
+          r.expires_at && new Date(r.expires_at).getTime() > Date.now() &&
+          // Kilat: link yang hidup MELEWATI batas bayar (terbit sebelum R6)
+          // tidak dipakai ulang — ia ikut dicabut di bawah dan diganti link
+          // berumur benar. Toleransi 60 detik = lantai `kilatDueMinutes`.
+          (kilatDeadlineMs === null || new Date(r.expires_at).getTime() <= kilatDeadlineMs + 60_000)
         );
         // ⚠️ JANGAN PERNAH PAKAI ULANG LINK TAGIHAN GABUNGAN.
         //

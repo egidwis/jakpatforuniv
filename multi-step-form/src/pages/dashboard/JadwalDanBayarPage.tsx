@@ -14,6 +14,7 @@ import {
 import type { AdScheduleEntry, FormSubmission } from '../../utils/supabase';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { SchedulePicker } from '../../components/SchedulePicker';
+import { KilatWavePicker } from '../../components/KilatWavePicker';
 import { CostBreakdown } from '../../components/CostBreakdown';
 import { ScheduleReservationLayout, TicketSkeleton } from '../../components/schedule/ScheduleReservationLayout';
 import {
@@ -33,11 +34,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { lockedDateFitsHorizon } from '../../utils/scheduleHorizon';
-import { toWibYmd, toAiringStartIso, isPaymentTooLateForDate } from '../../utils/airing-window';
+import { toWibYmd, toAiringStartIso, isPayDeadlinePassed, payDeadlineFor, formatWibTime } from '../../utils/airing-window';
 import { airingDayCount } from './schedule/scheduleModel';
 import { useSlotAvailability } from '../../hooks/useSlotAvailability';
+import { useKilatWaveAvailability } from '../../hooks/useKilatWaveAvailability';
+import { kilatLockGate, formatWaveHour, type KilatWaveDraft } from '../../utils/kilatWaves';
 import { scheduleLockGate } from '../../utils/scheduleLockGate';
-import { isDailyQuotaFullError } from '../../utils/dailyQuotaError';
+import { isDailyQuotaFullError, kilatWaveErrorKind } from '../../utils/dailyQuotaError';
 import { schedulePageState } from '../../utils/schedulePageState';
 import { expiryPlanFor } from '../../utils/scheduleExpiry';
 import { segmentTitleOf } from '../../utils/segmentTitle';
@@ -113,6 +116,8 @@ export function JadwalDanBayarPage() {
   const [isOpeningPay, setIsOpeningPay] = useState(false);
   const [isCheckingPayment, setIsCheckingPayment] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
+  /** Pilihan gelombang — jadwal KILAT saja (Phase 5 §5.7, R6). */
+  const [pickedWave, setPickedWave] = useState<KilatWaveDraft | null>(null);
   /** Teguran zona kunci tiket — inline + toast dari kunci yang sama. */
   const feedback = useLockFeedback();
   /**
@@ -149,9 +154,20 @@ export function JadwalDanBayarPage() {
   // saat PILIH ULANG order berjadwal tunggal — tanggal yang sedang ia lepas
   // tidak boleh tampak penuh oleh dirinya sendiri. Untuk perpanjangan jangan:
   // jadwal pertama masih memakan kuota harinya (`assert_daily_ad_quota_free`).
+  /*
+    ⚠️ KILAT MEMILIH GELOMBANG, BUKAN HARI (Phase 5 §5.7, R6). Kedua hook selalu
+    dipanggil (aturan hooks); hanya satu yang mengambil data. Pengecualian
+    order sendiri sama alasannya dengan kalender Iklan di atas.
+  */
+  const isKilatEntry = entry?.distributionType === 'kilat';
   const availability = useSlotAvailability(
-    entry?.distributionType === 'kilat' ? 'kilat' : 'regular',
+    'regular',
     repickAllowed ? entry?.submissionId : undefined,
+    !!entry && !isKilatEntry,
+  );
+  const waves = useKilatWaveAvailability(
+    repickAllowed ? entry?.submissionId : undefined,
+    isKilatEntry,
   );
 
   const load = useCallback(async () => {
@@ -225,13 +241,22 @@ export function JadwalDanBayarPage() {
   const lockedYmd = entry?.startDate ? toWibYmd(new Date(entry.startDate)) : null;
   const lockedDays = entry ? (airingDayCount(entry.startDate, entry.endDate) ?? entry.duration ?? 1) : 1;
   const lockedFits = lockedDateFitsHorizon(lockedYmd);
+  /** Jam gelombang jadwal ini — `null` untuk Iklan (lihat `payDeadlineFor`). */
+  const kilatHour = isKilatEntry ? entry?.kilatSlotHour ?? null : null;
   /**
-   * Batas bayar 14.00 WIB hari tayang sudah lewat. ⚠️ MURNI TAMPILAN — yang
-   * habis bukan reservasinya, melainkan waktu admin menyiapkan halaman iklan.
-   * Tidak pernah dipakai untuk melepas slot.
+   * Batas bayar hari tayang sudah lewat: Iklan 14.00 WIB, Kilat gelombang − 60
+   * menit (R6). ⚠️ MURNI TAMPILAN — yang habis bukan reservasinya, melainkan
+   * waktu admin menyiapkan halaman/push. Tidak pernah dipakai untuk melepas slot.
    */
   const tooLate = state?.screen === 'awaiting_payment' && !owedOnCredit
-    && !!lockedYmd && isPaymentTooLateForDate(lockedYmd);
+    && !!lockedYmd && isPayDeadlinePassed(lockedYmd, kilatHour);
+  /**
+   * ⚠️ KILAT TIDAK PUNYA "TETAP BAYAR". Iklan lewat 14.00 masih boleh dibayar
+   * (tim mengonfirmasi tanggal baru); gelombang Kilat yang lewat batas bayar
+   * ditolak server (`kilatPaymentGate`, create-payment.js) — tombol yang pasti
+   * berujung 409 tidak boleh dirender.
+   */
+  const kilatPayClosed = isKilatEntry && tooLate;
   const holdExpired = !!entry && isSlotHoldReleased({
     slotBookedBy: entry.slotBookedBy,
     slotReservedAt: entry.slotReservedAt,
@@ -359,9 +384,10 @@ export function JadwalDanBayarPage() {
         slotBookedBy: entry.slotBookedBy,
         slotReservedAt: entry.slotReservedAt,
         lockedYmd,
+        kilatHour,
       }).toISOString(),
     });
-  }, [entry, submission, lockedYmd]);
+  }, [entry, submission, lockedYmd, kilatHour]);
 
   /*
     ── SATU PEMICU PENERBITAN TAGIHAN ──
@@ -468,6 +494,10 @@ export function JadwalDanBayarPage() {
    */
   const handleLock = async () => {
     if (!entry) return;
+    if (isKilatEntry) {
+      await handleLockWave();
+      return;
+    }
     const verdict = scheduleLockGate({
       selected: picked,
       duration: entry.duration || 1,
@@ -497,6 +527,48 @@ export function JadwalDanBayarPage() {
         feedback.report({ key: 'slotErrorFull', tone: 'error' }, { scroll: true });
         setPicked(null);
         void availability.reload();
+      } else {
+        toast.error(t('rebookError'));
+      }
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  /**
+   * Kunci / pilih ulang GELOMBANG Kilat — primitif yang SAMA
+   * (`rebookSlotForSubmission`), kini dengan jam gelombang. Gerbangnya
+   * `kilatLockGate`, sama dengan Step 3 wizard; trigger sql/117 tetap penjaga
+   * terakhir dan galatnya dipetakan lewat HINT, bukan teks.
+   */
+  const handleLockWave = async () => {
+    if (!entry) return;
+    const verdict = kilatLockGate(pickedWave, waves);
+    if (!verdict.ok) {
+      feedback.report(
+        { key: verdict.messageKey, tone: verdict.reason === 'no_date' || verdict.reason === 'no_wave' ? 'warning' : 'error' },
+        { scroll: true },
+      );
+      if (verdict.clearSelection && pickedWave) setPickedWave({ ymd: pickedWave.ymd, hour: null });
+      if (verdict.shouldReload) void waves.reload();
+      return;
+    }
+
+    feedback.clear();
+    setIsWorking(true);
+    try {
+      await rebookSlotForSubmission(entry.submissionId, verdict.ymd, 1, { kilatHour: verdict.hour });
+      toast.success(t('rebookSuccess'));
+      setPickedWave(null);
+      setRepickMode(false);
+      await load();
+    } catch (e) {
+      console.error('Gagal mengunci gelombang:', e);
+      const kind = kilatWaveErrorKind(e);
+      if (kind) {
+        feedback.report({ key: kind === 'full' ? 'errorSlotFullKilat' : 'kilatErrorWaveClosed', tone: 'error' }, { scroll: true });
+        setPickedWave((w) => (w ? { ymd: w.ymd, hour: null } : null));
+        void waves.reload();
       } else {
         toast.error(t('rebookError'));
       }
@@ -606,6 +678,17 @@ export function JadwalDanBayarPage() {
     kilatWaveHour: mode === 'kilat' ? entry.kilatSlotHour : undefined,
   };
   const pickDate = (ymd: string) => { setPicked(ymd); feedback.clear(); };
+  /** Isi tiket saat MEMILIH: Kilat = tanggal + gelombang pilihan, Iklan = tanggal. */
+  const pickStub = mode === 'kilat'
+    ? { startYmd: pickedWave?.ymd ?? null, kilatWaveHour: pickedWave?.hour ?? null }
+    : { startYmd: picked };
+  /** Jadwal lama sebagai teks pendek — Kilat ikut menyebut gelombangnya. */
+  const lockedLabel = lockedYmd
+    ? kilatHour != null
+      ? `${shortDate(lockedYmd)} · ${formatWaveHour(kilatHour)} WIB`
+      : shortDate(lockedYmd)
+    : null;
+  const payDeadlineLabel = lockedYmd ? formatWibTime(payDeadlineFor(lockedYmd, kilatHour).toISOString()) : '';
   /** Tautan teks di sobekan (cek status, batal, tetap tanggal lama). */
   const textLink =
     'inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-600 underline-offset-2 transition-colors hover:text-slate-900 hover:underline disabled:opacity-50 disabled:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 rounded';
@@ -634,7 +717,31 @@ export function JadwalDanBayarPage() {
     </div>
   );
 
-  const liveCalendar = (
+  const liveCalendar = mode === 'kilat' ? (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-start gap-2 text-sm text-slate-600">
+          <Info className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
+          <span>{t('kilatWaveCutoffNote')}</span>
+        </div>
+        {!waves.isLoading && waves.hasError && (
+          <button
+            type="button"
+            onClick={() => void waves.reload()}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            {t('slotAvailabilityRetry')}
+          </button>
+        )}
+      </div>
+      <KilatWavePicker
+        availability={waves}
+        value={pickedWave}
+        onChange={(next) => { setPickedWave(next); feedback.clear(); }}
+      />
+    </div>
+  ) : (
     <div className="space-y-4">
       {calendarHeader}
       <SchedulePicker
@@ -653,7 +760,7 @@ export function JadwalDanBayarPage() {
       type="button"
       onClick={handleLock}
       /* ⚠️ Tidak mati karena tanggal kosong — klik tanpa tanggal menegur. */
-      disabled={availability.isLoading || isWorking}
+      disabled={(mode === 'kilat' ? waves.isLoading : availability.isLoading) || isWorking}
       className={primaryBtn}
     >
       {isWorking ? (
@@ -700,7 +807,6 @@ export function JadwalDanBayarPage() {
           backLabel={t('backToOrdersShort')}
           isBusy={isWorking}
           title={t('segmentReservation')}
-          cardTitle={t('scheduleCardPickTitle')}
           subtitle={t('reservationPickSubtitle')}
           alertBanner={
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
@@ -714,7 +820,8 @@ export function JadwalDanBayarPage() {
             </div>
           }
           feedback={feedback}
-          stub={<TicketStub {...stubBase} locked={false} startYmd={picked} days={entry.duration || 1} deadline={{ kind: 'hold' }} />}
+          cardTitle={mode === 'kilat' ? t('kilatWavePickWave') : t('scheduleCardPickTitle')}
+          stub={<TicketStub {...stubBase} {...pickStub} locked={false} days={entry.duration || 1} deadline={{ kind: 'hold' }} />}
           mobileBarInfo={<MobileBarInfo total={quote.total} />}
           calendar={liveCalendar}
           cost={quoteCost}
@@ -774,7 +881,7 @@ export function JadwalDanBayarPage() {
         backLabel={t('backToOrdersShort')}
         isBusy={isWorking}
         title={t(seg.key, seg.vars)}
-        cardTitle={selfPick ? t('scheduleCardPickTitle') : t('scheduleCardLockedTitle')}
+        cardTitle={selfPick ? (mode === 'kilat' ? t('kilatWavePickWave') : t('scheduleCardPickTitle')) : t('scheduleCardLockedTitle')}
         subtitle={selfPick ? t('reservationPickSubtitle') : undefined}
         feedback={feedback}
         stub={
@@ -783,7 +890,7 @@ export function JadwalDanBayarPage() {
             // Jalur manual: tanggalnya milik tim — chip "Belum dikunci" dan
             // batas bayar 1 jam tidak berlaku untuknya.
             locked={!selfPick}
-            startYmd={selfPick ? picked : null}
+            {...(selfPick ? pickStub : { startYmd: null })}
             days={entry.duration || 1}
             deadline={selfPick ? { kind: 'hold' } : null}
           />
@@ -821,17 +928,17 @@ export function JadwalDanBayarPage() {
           onBack={() => navigate('/dashboard')}
           backLabel={t('backToOrdersShort')}
           isBusy={isWorking}
-          title={t('rebookPickTitle')}
-          cardTitle={t('scheduleCardPickTitle')}
+          title={mode === 'kilat' ? t('kilatRebookPickTitle') : t('rebookPickTitle')}
+          cardTitle={mode === 'kilat' ? t('kilatWavePickWave') : t('scheduleCardPickTitle')}
           subtitle={t('reservationPickSubtitle')}
           feedback={feedback}
           stub={
             <TicketStub
               {...stubBase}
               locked={false}
-              startYmd={picked}
+              {...pickStub}
               days={entry.duration || 1}
-              extraRows={lockedYmd ? [{ label: t('summaryPreviousDateLabel'), value: shortDate(lockedYmd) }] : []}
+              extraRows={lockedLabel ? [{ label: t('summaryPreviousDateLabel'), value: lockedLabel }] : []}
               deadline={{ kind: 'hold' }}
             />
           }
@@ -842,15 +949,15 @@ export function JadwalDanBayarPage() {
             kind: 'lock',
             cta: lockCta(t('rebookCta')),
             // Slot lama BELUM dilepas — kembali ke sana tanpa mengubah apa pun.
-            secondary: lockedYmd ? (
+            secondary: lockedLabel ? (
               <div className="text-center">
                 <button
                   type="button"
-                  onClick={() => { setRepickMode(false); setPicked(null); feedback.clear(); }}
+                  onClick={() => { setRepickMode(false); setPicked(null); setPickedWave(null); feedback.clear(); }}
                   disabled={isWorking}
                   className={textLink}
                 >
-                  {t('keepDateCta', { date: shortDate(lockedYmd) })}
+                  {t('keepDateCta', { date: lockedLabel })}
                 </button>
               </div>
             ) : undefined,
@@ -866,9 +973,13 @@ export function JadwalDanBayarPage() {
       (`authoritative_payment_url`, sql/85), bukan saat link dirender. Halaman
       ini paling rawan: countdown-nya berjalan, jarak render→klik bisa satu jam.
     */
-    const canSelfMint = entry.ordinal === 1 && entry.slotBookedBy === 'user' && !owedOnCredit && !holdExpired;
+    const canSelfMint = entry.ordinal === 1 && entry.slotBookedBy === 'user' && !owedOnCredit && !holdExpired && !kilatPayClosed;
     const payLabel = offerRepick ? t('payAnywayCta') : t('payNow');
-    const payButton = hasOpenBill ? (
+    const payButton = kilatPayClosed ? (
+      <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm text-slate-600">
+        {t('kilatPayClosedNote')}
+      </p>
+    ) : hasOpenBill ? (
       <a
         href={payLinkPath(entry.id)}
         target="_blank"
@@ -920,7 +1031,7 @@ export function JadwalDanBayarPage() {
 
     const repickButton = (
       <button type="button" onClick={() => setRepickMode(true)} className={primaryBtn}>
-        <CalendarDays size={16} /> {t('repickOtherDateCta')}
+        <CalendarDays size={16} /> {mode === 'kilat' ? t('kilatRepickOtherWaveCta') : t('repickOtherDateCta')}
       </button>
     );
 
@@ -944,9 +1055,13 @@ export function JadwalDanBayarPage() {
           <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/80 px-3.5 py-3 shadow-2xs">
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <div className="space-y-0.5">
-              <p className="text-xs font-semibold text-amber-900">{t('paymentPastCutoffTitle')}</p>
+              <p className="text-xs font-semibold text-amber-900">
+                {mode === 'kilat' ? t('kilatPastPayTitle') : t('paymentPastCutoffTitle')}
+              </p>
               <p className="text-xs text-amber-800 leading-relaxed">
-                {offerRepick ? t('pastCutoffRepickBody') : t('paymentPastCutoffBody')}
+                {mode === 'kilat'
+                  ? t(offerRepick ? 'kilatPastPayRepickBody' : 'kilatPastPayBody', { time: payDeadlineLabel })
+                  : offerRepick ? t('pastCutoffRepickBody') : t('paymentPastCutoffBody')}
               </p>
             </div>
           </div>
@@ -982,7 +1097,11 @@ export function JadwalDanBayarPage() {
             Kalender beku — bentuk yang sama dengan saat memilih. Kredit yang
             sudah tayang dan jadwal admin jauh ke depan jatuh ke kartu teks.
           */
-          lockedYmd && lockedFits ? (
+          lockedYmd && mode === 'kilat' ? (
+            /* Kilat: tanggal + gelombang. Pemilih gelombang tidak punya
+               bentuk beku, dan papan 10 hari kerja belum tentu memuatnya. */
+            <LockedScheduleCard startYmd={lockedYmd} days={1} kilatWaveHour={kilatHour} />
+          ) : lockedYmd && lockedFits ? (
             <SchedulePicker
               availability={availability}
               duration={lockedDays}
@@ -1021,18 +1140,22 @@ export function JadwalDanBayarPage() {
           ? null
           : offerRepick
             ? { kind: 'action', cta: repickButton }
-            : { kind: 'held', hint: state.showCountdown ? t('timerConsequenceNote') : null }}
+            // Kilat lewat batas tanpa pilih ulang: "ditahan untukmu" tidak lagi
+            // benar — gelombangnya tak bisa dibayar; banner di atas yang bicara.
+            : kilatPayClosed
+              ? null
+              : { kind: 'held', hint: state.showCountdown ? t('timerConsequenceNote') : null }}
         /*
           ⚠️ `payButton` TIDAK DIUBAH — tiga cabangnya (tagihan terbit → `/bayar/`,
           boleh mint → `handlePayWithoutBill`, selain itu catatan) tetap
           satu-satunya yang memutuskan. Di sini cuma dipilih slotnya: tombol
           sungguhan = `ready`, catatan "tagihan belum terbit" = `note`.
         */
-        pay={hasOpenBill || canSelfMint ? { kind: 'ready', cta: payButton } : { kind: 'note', node: payButton }}
+        pay={!kilatPayClosed && (hasOpenBill || canSelfMint) ? { kind: 'ready', cta: payButton } : { kind: 'note', node: payButton }}
         secondaryActions={
-          (!creditPhase && (hasOpenBill || canSelfMint)) || state.canCancel ? (
+          (!creditPhase && !kilatPayClosed && (hasOpenBill || canSelfMint)) || state.canCancel ? (
             <>
-              {!creditPhase && (hasOpenBill || canSelfMint) && (
+              {!creditPhase && !kilatPayClosed && (hasOpenBill || canSelfMint) && (
                 <button type="button" onClick={handleCheckPayment} disabled={isCheckingPayment} className={textLink}>
                   {isCheckingPayment ? (
                     <>

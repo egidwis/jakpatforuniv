@@ -43,10 +43,14 @@ const isMissedPaymentWindow = (sub: {
   status?: string | null;
   submission_status?: string | null;
   payment_status?: string | null;
+  distribution_type?: string | null;
+  kilat_slot_hour?: number | null;
 }) => missedPaymentWindow({
   startDate: sub.start_date,
   submissionStatus: sub.submission_status || sub.status,
   paymentStatus: sub.payment_status,
+  distributionType: sub.distribution_type,
+  kilatHour: sub.kilat_slot_hour,
 });
 import './InternalDashboard.css';
 

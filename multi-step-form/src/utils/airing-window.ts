@@ -222,6 +222,30 @@ export function kilatPayDeadline(ymd: string, hour: number): Date {
     return new Date(kilatWaveInstant(ymd, hour).getTime() - KILAT_PAY_LEAD_MIN * 60000);
 }
 
+/**
+ * Batas bayar sebuah jadwal — SATU pintu untuk kedua produk (Phase 5 §5.7, R6).
+ *
+ * Kilat: gelombang − 60 menit. Iklan: 14.00 WIB hari tayang. `kilatHour` diisi
+ * pemanggil HANYA untuk baris Kilat (`distribution_type === 'kilat'`) — baris
+ * Iklan hasil konversi bisa masih membawa `kilat_slot_hour` lama. Kilat tanpa
+ * jam (mustahil dikunci peneliti sejak sql/117) jatuh ke aturan Iklan.
+ *
+ * Cermin server: `kilatPaymentGate` di `create-payment.js` (paritas diuji).
+ */
+export function payDeadlineFor(ymd: string, kilatHour?: number | null): Date {
+    return kilatHour != null ? kilatPayDeadline(ymd, kilatHour) : paymentCutoffInstant(ymd);
+}
+
+/**
+ * Batas bayar jadwal ini sudah lewat? Iklan = `isPaymentTooLateForDate`
+ * persis (14.00 tepat sudah terlambat). Kilat: tepat di detik batas masih
+ * boleh — aturan yang sama dengan batas pesan dan dengan server (`now >`).
+ */
+export function isPayDeadlinePassed(ymd: string, kilatHour?: number | null, now: Date = new Date()): boolean {
+    if (kilatHour == null) return isPaymentTooLateForDate(ymd, now);
+    return now.getTime() > kilatPayDeadline(ymd, kilatHour).getTime();
+}
+
 /** Senin–Jumat menurut kalender (tanggal YMD tidak punya zona). */
 export function isWeekdayYmd(ymd: string): boolean {
     const dow = new Date(`${ymd}T00:00:00.000Z`).getUTCDay();

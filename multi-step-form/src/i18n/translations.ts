@@ -518,6 +518,14 @@ export const translations = {
     errorSlotFullKilat: "That Kilat wave is already full. Please pick another wave.",
     kilatErrorNoWave: "Please pick a push wave (11:00 or 15:00 WIB).",
     kilatErrorWaveClosed: "Booking for that wave has closed (2 hours before the wave). Please pick another wave.",
+    // Phase 5 R6 — batas bayar gelombang (H-1 jam). Kilat TIDAK punya "tetap bayar":
+    // server menolak tagihan lewat batas itu (create-payment.js kilatPaymentGate).
+    kilatPastPayTitle: "That wave can no longer be met",
+    kilatPastPayRepickBody: "The payment cut-off for this wave ({time} WIB, 1 hour before the push) has passed, so the push can't go out then. Your wave hasn't been released — pick another wave to continue.",
+    kilatPastPayBody: "The payment cut-off for this wave ({time} WIB) has passed. Our team will contact you to move it to another wave.",
+    kilatPayClosedNote: "Payment for this wave has closed.",
+    kilatRepickOtherWaveCta: "Pick Another Wave",
+    kilatRebookPickTitle: "Pick another push wave",
     errorSlotFullRange: "Quota in that date range is full. Please pick another date.",
     errorAvailabilityCheck: "Failed to check schedule availability. Please try again.",
 
@@ -1728,6 +1736,14 @@ export const translations = {
     errorSlotFullKilat: "Gelombang Kilat itu sudah penuh. Silakan pilih gelombang lain.",
     kilatErrorNoWave: "Silakan pilih gelombang push (11.00 atau 15.00 WIB).",
     kilatErrorWaveClosed: "Pemesanan gelombang itu sudah tutup (2 jam sebelum gelombang). Silakan pilih gelombang lain.",
+    // Phase 5 R6 — batas bayar gelombang (H-1 jam). Kilat TIDAK punya "tetap bayar":
+    // server menolak tagihan lewat batas itu (create-payment.js kilatPaymentGate).
+    kilatPastPayTitle: "Gelombang ini sudah tidak bisa dikejar",
+    kilatPastPayRepickBody: "Batas bayar gelombang ini ({time} WIB, 1 jam sebelum push) sudah lewat, jadi push tidak bisa dikirim di gelombang itu. Gelombangmu belum dilepas — pilih gelombang lain untuk melanjutkan.",
+    kilatPastPayBody: "Batas bayar gelombang ini ({time} WIB) sudah lewat. Tim kami akan menghubungimu untuk memindahkannya ke gelombang lain.",
+    kilatPayClosedNote: "Pembayaran untuk gelombang ini sudah ditutup.",
+    kilatRepickOtherWaveCta: "Pilih Gelombang Lain",
+    kilatRebookPickTitle: "Pilih gelombang push lain",
     errorSlotFullRange: "Kuota pada rentang tanggal itu sudah penuh. Silakan pilih tanggal lain.",
     errorAvailabilityCheck: "Gagal mengecek ketersediaan jadwal. Silakan coba lagi.",
 

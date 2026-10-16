@@ -212,13 +212,20 @@ export function LockedScheduleCard({
   startYmd,
   days,
   outsideCalendar = false,
+  kilatWaveHour,
 }: {
   startYmd: string;
   days: number;
   outsideCalendar?: boolean;
+  /**
+   * Jadwal Kilat terkunci (Phase 5 R6): tanggal + gelombang, tanpa lama tayang
+   * dan tanpa "mulai 15.00" — aturan copy §5.8, sama dengan `TicketStub`.
+   */
+  kilatWaveHour?: number | null;
 }) {
   const { t } = useLanguage();
   const range = useAiringRange(startYmd, days);
+  const isKilat = kilatWaveHour != null;
 
   return (
     <div className="space-y-2">
@@ -227,14 +234,18 @@ export function LockedScheduleCard({
           {t('lockedScheduleTitle')}
         </span>
         <span className="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-lg bg-blue-50 border border-blue-100 text-jfu-primary">
-          {dayCountLabel(days, t)}
+          {kilatWaveHour != null ? t('kilatWaveLabel', { hour: formatWaveHour(kilatWaveHour) }) : dayCountLabel(days, t)}
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-800">
         <CalendarCheck className="w-4 h-4 text-jfu-primary shrink-0" aria-hidden="true" />
         <span>{range}</span>
-        <span className="text-slate-300" aria-hidden="true">•</span>
-        <span className="text-xs font-normal text-slate-500">{t('airingStartsAt')}</span>
+        {!isKilat && (
+          <>
+            <span className="text-slate-300" aria-hidden="true">•</span>
+            <span className="text-xs font-normal text-slate-500">{t('airingStartsAt')}</span>
+          </>
+        )}
       </div>
       {outsideCalendar && (
         <p className="text-xs text-slate-500">{t('lockedOutsideCalendarNote')}</p>

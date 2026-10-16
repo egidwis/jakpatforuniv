@@ -166,7 +166,9 @@ export function KilatScheduleStep({
         const minutesLeft = Math.floor((deadline.getTime() - nowMs) / 60000);
         return minutesLeft > 0
             ? `Peneliti hanya punya ${minutesLeft} menit untuk membayar (batas bayar ${formatWibTime(deadline.toISOString())} WIB).`
-            : `Batas bayar gelombang ini (${formatWibTime(deadline.toISOString())} WIB) sudah lewat. Pastikan order ini memang dibayar di luar sistem.`;
+            // Sejak R6 link bayar Kilat ditolak server lewat batas ini
+            // (`kilatPaymentGate`), jadi peneliti tidak bisa lagi membayarnya sendiri.
+            : `Batas bayar gelombang ini (${formatWibTime(deadline.toISOString())} WIB) sudah lewat — peneliti tidak bisa lagi membayar lewat link. Pakai hanya bila order ini dibayar di luar sistem.`;
     })();
 
     return (
@@ -296,19 +298,6 @@ export function KilatScheduleStep({
                     <div className="flex items-start gap-2 p-2.5 bg-red-50 border border-red-200 rounded-lg text-red-800 text-xs">
                         <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                         <span>{payWarning}</span>
-                    </div>
-                )}
-                {/* ⚠️ SEMENTARA, hapus di rilis R6 (jalur bayar Kilat). Sampai itu,
-                    tagihan Kilat masih memakai batas bayar Iklan 14.00 WIB —
-                    gelombang 11.00 yang belum lunas bisa terbayar SESUDAH
-                    tayang. Aturan jeda R2→R6 di rencana Phase 5. */}
-                {!isPaid && selectedHour === 11 && (
-                    <div className="flex items-start gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs">
-                        <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                        <span>
-                            Untuk order yang belum lunas, pakai gelombang <strong>15.00</strong> dulu: link bayar
-                            Kilat masih memakai batas bayar 14.00 WIB, jadi gelombang 11.00 bisa terbayar sesudah tayang.
-                        </span>
                     </div>
                 )}
                 {selectedYmd && dayUsage(selectedYmd).unassigned > 0 && (

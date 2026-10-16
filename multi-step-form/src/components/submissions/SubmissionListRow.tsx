@@ -59,6 +59,8 @@ export function SubmissionListRow({
     startDate: submission.start_date,
     submissionStatus: submission.submission_status || submission.status,
     paymentStatus: submission.payment_status,
+    distributionType: submission.distribution_type,
+    kilatHour: submission.kilat_slot_hour,
   });
 
   const handleCopyId = (e: React.MouseEvent) => {

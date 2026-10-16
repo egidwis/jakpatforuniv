@@ -80,3 +80,31 @@ describe('missedPaymentWindow', () => {
     )).toBe(true);
   });
 });
+
+/*
+  Phase 5 §5.7 (R6): order Kilat melewatkan jendela bayarnya pada gelombang −
+  60 menit, bukan 14.00. Jam gelombang hanya dibaca untuk baris Kilat.
+*/
+describe('missedPaymentWindow — Kilat', () => {
+  const kilat = (startDate: string, kilatHour: number | null) => ({
+    ...waiting(startDate),
+    distributionType: 'kilat',
+    kilatHour,
+  });
+
+  it('gelombang 11.00: tertandai sejak 10.00.01 WIB (BEFORE_CUTOFF Iklan = 10.00)', () => {
+    expect(missedPaymentWindow(kilat('2026-09-03', 11), BEFORE_CUTOFF)).toBe(false);
+    expect(missedPaymentWindow(kilat('2026-09-03', 11), new Date('2026-09-03T03:00:01Z'))).toBe(true);
+    // Iklan untuk tanggal & jam yang sama belum terlambat.
+    expect(missedPaymentWindow(waiting('2026-09-03'), new Date('2026-09-03T03:00:01Z'))).toBe(false);
+  });
+
+  it('gelombang 15.00: batasnya 14.00, sama dengan Iklan', () => {
+    expect(missedPaymentWindow(kilat('2026-09-03', 15), new Date('2026-09-03T06:59:59Z'))).toBe(false);
+    expect(missedPaymentWindow(kilat('2026-09-03', 15), AFTER_CUTOFF)).toBe(true);
+  });
+
+  it('kilat_slot_hour pada baris non-Kilat diabaikan', () => {
+    expect(missedPaymentWindow({ ...waiting('2026-09-03'), distributionType: 'regular', kilatHour: 11 }, new Date('2026-09-03T03:00:01Z'))).toBe(false);
+  });
+});

@@ -5096,13 +5096,30 @@ export const cancelSchedule = async (entry: {
 export const rebookSlotForSubmission = async (
   submissionId: string,
   startYmd: string,
-  durationDays: number
+  durationDays: number,
+  /**
+   * Phase 5 §5.7 (R6): jam gelombang untuk order KILAT. Bentuk tulisnya sama
+   * dengan INSERT `submitOrder` Kilat — [tanggal, +1) DATE + `kilat_slot_hour`
+   * + durasi 1 — bukan 15.00 × durasi. Trigger `validate_kilat_wave_claim`
+   * (sql/117) menegakkan sisanya (jam 11/15, hari kerja, H-2 jam, kuota).
+   */
+  opts: { kilatHour?: number } = {},
 ) => {
-  const { data, error } = await supabase
+  const isKilat = opts.kilatHour != null;
+  let query = supabase
     .from('form_submissions')
     .update({
-      start_date: toAiringStartIso(startYmd),
-      end_date: toAiringEndIso(startYmd, Math.max(durationDays, 1)),
+      ...(isKilat
+        ? {
+            start_date: startYmd,
+            end_date: addDaysToYmd(startYmd, 1),
+            kilat_slot_hour: opts.kilatHour,
+            duration: 1,
+          }
+        : {
+            start_date: toAiringStartIso(startYmd),
+            end_date: toAiringEndIso(startYmd, Math.max(durationDays, 1)),
+          }),
       slot_booked_by: 'user',
       slot_reserved_at: new Date().toISOString(),
       submission_status: 'waiting_payment',
@@ -5119,8 +5136,21 @@ export const rebookSlotForSubmission = async (
     // menangkapnya — 'expired' bukan 'paid'/'completed' — jadi sampai sekarang
     // tombol "Jadwalkan Ulang" di dashboard peneliti membatalkan keputusan
     // admin tanpa satu pun peringatan ke siapa pun.
-    .neq('submission_status', 'slot_cancelled')
-    .select('id');
+    .neq('submission_status', 'slot_cancelled');
+
+  /*
+    ⚠️ BENTUK TULIS HARUS COCOK DENGAN PRODUKNYA — dijaga di kueri, tanpa
+    pembacaan tambahan. Bentuk Iklan (15.00 × durasi) pada baris Kilat akan
+    meninggalkan `kilat_slot_hour` lama dan jendela 15.00; bentuk Kilat pada
+    baris Iklan menulis gelombang ke order yang tidak punya gelombang. Salah
+    pasang = nol baris = galat di bawah, bukan jadwal yang salah bentuk.
+    `distribution_type` NULL dihitung Iklan (0 baris di produksi, 16 Okt).
+  */
+  query = isKilat
+    ? query.eq('distribution_type', 'kilat')
+    : query.or('distribution_type.is.null,distribution_type.neq.kilat');
+
+  const { data, error } = await query.select('id');
 
   if (error) throw error;
   if (!data || data.length === 0) {
@@ -5128,7 +5158,7 @@ export const rebookSlotForSubmission = async (
     // palsu" lahir. Dilempar supaya UI tidak bisa menampilkan sukses semu.
     throw new Error(
       `Slot untuk ${submissionId} tidak bisa dikunci ulang — kemungkinan sudah lunas, ` +
-      'jadwalnya dibatalkan tim Jakpat, atau ditolak RLS.'
+      'jadwalnya dibatalkan tim Jakpat, jenis ordernya tidak cocok, atau ditolak RLS.'
     );
   }
   return true;
