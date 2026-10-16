@@ -1,6 +1,6 @@
 # Phase 5 — Kilat swalayan: peneliti memesan Kilat sendiri
 
-> **STATUS NYATA (16 Okt 2026):** strategi rilis **diubah** — seluruh Phase 5 dikerjakan di **satu branch `feat/kilat-swalayan`** dan dirilis di akhir dengan **dua push** (lihat §Peta pengerjaan & rilis tepat di bawah). R1–R4 selesai di branch itu (belum push); `sql/117` dan `sql/118` **sudah diterapkan** di produksi; berikutnya R5.
+> **STATUS NYATA (16 Okt 2026):** strategi rilis **diubah** — seluruh Phase 5 dikerjakan di **satu branch `feat/kilat-swalayan`** dan dirilis di akhir dengan **tiga push** (A → Uji → B) (lihat §Peta pengerjaan & rilis tepat di bawah). R1–R4 selesai di branch itu (belum push); `sql/117` dan `sql/118` **sudah diterapkan** di produksi; berikutnya R5.
 >
 > Berkas ini salinan rencana yang disetujui di sesi chat 14–15 Okt. R1–R8 kini **tahap pengerjaan** di satu branch, bukan rilis terpisah; nomor task (5.1–5.10) tetap jadi rujukan isi.
 
@@ -8,7 +8,7 @@
 
 ## Peta pengerjaan & rilis
 
-> **Keputusan 16 Okt (pemilik produk):** tidak ada lagi push per rilis. Semua tahap dikerjakan berurutan di **satu branch `feat/kilat-swalayan`** (dibuat dari `c42362a`, memuat R1–R4) dan diuji lokal secara berkala oleh pemilik produk. Rilis ke produksi baru dilakukan setelah fiturnya stabil, dalam **dua push** (§Rilis: dua push di bawah). Gerbang produksi per rilis di versi 15 Okt berubah menjadi **daftar periksa** sebelum/sesudah Push A. Branch lama (`feat/kilat-tarif-bertanggal`, `feat/kilat-fondasi-gelombang`, `feat/kilat-undian-siaran`, `feat/kilat-libur-badge`, `feat/kilat-siaran-toggle`) adalah leluhur branch ini dan dihapus setelah rilis.
+> **Keputusan 16 Okt (pemilik produk):** tidak ada lagi push per rilis. Semua tahap dikerjakan berurutan di **satu branch `feat/kilat-swalayan`** (dibuat dari `c42362a`, memuat R1–R4) dan diuji lokal secara berkala oleh pemilik produk. Rilis ke produksi baru dilakukan setelah fiturnya stabil, dalam **tiga push**: Push A (pintu tertutup) → **Push Uji** (pintu terbuka hanya untuk akun uji, order swalayan sungguhan) → Push B (buka pintu untuk semua) — §Rilis di bawah. Gerbang produksi per rilis di versi 15 Okt berubah menjadi **daftar periksa** sebelum/sesudah tiap push. Branch lama (`feat/kilat-tarif-bertanggal`, `feat/kilat-fondasi-gelombang`, `feat/kilat-undian-siaran`, `feat/kilat-libur-badge`, `feat/kilat-siaran-toggle`) adalah leluhur branch ini dan dihapus setelah rilis.
 
 | # | Tahap | Task | SQL | Status | Uji lokal / catatan |
 |---|---|---|---|---|---|
@@ -18,8 +18,8 @@
 | 4 | **R4 — Undian & siaran** | 5.3, 5.4b (toggle), sinkron halaman 5.4 | `sql/118` ✅ live 15 Okt | ✅ Kode (`4213f8b` SQL, `c42362a`) | Linimasa toggle pada **order uji**; sisa kecil: status siaran ringkas di `KilatScheduleBoard` |
 | 5 | **R5 — Pintu tersembunyi** | 5.5, 5.6, 5.8 | — | ⬜ berikutnya | Wizard Kilat lewat `?product=kilat` (admin) sampai Jadwal & Bayar |
 | 6 | **R6 — Jalur bayar Kilat** | 5.7 | — | ⬜ | Cermin helper waktu di `create-payment.js`; cabut peringatan "pakai 15.00" di picker admin; tagihan terbit sekali lalu dibatalkan (DOKU sandbox) |
-| 7 | **R7 — Buka pintu (disiapkan)** | 5.9 | — | ⬜ | Commit pembuka pintu **disiapkan tapi tidak di-push bersama Push A** — itulah Push B |
-| 8 | **R8 — Extend Kilat** | 5.10 | `sql/119` (nomor dicek ulang ke `origin/main`) | ⬜ | Kode ikut Push A dengan gerbang `canScheduleAgain` tetap mengunci Kilat; **dibuka terpisah** setelah prasyarat 5.10 terpenuhi (lihat §Rilis) |
+| 7 | **R7 — Uji nyata & buka pintu (disiapkan)** | 5.9 | — | ⬜ | Dua commit kecil yang **tidak ikut Push A**: pilot akun uji (`KILAT_PILOT_EMAILS`) = Push Uji, lalu buka pintu = Push B |
+| 8 | **R8 — Extend Kilat** | 5.10 | `sql/119` (nomor dicek ulang ke `origin/main`) | ⬜ | Kode ikut Push A terkunci; **dibuka untuk akun uji di Push Uji** (prasyarat 5.10 dipenuhi di sana), untuk semua di Push B |
 
 ### Selama pengerjaan (sampai Push A)
 
@@ -64,8 +64,8 @@ Sejak 1 Sep 2026, peneliti tidak punya pintu masuk ke Kilat.
 | Halaman & pendaftar telat | **Halaman Kilat swalayan tutup bersamaan dengan jendela undian**, seperti Iklan. Pendaftar telat ikut aturan undian yang sama untuk semua survei (batch terakhir yang `period.start` ≤ `submitted_at`, rencana undian 7 Okt). 17 halaman lama dibiarkan. *(Menggantikan "semua ikut, halaman tidak diubah" 7 Okt)* | 14 Okt |
 | Toggle siaran Kilat | **Toggle, bukan tombol**, di tab Page drawer Submissions. **Nyala** = push terkirim: halaman & undian dibuka. **Mati** = siaran selesai: halaman tutup dan pemenang bisa dipilih seketika. Batas maksimal 24 jam tetap: bila lupa dimatikan, jendela selesai sendiri. Satu arah per gelombang: setelah selesai, toggle terkunci | 14 Okt |
 | Siaran terlewat | Toggle **boleh dinyalakan kapan saja** selama belum pernah dinyalakan, termasuk setelah jendela sementara [gelombang, +24 jam) habis. Jendela halaman dan undian pindah ke [nyala, +24 jam), dan `can_select_winners` kembali `false`. Risiko pendaftar setelah undian diterima. Dialog nyala memberi peringatan bila jendela sementara sudah lewat. Kunci "selesai" tetap berlaku hanya setelah toggle pernah dinyalakan | 15 Okt |
-| Strategi rilis | **Satu branch `feat/kilat-swalayan`** sampai fitur stabil, diuji lokal berkala oleh pemilik produk; rilis **dua push**: Push A = semua kode dengan pintu tertutup & tarif identik, Push B = buka pintu. Menggantikan push per rilis R1–R8 | 16 Okt |
-| Kabar ke tim undian | **Satu laporan setelah Push B (R7)**, termasuk pergeseran `period` 17 batch Kilat lama + 1 Iklan berjam kustom akibat `sql/118` di R4. Tidak ada kabar terpisah saat R4 | 15 Okt |
+| Strategi rilis | **Satu branch `feat/kilat-swalayan`** sampai fitur stabil, diuji lokal berkala oleh pemilik produk; rilis **tiga push**: Push A = semua kode, pintu tertutup & tarif identik → **Push Uji** = pintu terbuka hanya untuk akun uji, order swalayan sungguhan di produksi (ditambahkan 16 Okt) → Push B = buka pintu untuk semua. Menggantikan push per rilis R1–R8 | 16 Okt |
+| Kabar ke tim undian | **Satu laporan setelah Push B**, termasuk pergeseran `period` 17 batch Kilat lama + 1 Iklan berjam kustom akibat `sql/118` di R4. Tidak ada kabar terpisah saat R4 | 15 Okt |
 | Kolam 17 halaman Kilat lama | **Dibiarkan** | 7 Okt |
 | Laporan ke tim undian | **Menunggu Phase 5 selesai** | 7 Okt |
 | Extend Kilat | **Pesan gelombang lagi** untuk survei yang sama. Satu perpanjangan = satu gelombang, dengan aturan dan harga yang sama dengan gelombang pertama. *(Versi 7 Okt menulis "tanpa perpanjangan". Itu tafsiran keliru, dikoreksi di sini)* | 14 Okt |
@@ -319,7 +319,7 @@ Tabel libur masuk `sql/117` (dibaca trigger 5.2). **Kolom siaran + trigger reset
   - hapus kunci i18n Kilat yang mati.
 
 ### 5.9 — Uji ujung-ke-ujung, buka pintu, dokumen penutup · **[R7]**
-- **Uji di browser** (`wrangler pages dev dist`) memakai akun uji dan bendera admin, termasuk **satu pembayaran DOKU nyata** gelombang 15.00 dengan **tarif baru** dan voucher **JFUTGRX** (Rp1.000). Uji dijalankan pada build commit buka pintu (isi `KILAT_TARIFF_FROM` + `KILAT_SELF_SERVE_OPEN = true` + cabut `comingSoon`) sebelum di-push.
+- **Uji di browser**: lokal (`wrangler pages dev dist`) selama pengerjaan, lalu **di produksi saat Push Uji** dengan akun uji non-admin, termasuk **satu pembayaran DOKU nyata** gelombang 15.00 dengan voucher **JFUTGRX** (Rp1.000). *(Revisi 16 Okt: dulu dijalankan pada build commit buka pintu sebelum di-push; kini bayar nyata pindah ke Push Uji, dan build Push B cukup dicek tampilan tarifnya — lihat §Rilis.)*
 - **Dokumen**:
   - rencana ini ditulis ke `docs/superpowers/plans/2026-10-14-phase-5-kilat-swalayan.md`;
   - baris di README, dengan Phase 5 = Task 5.0 + 5.1–5.10 (5.10 berstatus ⬜);
@@ -336,7 +336,7 @@ Tabel libur masuk `sql/117` (dibaca trigger 5.2). **Kolom siaran + trigger reset
   Penyebab "40/40" dikoreksi menjadi artefak backfill + kebocoran feed 18 Sep (11.12–11.57, sebelum penyaring `e5b73bc`).
 
 ### 5.10 — Extend Kilat: pesan gelombang lagi (setelah 5.9) · **[R8]**
-Prasyarat: pintu Kilat sudah terbuka, dan minimal satu order Kilat swalayan sudah tayang serta dibayar dengan benar.
+Prasyarat: minimal satu order Kilat swalayan sudah tayang serta dibayar dengan benar — dipenuhi oleh akun uji di **Push Uji** (revisi 16 Okt), sehingga extend dibuka untuk semua bersama Push B.
 - **SQL (`sql/119`, nomornya dicek ulang)**: `create_ad_schedule` menerima Kilat dari peneliti.
   - Jam wajib ∈ {11, 15}.
   - Cek: Senin–Jumat, H-2 jam.
@@ -352,12 +352,12 @@ Prasyarat: pintu Kilat sudah terbuka, dan minimal satu order Kilat swalayan suda
 - **Halaman**: tautan sama. Jendelanya dipindah ke gelombang perpanjangan oleh `cron_activate_extends`, seperti Iklan (cabut blok Kilat bila ada; baca definisi live). Lalu toggle siaran gelombang itu menjangkarkannya, sama dengan gelombang pertama.
 - **Email**: periksa notifikasi "tayang"/"selesai" untuk baris perpanjangan. Kalau belum sesuai, cukup dicatat dulu.
 
-## Rilis: dua push
+## Rilis: tiga push (A → Uji → B)
 
-> Menggantikan "Gelombang rilis R1–R8" versi 15 Okt (keputusan 16 Okt). Prinsip lama yang dipertahankan: **jalur uang dan pembukaan pintu tidak sekapal** — Push A menayangkan seluruh kode dengan pintu tertutup dan angka tarif identik, Push B hanya membuka pintu. Bila ada masalah, jelas mana sumbernya.
+> Menggantikan "Gelombang rilis R1–R8" versi 15 Okt (keputusan 16 Okt). Prinsip lama yang dipertahankan: **jalur uang dan pembukaan pintu tidak sekapal** — Push A menayangkan seluruh kode dengan pintu tertutup dan angka tarif identik, Push Uji membuka pintu hanya untuk akun uji, Push B membuka untuk semua. Tiap push memisahkan satu sumber masalah.
 
 **Sebelum Push A** (di branch `feat/kilat-swalayan`):
-1. Semua tahap R1–R6 + R8 selesai; commit pembuka pintu (R7) disiapkan **terpisah** dan belum ikut.
+1. Semua tahap R1–R6 + R8 selesai; commit Push Uji dan Push B (R7) disiapkan **terpisah** dan belum ikut.
 2. Merge `origin/main` terbaru ke branch; seluruh vitest hijau (kecuali kegagalan lama yang tercatat); `tsc -p tsconfig.app.json` tidak naik dari baseline (73) dan grep TS2304/TS2552 kosong.
 3. SQL yang belum live (`sql/119`) diterapkan user di SQL Editor + diverifikasi.
 4. Uji lokal pemilik produk lulus untuk tiap tahap (kolom "Uji lokal" di atas).
@@ -371,16 +371,24 @@ Prasyarat: pintu Kilat sudah terbuka, dan minimal satu order Kilat swalayan suda
 | Batas bayar Kilat = gelombang − 60 menit, copy tanpa durasi, banner hari libur | Order Kilat yang ada / peneliti di hari libur |
 | Wizard Kilat lewat `?product=kilat` | Admin saja |
 
-**Periksa di produksi setelah Push A** (gabungan gerbang R1–R6 lama; Push B baru boleh setelah semuanya lulus):
+**Periksa di produksi setelah Push A** (gabungan gerbang R1–R6 lama; Push Uji baru boleh setelah semuanya lulus):
 - `total_cost` setiap order Kilat belum lunas **tidak berubah** (adu ulang); paritas klien = `create-payment.js`;
 - 48 jam tanpa galat `kilat_wave_*` palsu di `query_logs`; 3 order macet tetap bisa disentuh cron/catatan admin;
 - admin mengisi libur Okt 2026–Jan 2027 di menu **Hari Libur**; badge = hitungan manual;
 - satu order uji "Jadikan Kilat" menjalani linimasa toggle penuh, `/api/respondents` dicek di tiap keadaan;
 - admin membuat order Kilat lewat wizard sampai Jadwal & Bayar; tagihan terbit sekali lalu dibatalkan (tanpa bayar sungguhan).
 
-**Push B — buka pintu (5.9).** Satu commit kecil: isi `KILAT_TARIFF_FROM` (tanggal literal hari itu, di klien dan `create-payment.js`), `KILAT_SELF_SERVE_OPEN = true`, cabut `comingSoon`, dokumen penutup. Sebelum push: uji ujung-ke-ujung + **satu bayar DOKU nyata** (JFUTGRX, Rp1.000) pada build commit ini. Sesudah push: pantau 3 order swalayan pertama; laporan ke tim undian (§5.9) dikirim.
+**Push Uji — order swalayan sungguhan, hanya akun uji (ditambahkan 16 Okt).** Satu commit kecil: `KILAT_PILOT_EMAILS` (daftar literal akun uji) membuka kartu Kilat, wizard, dan kartu "Pesan gelombang lagi" **hanya** untuk email itu; semua peneliti lain tetap melihat `comingSoon`. `KILAT_TARIFF_FROM` **tetap `null`** — tarif baru mulai bersamaan dengan pintu dibuka (keputusan 14 Okt), dan tagihan uji memakai JFUTGRX (Rp1.000) sehingga angka tarif tidak teruji lewat bayar mana pun; angka tarif dijaga tes paritas dan dicek tampilannya pada build Push B.
+- ⚠️ Akun uji **wajib bukan email admin**: trigger klaim `sql/117` dan `create-payment.js` melewatkan email admin, jadi order dari akun admin tidak menguji jalur peneliti sama sekali.
+- Uji di produksi (pemilik produk, akun uji):
+  1. kartu Kilat → modal → wizard → pilih gelombang 15.00 → Kunci → tiket Jadwal & Bayar (tagihan terbit sekali);
+  2. **bayar DOKU nyata** dengan JFUTGRX → webhook lunas → halaman lahir berjendela [15.00, +24 jam) → email/kwitansi tanpa teks durasi;
+  3. admin menyalakan toggle siaran → `/api/respondents` `period.start` = waktu nyala, badge Kilat turun → admin mematikan → halaman "Survey sudah berakhir", `can_select_winners` = true;
+  4. gelombang 11.00 hari ini tertutup setelah 09.00; pilih ulang gelombang mencabut tagihan lama;
+  5. setelah order (2) tayang & lunas (= prasyarat 5.10): **"Pesan gelombang lagi"** dari akun uji — jarak < 24 jam ditolak, bulan sama tanpa tagihan hadiah, papan admin menampilkan kedua gelombang.
+- Peneliti sungguhan tidak merasakan apa pun. Kegagalan di sini diperbaiki di branch dan di-push ulang sebagai Push Uji berikutnya; Push B menunggu.
 
-**Extend Kilat (R8).** Kodenya ikut Push A tetapi terkunci (`canScheduleAgain` blok `'kilat'` tetap). Pembukanya satu commit kecil terpisah (cabut blok + kartu "Pesan gelombang lagi") setelah prasyarat 5.10 terpenuhi: pintu terbuka dan minimal satu order Kilat swalayan tayang serta dibayar dengan benar. `sql/119` sudah live sejak sebelum Push A; selama terkunci, peneliti tidak punya jalan UI ke sana.
+**Push B — buka pintu untuk semua (5.9).** Satu commit kecil: isi `KILAT_TARIFF_FROM` (tanggal literal hari itu, di klien dan `create-payment.js`), `KILAT_SELF_SERVE_OPEN = true`, cabut `comingSoon`, extend Kilat terbuka untuk semua, `KILAT_PILOT_EMAILS` dikosongkan, dokumen penutup. Sebelum push: build commit ini dicek lokal — tabel tarif baru tampil di modal/Ringkasan dan `create-payment.js` menghitung angka yang sama (tes paritas). Hari push mengikuti aturan Push A. Sesudah push: pantau 3 order swalayan pertama; laporan ke tim undian (§5.9) dikirim.
 
 Rencana undian 7 Okt boleh dieksekusi setelah Push B.
 
