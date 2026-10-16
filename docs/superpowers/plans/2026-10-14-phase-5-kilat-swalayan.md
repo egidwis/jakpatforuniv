@@ -30,6 +30,11 @@
   - halaman Kilat baru tutup sendiri 24 jam setelah gelombang; bila push terlambat, geser lewat SQL Editor: `select kilat_broadcast_start('<schedule_id>','admin');`
   - `/api/respondents` sudah memakai jendela baru (20 order lama bergeser, 0 perubahan status/`can_select_winners`); snapshot `backup.r118_rewards_before` (Langkah 1e) **tidak dibuat**, nilai lama direkonstruksi dengan kueri 1d.
 - **Branch tetap segar:** merge `origin/main` ke branch ini secara berkala (merge, bukan rebase — leluhurnya sudah dibagikan antartahap). Nomor SQL baru dicek ke `git ls-tree origin/main multi-step-form/sql/` tepat sebelum diberi nomor.
+- **Merge `origin/main` 16 Okt (`c03086a`, main = `e878490`, sudah dideploy pemilik produk tanpa Kilat):** nol konflik; tsc 72, vitest 1545 lulus (2 gagal lama `respondentsGate`), build lulus. Isinya seri keamanan: status tayang order & nominal tagihan perpanjangan pindah ke `/api/admin/airing` (`setSubmissionAiringStatus`, `writeExtensionBillAmounts`), tulisan Mimin ke `/api/admin/mimin`. Dampak ke rencana:
+  - ⚠️ **Nomor SQL ganda `117`**: main membawa `sql/117_drop_browser_mimin_writes.sql` (belum diterapkan per 16 Okt — policy `Product manages ai_*` masih ada), di samping `sql/117_kilat_swalayan.sql` kita (live). Repo sudah punya nomor ganda (110/111/116); rujukan "sql/117" di rencana ini = `117_kilat_swalayan`. Nomor berikutnya untuk extend tetap **`sql/119`** (cek ulang sebelum dipakai).
+  - **R8 (5.10)**: nominal tagihan perpanjangan Kilat ditulis lewat `writeExtensionBillAmounts` (bukan `supabase.from('ad_schedules').update` dari browser); cabang Kilat `buildExtensionInvoiceItems` cukup mengubah angka, jalur tulisnya sudah benar.
+  - **5.8 prompt Mimin**: setelah sql/117 Mimin diterapkan, prompt DB hanya bisa diubah dari halaman Mimin AI Setup (lewat function).
+  - Tidak ada fungsi yang disentuh branch ini ikut dipindah main; tidak ada tulisan browser baru branch ini ke kolom yang dijaga sql/113.
 - Setiap commit: tes → `graphify update .` → STATUS NYATA di berkas ini. SQL baru (mis. `sql/119`) diserahkan ke user dan diterapkan **sebelum Push A**.
 
 ## Context
