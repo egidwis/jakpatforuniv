@@ -55,6 +55,11 @@ const formatDateLong = (d: string) =>
 
 interface SchedulePhaseProps {
     submission: FormSubmission;
+    /**
+     * Pintu Kilat swalayan terbuka untuk akun ini (`canUseKilatSelfServe`).
+     * Kartu "Pesan gelombang lagi" ikut pintu itu — lihat `ScheduleAgainOpts`.
+     */
+    kilatOpen?: boolean;
     cards: ScheduleCard[];
     /**
      * Baris `ad_schedules` MENTAH order ini (ordinal 1 + sisanya).
@@ -980,7 +985,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
  * Fase ② — Jadwal Iklan: list kartu setara (asli + tiap perpanjangan), tiap
  * kartu membawa dua blok sendiri (Info Booking, Detail Pembayaran).
  */
-export function SchedulePhase({ submission, cards, entries, onReschedule, active }: SchedulePhaseProps) {
+export function SchedulePhase({ submission, kilatOpen = false, cards, entries, onReschedule, active }: SchedulePhaseProps) {
     const { t } = useLanguage();
     // Satu perhitungan untuk seluruh kartu order ini — hak menjadwalkan melekat
     // pada ORDER, bukan pada jadwal. Lihat catatan di prop `canSelfReschedule`.
@@ -992,10 +997,15 @@ export function SchedulePhase({ submission, cards, entries, onReschedule, active
       ⚠️ Kilat ditandai di DUA tempat, dan sebagian baris lama hanya punya yang
       kedua — aturan yang sama dipakai `isKilatSchedule` (airingPeriods.ts) dan
       `deriveScheduleMoney`. Di sini pertanyaannya tingkat ORDER ("boleh
-      menjadwalkan lagi?"), jadi kartu mana pun yang Kilat mengunci tombolnya.
+      menjadwalkan lagi?").
+
+      Phase 5 §5.10: order yang Kilat menurut KOLOM ORDER boleh "Pesan
+      gelombang lagi" — `JadwalBaruPage` dan `create_ad_schedule` sama-sama
+      memilih mode dari kolom itu. Order yang hanya bertanda Kilat di kartunya
+      tetap terkunci: halaman akan membukanya sebagai Iklan.
     */
-    const isKilatOrder =
-        submission.distribution_type === 'kilat' || cards.some((c) => !!c.info?.isKilat);
+    const isKilatOrder = submission.distribution_type === 'kilat';
+    const kilatOnlyOnCards = !isKilatOrder && cards.some((c) => !!c.info?.isKilat);
 
     /*
       Gerbang tombol "Jadwalkan Iklan Lagi" — satu helper murni, diuji
@@ -1006,12 +1016,12 @@ export function SchedulePhase({ submission, cards, entries, onReschedule, active
       RPC, SESUDAH penelitinya mengisi panel hadiah. Itu kasus yang melahirkan
       spec 2026-09-12.
 
-      ⚠️ Kilat dibaca dari DUA tempat (lihat `isKilatOrder` di atas), jadi
-      sebabnya dioper apa adanya — helper hanya melihat kolom order.
+      ⚠️ Kilat dibaca dari DUA tempat (lihat `kilatOnlyOnCards` di atas):
+      helper hanya melihat kolom order, jadi tanda di kartu dioper di sini.
     */
-    const againBlock = isKilatOrder
+    const againBlock = kilatOnlyOnCards
         ? 'kilat'
-        : scheduleAgainBlock(submission, entries);
+        : scheduleAgainBlock(submission, entries, Date.now(), { kilatOpen });
     const showScheduleAgain = againBlock === null;
 
     return (
@@ -1181,16 +1191,16 @@ export function SchedulePhase({ submission, cards, entries, onReschedule, active
                                     </div>
                                     <div className="min-w-0">
                                         <p className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-jfu-primary transition-colors leading-tight">
-                                            {t('scheduleExtendCardTitle')}
+                                            {t(isKilatOrder ? 'kilatExtendCardTitle' : 'scheduleExtendCardTitle')}
                                         </p>
                                         <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 leading-snug">
-                                            {t('scheduleExtendCardDesc')}
+                                            {t(isKilatOrder ? 'kilatExtendCardDesc' : 'scheduleExtendCardDesc')}
                                         </p>
                                     </div>
                                 </div>
                                 <div className="flex items-center justify-end shrink-0 sm:self-center">
                                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-jfu-primary text-white group-hover:bg-jfu-dark font-semibold text-xs shadow-2xs transition-all shrink-0">
-                                        <span>{t('scheduleExtendCardBtn')}</span>
+                                        <span>{t(isKilatOrder ? 'kilatExtendCardBtn' : 'scheduleExtendCardBtn')}</span>
                                         <ArrowRight className="w-3.5 h-3.5" />
                                     </span>
                                 </div>

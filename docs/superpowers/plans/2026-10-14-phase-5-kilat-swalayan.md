@@ -1,6 +1,6 @@
 # Phase 5 — Kilat swalayan: peneliti memesan Kilat sendiri
 
-> **STATUS NYATA (16 Okt 2026):** strategi rilis **diubah** — seluruh Phase 5 dikerjakan di **satu branch `feat/kilat-swalayan`** dan dirilis di akhir dengan **tiga push** (A → Uji → B) (lihat §Peta pengerjaan & rilis tepat di bawah). R1–R6 selesai di branch itu (belum push); `sql/117` dan `sql/118` **sudah diterapkan** di produksi; berikutnya R8 (lalu commit Push Uji/B). Keputusan JFUTGRX 16 Okt: **opsi A** (lihat tabel keputusan) — `8ef96dd`.
+> **STATUS NYATA (16 Okt 2026):** strategi rilis **diubah** — seluruh Phase 5 dikerjakan di **satu branch `feat/kilat-swalayan`** dan dirilis di akhir dengan **tiga push** (A → Uji → B) (lihat §Peta pengerjaan & rilis tepat di bawah). R1–R6 + R8 selesai di branch itu (belum push); `sql/117` dan `sql/118` **sudah diterapkan** di produksi; **`sql/119` (R8) ditulis 16 Okt, belum diterapkan — wajib sebelum Push A**; berikutnya Push A, daftar periksa produksi, lalu commit Push Uji/B. Keputusan JFUTGRX 16 Okt: **opsi A** (lihat tabel keputusan) — `8ef96dd`.
 >
 > Berkas ini salinan rencana yang disetujui di sesi chat 14–15 Okt. R1–R8 kini **tahap pengerjaan** di satu branch, bukan rilis terpisah; nomor task (5.1–5.10) tetap jadi rujukan isi.
 
@@ -19,7 +19,7 @@
 | 5 | **R5 — Pintu tersembunyi** | 5.5, 5.6, 5.8 | — | ✅ Kode (`59c7913`, commit 5.8 menyusul) | Kartu Kilat → modal → `?product=kilat` (admin; `KILAT_PILOT_EMAILS` kosong) → Step 3 pemilih gelombang → Jadwal & Bayar. Batas bayar gelombang ikut R6 — uji lokal tanpa bayar |
 | 6 | **R6 — Jalur bayar Kilat** | 5.7 | — | ✅ Kode (16 Okt) | Cermin helper waktu di `create-payment.js`; cabut peringatan "pakai 15.00" di picker admin; **pilih ulang gelombang di badan tiket Jadwal & Bayar** (`KilatWavePicker` + `handleLock`, dipindah dari 5.5 karena butuh `rebookSlotForSubmission` sadar gelombang); tagihan terbit sekali lalu dibatalkan (DOKU sandbox) |
 | 7 | **R7 — Uji nyata & buka pintu (disiapkan)** | 5.9 | — | ⬜ | Dua commit kecil yang **tidak ikut Push A**: pilot akun uji (`KILAT_PILOT_EMAILS`) = Push Uji, lalu buka pintu = Push B |
-| 8 | **R8 — Extend Kilat** | 5.10 | `sql/119` (nomor dicek ulang ke `origin/main`) | ⬜ | Kode ikut Push A terkunci; **dibuka untuk akun uji di Push Uji** (prasyarat 5.10 dipenuhi di sana), untuk semua di Push B |
+| 8 | **R8 — Extend Kilat** | 5.10 | `sql/119_extend_kilat.sql` (⬜ belum diterapkan) | ✅ Kode (16 Okt) | Kode ikut Push A terkunci; **dibuka untuk akun uji di Push Uji** (prasyarat 5.10 dipenuhi di sana), untuk semua di Push B |
 
 ### Selama pengerjaan (sampai Push A)
 
@@ -371,6 +371,15 @@ Prasyarat: minimal satu order Kilat swalayan sudah tayang serta dibayar dengan b
 - **Halaman**: tautan sama. Jendelanya dipindah ke gelombang perpanjangan oleh `cron_activate_extends`, seperti Iklan (cabut blok Kilat bila ada; baca definisi live). Lalu toggle siaran gelombang itu menjangkarkannya, sama dengan gelombang pertama.
 - **Email**: periksa notifikasi "tayang"/"selesai" untuk baris perpanjangan. Kalau belum sesuai, cukup dicatat dulu.
 
+> **STATUS NYATA (16 Okt):** ✅ Kode + `sql/119` (belum diterapkan). Menyimpang dari rencana, dengan alasan:
+> - **Signature `create_ad_schedule` TIDAK berubah.** Jam gelombang diturunkan dari jam WIB `p_start_date` → `CREATE OR REPLACE`, ACL ikut, nol risiko overload. Bentuk Kilat (jam 11/15 tepat, +24 jam, durasi 1, `kilat_slot_hour`) dipaksa untuk **semua** pemanggil, termasuk admin (dulu admin menulis `kilat_slot_hour` NULL).
+> - **Trigger baru `validate_kilat_extend_claim`** (tidak ada di rencana): peneliti punya dua policy UPDATE di `ad_schedules` dan hak UPDATE penuh atas kolomnya, jadi aturan waktu yang hanya di RPC bisa dilangkahi PATCH langsung. Hari kerja / libur / H-2 jam ditegakkan di sini, kalimat galat = K4 sql/117.
+> - **`cron_activate_extends`** (jobid 1, */15) langkah 2 menimpa `publish_*` dengan start/end jadwal tiap tick → akan membuka lagi halaman gelombang perpanjangan yang sudah dimatikan admin. Kini memakai `airing_window_start/_end` (Iklan identik).
+> - **Pintu:** kartu "Pesan gelombang lagi" & `JadwalBaruPage` ikut `canUseKilatSelfServe` (admin / pilot / bendera) — selama `KILAT_TARIFF_FROM` null gelombang tambahan dihargai rumus lama, jadi tidak dijual sebelum Push B. ⚠️ Server (`create_ad_schedule`) **tidak** memeriksa bendera: peneliti Kilat lama yang memanggil RPC langsung bisa memesan gelombang tambahan berharga rumus lama sebelum Push B (diterima: 18 akun, harga = yang selama ini ditagih admin).
+> - **Admin:** prefill `buildExtensionInvoiceItems` cabang Kilat = `buildNoteItems` (tes paritas `extensionInvoiceKilat.spec.ts`, bulan sama/baru, ambassador, JFUTGRX, rumus lama); `fetchKilatSchedule` membaca kaki perpanjangan (`+Gel.` di papan); **sunting baris perpanjangan Kilat dikunci** di `ScheduleForm` — jalur `KilatScheduleStep` → `updateKilatSchedule` menulis `form_submissions` dan akan memindahkan GELOMBANG PERTAMA. Buat jadwal Kilat dari admin = 15.00 + 24 jam (catatan di form).
+> - `JadwalBaruPage` Kilat: `KilatWavePicker` + `kilatLockGate` + teguran dini jarak 24 jam (`kilatWaveClashesOwn`); umur link = `billExpiryFor` (min hold, gelombang − 60 menit); galat `kilat_wave_*` dipetakan sebelum kuota harian.
+> - Email tayang/selesai baris perpanjangan: `scheduleKindOf` membaca `ad_schedules` per `schedule_id` (R5), jadi varian Kilat ikut — belum diuji dengan baris perpanjangan sungguhan.
+
 ## Rilis: tiga push (A → Uji → B)
 
 > Menggantikan "Gelombang rilis R1–R8" versi 15 Okt (keputusan 16 Okt). Prinsip lama yang dipertahankan: **jalur uang dan pembukaan pintu tidak sekapal** — Push A menayangkan seluruh kode dengan pintu tertutup dan angka tarif identik, Push Uji membuka pintu hanya untuk akun uji, Push B membuka untuk semua. Tiap push memisahkan satu sumber masalah.
@@ -396,7 +405,8 @@ Prasyarat: minimal satu order Kilat swalayan sudah tayang serta dibayar dengan b
 - admin mengisi libur Okt 2026–Jan 2027 di menu **Hari Libur**; badge = hitungan manual;
 - satu order uji "Jadikan Kilat" menjalani linimasa toggle penuh, `/api/respondents` dicek di tiap keadaan;
 - admin membuat order Kilat lewat wizard sampai Jadwal & Bayar; tagihan terbit sekali lalu dibatalkan (tanpa bayar sungguhan); umur link DOKU-nya ≤ gelombang − 60 menit (`invoices.expires_at`);
-- order Kilat yang lewat batas bayar: halaman menampilkan "Pilih Gelombang Lain" tanpa tombol bayar, dan `create-payment` menjawab 409 `kilat_pay_closed` (cek log Pages Function).
+- order Kilat yang lewat batas bayar: halaman menampilkan "Pilih Gelombang Lain" tanpa tombol bayar, dan `create-payment` menjawab 409 `kilat_pay_closed` (cek log Pages Function);
+- (R8) admin: "Pesan gelombang lagi" pada satu order Kilat uji → tiket Jadwal & Bayar gelombang ke-2, tagihan terbit sekali lalu dibatalkan; baris `ad_schedules` ber-`kilat_slot_hour`, `duration` 1, `end = start + 24 jam`; papan Kilat menampilkannya (`+Gel.`); akun non-admin TIDAK melihat kartunya.
 
 **Push Uji — order swalayan sungguhan, hanya akun uji (ditambahkan 16 Okt).** Satu commit kecil: `KILAT_PILOT_EMAILS` (daftar literal akun uji) membuka kartu Kilat, wizard, dan kartu "Pesan gelombang lagi" **hanya** untuk email itu; semua peneliti lain tetap melihat `comingSoon`. `KILAT_TARIFF_FROM` **tetap `null`** — tarif baru mulai bersamaan dengan pintu dibuka (keputusan 14 Okt), dan tagihan uji memakai JFUTGRX (Rp1.000) sehingga angka tarif tidak teruji lewat bayar mana pun; angka tarif dijaga tes paritas dan dicek tampilannya pada build Push B.
 - ✅ **DIPUTUSKAN 16 Okt — opsi A** (tabel keputusan). Catatan temuan aslinya: JFUTGRX tidak memotong apa pun selama `KILAT_TARIFF_FROM` null. `calculateKilatDiscount` (klien) dan salinannya di `create-payment.js` mengembalikan 0 untuk semua voucher pada rumus lama — keputusan "order Kilat lama tetap tanpa diskon". Jadi bayar nyata di Push Uji akan menagih harga penuh rumus lama (≈ Rp350rb–Rp700rb + hadiah + PPN), bukan Rp1.000. Pilihan: (A) JFUTGRX berlaku juga pada rumus lama (klien + server + tes paritas); di produksi hanya 1 order Kilat ber-JFUTGRX: `e56f4853` (order macet, jadwal 14 Sep lewat, `pending` Rp444.000) — tidak bisa ditagih ulang karena jadwalnya lewat; (B) isi `KILAT_TARIFF_FROM` di Push Uji (membatalkan keputusan 14 Okt); (C) bayar uji dengan harga penuh. Usulan: **A**, dikerjakan bersama R6 (jalur uang).

@@ -875,6 +875,7 @@ export function StatusPage() {
                                                 <Phase number={2} title={t('airingPeriodLabel')} active={reachedPhase >= 2} lineActive={reachedPhase >= 3}>
                                                     <SchedulePhase
                                                         submission={submission}
+                                                        kilatOpen={kilatOpen}
                                                         cards={cards}
                                                         entries={[ui.first, ...ui.later]}
                                                         onReschedule={() => handleReschedule(submission)}

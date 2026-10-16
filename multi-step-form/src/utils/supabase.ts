@@ -4462,6 +4462,11 @@ export interface KilatScheduleEntry {
   submissionStatus: string;
   paymentStatus: string | null;
   createdAt: string;
+  /**
+   * Gelombang tambahan (baris perpanjangan, Phase 5 §5.10). `id` tetap id
+   * ORDER — pemanggil membuka drawer order dengannya.
+   */
+  isExtension?: boolean;
 }
 
 /**
@@ -4489,7 +4494,59 @@ export const fetchKilatSchedule = async (
 
   if (error) throw error;
 
-  return (data || [])
+  /*
+    Kaki kedua: gelombang tambahan (Phase 5 §5.10). Tanpa ini papan admin
+    menampilkan kursi gelombang yang sudah terisi perpanjangan sebagai kosong
+    — trigger kuota sql/117 menghitung KEDUA kaki, papan harus juga.
+    Rentang WIB [from 00.00, to+1 00.00); jam dari `kilat_slot_hour` (sql/119).
+  */
+  const { data: extRows, error: extError } = await supabase
+    .from('ad_schedules')
+    .select('submission_id, start_date, kilat_slot_hour, status, payment_status, slot_booked_by, slot_reserved_at, created_at')
+    .eq('distribution_type', 'kilat')
+    .eq('source_table', 'form_submissions_extend')
+    .in('status', ['waiting_payment', 'paid', 'scheduled', 'live', 'completed'])
+    .gte('start_date', kilatWaveInstant(fromYmd, 0).toISOString())
+    .lt('start_date', kilatWaveInstant(addDaysToYmd(toYmd, 1), 0).toISOString());
+  if (extError) throw extError;
+
+  const extIds = [...new Set((extRows || []).map((r: any) => r.submission_id as string))];
+  const parents = new Map<string, { title: string | null; full_name: string | null }>();
+  if (extIds.length > 0) {
+    const { data: parentRows, error: parentError } = await supabase
+      .from('form_submissions')
+      .select('id, title, full_name')
+      .in('id', extIds);
+    if (parentError) throw parentError;
+    for (const p of parentRows || []) parents.set(p.id, p);
+  }
+
+  const extensions: KilatScheduleEntry[] = (extRows || [])
+    .filter((row: any) => holdsSlot({
+      id: row.submission_id,
+      submissionId: row.submission_id,
+      title: '',
+      startDate: row.start_date,
+      endDate: row.start_date,
+      status: row.status,
+      paymentStatus: row.payment_status,
+      slotBookedBy: row.slot_booked_by,
+      slotReservedAt: row.slot_reserved_at,
+      isExtraAd: false,
+    }))
+    .map((row: any) => ({
+      id: row.submission_id,
+      title: parents.get(row.submission_id)?.title || 'Untitled Ad',
+      researcherName: parents.get(row.submission_id)?.full_name || 'Unknown',
+      hour: row.kilat_slot_hour == null ? null : Number(row.kilat_slot_hour),
+      ymd: toWibYmd(new Date(row.start_date)),
+      submissionStatus: row.status,
+      paymentStatus: row.payment_status,
+      createdAt: row.created_at,
+      isExtension: true,
+    }));
+
+  const firsts: KilatScheduleEntry[] = (data || [])
     .filter((row: any) => holdsSlot({
       id: row.id,
       submissionId: row.id,
@@ -4514,6 +4571,8 @@ export const fetchKilatSchedule = async (
       paymentStatus: row.payment_status,
       createdAt: row.created_at,
     }));
+
+  return [...firsts, ...extensions];
 };
 
 /**

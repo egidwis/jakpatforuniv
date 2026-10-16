@@ -72,6 +72,17 @@ import {
   fieldRowListClass,
 } from '../../components/SurveyFieldRow';
 import { lockRollbackDecision } from '../../utils/lockRollback';
+import { useAuth } from '@/context/AuthContext';
+import { canUseKilatSelfServe } from '../../utils/kilatAccess';
+import { KilatWavePicker } from '../../components/KilatWavePicker';
+import { useKilatWaveAvailability } from '../../hooks/useKilatWaveAvailability';
+import { kilatLockGate, formatWaveHour, type KilatWaveDraft } from '../../utils/kilatWaves';
+import { kilatWaveErrorKind } from '../../utils/dailyQuotaError';
+import { kilatWaveInstant } from '../../utils/airing-window';
+import { billExpiryFor } from '../../utils/jadwalBayarGates';
+import { kilatWaveClashesOwn } from '../../utils/canScheduleAgain';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Halaman "Jadwal Baru" — tempat jadwal perpanjangan LAHIR.
@@ -96,14 +107,23 @@ import { lockRollbackDecision } from '../../utils/lockRollback';
  *   • `SlotCalendar` (kalender ADMIN, `isAdmin` default `true`) → `SchedulePicker`
  *   • tombol mati kini selalu menyebutkan sebabnya (`newSchedulePlan`)
  *   • mendarat di halaman jadwal, bukan `window.location.assign` reload putih
+ *
+ * Phase 5 §5.10 (R8) — "Pesan gelombang lagi" untuk order KILAT memakai jalur
+ * yang SAMA (`create_ad_schedule` → `createPayment`). Dua pengecualian Kilat
+ * yang sama dengan wizard: tanpa pilihan durasi, dan kalender hari diganti
+ * `KilatWavePicker`. Bentuk barisnya (jam gelombang, +24 jam, durasi 1)
+ * dipaksa server (sql/119), bukan dipercayakan ke layar ini.
  */
 
 export function JadwalBaruPage() {
   const { submissionId } = useParams<{ submissionId: string }>();
   const navigate = useNavigate();
   const { t, language } = useLanguage();
+  const { user } = useAuth();
 
   const [submission, setSubmission] = useState<FormSubmission | null>(null);
+  /** Semua jadwal order ini — teguran dini jarak 24 jam antargelombang Kilat. */
+  const [entries, setEntries] = useState<AdScheduleEntry[]>([]);
   const [latestSchedule, setLatestSchedule] = useState<AdScheduleEntry | null>(null);
   const [ordinal, setOrdinal] = useState(2);
   const [bookingId, setBookingId] = useState<string | null>(null);
@@ -112,6 +132,7 @@ export function JadwalBaruPage() {
 
   const [duration, setDuration] = useState(2);
   const [picked, setPicked] = useState<string | null>(null);
+  const [pickedWave, setPickedWave] = useState<KilatWaveDraft | null>(null);
   const [prizePerWinner, setPrizePerWinner] = useState(0);
   const [winnerCount, setWinnerCount] = useState(0);
   const [showOptionalReward, setShowOptionalReward] = useState(false);
@@ -131,6 +152,18 @@ export function JadwalBaruPage() {
   */
   const availability = useSlotAvailability('regular');
 
+  /*
+    Kilat: mode dipilih dari KOLOM ORDER — kolom yang sama yang dibaca
+    `create_ad_schedule` dan `pricingRowForSchedule`.
+
+    ⚠️ `excludeSubmissionId` TIDAK dioper, alasan yang sama dengan kalender
+    Iklan di atas: gelombang pertama order ini tetap memakan kursinya.
+  */
+  const isKilat = submission?.distribution_type === 'kilat';
+  const waves = useKilatWaveAvailability(undefined, isKilat);
+  /** Satu pemesanan Kilat = satu gelombang. Tidak pernah tampil (keputusan 7 Okt). */
+  const effDuration = isKilat ? 1 : duration;
+
   // Konteks order + durasi awal dari jadwal PERTAMA.
   useEffect(() => {
     if (!submissionId) return;
@@ -145,6 +178,7 @@ export function JadwalBaruPage() {
         if (cancelled) return;
         if (!sub) { setNotFound(true); return; }
         setSubmission(sub);
+        setEntries(entries);
 
         /*
           Lama tayang jadwal berikutnya ditebak dari jadwal PERTAMA.
@@ -172,8 +206,14 @@ export function JadwalBaruPage() {
     return () => { cancelled = true; };
   }, [submissionId, t]);
 
-  const startIso = picked ? toAiringStartIso(picked) : null;
-  const endIso = picked ? toAiringEndIso(picked, duration) : null;
+  const kilatPick = isKilat && pickedWave?.hour != null ? { ymd: pickedWave.ymd, hour: pickedWave.hour } : null;
+  const kilatStartMs = kilatPick ? kilatWaveInstant(kilatPick.ymd, kilatPick.hour).getTime() : null;
+  const startIso = isKilat
+    ? (kilatStartMs !== null ? new Date(kilatStartMs).toISOString() : null)
+    : (picked ? toAiringStartIso(picked) : null);
+  const endIso = isKilat
+    ? (kilatStartMs !== null ? new Date(kilatStartMs + DAY_MS).toISOString() : null)
+    : (picked ? toAiringEndIso(picked, duration) : null);
 
   /*
     ⚠️ BATCH DITANYAKAN KE SERVER, bukan disimpulkan di browser — dipindahkan
@@ -191,8 +231,8 @@ export function JadwalBaruPage() {
   }, [endIso, submissionId]);
 
   const plan = newSchedulePlan({
-    selected: picked,
-    availabilityReady: availability.isReady,
+    selected: isKilat ? (kilatPick?.ymd ?? null) : picked,
+    availabilityReady: isKilat ? waves.isReady : availability.isReady,
     batch,
     isResolvingBatch,
     prizePerWinner,
@@ -259,7 +299,7 @@ export function JadwalBaruPage() {
 
   const money = draftScheduleMoney({
     ordinal,
-    duration,
+    duration: effDuration,
     isNewBatch: willFundReward,
     prizePerWinner: activePrize,
     winnerCount: activeWinners,
@@ -301,6 +341,7 @@ export function JadwalBaruPage() {
   const latestRange = useAiringRange(latestYmd, latestDays);
 
   const pickDate = (ymd: string) => { setPicked(ymd); feedback.clear(); };
+  const pickWave = (next: KilatWaveDraft) => { setPickedWave(next); feedback.clear(); };
   const pickDuration = (days: number) => { setDuration(days); feedback.clear(); };
 
   // Teguran blok yang sebabnya sudah hilang (hadiah kini terisi, periode selesai
@@ -322,16 +363,41 @@ export function JadwalBaruPage() {
       SEKALI: peneliti yang membuka layar 12.58 dan menekan kunci 13.01
       mengirim tanggal yang sudah tidak sah.
     */
-    const verdict = scheduleLockGate({
-      selected: picked,
-      duration,
-      availability,
-    });
-    if (!verdict.ok) {
-      feedback.report(lockGateFeedback(verdict), { scroll: true });
-      if (verdict.clearSelection) setPicked(null);
-      if (verdict.shouldReload) void availability.reload();
-      return;
+    /*
+      Kilat: gerbang gelombang yang SAMA dengan Step 3 wizard dan Jadwal &
+      Bayar (`kilatLockGate`), ditambah teguran dini jarak 24 jam terhadap
+      gelombang order ini sendiri — penegaknya tetap server.
+    */
+    let wave: { ymd: string; hour: number } | null = null;
+    if (isKilat) {
+      const v = kilatLockGate(pickedWave, waves);
+      if (!v.ok) {
+        feedback.report(
+          { key: v.messageKey, tone: v.reason === 'no_date' || v.reason === 'no_wave' ? 'warning' : 'error' },
+          { scroll: true },
+        );
+        if (v.clearSelection && pickedWave) setPickedWave({ ymd: pickedWave.ymd, hour: null });
+        if (v.shouldReload) void waves.reload();
+        return;
+      }
+      if (kilatWaveClashesOwn(v, entries)) {
+        feedback.report({ key: 'kilatExtendTooClose', tone: 'error' }, { scroll: true });
+        setPickedWave({ ymd: v.ymd, hour: null });
+        return;
+      }
+      wave = { ymd: v.ymd, hour: v.hour };
+    } else {
+      const verdict = scheduleLockGate({
+        selected: picked,
+        duration,
+        availability,
+      });
+      if (!verdict.ok) {
+        feedback.report(lockGateFeedback(verdict), { scroll: true });
+        if (verdict.clearSelection) setPicked(null);
+        if (verdict.shouldReload) void availability.reload();
+        return;
+      }
     }
     if (!plan.canSubmit) {
       // Hadiah kosong = warning; periode belum/gagal terbaca = error.
@@ -358,7 +424,7 @@ export function JadwalBaruPage() {
         p_submission_id: submissionId,
         p_start_date: startIso,
         p_end_date: endIso,
-        p_duration: duration,
+        p_duration: effDuration,
         p_prize_per_winner: willFundReward ? activePrize : 0,
         p_winner_count: willFundReward ? activeWinners : 0,
         p_additional_prize_per_winner: 0,
@@ -395,10 +461,15 @@ export function JadwalBaruPage() {
         `slotReleaseDeadline()` — sumber tunggal aturan hold — bukan dengan
         menjumlah 3_600_000 dengan tangan untuk keenam kalinya.
       */
-      const holdDeadline = slotReleaseDeadline({
-        slotBookedBy: 'user',
-        slotReservedAt: new Date().toISOString(),
-      });
+      const reservedAt = new Date().toISOString();
+      /*
+        Kilat: link juga tidak boleh hidup melewati gelombang − 60 menit —
+        `billExpiryFor` mengambil yang lebih dulu dari hold dan batas bayar
+        (R6). Server memangkasnya lagi (`kilatPaymentGate`).
+      */
+      const holdDeadline = wave
+        ? billExpiryFor({ slotBookedBy: 'user', slotReservedAt: reservedAt, lockedYmd: wave.ymd, kilatHour: wave.hour }).getTime()
+        : slotReleaseDeadline({ slotBookedBy: 'user', slotReservedAt: reservedAt });
 
       await createPayment({
         formSubmissionId: submissionId,
@@ -475,6 +546,19 @@ export function JadwalBaruPage() {
 
       console.error('[JadwalBaruPage] gagal mengunci jadwal:', e);
 
+      /*
+        Gelombang ditolak server (sql/117 kuota, sql/119 klaim). ⚠️ SEBELUM
+        `isDailyQuotaFullError`: pesan gelombang penuh juga memuat "sudah
+        penuh" dan akan tertelan sebagai kuota harian Iklan.
+      */
+      const waveKind = isKilat ? kilatWaveErrorKind(e) : null;
+      if (!orphanLeft && waveKind) {
+        feedback.report({ key: waveKind === 'full' ? 'errorSlotFullKilat' : 'kilatErrorWaveClosed', tone: 'error' }, { scroll: true });
+        setPickedWave((w) => (w ? { ymd: w.ymd, hour: null } : null));
+        void waves.reload();
+        return;
+      }
+
       // Hari itu penuh menurut server (create_ad_schedule / trigger sql/111),
       // padahal kalender di layar ini masih menampilkannya lowong. Jadwalnya
       // tidak pernah lahir, jadi tidak ada yang perlu dikompensasi.
@@ -516,12 +600,13 @@ export function JadwalBaruPage() {
   }
 
   /*
-    ⚠️ PENJAGA KILAT — sampai Phase 5 §5.10 (extend Kilat). Kartu "Perpanjang"
-    sudah tersembunyi untuk Kilat (`SchedulePhase`), tapi alamat ini bisa
-    dibuka langsung, dan kalendernya kalender HARI Iklan: perpanjangan Kilat
-    harus memilih GELOMBANG (`KilatWavePicker`), bukan tanggal × durasi.
+    ⚠️ PENJAGA KILAT — pintu yang sama dengan kartu Kilat
+    (`canUseKilatSelfServe`). Kartu "Pesan gelombang lagi" sudah tersembunyi
+    selama pintu tertutup (`SchedulePhase`), tapi alamat ini bisa dibuka
+    langsung. Selama `KILAT_TARIFF_FROM` masih `null`, gelombang tambahan
+    dihargai rumus lama — jadi jangan dijual sebelum Push B.
   */
-  if (submission.distribution_type === 'kilat') {
+  if (isKilat && !canUseKilatSelfServe(user?.email)) {
     return (
       <div className="max-w-3xl mx-auto px-6 pt-24 text-center space-y-4">
         <p className="text-sm text-slate-600">{t('kilatExtendNotYet')}</p>
@@ -542,8 +627,8 @@ export function JadwalBaruPage() {
       backLabel={t('backToOrdersShort')}
       isBusy={isSaving}
       title={t(seg.key, seg.vars)}
-      cardTitle={t('scheduleCardExtensionTitle')}
-      subtitle={t('reservationPickSubtitle')}
+      cardTitle={isKilat ? t('kilatWavePickWave') : t('scheduleCardExtensionTitle')}
+      subtitle={isKilat ? t('kilatExtendCardSubtitle') : t('reservationPickSubtitle')}
       feedback={feedback}
       stub={
         <TicketStub
@@ -551,10 +636,17 @@ export function JadwalBaruPage() {
           bookingId={bookingId}
           tag={t('scheduleExtensionPrefix')}
           locked={false}
-          startYmd={picked}
-          days={duration}
+          startYmd={isKilat ? (pickedWave?.ymd ?? null) : picked}
+          days={effDuration}
+          kilatWaveHour={isKilat ? (pickedWave?.hour ?? null) : undefined}
           extraRows={[
-            ...(latestRange ? [{ label: t('summaryLatestScheduleLabel'), value: latestRange }] : []),
+            ...(latestRange ? [{
+              label: t('summaryLatestScheduleLabel'),
+              // Kilat: tanggal + gelombang, tanpa durasi (§5.8).
+              value: isKilat && latestShown?.kilatSlotHour != null
+                ? `${latestRange} · ${formatWaveHour(latestShown.kilatSlotHour)} WIB`
+                : latestRange,
+            }] : []),
             ...(picked && currentPeriodBatch && !isResolvingBatch
               ? [{ label: t('summaryPeriodLabel'), value: currentPeriodLabel }]
               : []),
@@ -563,7 +655,7 @@ export function JadwalBaruPage() {
         />
       }
       mobileBarInfo={<MobileBarInfo total={money.total} />}
-      duration={
+      duration={isKilat ? undefined : (
         /* Lama tayang */
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -575,8 +667,28 @@ export function JadwalBaruPage() {
             disabled={isSaving}
           />
         </div>
-      }
-      calendar={
+      )}
+      calendar={isKilat ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-start gap-2 text-sm text-slate-600">
+              <Info className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
+              <span>{t('kilatWaveCutoffNote')}</span>
+            </div>
+            {!waves.isLoading && waves.hasError && (
+              <button
+                type="button"
+                onClick={() => void waves.reload()}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                {t('slotAvailabilityRetry')}
+              </button>
+            )}
+          </div>
+          <KilatWavePicker availability={waves} value={pickedWave} onChange={pickWave} />
+        </div>
+      ) : (
         /* Tanggal — ⚠️ SchedulePicker, kalender PENELITI. Modal lama memakai
             SlotCalendar yang `isAdmin`-nya default `true`. */
         <div className="space-y-4">
@@ -606,8 +718,7 @@ export function JadwalBaruPage() {
             ownRange={latestYmd ? { startYmd: latestYmd, days: latestDays } : null}
           />
         </div>
-
-      }
+      )}
       reward={
         <>
           {/* Kondisi 2: Berbeda Periode (New Period) -> Layout Atas-Bawah Selaras Form Awal */}

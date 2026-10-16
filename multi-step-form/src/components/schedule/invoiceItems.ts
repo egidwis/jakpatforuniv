@@ -221,12 +221,48 @@ export function buildExtensionInvoiceItems(
     voucherCode?: string | null;
     /** Lihat `OrderPricingInput.voucherInstantMs`. */
     voucherInstantMs?: number;
+    /**
+     * Gelombang Kilat (Phase 5 §5.10). Bawaan: jenis distribusi baris jadwal,
+     * sama dengan cabang jadwal pertama di `BulkInvoiceDialog`.
+     */
+    isKilat?: boolean;
   }
 ): InvoiceItem[] {
   const items: InvoiceItem[] = [];
   // Instan tarif perpanjangan = saat ia dipesan (atau dipesan ulang) — sql/103.
-  const costPerDay = calculateAdCostPerDay(opts.questionCount || 0, rateInstantOf(entry.rateLockedAt));
+  const rateInstantMs = rateInstantOf(entry.rateLockedAt);
+  const isKilat = opts.isKilat ?? entry.distributionType === 'kilat';
+  const costPerDay = isKilat ? 0 : calculateAdCostPerDay(opts.questionCount || 0, rateInstantMs);
   const duration = entry.duration || 0;
+
+  /*
+    Gelombang Kilat tambahan — satu gelombang, bukan tarif harian × durasi.
+    CERMIN `buildNoteItems` (create-payment.js) baris demi baris: dulu prefill
+    ini menghitung tarif Iklan × durasi sementara server menagih tarif Kilat,
+    jadi invoice admin dan kuitansi peneliti berselisih (audit invoice 15 Okt).
+    Hadiah hanya untuk batch baru, sama dengan Iklan (`pricingRowForSchedule`).
+  */
+  if (isKilat) {
+    const q = opts.questionCount || 0;
+    const code = opts.voucherCode || undefined;
+    const rate = kilatRateAt(q, rateInstantMs);
+    const incentive = entry.isNewPeriod ? calculateIncentiveCost(entry.winnerCount, entry.prizePerWinner) : 0;
+    if (code?.toUpperCase() === 'JFUTGRX' && rate.effective + rate.addon + incentive > 1000) {
+      return [{ id: nextId(), name: 'System Testing Fee (JFUTGRX)', qty: 1, price: 1000, category: 'Lainnya' }];
+    }
+    if (rate.legacy) {
+      items.push({ id: nextId(), name: 'Jakpat for Universities (ads)', qty: 1, price: rate.effective, category: 'Jakpat for Universities (ads)' });
+      items.push({ id: nextId(), name: 'Add-on JFU Kilat', qty: 1, price: getKilatAddonCost(code), category: 'Lainnya' });
+    } else if (rate.effective > 0) {
+      items.push({
+        id: nextId(),
+        name: 'JFU Kilat (1 gelombang)',
+        qty: 1,
+        price: Math.max(0, rate.effective - calculateKilatDiscount(code, rate.effective, incentive, rateInstantMs)),
+        category: 'Jakpat for Universities (ads)',
+      });
+    }
+  }
 
   if (costPerDay > 0 && duration > 0) {
     const adCost = costPerDay * duration;

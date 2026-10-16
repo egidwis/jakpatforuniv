@@ -290,10 +290,10 @@ export function KilatScheduleBoard({ onOpenSubmission, embedded = false }: Kilat
                                                             const meta = statusMeta(entry);
                                                             return (
                                                                 <button
-                                                                    key={entry.id}
+                                                                    key={`${entry.id}${entry.isExtension ? '-ext' : ''}`}
                                                                     type="button"
                                                                     onClick={() => onOpenSubmission({ id: entry.id, createdAt: entry.createdAt })}
-                                                                    title={`${entry.title} — ${entry.researcherName} (${meta.label})`}
+                                                                    title={`${entry.title} — ${entry.researcherName} (${meta.label}${entry.isExtension ? ', gelombang tambahan' : ''})`}
                                                                     className="flex w-full min-w-0 items-center gap-1 px-1.5 py-1 rounded-md bg-slate-50 hover:bg-amber-50 border border-slate-200 hover:border-amber-300 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1"
                                                                 >
                                                                     <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${meta.dotClass}`} title={meta.label} />
@@ -303,6 +303,9 @@ export function KilatScheduleBoard({ onOpenSubmission, embedded = false }: Kilat
                                                                     <span className="min-w-0 flex-1 text-[10px] font-medium text-slate-700 truncate">
                                                                         {entry.title}
                                                                     </span>
+                                                                    {entry.isExtension && (
+                                                                        <span className="shrink-0 rounded bg-amber-100 px-1 text-[9px] font-semibold text-amber-800">+Gel.</span>
+                                                                    )}
                                                                 </button>
                                                             );
                                                         })}
