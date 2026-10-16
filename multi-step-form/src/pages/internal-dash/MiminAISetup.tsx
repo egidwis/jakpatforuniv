@@ -6,6 +6,8 @@ import {
   saveAISkill, 
   deleteAISkill, 
   toggleAISkillActive, 
+  postMimin,
+  firstAdminRow,
   type AISkill 
 } from '../../utils/supabase';
 import { 
@@ -448,9 +450,10 @@ const MiminAISetup: React.FC = () => {
   const handleSavePrompt = async () => {
     setSavingPrompt(true);
     try {
-      const { error } = await supabase
-        .from('ai_settings')
-        .upsert({ key: 'system_prompt', value: systemPrompt, updated_at: new Date().toISOString() });
+      const { error } = await postMimin(
+        { action: 'save-prompt', value: systemPrompt },
+        () => supabase.from('ai_settings').upsert({ key: 'system_prompt', value: systemPrompt, updated_at: new Date().toISOString() }),
+      );
         
       if (!error) {
         setPromptSaved(true);
@@ -475,29 +478,41 @@ const MiminAISetup: React.FC = () => {
     try {
       if (isAddingFaq) {
         const newOrder = faqs.length > 0 ? Math.max(...faqs.map(f => f.sort_order)) + 1 : 1;
-        const { data, error } = await supabase
-          .from('ai_knowledge_base')
-          .insert({
+        const { data, error } = await postMimin(
+          {
+            action: 'insert-faq',
+            question: editForm.question,
+            answer: editForm.answer,
+            isActive: editForm.is_active ?? true,
+            sortOrder: newOrder,
+          },
+          () => supabase.from('ai_knowledge_base').insert({
             question: editForm.question,
             answer: editForm.answer,
             is_active: editForm.is_active ?? true,
-            sort_order: newOrder
-          })
-          .select()
-          .single();
-          
-        if (!error && data) {
-          setFaqs([...faqs, data]);
+            sort_order: newOrder,
+          }).select().single(),
+        );
+
+        const created = firstAdminRow(data);
+        if (!error && created) {
+          setFaqs([...faqs, created]);
         }
       } else if (editingFaq) {
-        const { error } = await supabase
-          .from('ai_knowledge_base')
-          .update({
+        const { error } = await postMimin(
+          {
+            action: 'update-faq',
+            id: editingFaq,
             question: editForm.question,
             answer: editForm.answer,
-            is_active: editForm.is_active
-          })
-          .eq('id', editingFaq);
+            isActive: editForm.is_active ?? true,
+          },
+          () => supabase.from('ai_knowledge_base').update({
+            question: editForm.question,
+            answer: editForm.answer,
+            is_active: editForm.is_active,
+          }).eq('id', editingFaq),
+        );
           
         if (!error) {
           setFaqs(faqs.map(f => f.id === editingFaq ? { ...f, ...editForm } as FAQ : f));
@@ -516,10 +531,10 @@ const MiminAISetup: React.FC = () => {
   const handleDeleteFaq = async (id: string) => {
     if (!window.confirm("Yakin ingin menghapus FAQ ini?")) return;
     try {
-      const { error } = await supabase
-        .from('ai_knowledge_base')
-        .delete()
-        .eq('id', id);
+      const { error } = await postMimin(
+        { action: 'delete-faq', id },
+        () => supabase.from('ai_knowledge_base').delete().eq('id', id),
+      );
       if (!error) {
         setFaqs(faqs.filter(f => f.id !== id));
       }
@@ -530,10 +545,10 @@ const MiminAISetup: React.FC = () => {
 
   const toggleFaqActive = async (id: string, currentStatus: boolean) => {
     try {
-      const { error } = await supabase
-        .from('ai_knowledge_base')
-        .update({ is_active: !currentStatus })
-        .eq('id', id);
+      const { error } = await postMimin(
+        { action: 'toggle-faq', id, isActive: !currentStatus },
+        () => supabase.from('ai_knowledge_base').update({ is_active: !currentStatus }).eq('id', id),
+      );
       if (!error) {
         setFaqs(faqs.map(f => f.id === id ? { ...f, is_active: !currentStatus } : f));
       }

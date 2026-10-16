@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 // import { Switch } from '@/components/ui/switch'; // Removed unused
 import { BlockEditor } from './BlockEditor';
-import { adminContent, firstAdminRow, supabase, updateFormStatus } from '@/utils/supabase';
+import { adminContent, firstAdminRow, setSubmissionAiringStatus, supabase } from '@/utils/supabase';
 import { airingWindowState, toAiringStartIso, toWibYmd } from '@/utils/airing-window';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -383,7 +383,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                         new Date(syncedStart!),
                         syncedEnd ? new Date(syncedEnd) : null,
                     );
-                    await updateFormStatus(submissionId, newStatus);
+                    await setSubmissionAiringStatus(submissionId, newStatus);
                 }
             }
 
@@ -465,7 +465,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                     .update({ end_date: now, updated_at: now })
                     .eq('id', submissionId);
 
-                await updateFormStatus(submissionId, 'completed');
+                await setSubmissionAiringStatus(submissionId, 'completed');
             }
 
             toast.success('Campaign berhasil dihentikan.');

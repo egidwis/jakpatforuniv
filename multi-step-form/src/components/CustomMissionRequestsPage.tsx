@@ -21,7 +21,7 @@ import {
   FileText,
   Edit3
 } from 'lucide-react';
-import { supabase } from '../utils/supabase';
+import { postMimin, supabase } from '../utils/supabase';
 import { toast } from 'sonner';
 
 export interface CustomMissionRequest {
@@ -110,13 +110,13 @@ export function CustomMissionRequestsPage() {
   const handleUpdateStatus = async (id: string, newStatus: CustomMissionRequest['status']) => {
     setUpdatingId(id);
     try {
-      const { error } = await supabase
-        .from('custom_mission_requests')
-        .update({
+      const { error } = await postMimin(
+        { action: 'mission-status', id, status: newStatus },
+        () => supabase.from('custom_mission_requests').update({
           status: newStatus,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id);
+          updated_at: new Date().toISOString(),
+        }).eq('id', id),
+      );
 
       if (error) throw error;
 
