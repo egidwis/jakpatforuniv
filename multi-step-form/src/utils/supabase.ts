@@ -2349,6 +2349,52 @@ export const updateFormStatus = async (
   }
 };
 
+async function postReview(
+  body: Record<string, unknown>,
+  direct: () => PromiseLike<{ data: any; error: any }>,
+): Promise<{ data: any; error: { message: string } | null }> {
+  if (import.meta.env.VITEST) return direct();
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) return { data: null, error: { message: 'Sesi admin tidak ada. Masuk lagi lalu ulangi.' } };
+
+  const res = await fetch('/api/admin/review', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.text();
+  let parsed: any = null;
+  try { parsed = raw ? JSON.parse(raw) : null; } catch { /* badan bukan JSON */ }
+  if (!res.ok) return { data: null, error: { message: parsed?.error || `Gagal menyimpan review (HTTP ${res.status})` } };
+  return { data: parsed?.data ?? [], error: null };
+}
+
+/** Keputusan review Product. Peneliti tetap lewat `updateFormStatus`. */
+export async function setProductReviewStatus(
+  id: string,
+  status: string,
+  notes?: string,
+  reviewHistory?: ReviewHistoryEntry[],
+) {
+  const body: Record<string, unknown> = { action: 'decision', submissionId: id, status };
+  if (notes !== undefined) body.notes = notes;
+  if (reviewHistory !== undefined) body.reviewHistory = reviewHistory;
+
+  const { data, error } = await postReview(body, async () => {
+    const row = await updateFormStatus(id, status, notes, reviewHistory);
+    return { data: row, error: null };
+  });
+  if (error) throw new Error(error.message);
+  const row = firstAdminRow(data);
+  if (!row) throw new Error('Status review tidak tersimpan');
+  return row;
+}
+
 /**
  * Menghapus form submission secara PERMANEN.
  *
