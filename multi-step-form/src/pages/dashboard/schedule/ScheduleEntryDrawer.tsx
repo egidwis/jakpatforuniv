@@ -34,6 +34,7 @@ import {
   adminContent,
   fetchScheduleBilling,
   getScheduledPageBySubmission,
+  setSubmissionCriteria,
   supabase,
   type AdScheduleEntry,
   type ScheduleBilling,
@@ -170,11 +171,11 @@ export function ScheduleEntryDrawer({
       }
 
       if (form.criteria !== baseline.criteria && submissionId) {
-        const { error } = await supabase
-          .from('form_submissions')
-          .update({ criteria_responden: form.criteria })
-          .eq('id', submissionId);
-        if (error) throw new Error(`Halaman tersimpan, tapi kriteria gagal: ${error.message}`);
+        try {
+          await setSubmissionCriteria(submissionId, form.criteria);
+        } catch (error: any) {
+          throw new Error(`Halaman tersimpan, tapi kriteria gagal: ${error.message}`);
+        }
       }
 
       toast.success('Perubahan konten berhasil disimpan.');

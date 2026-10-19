@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { cn } from '@/lib/utils';
 import { MAX_EXTRA_ADS_PER_DAY, MAX_REGULAR_ADS_PER_DAY } from '@/utils/constants';
 import {
-  fetchScheduleBilling, fetchSlotAvailability, killDokuLinksForSchedule,
+  createAdminSchedule, fetchScheduleBilling, fetchSlotAvailability, holdExtendSlot,
+  holdSubmissionSlot, killDokuLinksForSchedule,
   setScheduleExtraAd, supabase, updateExtendScheduleDates, updateScheduleDates,
   type AdScheduleEntry, type DokuKillReport,
 } from '@/utils/supabase';
@@ -451,15 +452,7 @@ export function ScheduleForm({
         lifecycleStatus: freshExt?.status,
       });
       if (extPatch.payment_status) {
-        await supabase
-          .from('ad_schedules')
-          .update({ ...extPatch, updated_at: new Date().toISOString() })
-          .eq('source_table', 'form_submissions_extend')
-          .eq('source_id', entry.sourceId)
-          // Penjaga diulang DI DALAM query, bukan cuma dari baris yang baru
-          // dibaca: pola yang sama dengan `cancelSchedule` dan
-          // `rebookSlotForSubmission`.
-          .not('payment_status', 'in', '("paid","completed")');
+        await holdExtendSlot(entry.sourceId);
       }
     } else {
       await updateScheduleDates(submissionId, startIso, endIso, selectedHour, selectedMinute);
@@ -479,43 +472,15 @@ export function ScheduleForm({
       // 'user' adalah satu-satunya yang dilepas otomatis setelah 1 jam, dan
       // slot yang baru saja dipindah admin tidak boleh ikut kadaluwarsa.
       if (!isPaid && !alreadyCommitted) {
-        const { error: holdError } = await supabase
-          .from('form_submissions')
-          .update({
-            submission_status: 'slot_reserved',
-            slot_booked_by: 'admin',
-            slot_reserved_at: new Date().toISOString(),
-            /*
-              ⚠️ `payment_status` DULU TERLEWAT DI SINI, dan itu cacat #MM36J2EW:
-              tiga kolom di atas direset, yang satu ini tidak — jadi kartu jadwal
-              yang sudah dipindah ke 22 Sep tetap berbunyi "Slot kedaluwarsa" dan
-              penelitinya melihat "Batas bayar terlewat". Lihat `rescheduleReset.ts`.
-
-              Presedennya `rebookSlotForSubmission()`, yang menulis
-              `payment_status: 'pending'` untuk keadaan yang sama persis.
-            */
-            ...rescheduleResetPatch({
-              paymentStatus: fresh?.payment_status,
-              lifecycleStatus: fresh?.submission_status,
-            }),
-          })
-          .eq('id', submissionId);
-
-        /*
-          ⚠️ Tulisan KEDUA ini bisa ditolak sendiri. Hold yang diperbarui
-          (`slot_reserved_at` baru) adalah klaim baru bagi trigger kuota harian
-          (sql/111 D4), jadi SEMUA harinya dicek — termasuk hari yang sudah ia
-          tempati. Tanggalnya sudah pindah lewat `updateScheduleDates` di atas,
-          jadi ini bukan kegagalan total: admin harus tahu statusnya tertinggal,
-          bukan melihat "berhasil".
-        */
-        if (holdError) {
-          console.error('Tanggal pindah, tapi reset hold gagal:', holdError);
+        try {
+          await holdSubmissionSlot(submissionId);
+        } catch (holdErr: any) {
+          console.error('Tanggal pindah, tapi reset hold gagal:', holdErr);
           toast.error(
-            `Tanggal sudah dipindah, tetapi status reservasinya gagal diperbarui: ${holdError.message}`,
+            `Tanggal sudah dipindah, tetapi status reservasinya gagal diperbarui: ${holdErr.message}`,
             { duration: 12000 },
           );
-          if (isDailyQuotaFullError(holdError)) void loadSlots();
+          if (isDailyQuotaFullError(holdErr)) void loadSlots();
         }
       }
     }
@@ -583,26 +548,17 @@ export function ScheduleForm({
     // memanggil `assert_schedule_window_free`, memetakan `is_new_month`, lalu
     // `resync_ad_schedule_ordinals`. RPC ini memindahkan pemanggilnya tanpa
     // memindahkan kelima aturan itu ke TypeScript, tempat ia akan menyimpang.
-    const { error } = await supabase.rpc('create_ad_schedule', {
-      p_submission_id: submissionId,
-      p_start_date: startIso,
-      p_end_date: endIso,
-      p_duration: duration,
-      p_prize_per_winner: resolved.isNewBatch ? prizePerWinner : 0,
-      p_winner_count: resolved.isNewBatch ? winnerCount : 0,
-      p_additional_prize_per_winner: !resolved.isNewBatch ? additionalPrize : 0,
-      p_is_new_period: resolved.isNewBatch,
-      p_status: 'waiting_payment',
-      p_payment_status: 'pending',
-      p_total_cost: 0,
-      p_slot_booked_by: 'admin',
-      // Dikirim EKSPLISIT, tidak dibiarkan kosong: kosong berarti "warisi
-      // jadwal ordinal 1" di dalam RPC, dan di sini admin sudah menyatakan
-      // pilihannya lewat toggle. Untuk order Kilat nilainya dibersihkan
-      // trigger — kolam tambahan tidak berlaku di sana.
-      p_is_extra_ad: isExtraMode,
+    await createAdminSchedule({
+      submissionId,
+      startDate: startIso,
+      endDate: endIso,
+      duration,
+      prizePerWinner: resolved.isNewBatch ? prizePerWinner : 0,
+      winnerCount: resolved.isNewBatch ? winnerCount : 0,
+      additionalPrize: !resolved.isNewBatch ? additionalPrize : 0,
+      isNewBatch: resolved.isNewBatch,
+      isExtra: isExtraMode,
     });
-    if (error) throw error;
 
     toast.success('Jadwal iklan baru dibuat.');
   };

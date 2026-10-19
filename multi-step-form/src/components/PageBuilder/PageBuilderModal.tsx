@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 // import { Switch } from '@/components/ui/switch'; // Removed unused
 import { BlockEditor } from './BlockEditor';
-import { adminContent, firstAdminRow, setSubmissionAiringStatus, supabase } from '@/utils/supabase';
+import { adminContent, firstAdminRow, setSubmissionAiringStatus, setSubmissionCriteria, supabase, syncSubmissionDates } from '@/utils/supabase';
 import { airingWindowState, toAiringStartIso, toWibYmd } from '@/utils/airing-window';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -327,11 +327,11 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
 
             // Update form_submissions criteria_responden if edited and related to a submission
             if (submissionId && formData.criteria_responden !== submissionCriteria) {
-                const { error: criteriaError } = await supabase
-                    .from('form_submissions')
-                    .update({ criteria_responden: formData.criteria_responden })
-                    .eq('id', submissionId);
-                if (criteriaError) console.error('Failed to update submission criteria:', criteriaError);
+                try {
+                    await setSubmissionCriteria(submissionId, formData.criteria_responden);
+                } catch (criteriaError) {
+                    console.error('Failed to update submission criteria:', criteriaError);
+                }
             }
 
             if (existingId) {
@@ -363,15 +363,14 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                 const syncedStart = toAiringInstant(formData.publish_start_date);
                 const syncedEnd = toAiringInstant(formData.publish_end_date);
 
-                const { error: syncError } = await supabase
-                    .from('form_submissions')
-                    .update({
-                        start_date: syncedStart,
-                        end_date: syncedEnd,
-                        updated_at: new Date().toISOString(),
-                    })
-                    .eq('id', submissionId);
-                if (syncError) console.warn('Failed to sync dates to form_submissions:', syncError.message);
+                try {
+                    await syncSubmissionDates(submissionId, {
+                        startDate: syncedStart,
+                        endDate: syncedEnd,
+                    });
+                } catch (syncError: any) {
+                    console.warn('Failed to sync dates to form_submissions:', syncError.message);
+                }
 
                 // Update status based on current date vs start_date
                 if (isPublished) {
@@ -460,10 +459,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
 
             // 2. Sync end_date to form_submissions and mark as completed
             if (submissionId) {
-                await supabase
-                    .from('form_submissions')
-                    .update({ end_date: now, updated_at: now })
-                    .eq('id', submissionId);
+                await syncSubmissionDates(submissionId, { endDate: now });
 
                 await setSubmissionAiringStatus(submissionId, 'completed');
             }
