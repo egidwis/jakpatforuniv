@@ -6,7 +6,7 @@ import type { ReviewHistoryEntry } from '@/components/submissions/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Chip } from '@/components/ui/chip';
 import { Skeleton } from '@/components/ui/skeleton';
-import { RefreshCw, ChevronRight, ListFilter, Check, ArrowUp, Copy, ClipboardList, ListPlus } from 'lucide-react';
+import { RefreshCw, ChevronRight, ChevronDown, ListFilter, Check, ArrowUp, Copy, ClipboardList, ListPlus } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -653,33 +653,44 @@ export function StatusPage() {
         return (
             <div className="max-w-5xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-10">
                 <div className="grid lg:grid-cols-12 gap-6 items-start">
-                    {/* Skeleton kartu aksi: kepala + 2 baris produk + kaki Chat Mimin */}
+                    {/* Skeleton kartu aksi: kepala + 2 kartu aksi produk + kaki Chat Mimin */}
                     <div className="lg:col-span-4 rounded-2xl border border-slate-200/90 bg-white overflow-hidden">
-                        <div className="px-5 pt-5 pb-4 border-b border-slate-100 space-y-2">
+                        <div className="px-4 sm:px-5 pt-4 sm:pt-5 pb-3 sm:pb-3.5 border-b border-slate-100 space-y-2">
                             <Skeleton className="h-5 w-36 bg-slate-100" />
                             <Skeleton className="h-3 w-48 bg-slate-100" />
                         </div>
-                        {[1, 2].map((i) => (
-                            <div key={i} className="flex items-start gap-3 px-5 py-4 border-b border-slate-100">
-                                <Skeleton className="h-9 w-9 rounded-xl bg-slate-100 shrink-0" />
-                                <div className="flex-1 space-y-2">
-                                    <Skeleton className="h-4 w-28 bg-slate-100" />
+                        <div className="p-3 sm:p-4 space-y-2.5">
+                            {[1, 2].map((i) => (
+                                <div key={i} className="p-3.5 sm:p-4 rounded-xl border border-slate-100 bg-slate-50/50 space-y-2.5">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2.5">
+                                            <Skeleton className="h-8 w-8 rounded-lg bg-slate-200 shrink-0" />
+                                            <Skeleton className="h-4 w-24 bg-slate-200" />
+                                        </div>
+                                        <Skeleton className="h-6 w-16 rounded-lg bg-slate-200" />
+                                    </div>
                                     <Skeleton className="h-3 w-full bg-slate-100" />
                                 </div>
-                            </div>
-                        ))}
-                        <div className="px-5 py-3 bg-slate-50/70">
+                            ))}
+                        </div>
+                        <div className="px-4 sm:px-5 py-3 bg-slate-50/50 border-t border-slate-100">
                             <Skeleton className="h-3 w-40 bg-slate-100" />
                         </div>
                     </div>
 
                     <div className="lg:col-span-8 min-w-0 space-y-4">
                         {/* Skeleton Header My Order & Tools */}
-                        <div className="flex justify-between items-center">
-                            <Skeleton className="h-7 w-32 bg-slate-200" />
+                        <div className="flex justify-between items-center pb-1">
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <Skeleton className="h-7 w-32 bg-slate-200 rounded-lg" />
+                                    <Skeleton className="h-5 w-8 bg-slate-100 rounded-full" />
+                                </div>
+                                <Skeleton className="h-3 w-48 bg-slate-100 hidden sm:block" />
+                            </div>
                             <div className="flex gap-2">
-                                <Skeleton className="h-9 w-9 rounded-md bg-slate-200" />
-                                <Skeleton className="h-9 w-9 rounded-md bg-slate-200" />
+                                <Skeleton className="h-9 w-24 sm:w-28 rounded-xl bg-slate-200" />
+                                <Skeleton className="h-9 w-9 sm:w-20 rounded-xl bg-slate-200" />
                             </div>
                         </div>
 
@@ -728,40 +739,60 @@ export function StatusPage() {
                 <div className="lg:col-span-8 min-w-0 space-y-4">
                     {/* Header bagian Dashboard beserta filter dan refresh */}
                     <div className="flex items-center justify-between gap-3 pb-1">
-                        <h1 className="text-lg md:text-xl font-bold text-[#1a1a1a] dark:text-white truncate flex items-center gap-2">
-                            <span>{t('pageTitle')}</span>
-                            <span className="text-sm font-normal text-slate-400">
-                                ({submissions.length})
-                            </span>
-                        </h1>
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2 sm:gap-2.5">
+                                <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white truncate">
+                                    {t('pageTitle')}
+                                </h1>
+                                {submissions.length > 0 && (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-jfu-primary border border-blue-200/80 shadow-2xs shrink-0">
+                                        {submissions.length}
+                                    </span>
+                                )}
+                            </div>
+                            <p className="text-xs text-slate-500 mt-0.5 hidden sm:block truncate">
+                                {t('orderListSubtitle')}
+                            </p>
+                        </div>
                         {submissions.length > 0 && (
-                            <div className="flex items-center gap-1 shrink-0">
+                            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                                 <DropdownMenu>
                                     <DropdownMenuTrigger
                                         aria-label={t('filterAll')}
-                                        className={`relative flex items-center justify-center h-9 w-9 rounded-md transition-colors outline-none ${selectedFilter !== 'all'
-                                            ? 'bg-jfu-primary/[0.12] text-jfu-primary'
-                                            : 'text-jfu-primary hover:bg-jfu-primary/10 dark:text-gray-300'
-                                            }`}
+                                        className={`relative inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 h-9 rounded-xl border text-xs font-semibold transition-all outline-none shadow-2xs cursor-pointer ${
+                                            selectedFilter !== 'all'
+                                                ? 'bg-jfu-primary text-white border-jfu-primary shadow-xs'
+                                                : 'bg-white text-slate-700 border-slate-200/90 hover:bg-slate-50 hover:text-slate-900'
+                                        }`}
                                     >
-                                        <ListFilter className="w-4 h-4" />
+                                        <ListFilter className="w-3.5 h-3.5 shrink-0" />
+                                        <span className="max-w-[100px] sm:max-w-none truncate">
+                                            {filterChips.find((c) => c.value === selectedFilter)?.label || t('filterAll')}
+                                        </span>
                                         {needsActionCount > 0 && (
-                                            <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                                            <span
+                                                className={`inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full text-[10px] font-bold ${
+                                                    selectedFilter !== 'all'
+                                                        ? 'bg-white text-jfu-primary'
+                                                        : 'bg-red-500 text-white'
+                                                }`}
+                                            >
                                                 {needsActionCount}
                                             </span>
                                         )}
+                                        <ChevronDown className="w-3 h-3 opacity-60 ml-0.5 shrink-0" />
                                     </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="w-44">
+                                    <DropdownMenuContent align="end" className="w-48">
                                         {filterChips.map((chip) => (
                                             <DropdownMenuItem
                                                 key={chip.value}
                                                 onClick={() => setSelectedFilter(chip.value)}
-                                                className="cursor-pointer justify-between"
+                                                className="cursor-pointer justify-between py-2 text-xs"
                                             >
                                                 <span className={selectedFilter === chip.value ? 'font-semibold text-jfu-primary' : ''}>
                                                     {chip.label}
                                                     {typeof chip.count === 'number' && chip.count > 0 && (
-                                                        <span className="ml-1.5 inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
+                                                        <span className="ml-1.5 inline-flex items-center justify-center min-w-4 h-4 px-1.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
                                                             {chip.count}
                                                         </span>
                                                     )}
@@ -772,14 +803,15 @@ export function StatusPage() {
                                     </DropdownMenuContent>
                                 </DropdownMenu>
                                 <Button
-                                    variant="ghost"
-                                    size="icon"
+                                    variant="outline"
+                                    size="sm"
                                     onClick={handleRefresh}
                                     disabled={refreshing}
                                     title={t('refresh')}
-                                    className="h-9 w-9 text-jfu-primary hover:bg-jfu-primary/10 hover:text-jfu-primary dark:text-gray-300"
+                                    className="h-9 px-2.5 sm:px-3 rounded-xl bg-white border border-slate-200/90 text-slate-600 hover:text-jfu-primary hover:bg-slate-50 shadow-2xs text-xs font-semibold"
                                 >
-                                    <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                                    <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                                    <span className="hidden md:inline ml-1 font-medium">{t('refresh')}</span>
                                 </Button>
                             </div>
                         )}
