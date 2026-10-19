@@ -24,7 +24,7 @@ import { bundleTotals, writeInvoiceRows, InvoiceWriteError, type InvoiceBundle }
 import { formatWibShort } from '@/pages/dashboard/schedule/scheduleModel';
 import {
   ITEM_CATEGORIES, adUnitPriceOf, buildExtensionInvoiceItems, buildOrderInvoiceItems, describeVoucher,
-  newBlankItem, rateContextOf, type InvoiceItem,
+  kilatAddonOverpriced, newBlankItem, rateContextOf, type InvoiceItem,
 } from './invoiceItems';
 
 // ─────────────────────────────────────────────────────────────
@@ -188,6 +188,9 @@ export function InvoiceForm({
     systemAdPrice !== null && typedAdPrice !== null && typedAdPrice < systemAdPrice
       ? { typed: typedAdPrice, system: systemAdPrice }
       : null;
+  // PENGHALANG, bukan peringatan: add-on Kilat harganya tetap, dan kelebihannya
+  // langsung jadi selisih "dashboard ≠ mutasi bank" di sisi peneliti.
+  const addonOverpriced = kilatAddonOverpriced(items, appliedVoucher);
 
   /** Prefill item sesuai jalur jadwalnya. */
   const prefill = useCallback(async () => {
@@ -357,6 +360,10 @@ export function InvoiceForm({
     }
     if (subtotal <= 0) {
       toast.error('Total tagihan harus lebih dari 0');
+      return;
+    }
+    if (addonOverpriced) {
+      toast.error(`Add-on JFU Kilat maksimal ${formatIDR(addonOverpriced.system)} (harga sistem).`);
       return;
     }
 
@@ -592,7 +599,7 @@ export function InvoiceForm({
     }
   };
 
-  const canSave = !isLoading && subtotal > 0;
+  const canSave = !isLoading && subtotal > 0 && !addonOverpriced;
 
   // ⚠️ DIBUNGKUS, tidak dioper langsung. `handleCreate` menerima `notify`
   // sebagai argumen pertama, dan `onClick={handleCreate}` akan mengopernya
@@ -798,6 +805,12 @@ export function InvoiceForm({
             <p className="rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900 leading-snug">
               ⚠️ Harga iklan {formatIDR(adPriceBelowSystem.typed)}/hari di bawah harga sistem{' '}
               {formatIDR(adPriceBelowSystem.system)}/hari. Tagihan tetap bisa dibuat — batas nego resmi belum ditetapkan.
+            </p>
+          )}
+          {addonOverpriced && (
+            <p className="rounded border border-red-300 bg-red-50 px-2 py-1.5 text-[11px] text-red-900 leading-snug">
+              ⛔ Add-on JFU Kilat {formatIDR(addonOverpriced.typed)} di atas harga sistem{' '}
+              {formatIDR(addonOverpriced.system)}. Rp250.000 adalah harga masa pilot dan sudah tidak berlaku sejak 4 Agu 2026.
             </p>
           )}
         </div>

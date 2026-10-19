@@ -1,11 +1,14 @@
 import { Link } from 'react-router-dom';
-import { ChevronRight, BarChart3, Zap } from 'lucide-react';
+import { ChevronRight, BarChart3, Zap, MessageCircle } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { TranslationKey } from '../i18n/translations';
 
 interface Product {
     id: string;
     icon: typeof BarChart3;
+    /** Warna tile ikon saat produk aktif — mengikuti chip jenis order di kartu
+     * My Order (Iklan biru, Kilat amber). */
+    accent: 'blue' | 'amber';
     titleKey: TranslationKey;
     /** Kalimat pembuka pendek yang membingkai produk sebagai pilihan strategi
      * (reach vs speed), bukan sekadar metode distribusi. */
@@ -14,20 +17,31 @@ interface Product {
     to?: string;
     isActionModal?: boolean;
     comingSoon?: boolean;
+    /** Chip "Baru" untuk produk yang baru dibuka (mis. hari pintu Kilat dibuka). */
+    isNew?: boolean;
     hidden?: boolean;
 }
 
+/**
+ * Satu-satunya daftar produk di dashboard. Produk baru cukup satu entri di
+ * sini — ia muncul sebagai baris baru di kartu "Buat Order Baru".
+ */
 const PRODUCTS: Product[] = [
-    { id: 'ads', icon: BarChart3, titleKey: 'productAdsTitle', hookKey: 'productAdsHook', descKey: 'productAdsDesc', isActionModal: true },
+    { id: 'ads', icon: BarChart3, accent: 'blue', titleKey: 'productAdsTitle', hookKey: 'productAdsHook', descKey: 'productAdsDesc', isActionModal: true },
     // `comingSoon` dicabut per akun oleh pemanggil (`onOpenKilatModal`), bukan
     // di sini: pintu Kilat dibuka bertahap — admin & akun uji dulu (Phase 5 §5.6).
-    { id: 'kilat', icon: Zap, titleKey: 'productKilatTitle', hookKey: 'productKilatHook', descKey: 'productKilatDesc', isActionModal: true, comingSoon: true },
+    { id: 'kilat', icon: Zap, accent: 'amber', titleKey: 'productKilatTitle', hookKey: 'productKilatHook', descKey: 'productKilatDesc', isActionModal: true, comingSoon: true },
 ];
 
+const ACCENT_TILE: Record<Product['accent'], string> = {
+    blue: 'bg-gradient-to-br from-jfu-primary to-jfu-light text-white shadow-xs shadow-jfu-primary/20',
+    amber: 'bg-amber-50 text-amber-500 border border-amber-200/80 shadow-2xs',
+};
+
 /**
- * Grid kartu produk — dipakai dua tempat yang tidak pernah tampil bersamaan:
- * hub "Buat Order" (saat user punya order) dan empty state Order Saya (saat
- * belum ada order, sebagai pengganti tombol generik "Buat Order Pertama").
+ * Baris produk di dalam kartu "Buat Order Baru". Dulu grid kartu besar sejajar;
+ * kini daftar baris supaya produk ketiga dst. tidak menyempitkan kartu di
+ * desktop atau mendorong My Order jauh ke bawah di ponsel.
  */
 export function ProductCardGrid({
     onOpenAdsModal,
@@ -40,65 +54,56 @@ export function ProductCardGrid({
     const { t } = useLanguage();
     const visible = PRODUCTS.filter((p) => !p.hidden);
 
-    const renderProductCard = (product: Product) => {
+    const renderProductRow = (product: Product) => {
         const Icon = product.icon;
         const onOpen = product.id === 'kilat' ? onOpenKilatModal : onOpenAdsModal;
         const isComingSoon = !!product.comingSoon && !(product.id === 'kilat' && onOpenKilatModal);
 
         const inner = (
-            <div className="flex flex-col items-start gap-2.5 w-full h-full">
-                <div className="w-full flex items-center justify-between">
-                    <span
-                        className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                            isComingSoon
-                                ? 'bg-amber-50 text-amber-500 border border-amber-200/80 shadow-2xs'
-                                : 'bg-white/20 text-white shadow-xs'
-                        }`}
-                    >
-                        <Icon className="w-4.5 h-4.5" />
-                    </span>
-                    {isComingSoon ? (
-                        <span className="rounded-full border border-slate-200/90 bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-600">
-                            {t('comingSoon')}
+            <>
+                <span
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                        isComingSoon
+                            ? 'bg-slate-100 text-slate-400 border border-slate-200/80'
+                            : ACCENT_TILE[product.accent]
+                    }`}
+                >
+                    <Icon className="w-[18px] h-[18px]" />
+                </span>
+                <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                        <span className={`text-sm font-bold ${isComingSoon ? 'text-slate-500' : 'text-slate-900'}`}>
+                            {t(product.titleKey)}
                         </span>
-                    ) : (
-                        <ChevronRight className="w-4 h-4 text-white/80 group-hover:text-white group-hover:translate-x-1 transition-all shrink-0" />
-                    )}
-                </div>
-                <div className="min-w-0 flex-1">
-                    <span
-                        className={`text-sm sm:text-base font-bold block ${
-                            isComingSoon ? 'text-slate-800' : 'text-white'
-                        }`}
-                    >
-                        {t(product.titleKey)}
+                        {product.isNew && !isComingSoon && (
+                            <span className="rounded-full border border-amber-200/80 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                                {t('newBadge')}
+                            </span>
+                        )}
                     </span>
-                    <span
-                        className={`block text-xs mt-1.5 leading-relaxed ${
-                            isComingSoon ? 'text-slate-500' : 'text-white/85'
-                        }`}
-                    >
-                        <span
-                            className={`font-semibold ${
-                                isComingSoon ? 'text-slate-600' : 'text-white'
-                            }`}
-                        >
+                    <span className={`block text-xs mt-0.5 leading-relaxed line-clamp-2 ${isComingSoon ? 'text-slate-400' : 'text-slate-500'}`}>
+                        <span className={`font-semibold ${isComingSoon ? 'text-slate-500' : 'text-slate-700'}`}>
                             {t(product.hookKey)}
                         </span>{' '}
                         {t(product.descKey)}
                     </span>
-                </div>
-            </div>
+                </span>
+                {isComingSoon ? (
+                    <span className="self-center shrink-0 rounded-full border border-slate-200/90 bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-600">
+                        {t('comingSoon')}
+                    </span>
+                ) : (
+                    <ChevronRight className="self-center w-4 h-4 shrink-0 text-slate-300 group-hover:text-jfu-primary group-hover:translate-x-0.5 transition-all" />
+                )}
+            </>
         );
+
+        const rowClass = 'w-full flex items-start gap-3 px-5 py-4 text-left';
+        const activeClass = `${rowClass} group cursor-pointer transition-colors hover:bg-jfu-primary/[0.04]`;
 
         if (product.isActionModal && !isComingSoon) {
             return (
-                <button
-                    key={product.id}
-                    type="button"
-                    onClick={onOpen}
-                    className="h-full rounded-2xl bg-gradient-to-r from-jfu-primary to-jfu-light text-white p-4 sm:p-5 shadow-md shadow-jfu-primary/20 hover:shadow-lg hover:shadow-jfu-primary/30 hover:-translate-y-0.5 transition-all duration-200 group flex flex-col border-0 text-left cursor-pointer w-full"
-                >
+                <button key={product.id} type="button" onClick={onOpen} className={activeClass}>
                     {inner}
                 </button>
             );
@@ -106,36 +111,32 @@ export function ProductCardGrid({
 
         if (!product.to || isComingSoon) {
             return (
-                <div
-                    key={product.id}
-                    aria-disabled="true"
-                    className="h-full rounded-2xl border border-slate-200/80 bg-white/40 backdrop-blur-xs p-4 sm:p-5 shadow-[0_1px_3px_0_rgba(0,0,0,0.02)] flex flex-col cursor-not-allowed select-none"
-                >
+                <div key={product.id} aria-disabled="true" className={`${rowClass} cursor-not-allowed select-none`}>
                     {inner}
                 </div>
             );
         }
 
         return (
-            <Link
-                key={product.id}
-                to={product.to}
-                className="h-full rounded-2xl bg-gradient-to-r from-jfu-primary to-jfu-light text-white p-4 sm:p-5 shadow-md shadow-jfu-primary/20 hover:shadow-lg hover:shadow-jfu-primary/30 hover:-translate-y-0.5 transition-all duration-200 group flex flex-col border-0"
-            >
+            <Link key={product.id} to={product.to} className={activeClass}>
                 {inner}
             </Link>
         );
     };
 
-    return (
-        <div className="grid gap-3 sm:grid-cols-2">
-            {visible.map(renderProductCard)}
-        </div>
-    );
+    return <div className="divide-y divide-slate-100">{visible.map(renderProductRow)}</div>;
 }
 
 /**
- * Hub produk di homepage — Versi A: Clean card dengan heading sejajar My Order
+ * Kartu aksi dashboard (kolom kiri desktop, di atas My Order di ponsel).
+ *
+ * Tiga tingkat bobot dalam SATU kartu: kepala "Buat Order Baru" → baris produk
+ * (bobot utama: tile ikon berwarna, judul tebal) → kaki Chat Mimin (bobot
+ * rendah: teks kecil abu, ikon polos tanpa tile). Judul sengaja di DALAM kartu,
+ * bukan teks lepas di atasnya, supaya kolom kiri berjangkar seperti kartu order.
+ *
+ * Kaki ini satu-satunya pintu masuk Chat Mimin di dashboard — tautannya sudah
+ * dicabut dari navbar dan dari footer kartu order.
  */
 export function CreateOrderCards({
     onOpenAdsModal,
@@ -147,15 +148,27 @@ export function CreateOrderCards({
     const { t } = useLanguage();
 
     return (
-        <div className="space-y-3">
-            <div className="flex items-center gap-2">
-                <h2 className="text-lg md:text-xl font-bold text-[#1a1a1a] dark:text-white truncate">
+        <section
+            aria-labelledby="create-order-heading"
+            className="rounded-2xl border border-slate-200/90 bg-white shadow-[0_1px_3px_0_rgba(0,0,0,0.03),0_4px_12px_-2px_rgba(0,0,0,0.02)] overflow-hidden"
+        >
+            <div className="px-5 pt-5 pb-4 border-b border-slate-100">
+                <h2 id="create-order-heading" className="text-base font-bold text-slate-900 dark:text-white">
                     {t('createNewOrder')}
                 </h2>
+                <p className="text-xs text-slate-500 mt-0.5">{t('createOrderSubtitle')}</p>
             </div>
+
             <ProductCardGrid onOpenAdsModal={onOpenAdsModal} onOpenKilatModal={onOpenKilatModal} />
-        </div>
+
+            <Link
+                to="/dashboard/chat"
+                className="group flex items-center gap-2 px-5 py-3 border-t border-dashed border-slate-200 bg-slate-50/70 text-xs text-slate-500 hover:text-jfu-primary transition-colors"
+            >
+                <MessageCircle className="w-3.5 h-3.5 shrink-0" />
+                <span className="flex-1 min-w-0">{t('createOrderChatCta')}</span>
+                <ChevronRight className="w-3.5 h-3.5 shrink-0 text-slate-300 group-hover:text-jfu-primary transition-colors" />
+            </Link>
+        </section>
     );
 }
-
-

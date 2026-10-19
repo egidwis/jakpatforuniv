@@ -416,3 +416,26 @@ export function adUnitPriceOf(items: readonly InvoiceItem[]): number | null {
   const prices = items.filter((it) => it.category === AD_CATEGORY).map((it) => it.price);
   return prices.length ? Math.min(...prices) : null;
 }
+
+/**
+ * Baris "Add-on JFU Kilat" yang harganya DI ATAS harga sistem — `null` bila
+ * tidak ada.
+ *
+ * Insiden 15 Okt 2026 (a4582981, juga 70d2a51f & b1a738ea di Sep): admin
+ * mengetik Rp250.000 — harga add-on masa pilot (c00db82) — padahal sejak
+ * 4 Agu (4b5bdbd) harganya Rp200.000. Jadwal pertama sengaja tidak menulis
+ * `total_cost` (lihat kepala InvoiceForm), jadi kelebihannya tidak terlihat di
+ * mana pun sampai peneliti membandingkan mutasi bank dengan dashboard. Di bawah
+ * harga sistem tetap boleh (nego), sama dengan baris iklan.
+ */
+export function kilatAddonOverpriced(
+  items: readonly InvoiceItem[],
+  voucherCode: string | null | undefined,
+): { typed: number; system: number } | null {
+  const system = getKilatAddonCost(voucherCode || undefined);
+  const typed = items
+    .filter((it) => it.name.trim().toLowerCase() === 'add-on jfu kilat')
+    .map((it) => it.price);
+  const max = typed.length ? Math.max(...typed) : 0;
+  return max > system ? { typed: max, system } : null;
+}

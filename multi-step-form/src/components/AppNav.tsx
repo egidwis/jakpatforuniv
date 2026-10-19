@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LogOut, User, ChevronDown, ChevronRight, Globe, Menu, LayoutDashboard, ListPlus, MessageCircle, Sparkles, Wrench } from 'lucide-react';
+import { LogOut, User, ChevronDown, Globe, Menu, LayoutDashboard, ListPlus, Sparkles, Wrench } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { LanguageSwitcher } from './LanguageSwitcher';
@@ -24,8 +24,12 @@ import {
 
 /**
  * Header Dashboard User:
- * - Desktop: Text-only navigation links (My Order, Tools Dropdown [Buat Kuesioner, Data Analyzer], Chat Mimin) rata kanan dengan Avatar Dropdown.
+ * - Desktop: Text-only navigation links (My Order, Tools Dropdown [Buat Kuesioner, Data Analyzer]) rata kanan dengan Avatar Dropdown.
  * - Mobile: Hamburger menu yang membuka Side Sheet dengan menu lengkap dan Switch Bahasa.
+ *
+ * Chat Mimin sengaja TIDAK ada di sini: pintu masuknya satu, yaitu kaki kartu
+ * "Buat Order Baru" di dashboard (CreateOrderCards), supaya navbar tidak makin
+ * penuh saat menu bertambah.
  */
 export function AppNav() {
     const { user, signOut } = useAuth();
@@ -45,7 +49,6 @@ export function AppNav() {
     };
 
     const isMyOrdersActive = location.pathname === '/dashboard' || location.pathname === '/dashboard/status';
-    const isChatActive = location.pathname.startsWith('/dashboard/chat');
     // Termasuk /forms/new, /forms/:id/edit, dan /forms/:id/responses — seluruh
     // pembuat form hidup di bawah prefix ini.
     const isTheFormActive = location.pathname.startsWith('/dashboard/forms');
@@ -140,21 +143,6 @@ export function AppNav() {
                                     </DropdownMenuContent>
                                 </DropdownMenu>
 
-                                {/* Chat Mimin */}
-                                <Link
-                                    to="/dashboard/chat"
-                                    className={`relative flex items-center gap-2 h-14 md:h-16 px-1 text-sm font-bold transition-colors ${
-                                        isChatActive
-                                            ? 'text-jfu-primary'
-                                            : 'text-slate-500 hover:text-slate-800'
-                                    }`}
-                                >
-                                    <MessageCircle className={`w-4 h-4 shrink-0 transition-colors ${isChatActive ? 'text-jfu-primary' : 'text-slate-400'}`} />
-                                    <span>{t('navChatMimin')}</span>
-                                    {isChatActive && (
-                                        <span className="absolute bottom-0 inset-x-0 h-[2.5px] bg-jfu-primary rounded-t-full" />
-                                    )}
-                                </Link>
                             </nav>
 
                             {/* Avatar Dropdown */}
@@ -260,20 +248,6 @@ export function AppNav() {
                                             >
                                                 <LayoutDashboard className={`w-4 h-4 shrink-0 ${isMyOrdersActive ? 'text-white' : 'text-slate-500'}`} />
                                                 <span>{t('navMyOrder')}</span>
-                                            </Link>
-                                        </SheetClose>
-
-                                        <SheetClose asChild>
-                                            <Link
-                                                to="/dashboard/chat"
-                                                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                                                    isChatActive
-                                                        ? 'bg-jfu-primary text-white shadow-xs'
-                                                        : 'text-slate-700 hover:bg-slate-100/80'
-                                                }`}
-                                            >
-                                                <MessageCircle className={`w-4 h-4 shrink-0 ${isChatActive ? 'text-white' : 'text-slate-500'}`} />
-                                                <span>{t('navChatMimin')}</span>
                                             </Link>
                                         </SheetClose>
                                     </div>
