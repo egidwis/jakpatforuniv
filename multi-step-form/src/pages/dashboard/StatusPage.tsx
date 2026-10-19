@@ -6,7 +6,7 @@ import type { ReviewHistoryEntry } from '@/components/submissions/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Chip } from '@/components/ui/chip';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MessageCircle, RefreshCw, ChevronRight, ListFilter, Check, ArrowUp, Copy, ClipboardList, ListPlus } from 'lucide-react';
+import { RefreshCw, ChevronRight, ListFilter, Check, ArrowUp, Copy, ClipboardList, ListPlus } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -32,7 +32,7 @@ import { SchedulePhase } from '@/components/status/SchedulePhase';
 import { PublicationPhase } from '@/components/status/PublicationPhase';
 import { buildScheduleCards } from '@/components/status/airingPeriods';
 import { groupInfoFor } from '@/components/status/invoiceGroups';
-import { CreateOrderCards, ProductCardGrid } from '@/components/CreateOrderCards';
+import { CreateOrderCards } from '@/components/CreateOrderCards';
 import { deriveOrderUiState, getActiveDashboardPhase, type OrderGroup } from '@/components/status/deriveOrderUiState';
 import { AdsEntryModal } from '@/components/AdsEntryModal';
 import { ProfileCompletionSheet } from '@/components/ProfileCompletionSheet';
@@ -651,46 +651,62 @@ export function StatusPage() {
 
     if (loading) {
         return (
-            <div className="max-w-5xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-10 space-y-6">
-                {/* Skeleton 2 Kartu Buat Order */}
-                <div className="grid gap-3 sm:grid-cols-2">
-                    <Skeleton className="h-28 rounded-2xl bg-slate-100" />
-                    <Skeleton className="h-28 rounded-2xl bg-slate-100" />
-                </div>
-
-                {/* Skeleton Header My Order & Tools */}
-                <div className="flex justify-between items-center pt-2">
-                    <Skeleton className="h-7 w-32 bg-slate-200" />
-                    <div className="flex gap-2">
-                        <Skeleton className="h-9 w-9 rounded-md bg-slate-200" />
-                        <Skeleton className="h-9 w-9 rounded-md bg-slate-200" />
-                    </div>
-                </div>
-
-                {/* Skeleton mengikuti anatomi kartu Soft DNA */}
-                <div className="space-y-4">
-                    {[1, 2].map((i) => (
-                        <div key={i} className="border border-slate-200/90 shadow-xs overflow-hidden bg-white rounded-2xl">
-                            <div className="p-5 md:p-6 space-y-2 border-b border-slate-100">
-                                <div className="flex justify-between items-center">
-                                    <Skeleton className="h-6 w-24 rounded-full bg-slate-100" />
-                                    <Skeleton className="h-7 w-28 rounded-full bg-slate-100" />
+            <div className="max-w-5xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-10">
+                <div className="grid lg:grid-cols-12 gap-6 items-start">
+                    {/* Skeleton kartu aksi: kepala + 2 baris produk + kaki Chat Mimin */}
+                    <div className="lg:col-span-4 rounded-2xl border border-slate-200/90 bg-white overflow-hidden">
+                        <div className="px-5 pt-5 pb-4 border-b border-slate-100 space-y-2">
+                            <Skeleton className="h-5 w-36 bg-slate-100" />
+                            <Skeleton className="h-3 w-48 bg-slate-100" />
+                        </div>
+                        {[1, 2].map((i) => (
+                            <div key={i} className="flex items-start gap-3 px-5 py-4 border-b border-slate-100">
+                                <Skeleton className="h-9 w-9 rounded-xl bg-slate-100 shrink-0" />
+                                <div className="flex-1 space-y-2">
+                                    <Skeleton className="h-4 w-28 bg-slate-100" />
+                                    <Skeleton className="h-3 w-full bg-slate-100" />
                                 </div>
-                                <Skeleton className="h-6 w-3/4 bg-slate-100" />
                             </div>
-                            <div className="p-5 md:p-6 space-y-4">
-                                <Skeleton className="h-20 w-full rounded-2xl bg-slate-100" />
-                                <div className="space-y-3">
-                                    {[1, 2, 3].map((s) => (
-                                        <div key={s} className="flex items-center gap-3">
-                                            <Skeleton className="h-8 w-8 rounded-full bg-slate-100" />
-                                            <Skeleton className="h-3 w-32 bg-slate-100" />
-                                        </div>
-                                    ))}
-                                </div>
+                        ))}
+                        <div className="px-5 py-3 bg-slate-50/70">
+                            <Skeleton className="h-3 w-40 bg-slate-100" />
+                        </div>
+                    </div>
+
+                    <div className="lg:col-span-8 min-w-0 space-y-4">
+                        {/* Skeleton Header My Order & Tools */}
+                        <div className="flex justify-between items-center">
+                            <Skeleton className="h-7 w-32 bg-slate-200" />
+                            <div className="flex gap-2">
+                                <Skeleton className="h-9 w-9 rounded-md bg-slate-200" />
+                                <Skeleton className="h-9 w-9 rounded-md bg-slate-200" />
                             </div>
                         </div>
-                    ))}
+
+                        {/* Skeleton mengikuti anatomi kartu Soft DNA */}
+                        {[1, 2].map((i) => (
+                            <div key={i} className="border border-slate-200/90 shadow-xs overflow-hidden bg-white rounded-2xl">
+                                <div className="p-5 md:p-6 space-y-2 border-b border-slate-100">
+                                    <div className="flex justify-between items-center">
+                                        <Skeleton className="h-6 w-24 rounded-full bg-slate-100" />
+                                        <Skeleton className="h-7 w-28 rounded-full bg-slate-100" />
+                                    </div>
+                                    <Skeleton className="h-6 w-3/4 bg-slate-100" />
+                                </div>
+                                <div className="p-5 md:p-6 space-y-4">
+                                    <Skeleton className="h-20 w-full rounded-2xl bg-slate-100" />
+                                    <div className="space-y-3">
+                                        {[1, 2, 3].map((s) => (
+                                            <div key={s} className="flex items-center gap-3">
+                                                <Skeleton className="h-8 w-8 rounded-full bg-slate-100" />
+                                                <Skeleton className="h-3 w-32 bg-slate-100" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </div>
         );
@@ -698,239 +714,228 @@ export function StatusPage() {
 
     return (
         <div>
-            <div className="max-w-5xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-10 space-y-6">
-                {/* Hub produk — jalur masuk Buat Order selalu konsisten terlihat di atas */}
-                <CreateOrderCards onOpenAdsModal={() => setIsAdsModalOpen(true)} />
+            {/* Dua kolom mengikuti formulir order (grid 12, satu kolom menempel).
+                Kartu aksi di KIRI dan lebih dulu di DOM — urutan yang sama benar
+                untuk ponsel (di atas My Order) dan desktop (di kiri), jadi tanpa
+                kelas `order-*`. ⚠️ Jangan beri `relative` pada <aside>: `.relative`
+                di styles.css dimuat setelah Tailwind dan mengalahkan `lg:sticky`. */}
+            <div className="max-w-5xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-10 grid lg:grid-cols-12 gap-6 items-start">
+                <aside className="lg:col-span-4 lg:sticky lg:top-24">
+                    <CreateOrderCards onOpenAdsModal={() => setIsAdsModalOpen(true)} />
+                </aside>
 
-                {/* Header bagian Dashboard beserta filter dan refresh */}
-                <div className="flex items-center justify-between gap-3 pt-2 pb-1">
-                    <h1 className="text-lg md:text-xl font-bold text-[#1a1a1a] dark:text-white truncate flex items-center gap-2">
-                        <span>{t('pageTitle')}</span>
-                        <span className="text-sm font-normal text-slate-400">
-                            ({submissions.length})
-                        </span>
-                    </h1>
-                    {submissions.length > 0 && (
-                        <div className="flex items-center gap-1 shrink-0">
-                            <DropdownMenu>
-                                <DropdownMenuTrigger
-                                    aria-label={t('filterAll')}
-                                    className={`relative flex items-center justify-center h-9 w-9 rounded-md transition-colors outline-none ${selectedFilter !== 'all'
-                                        ? 'bg-jfu-primary/[0.12] text-jfu-primary'
-                                        : 'text-jfu-primary hover:bg-jfu-primary/10 dark:text-gray-300'
-                                        }`}
-                                >
-                                    <ListFilter className="w-4 h-4" />
-                                    {needsActionCount > 0 && (
-                                        <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
-                                            {needsActionCount}
-                                        </span>
-                                    )}
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-44">
-                                    {filterChips.map((chip) => (
-                                        <DropdownMenuItem
-                                            key={chip.value}
-                                            onClick={() => setSelectedFilter(chip.value)}
-                                            className="cursor-pointer justify-between"
-                                        >
-                                            <span className={selectedFilter === chip.value ? 'font-semibold text-jfu-primary' : ''}>
-                                                {chip.label}
-                                                {typeof chip.count === 'number' && chip.count > 0 && (
-                                                    <span className="ml-1.5 inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
-                                                        {chip.count}
-                                                    </span>
-                                                )}
+                {/* Daftar order — kolom lebar di kanan (desktop), di bawah kartu aksi (ponsel) */}
+                <div className="lg:col-span-8 min-w-0 space-y-4">
+                    {/* Header bagian Dashboard beserta filter dan refresh */}
+                    <div className="flex items-center justify-between gap-3 pb-1">
+                        <h1 className="text-lg md:text-xl font-bold text-[#1a1a1a] dark:text-white truncate flex items-center gap-2">
+                            <span>{t('pageTitle')}</span>
+                            <span className="text-sm font-normal text-slate-400">
+                                ({submissions.length})
+                            </span>
+                        </h1>
+                        {submissions.length > 0 && (
+                            <div className="flex items-center gap-1 shrink-0">
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger
+                                        aria-label={t('filterAll')}
+                                        className={`relative flex items-center justify-center h-9 w-9 rounded-md transition-colors outline-none ${selectedFilter !== 'all'
+                                            ? 'bg-jfu-primary/[0.12] text-jfu-primary'
+                                            : 'text-jfu-primary hover:bg-jfu-primary/10 dark:text-gray-300'
+                                            }`}
+                                    >
+                                        <ListFilter className="w-4 h-4" />
+                                        {needsActionCount > 0 && (
+                                            <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                                                {needsActionCount}
                                             </span>
-                                            {selectedFilter === chip.value && <Check className="w-4 h-4 text-jfu-primary" />}
-                                        </DropdownMenuItem>
-                                    ))}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={handleRefresh}
-                                disabled={refreshing}
-                                title={t('refresh')}
-                                className="h-9 w-9 text-jfu-primary hover:bg-jfu-primary/10 hover:text-jfu-primary dark:text-gray-300"
-                            >
-                                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                            </Button>
-                        </div>
-                    )}
-                </div>
-
-                {submissions.length === 0 ? (
-                    /* Modern, Clean & Elevated Empty State Card */
-                    <Card className="border border-slate-200/90 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] bg-white/95 rounded-2xl overflow-hidden">
-                        <CardContent className="flex flex-col items-center justify-center py-10 md:py-12 px-6 text-center">
-                            <div className="w-14 h-14 rounded-2xl bg-blue-50/80 border border-blue-100 flex items-center justify-center text-jfu-primary mb-4 shadow-xs">
-                                <ClipboardList className="w-7 h-7 stroke-[1.75]" />
-                            </div>
-                            <h3 className="text-base sm:text-lg font-bold text-slate-900">
-                                {t('noOrdersTitle')}
-                            </h3>
-                            <p className="text-xs sm:text-sm text-slate-500 max-w-md mt-1.5 mb-6 leading-relaxed">
-                                {t('noSubmissionsDesc')}
-                            </p>
-
-                            {/* Secondary Action Links */}
-                            <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsAdsModalOpen(true)}
-                                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-jfu-primary text-white text-xs sm:text-sm font-semibold shadow-xs hover:bg-jfu-dark transition-all cursor-pointer"
-                                >
-                                    <span>Pasang Iklan Survei</span>
-                                    <ChevronRight className="w-4 h-4" />
-                                </button>
-                                <Link
-                                    to="/dashboard/forms/new"
-                                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs sm:text-sm font-semibold transition-all"
-                                >
-                                    <ListPlus className="w-4 h-4 text-slate-500" />
-                                    <span>Buat Kuesioner Baru</span>
-                                </Link>
-                                <Link
-                                    to="/dashboard/chat"
-                                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs sm:text-sm font-semibold transition-all"
-                                >
-                                    <MessageCircle className="w-4 h-4 text-slate-500" />
-                                    <span>Tanya Mimin</span>
-                                </Link>
-                            </div>
-                        </CardContent>
-                    </Card>
-                ) : (
-                    <div className="space-y-4">
-                        {filtered.length === 0 ? (
-                            <p className="text-sm text-slate-400 text-center py-10">{t('noOrdersInFilter')}</p>
-                        ) : (
-                            <div className="space-y-4">
-                                {filtered.map(({ submission, pays, ui }) => {
-                                    const cards = buildScheduleCards(
-                                        ui, pays, invoiceIds[submission.id!] || null, t, submission,
-                                        (sourceId) => groupInfoFor(invoiceGroups, pays[sourceId]?.paymentId, sourceId),
-                                    );
-                                    const pageInfo = submission.id ? surveyPages[submission.id] : undefined;
-                                    const activePhase = getActiveDashboardPhase(ui.currentStep);
-                                    /**
-                                     * `?? 3` berarti "order tuntas, nyalakan ketiganya" — dan itu
-                                     * BENAR hanya untuk order yang selesai tayang. Untuk order yang
-                                     * DIBATALKAN, `getActiveDashboardPhase` juga bisa kehabisan fase
-                                     * aktif, dan jatuhnya ke 3 membuat kartu pesanan batal terbaca
-                                     * seolah sudah tuntas — persis kebalikan dari yang terjadi.
-                                     *
-                                     * Order batal berhenti di Fase ①: di situ bannernya, dan itu
-                                     * satu-satunya fase yang benar-benar pernah dilalui.
-                                     */
-                                    const isCancelled = ui.callout === 'cancelled';
-                                    const reachedPhase = isCancelled ? 1 : (activePhase ?? 3);
-                                    const isDead = isCancelled || ui.callout === 'revision';
-                                    return (
-                                        <Card key={submission.id} className="overflow-hidden border border-slate-200/90 shadow-[0_1px_3px_0_rgba(0,0,0,0.03),0_4px_12px_-2px_rgba(0,0,0,0.02)] hover:border-slate-300 transition-colors duration-150 rounded-2xl">
-                                            <CardHeader className="bg-white p-5 md:p-6 pb-4 md:pb-5 space-y-2.5 border-b border-slate-100">
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                    <Chip
-                                                        variant={submission.distribution_type === 'kilat' ? 'amber' : 'blue'}
-                                                        size="sm"
-                                                    >
-                                                        {submission.distribution_type === 'kilat' ? `⚡ ${t('productKilatTitle')}` : t('productAdsTitle')}
-                                                    </Chip>
-                                                    {submission.id && (
-                                                        <CopySubmissionIdBadge id={submission.id} />
+                                        )}
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-44">
+                                        {filterChips.map((chip) => (
+                                            <DropdownMenuItem
+                                                key={chip.value}
+                                                onClick={() => setSelectedFilter(chip.value)}
+                                                className="cursor-pointer justify-between"
+                                            >
+                                                <span className={selectedFilter === chip.value ? 'font-semibold text-jfu-primary' : ''}>
+                                                    {chip.label}
+                                                    {typeof chip.count === 'number' && chip.count > 0 && (
+                                                        <span className="ml-1.5 inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
+                                                            {chip.count}
+                                                        </span>
                                                     )}
-                                                </div>
-                                                <CardTitle className="text-base md:text-lg font-bold text-slate-900 leading-snug line-clamp-2" title={submission.title}>
-                                                    {submission.title}
-                                                </CardTitle>
-                                            </CardHeader>
-
-                                            <CardContent className="p-5 md:p-6 pt-5 bg-white">
-                                                <Phase number={1} title={t('phaseReviewTitle')} active={reachedPhase >= 1} lineActive={reachedPhase >= 2}>
-                                                    <ReviewPhase
-                                                        submission={submission}
-                                                        first={ui.first}
-                                                        onDataUpdated={fetchSubmissions}
-                                                        active={isCancelled || activePhase === 1}
-                                                        hadBilledInvoice={!!ui.finalPaymentLink}
-                                                    />
-                                                </Phase>
-
-                                                <Phase number={2} title={t('airingPeriodLabel')} active={reachedPhase >= 2} lineActive={reachedPhase >= 3}>
-                                                    <SchedulePhase
-                                                        submission={submission}
-                                                        cards={cards}
-                                                        entries={[ui.first, ...ui.later]}
-                                                        onReschedule={() => handleReschedule(submission)}
-                                                        onDataUpdated={fetchSubmissions}
-                                                        // Kredit (sql/102) ada di fase ③ menurut sumbu tayang,
-                                                        // tapi tombol bayarnya di sini — buka kartunya.
-                                                        active={activePhase === 2 || ui.owesOnCredit}
-                                                    />
-                                                </Phase>
-
-                                                <Phase number={3} title={t('sectionPublication')} active={reachedPhase >= 3} isLast>
-                                                    <PublicationPhase cards={cards} pageInfo={pageInfo} isCancelled={isCancelled} />
-                                                </Phase>
-
-                                                {/* F. Footer.
-                                                    Kiri = tautan TERSIER, kanan = Tanya Mimin.
-
-                                                    "Batalkan Pesanan" hidup DI SINI, bukan di dalam
-                                                    banner Fase ①, dan sengaja jadi teks polos abu-abu
-                                                    tanpa border/latar/ikon: kami tidak mendorong
-                                                    peneliti membatalkan pesanan. Ia harus ADA —
-                                                    buntu tanpa jalan keluar lebih buruk — tapi tidak
-                                                    mengundang. Bukan merah: merah menarik mata dan
-                                                    terbaca sebagai peringatan.
-
-                                                    `min-h-10` menjaga area sentuh tetap layak di
-                                                    ponsel. "Tidak didorong" tidak boleh berubah jadi
-                                                    "sulit ditekan"; yang mencegah salah pencet adalah
-                                                    dialog konfirmasinya, bukan ukuran tombolnya.
-
-                                                    Satu tautan melayani SEMUA status pra-lunas,
-                                                    alih-alih disalin ke tiap fase. */}
-                                                <div className="border-t border-slate-100 mt-4 pt-3" />
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <div className="min-w-0">
-                                                        {isDead ? (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setPendingDismiss(submission)}
-                                                                className="min-h-10 inline-flex items-center rounded-xl px-2 text-xs text-slate-400 hover:text-slate-600 hover:underline underline-offset-2 transition-colors"
-                                                            >
-                                                                {t('btnDeleteForm')}
-                                                            </button>
-                                                        ) : canCancelOrder(ui) ? (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setPendingCancel(submission)}
-                                                                className="min-h-10 inline-flex items-center rounded-xl px-2 text-xs text-slate-400 hover:text-slate-600 hover:underline underline-offset-2 transition-colors"
-                                                            >
-                                                                {t('btnCancelOrder')}
-                                                            </button>
-                                                        ) : null}
-                                                    </div>
-                                                    <Link
-                                                        to={`/dashboard/chat?message=${encodeURIComponent(`Saya ingin bertanya tentang order "${submission.title}"`)}`}
-                                                        className="min-h-10 inline-flex items-center gap-2 rounded-xl px-3 text-xs font-semibold text-slate-600 hover:text-jfu-primary hover:bg-blue-50/50 transition-colors"
-                                                    >
-                                                        <MessageCircle className="w-4 h-4 shrink-0 text-slate-400" />
-                                                        <span>{t('chatAboutOrder')}</span>
-                                                        <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
-                                                    </Link>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    );
-                                })}
+                                                </span>
+                                                {selectedFilter === chip.value && <Check className="w-4 h-4 text-jfu-primary" />}
+                                            </DropdownMenuItem>
+                                        ))}
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={handleRefresh}
+                                    disabled={refreshing}
+                                    title={t('refresh')}
+                                    className="h-9 w-9 text-jfu-primary hover:bg-jfu-primary/10 hover:text-jfu-primary dark:text-gray-300"
+                                >
+                                    <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                                </Button>
                             </div>
                         )}
                     </div>
-                )}
+
+                    {submissions.length === 0 ? (
+                        /* Modern, Clean & Elevated Empty State Card */
+                        <Card className="border border-slate-200/90 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] bg-white/95 rounded-2xl overflow-hidden">
+                            <CardContent className="flex flex-col items-center justify-center py-10 md:py-12 px-6 text-center">
+                                <div className="w-14 h-14 rounded-2xl bg-blue-50/80 border border-blue-100 flex items-center justify-center text-jfu-primary mb-4 shadow-xs">
+                                    <ClipboardList className="w-7 h-7 stroke-[1.75]" />
+                                </div>
+                                <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                                    {t('noOrdersTitle')}
+                                </h3>
+                                <p className="text-xs sm:text-sm text-slate-500 max-w-md mt-1.5 mb-6 leading-relaxed">
+                                    {t('noSubmissionsDesc')}
+                                </p>
+
+                                {/* Secondary Action Links */}
+                                <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsAdsModalOpen(true)}
+                                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-jfu-primary text-white text-xs sm:text-sm font-semibold shadow-xs hover:bg-jfu-dark transition-all cursor-pointer"
+                                    >
+                                        <span>Pasang Iklan Survei</span>
+                                        <ChevronRight className="w-4 h-4" />
+                                    </button>
+                                    <Link
+                                        to="/dashboard/forms/new"
+                                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs sm:text-sm font-semibold transition-all"
+                                    >
+                                        <ListPlus className="w-4 h-4 text-slate-500" />
+                                        <span>Buat Kuesioner Baru</span>
+                                    </Link>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <div className="space-y-4">
+                            {filtered.length === 0 ? (
+                                <p className="text-sm text-slate-400 text-center py-10">{t('noOrdersInFilter')}</p>
+                            ) : (
+                                <div className="space-y-4">
+                                    {filtered.map(({ submission, pays, ui }) => {
+                                        const cards = buildScheduleCards(
+                                            ui, pays, invoiceIds[submission.id!] || null, t, submission,
+                                            (sourceId) => groupInfoFor(invoiceGroups, pays[sourceId]?.paymentId, sourceId),
+                                        );
+                                        const pageInfo = submission.id ? surveyPages[submission.id] : undefined;
+                                        const activePhase = getActiveDashboardPhase(ui.currentStep);
+                                        /**
+                                         * `?? 3` berarti "order tuntas, nyalakan ketiganya" — dan itu
+                                         * BENAR hanya untuk order yang selesai tayang. Untuk order yang
+                                         * DIBATALKAN, `getActiveDashboardPhase` juga bisa kehabisan fase
+                                         * aktif, dan jatuhnya ke 3 membuat kartu pesanan batal terbaca
+                                         * seolah sudah tuntas — persis kebalikan dari yang terjadi.
+                                         *
+                                         * Order batal berhenti di Fase ①: di situ bannernya, dan itu
+                                         * satu-satunya fase yang benar-benar pernah dilalui.
+                                         */
+                                        const isCancelled = ui.callout === 'cancelled';
+                                        const reachedPhase = isCancelled ? 1 : (activePhase ?? 3);
+                                        const isDead = isCancelled || ui.callout === 'revision';
+                                        return (
+                                            <Card key={submission.id} className="overflow-hidden border border-slate-200/90 shadow-[0_1px_3px_0_rgba(0,0,0,0.03),0_4px_12px_-2px_rgba(0,0,0,0.02)] hover:border-slate-300 transition-colors duration-150 rounded-2xl">
+                                                <CardHeader className="bg-white p-5 md:p-6 pb-4 md:pb-5 space-y-2.5 border-b border-slate-100">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <Chip
+                                                            variant={submission.distribution_type === 'kilat' ? 'amber' : 'blue'}
+                                                            size="sm"
+                                                        >
+                                                            {submission.distribution_type === 'kilat' ? `⚡ ${t('productKilatTitle')}` : t('productAdsTitle')}
+                                                        </Chip>
+                                                        {submission.id && (
+                                                            <CopySubmissionIdBadge id={submission.id} />
+                                                        )}
+                                                    </div>
+                                                    <CardTitle className="text-base md:text-lg font-bold text-slate-900 leading-snug line-clamp-2" title={submission.title}>
+                                                        {submission.title}
+                                                    </CardTitle>
+                                                </CardHeader>
+
+                                                <CardContent className="p-5 md:p-6 pt-5 bg-white">
+                                                    <Phase number={1} title={t('phaseReviewTitle')} active={reachedPhase >= 1} lineActive={reachedPhase >= 2}>
+                                                        <ReviewPhase
+                                                            submission={submission}
+                                                            first={ui.first}
+                                                            onDataUpdated={fetchSubmissions}
+                                                            active={isCancelled || activePhase === 1}
+                                                            hadBilledInvoice={!!ui.finalPaymentLink}
+                                                        />
+                                                    </Phase>
+
+                                                    <Phase number={2} title={t('airingPeriodLabel')} active={reachedPhase >= 2} lineActive={reachedPhase >= 3}>
+                                                        <SchedulePhase
+                                                            submission={submission}
+                                                            cards={cards}
+                                                            entries={[ui.first, ...ui.later]}
+                                                            onReschedule={() => handleReschedule(submission)}
+                                                            onDataUpdated={fetchSubmissions}
+                                                            // Kredit (sql/102) ada di fase ③ menurut sumbu tayang,
+                                                            // tapi tombol bayarnya di sini — buka kartunya.
+                                                            active={activePhase === 2 || ui.owesOnCredit}
+                                                        />
+                                                    </Phase>
+
+                                                    <Phase number={3} title={t('sectionPublication')} active={reachedPhase >= 3} isLast>
+                                                        <PublicationPhase cards={cards} pageInfo={pageInfo} isCancelled={isCancelled} />
+                                                    </Phase>
+
+                                                    {/* F. Footer — hanya tautan TERSIER.
+
+                                                        "Batalkan Pesanan" hidup DI SINI, bukan di dalam
+                                                        banner Fase ①, dan sengaja jadi teks polos abu-abu
+                                                        tanpa border/latar/ikon: kami tidak mendorong
+                                                        peneliti membatalkan pesanan. Ia harus ADA —
+                                                        buntu tanpa jalan keluar lebih buruk — tapi tidak
+                                                        mengundang. Bukan merah: merah menarik mata dan
+                                                        terbaca sebagai peringatan.
+
+                                                        `min-h-10` menjaga area sentuh tetap layak di
+                                                        ponsel. "Tidak didorong" tidak boleh berubah jadi
+                                                        "sulit ditekan"; yang mencegah salah pencet adalah
+                                                        dialog konfirmasinya, bukan ukuran tombolnya.
+
+                                                        Satu tautan melayani SEMUA status pra-lunas,
+                                                        alih-alih disalin ke tiap fase.
+
+                                                        "Tanya Mimin" yang dulu di kanan sudah dicabut:
+                                                        pintu masuk Chat Mimin kini satu, di kaki kartu
+                                                        "Buat Order Baru". Tanpa tautan yang berlaku,
+                                                        footer tidak dirender sama sekali — tidak ada
+                                                        garis pemisah yang menggantung. */}
+                                                    {(isDead || canCancelOrder(ui)) && (
+                                                        <>
+                                                            <div className="border-t border-slate-100 mt-4 pt-3" />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => (isDead ? setPendingDismiss(submission) : setPendingCancel(submission))}
+                                                                className="min-h-10 inline-flex items-center rounded-xl px-2 text-xs text-slate-400 hover:text-slate-600 hover:underline underline-offset-2 transition-colors"
+                                                            >
+                                                                {isDead ? t('btnDeleteForm') : t('btnCancelOrder')}
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </CardContent>
+                                            </Card>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Floating move to top button */}
