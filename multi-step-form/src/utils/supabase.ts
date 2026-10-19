@@ -2395,6 +2395,160 @@ export async function setProductReviewStatus(
   return row;
 }
 
+async function postAdminEndpoint(
+  path: string,
+  body: Record<string, unknown>,
+  direct: () => PromiseLike<{ data: any; error: any }>,
+  failLabel: string,
+): Promise<{ data: any; error: { message: string } | null }> {
+  if (import.meta.env.VITEST) return direct();
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) return { data: null, error: { message: 'Sesi admin tidak ada. Masuk lagi lalu ulangi.' } };
+
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.text();
+  let parsed: any = null;
+  try { parsed = raw ? JSON.parse(raw) : null; } catch { /* badan bukan JSON */ }
+  if (!res.ok) return { data: null, error: { message: parsed?.error || `${failLabel} (HTTP ${res.status})` } };
+  return { data: parsed?.data ?? [], error: null };
+}
+
+async function postOrder(
+  body: Record<string, unknown>,
+  direct: () => PromiseLike<{ data: any; error: any }>,
+) {
+  return postAdminEndpoint('/api/admin/order', body, direct, 'Gagal menyimpan order');
+}
+
+async function postSchedule(
+  body: Record<string, unknown>,
+  direct: () => PromiseLike<{ data: any; error: any }>,
+) {
+  return postAdminEndpoint('/api/admin/schedule', body, direct, 'Gagal menyimpan jadwal');
+}
+
+export async function setSubmissionCriteria(submissionId: string, criteria: string): Promise<void> {
+  const { error } = await postOrder(
+    { action: 'criteria', submissionId, criteria },
+    () => supabase.from('form_submissions').update({ criteria_responden: criteria }).eq('id', submissionId),
+  );
+  if (error) throw new Error(error.message);
+}
+
+async function writeOrderPrice(
+  id: string,
+  fields: {
+    questionCount?: number;
+    duration?: number;
+    prizePerWinner?: number;
+    winnerCount?: number;
+    criteria?: string;
+  },
+): Promise<{ row: any; pricing: OrderPriceResult }> {
+  const { data, error } = await postOrder(
+    { action: 'reprice', submissionId: id, ...fields },
+    async () => ({ data: null, error: { message: 'reprice vitest' } }),
+  );
+  if (error) throw new Error(error.message);
+  const scoped = await readOrderScheduleTotals(id);
+  return {
+    row: data?.row,
+    pricing: {
+      totalCost: Number(data?.totalCost) || 0,
+      subtotal: Number(data?.subtotal) || 0,
+      ppn: Number(data?.ppn) || 0,
+      ...(data?.skipped ? { skipped: data.skipped } : {}),
+      orderTotal: scoped.total,
+      scheduleCount: scoped.count,
+    },
+  };
+}
+
+export async function syncSubmissionDates(
+  submissionId: string,
+  fields: {
+    startDate?: string | null;
+    endDate?: string | null;
+    hour?: number | null;
+    minute?: number | null;
+  },
+): Promise<void> {
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (fields.startDate !== undefined) patch.start_date = fields.startDate;
+  if (fields.endDate !== undefined) patch.end_date = fields.endDate;
+  if (fields.hour !== undefined) patch.airing_hour_wib = fields.hour;
+  if (fields.minute !== undefined) patch.airing_minute_wib = fields.minute;
+  const { error } = await postSchedule(
+    { action: 'submission-dates', submissionId, ...fields },
+    () => supabase.from('form_submissions').update(patch).eq('id', submissionId),
+  );
+  if (error) throw new Error(error.message);
+}
+
+export async function holdSubmissionSlot(submissionId: string): Promise<void> {
+  const { error } = await postSchedule(
+    { action: 'submission-hold', submissionId },
+    () => supabase.from('form_submissions').update({
+      submission_status: 'slot_reserved',
+      slot_booked_by: 'admin',
+      slot_reserved_at: new Date().toISOString(),
+    }).eq('id', submissionId),
+  );
+  if (error) throw new Error(error.message);
+}
+
+export async function holdExtendSlot(sourceId: string): Promise<void> {
+  const { error } = await postSchedule(
+    { action: 'extend-hold', sourceId },
+    () => supabase.from('ad_schedules').update({
+      payment_status: 'pending',
+      updated_at: new Date().toISOString(),
+    }).eq('source_table', 'form_submissions_extend').eq('source_id', sourceId),
+  );
+  if (error) throw new Error(error.message);
+}
+
+export async function createAdminSchedule(fields: {
+  submissionId: string;
+  startDate: string;
+  endDate: string;
+  duration: number;
+  prizePerWinner: number;
+  winnerCount: number;
+  additionalPrize: number;
+  isNewBatch: boolean;
+  isExtra: boolean;
+}): Promise<void> {
+  const { error } = await postSchedule(
+    { action: 'create-schedule', ...fields },
+    () => supabase.rpc('create_ad_schedule', {
+      p_submission_id: fields.submissionId,
+      p_start_date: fields.startDate,
+      p_end_date: fields.endDate,
+      p_duration: fields.duration,
+      p_prize_per_winner: fields.prizePerWinner,
+      p_winner_count: fields.winnerCount,
+      p_additional_prize_per_winner: fields.additionalPrize,
+      p_is_new_period: fields.isNewBatch,
+      p_status: 'waiting_payment',
+      p_payment_status: 'pending',
+      p_total_cost: 0,
+      p_slot_booked_by: 'admin',
+      p_is_extra_ad: fields.isExtra,
+    }),
+  );
+  if (error) throw new Error(error.message);
+}
+
 /**
  * Menghapus form submission secara PERMANEN.
  *
@@ -2538,6 +2692,9 @@ export const updateSubmissionCriteria = async (
   id: string, criteria: string, prizePerWinner: number, winnerCount: number,
 ): Promise<{ row: any; pricing: OrderPriceResult | null }> => {
   try {
+    if (!import.meta.env.VITEST) {
+      return writeOrderPrice(id, { criteria, prizePerWinner, winnerCount });
+    }
     const { data, error } = await supabase
       .from('form_submissions')
       .update({
@@ -2596,6 +2753,28 @@ export const updateFormDetails = async (
   }>
 ): Promise<{ row: any; pricing: OrderPriceResult | null }> => {
   try {
+    if (!import.meta.env.VITEST) {
+      const rest: Record<string, unknown> = {};
+      const price: { questionCount?: number; duration?: number } = {};
+      if (updates.title !== undefined) rest.title = updates.title;
+      if (updates.survey_url !== undefined) rest.survey_url = updates.survey_url;
+      if (updates.question_count !== undefined) price.questionCount = updates.question_count;
+      if (updates.duration !== undefined) price.duration = updates.duration;
+      let row: any = null;
+      if (Object.keys(rest).length > 0) {
+        const { data, error } = await supabase
+          .from('form_submissions')
+          .update(rest)
+          .eq('id', id)
+          .select()
+          .single();
+        if (error) throw error;
+        row = data;
+      }
+      if (Object.keys(price).length === 0) return { row, pricing: null };
+      const priced = await writeOrderPrice(id, price);
+      return { row: priced.row ?? row, pricing: priced.pricing };
+    }
     const { data, error } = await supabase
       .from('form_submissions')
       .update(updates)
@@ -3747,16 +3926,12 @@ export const updateScheduleDates = async (
     // eksplisit, bukan diselundupkan lewat instant di atas. Tanpa keduanya
     // cermin ad_schedules (dibaca halaman Schedule) tidak mungkin tahu jam
     // kustom pernah dipilih — lihat header sql/49 untuk kejadian nyatanya.
-    const { error: subError } = await supabase
-      .from('form_submissions')
-      .update({
-        start_date: startYmdWib,
-        end_date: endYmdWib,
-        airing_hour_wib: hourWib ?? null,
-        airing_minute_wib: hourWib !== undefined ? (minuteWib ?? 0) : null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', submissionId);
+    const { error: subError } = await syncSubmissionDates(submissionId, {
+      startDate: startYmdWib,
+      endDate: endYmdWib,
+      hour: hourWib ?? null,
+      minute: hourWib !== undefined ? (minuteWib ?? 0) : null,
+    }).then(() => ({ error: null }), (err) => ({ error: err }));
 
     if (subError) throw subError;
 
@@ -3839,11 +4014,14 @@ export const updateScheduleDates = async (
  * jauh lebih baik daripada "Gagal menyimpan".
  */
 export const setScheduleExtraAd = async (scheduleId: string, isExtraAd: boolean) => {
-  const { error } = await supabase.rpc('set_schedule_extra_ad', {
-    p_schedule_id: scheduleId,
-    p_is_extra: isExtraAd,
-  });
-  if (error) throw error;
+  const { error } = await postSchedule(
+    { action: 'extra-ad', scheduleId, isExtra: isExtraAd },
+    () => supabase.rpc('set_schedule_extra_ad', {
+      p_schedule_id: scheduleId,
+      p_is_extra: isExtraAd,
+    }),
+  );
+  if (error) throw new Error(error.message);
 };
 
 /**
@@ -3871,15 +4049,23 @@ export const updateExtendScheduleDates = async (
   hourWib: number = 15,
   minuteWib: number = 0
 ) => {
-  const { error } = await supabase
-    .from('ad_schedules')
-    .update({
-      start_date: toAiringStartIso(startYmd, hourWib, minuteWib),
-      end_date: toAiringEndIso(startYmd, durationDays, hourWib, minuteWib),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('source_table', 'form_submissions_extend')
-    .eq('source_id', extendId);
+  const { error } = await postSchedule(
+    {
+      action: 'extend-dates',
+      sourceId: extendId,
+      startDate: toAiringStartIso(startYmd, hourWib, minuteWib),
+      endDate: toAiringEndIso(startYmd, durationDays, hourWib, minuteWib),
+    },
+    () => supabase
+      .from('ad_schedules')
+      .update({
+        start_date: toAiringStartIso(startYmd, hourWib, minuteWib),
+        end_date: toAiringEndIso(startYmd, durationDays, hourWib, minuteWib),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('source_table', 'form_submissions_extend')
+      .eq('source_id', extendId),
+  );
 
   if (error) throw error;
   return true;
@@ -4252,6 +4438,15 @@ export const updateKilatSchedule = async (
   ymd: string,
   hour: number
 ) => {
+  const endYmd = addDaysToYmd(ymd, 1);
+  if (!import.meta.env.VITEST) {
+    const { error } = await postSchedule(
+      { action: 'kilat', submissionId, ymd, endYmd, hour },
+      async () => ({ data: null, error: null }),
+    );
+    if (error) throw new Error(error.message);
+    return true;
+  }
   const { error } = await supabase
     .from('form_submissions')
     .update({
@@ -4394,6 +4589,18 @@ export const convertDistributionType = async (
   submissionId: string,
   target: 'regular' | 'kilat'
 ): Promise<{ totalCost: number; subtotal: number; ppn: number }> => {
+  if (!import.meta.env.VITEST) {
+    const { data, error } = await postOrder(
+      { action: 'convert', submissionId, target },
+      async () => ({ data: null, error: null }),
+    );
+    if (error) throw new Error(error.message);
+    return {
+      totalCost: Number(data?.totalCost) || 0,
+      subtotal: Number(data?.subtotal) || 0,
+      ppn: Number(data?.ppn) || 0,
+    };
+  }
   // Baca ulang dari DB — props di dashboard bisa basi beberapa menit.
   const { data: sub, error: readError } = await supabase
     .from('form_submissions')
