@@ -1,6 +1,6 @@
 # Phase 5 — Kilat swalayan: peneliti memesan Kilat sendiri
 
-> **STATUS NYATA (16 Okt 2026):** strategi rilis **diubah** — seluruh Phase 5 dikerjakan di **satu branch `feat/kilat-swalayan`** dan dirilis di akhir dengan **tiga push** (A → Uji → B) (lihat §Peta pengerjaan & rilis tepat di bawah). R1–R6 + R8 selesai di branch itu (belum push); `sql/117` dan `sql/118` **sudah diterapkan** di produksi; **`sql/119` (R8) ditulis 16 Okt, belum diterapkan — wajib sebelum Push A**; berikutnya Push A, daftar periksa produksi, lalu commit Push Uji/B. Keputusan JFUTGRX 16 Okt: **opsi A** (lihat tabel keputusan) — `8ef96dd`.
+> **STATUS NYATA (16 Okt 2026):** strategi rilis **diubah** — seluruh Phase 5 dikerjakan di **satu branch `feat/kilat-swalayan`** dan dirilis di akhir dengan **tiga push** (A → Uji → B) (lihat §Peta pengerjaan & rilis tepat di bawah). R1–R6 + R8 selesai di branch itu (belum push); `sql/117` dan `sql/118` **sudah diterapkan** di produksi; **`sql/119` (R8) diterapkan & diverifikasi 19 Okt** (md5 prod = migrasi PGlite); origin/main `0851d87` di-merge 19 Okt; "Jadikan Kilat" yang menurunkan status kini lewat `/api/admin/distribution` (lihat langkah 6 di bawah); berikutnya Push A, daftar periksa produksi, lalu commit Push Uji/B. Keputusan JFUTGRX 16 Okt: **opsi A** (lihat tabel keputusan) — `8ef96dd`.
 >
 > Berkas ini salinan rencana yang disetujui di sesi chat 14–15 Okt. R1–R8 kini **tahap pengerjaan** di satu branch, bukan rilis terpisah; nomor task (5.1–5.10) tetap jadi rujukan isi.
 
@@ -19,7 +19,7 @@
 | 5 | **R5 — Pintu tersembunyi** | 5.5, 5.6, 5.8 | — | ✅ Kode (`59c7913`, commit 5.8 menyusul) | Kartu Kilat → modal → `?product=kilat` (admin; `KILAT_PILOT_EMAILS` kosong) → Step 3 pemilih gelombang → Jadwal & Bayar. Batas bayar gelombang ikut R6 — uji lokal tanpa bayar |
 | 6 | **R6 — Jalur bayar Kilat** | 5.7 | — | ✅ Kode (16 Okt) | Cermin helper waktu di `create-payment.js`; cabut peringatan "pakai 15.00" di picker admin; **pilih ulang gelombang di badan tiket Jadwal & Bayar** (`KilatWavePicker` + `handleLock`, dipindah dari 5.5 karena butuh `rebookSlotForSubmission` sadar gelombang); tagihan terbit sekali lalu dibatalkan (DOKU sandbox) |
 | 7 | **R7 — Uji nyata & buka pintu (disiapkan)** | 5.9 | — | ⬜ | Dua commit kecil yang **tidak ikut Push A**: pilot akun uji (`KILAT_PILOT_EMAILS`) = Push Uji, lalu buka pintu = Push B |
-| 8 | **R8 — Extend Kilat** | 5.10 | `sql/119_extend_kilat.sql` (⬜ belum diterapkan) | ✅ Kode (16 Okt) | Kode ikut Push A terkunci; **dibuka untuk akun uji di Push Uji** (prasyarat 5.10 dipenuhi di sana), untuk semua di Push B |
+| 8 | **R8 — Extend Kilat** | 5.10 | `sql/119_extend_kilat.sql` (✅ diterapkan 19 Okt) | ✅ Kode (16 Okt) | Kode ikut Push A terkunci; **dibuka untuk akun uji di Push Uji** (prasyarat 5.10 dipenuhi di sana), untuk semua di Push B |
 
 ### Selama pengerjaan (sampai Push A)
 
@@ -390,6 +390,7 @@ Prasyarat: minimal satu order Kilat swalayan sudah tayang serta dibayar dengan b
 3. SQL yang belum live (`sql/119`) diterapkan user di SQL Editor + diverifikasi.
 4. Uji lokal pemilik produk lulus untuk tiap tahap (kolom "Uji lokal" di atas).
 5. Hari push: Senin–Rabu pagi, admin bertugas; bukan hari libur, bukan menempel 1 Des.
+6. **Urutan dengan seri keamanan (19 Okt):** `sql/118_review_decision_service_role.sql` (egidwis) menolak JWT browser Product menurunkan `submission_status` ke `approved`. "Jadikan Kilat/Iklan" pada order `slot_reserved`/`waiting_payment` kini lewat `/api/admin/distribution` (service_role; filter PATCH menegakkan ulang status ∈ {slot_reserved, waiting_payment} dan belum lunas = syarat `guard_payment_columns`). `sql/118_review` baru boleh diterapkan **setelah Push A** live. Daftar periksa sesudah Push A: konversi satu order uji `slot_reserved` → Kilat → status `approved`, jadwal kosong, harga baru.
 
 **Push A — semua kode, pintu tertutup.** `KILAT_TARIFF_FROM = null`, `KILAT_SELF_SERVE_OPEN = false`, kartu Kilat tetap `comingSoon`, extend Kilat tetap terkunci. Alur: merge ke `main` → `git pull` → push.
 

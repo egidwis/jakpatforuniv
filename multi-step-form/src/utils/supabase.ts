@@ -4327,6 +4327,34 @@ async function syncKilatPageWindow(submissionId: string, ymd: string, hour: numb
   }
 }
 
+async function postDistribution(
+  body: Record<string, unknown>,
+  direct: () => PromiseLike<{ data: any; error: any }>,
+): Promise<{ error: { message: string } | null }> {
+  if (import.meta.env.VITEST) {
+    const res = await direct();
+    return { error: res.error ? { message: res.error.message || String(res.error) } : null };
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) return { error: { message: 'Sesi admin tidak ada. Masuk lagi lalu ulangi.' } };
+
+  const res = await fetch('/api/admin/distribution', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.text();
+  let parsed: any = null;
+  try { parsed = raw ? JSON.parse(raw) : null; } catch { /* badan bukan JSON */ }
+  if (!res.ok) return { error: { message: parsed?.error || `Gagal memindahkan jalur (HTTP ${res.status})` } };
+  return { error: null };
+}
+
 /**
  * Pindahkan sebuah order antara jalur iklan regular dan JFU Kilat.
  *
@@ -4485,8 +4513,18 @@ export const convertDistributionType = async (
 
   // Tanpa jadwal, 'slot_reserved'/'waiting_payment' jadi bohong. Order lunas
   // tidak pernah diturunkan — statusnya mencatat uang yang sudah masuk.
+  //
+  // Penurunan ke 'approved' ditolak sql/118_review untuk JWT browser Product,
+  // jadi cabang ini lewat /api/admin/distribution (service_role, syarat
+  // status & belum-lunas ditegakkan ulang di filter PATCH server).
   if (!isPaid && ['slot_reserved', 'waiting_payment'].includes(sub.submission_status || '')) {
     updateData.submission_status = 'approved';
+    const { error } = await postDistribution(
+      { action: 'convert-release', submissionId, target, subtotal, ppnAmount: ppn, totalCost },
+      () => supabase.from('form_submissions').update(updateData).eq('id', submissionId).select('id'),
+    );
+    if (error) throw new Error(error.message);
+    return { totalCost, subtotal, ppn };
   }
 
   const { error: writeError } = await supabase
