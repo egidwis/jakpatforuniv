@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 /*
   updateKilatSchedule → jendela halaman ikut gelombang baru (Phase 5 §5.4, R4).
@@ -36,7 +36,10 @@ function builderFor(table: string) {
 vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
     from: (table: string) => builderFor(table),
-    auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }) },
+    auth: {
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+      getSession: async () => ({ data: { session: { access_token: 'jwt-admin' } } }),
+    },
   }),
 }));
 
@@ -72,5 +75,49 @@ describe('updateKilatSchedule — sinkron jendela halaman', () => {
     expect(read.ops).toContainEqual(['eq', 'submission_id', 'sub-1']);
     expect(read.ops).toContainEqual(['is', 'auto_closed_at', null]);
     expect(pageWrites()).toHaveLength(0);
+  });
+});
+
+/*
+  Jalur PRODUKSI (bukan VITEST): tulisan form_submissions lewat
+  /api/admin/schedule (sql/119_order_fields menolak JWT browser Product),
+  lalu jendela halaman lewat /api/admin/content. Saat merge seri keamanan
+  19 Okt, versi gabungan langsung `return true` sesudah /api/admin/schedule
+  sehingga halaman tidak pernah ikut gelombang — tes ini menguncinya.
+*/
+describe('updateKilatSchedule — jalur produksi lewat Pages Function', () => {
+  let posts: { url: string; body: any }[] = [];
+  beforeEach(() => {
+    calls = []; posts = [];
+    pages = [{ id: 'pg-1', publish_end_date: '2026-10-17T04:00:00Z' }];
+    vi.stubEnv('VITEST', '');
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: any) => {
+      posts.push({ url: String(url), body: JSON.parse(init.body) });
+      return new Response(JSON.stringify({ data: [{ id: 'x' }] }), { status: 200 });
+    }));
+  });
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+
+  it('aksi kilat lalu patch-pages, nol tulisan langsung ke tabel', async () => {
+    await updateKilatSchedule('sub-1', '2026-10-20', 11);
+    expect(posts.map((p) => [p.url, p.body.action])).toEqual([
+      ['/api/admin/schedule', 'kilat'],
+      ['/api/admin/content', 'patch-pages'],
+    ]);
+    expect(posts[0].body).toMatchObject({ submissionId: 'sub-1', ymd: '2026-10-20', endYmd: '2026-10-21', hour: 11 });
+    expect(posts[1].body.patch).toMatchObject({
+      publish_start_date: '2026-10-20T04:00:00.000Z',
+      publish_end_date: '2026-10-21T04:00:00.000Z',
+    });
+    expect(calls.filter((c) => c.ops.some((o) => o[0] === 'update'))).toHaveLength(0);
+  });
+
+  it('aksi kilat ditolak → halaman tidak disentuh', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: any) => {
+      posts.push({ url: String(url), body: JSON.parse(init.body) });
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    }));
+    await expect(updateKilatSchedule('sub-1', '2026-10-20', 11)).rejects.toThrow('Unauthorized');
+    expect(posts.map((p) => p.url)).toEqual(['/api/admin/schedule']);
   });
 });
