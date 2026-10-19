@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import { LogOut, Eye, EyeOff, RefreshCw, Lock, Search, CreditCard, ChevronLeft, ChevronRight, X, ListFilter, ArrowDownWideNarrow, ArrowUpNarrowWide, Zap, Calendar, ShieldCheck, ArrowRight, Loader2, Plus } from 'lucide-react';
 import logoMark from '../assets/Jakpat Navbar Logo.webp';
-import { getFormSubmissionsPaginated, countSubmissionsByStatus, updateFormStatus, convertDistributionType, supabase } from '../utils/supabase';
+import { getFormSubmissionsPaginated, countSubmissionsByStatus, setProductReviewStatus, convertDistributionType, supabase } from '../utils/supabase';
 import { fetchProfileNames } from '../utils/profileNames';
 import { emailLocalPart } from './customers/types';
 import { useAuth } from '../context/AuthContext';
@@ -849,7 +849,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
     previousStatus?: string
   ) => {
     try {
-      const savedRow = await updateFormStatus(submissionId, newStatus, notes, reviewHistory);
+      const savedRow = await setProductReviewStatus(submissionId, newStatus, notes, reviewHistory);
 
       if (previousStatus !== newStatus) {
         // Sengaja tidak di-`await`: email tidak boleh menahan layar, dan
@@ -870,7 +870,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
       //
       // Urutan sebaliknya sama rusaknya — tambalan yang mendarat belakangan
       // menimpa data segar dengan snapshot basi. Karena itu bukan urutannya
-      // yang diperbaiki, melainkan sumbernya: `updateFormStatus` sudah
+      // yang diperbaiki, melainkan sumbernya: `setProductReviewStatus` sudah
       // memulangkan baris hasilnya lewat `.select()`; pakai baris itu.
       setSubmissions((prev) =>
         prev.map((s) => (s.id === submissionId ? mergeServerRow(s, savedRow) : s))
