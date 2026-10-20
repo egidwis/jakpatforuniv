@@ -766,11 +766,19 @@ export const translations = {
 
     // Dashboard revamp — homepage product hub
     createNewOrder: "Create New Order",
+    newOrderFab: "New order",
+    summaryPayBefore: "Pay before {when}",
+    summaryActionFix: "Fix questionnaire",
+    summaryMoreNeedAction: "+{count} more schedule(s) need action",
+    orderDetailsShow: "Details",
+    orderDetailsHide: "Hide details",
     comingSoon: "Coming Soon",
     newBadge: "New",
     createOrderSubtitle: "Choose how to distribute your survey",
     createOrderChatCta: "Questions? Chat with Mimin",
     startOrder: "Start",
+    createAdOrderBtn: "Place Survey Ad Now",
+    productAvailable: "Available",
     orderListSubtitle: "Track the progress and broadcast schedule of your surveys",
     productAdsTitle: "Survey Ads",
     productAdsHook: "For maximum reach —",
@@ -865,8 +873,9 @@ export const translations = {
     // Dashboard revamp — survey details & order info accordions
     copyOrderId: "Copy booking ID",
     orderIdCopied: "Booking ID copied to clipboard",
-    copySubmissionId: "Copy submission ID",
-    submissionIdCopied: "Submission ID copied to clipboard",
+    copySubmissionId: "Copy order ID",
+    submissionIdCopied: "Order ID copied to clipboard",
+    orderIdLabel: "Order ID",
     scheduleExtensionPrefix: "Extension",
     scheduleExtensionLabel: "Ad Extension",
     scheduleExtendCardTitle: "Extend Airing Period",
@@ -1096,7 +1105,7 @@ export const translations = {
     // penawaran, bukan catatan. Lihat `utils/scheduleMoney.ts`.
     costIsEstimateNote: "Estimate at the rate locked for this schedule — the invoice is issued by our team.",
     incentiveNoAdditionNote: "No addition — current incentive still applies",
-    calloutCancelledSchedule: "Our team cancelled this schedule. Need an explanation? Open Chat Mimin on the Dashboard.",
+    calloutCancelledSchedule: "Our team cancelled this schedule.",
     // Manual-review orders never pick their own airing date — the wizard skips
     // the schedule step for them. This replaces the reschedule button so the
     // card still says who is holding the next step.
@@ -1121,7 +1130,8 @@ export const translations = {
     bannerSubAiringOnCredit: "There is no deadline for this invoice. The payment button always works; the link refreshes itself when opened.",
     bannerSubAiringOnCreditNoBill: "Your ad airs on schedule. The invoice will be sent to you shortly.",
     bannerTitleSlotCancelled: "Airing date cancelled",
-    bannerSubSlotCancelled: "The Jakpat team cancelled this order's airing date. Your questionnaire is still approved. Need an explanation? Open Chat Mimin on the Dashboard.",
+    bannerSubSlotCancelled: "The Jakpat team cancelled this order's airing date. Your questionnaire is still approved.",
+    chatMiminCta: "Ask Chat Mimin",
     scheduleEmptyRejected: "No airing schedule for this order yet.",
     publicationEmptyState: "Airing info will appear once a schedule is paid.",
     adPageLinkLabel: "Ad Page",
@@ -1220,6 +1230,12 @@ export const translations = {
     // Ticket Slip & Compact Card
     ticketScheduleLabel: "Airing Schedule",
     scheduleTicketNumbered: "Schedule #{index}",
+    airingDurationDays: "{days}-day run ({hours} hours)",
+    // Varian TANPA kalimat "Open Chat Mimin on the Dashboard": di kartu order jalan keluarnya
+    // berupa tautan sungguhan (`Banner chatHelp`), bukan instruksi teks.
+    rescheduleHandledByTeamShort: "Our team will reschedule this for you.",
+    scheduleExpiredHintShort: "The payment link for this schedule has expired. Our team will issue a replacement.",
+    bannerSubCreditStoppedShort: "The ad already aired, so its invoice still stands in full. There is no deadline for it.",
     viewBookingDetails: "View Order & Billing Details",
     hideBookingDetails: "Hide Details",
     publicationPendingActivation: "Active after payment is completed",
@@ -2035,11 +2051,19 @@ export const translations = {
 
     // Dashboard revamp — hub produk homepage
     createNewOrder: "Buat Order Baru",
+    newOrderFab: "Order baru",
+    summaryPayBefore: "Bayar sebelum {when}",
+    summaryActionFix: "Perbaiki kuesioner",
+    summaryMoreNeedAction: "+{count} jadwal lain perlu tindakan",
+    orderDetailsShow: "Detail",
+    orderDetailsHide: "Tutup detail",
     comingSoon: "Segera Hadir",
     newBadge: "Baru",
     createOrderSubtitle: "Pilih cara distribusi surveimu",
     createOrderChatCta: "Ada pertanyaan? Chat Mimin",
     startOrder: "Mulai",
+    createAdOrderBtn: "Pasang Iklan Sekarang",
+    productAvailable: "Tersedia",
     orderListSubtitle: "Pantau progres review dan jadwal distribusi surveimu",
     productAdsTitle: "Iklan Survei",
     productAdsHook: "Untuk jangkauan maksimal —",
@@ -2134,8 +2158,9 @@ export const translations = {
     // Dashboard revamp — accordion detail survei & info order
     copyOrderId: "Salin Booking ID",
     orderIdCopied: "Booking ID disalin ke clipboard",
-    copySubmissionId: "Salin Submission ID",
-    submissionIdCopied: "Submission ID disalin ke clipboard",
+    copySubmissionId: "Salin ID Order",
+    submissionIdCopied: "ID Order disalin ke clipboard",
+    orderIdLabel: "ID Order",
     scheduleExtensionPrefix: "Perpanjangan",
     scheduleExtensionLabel: "Perpanjangan Iklan",
     scheduleExtendCardTitle: "Perpanjang Masa Tayang Iklan",
@@ -2348,7 +2373,7 @@ export const translations = {
     scheduleKilatHourPending: "jam tayang ditetapkan tim kami",
     costIsEstimateNote: "Estimasi dengan tarif yang terkunci untuk jadwal ini — tagihan resmi diterbitkan tim kami.",
     incentiveNoAdditionNote: "Tanpa tambahan — insentif berjalan tetap berlaku",
-    calloutCancelledSchedule: "Jadwal ini dibatalkan tim kami. Butuh penjelasan? Buka Chat Mimin di Dashboard.",
+    calloutCancelledSchedule: "Jadwal ini dibatalkan tim kami.",
     rescheduleHandledByTeam: "Tim kami yang akan menjadwalkan ulang iklanmu. Butuh penjelasan? Buka Chat Mimin di Dashboard.",
     bookingStatusSlotCancelled: "Dibatalkan",
     // sql/102 — tayang sebelum lunas dengan tagihan tempo. TANPA tenggat: link
@@ -2367,7 +2392,8 @@ export const translations = {
     bannerSubAiringOnCredit: "Tagihan ini tidak punya batas waktu. Tombol bayar selalu bisa dipakai; link-nya diperbarui otomatis saat dibuka.",
     bannerSubAiringOnCreditNoBill: "Iklanmu tayang sesuai jadwal. Tagihannya akan segera kami kirimkan.",
     bannerTitleSlotCancelled: "Jadwal tayang dibatalkan",
-    bannerSubSlotCancelled: "Tim Jakpat membatalkan tanggal tayang pesanan ini. Kuesionermu tetap lolos review. Butuh penjelasan? Buka Chat Mimin di Dashboard.",
+    bannerSubSlotCancelled: "Tim Jakpat membatalkan tanggal tayang pesanan ini. Kuesionermu tetap lolos review.",
+    chatMiminCta: "Tanya Chat Mimin",
     scheduleEmptyRejected: "Belum ada jadwal iklan untuk pesanan ini.",
     publicationEmptyState: "Info penayangan akan muncul setelah ada jadwal yang lunas.",
     adPageLinkLabel: "Halaman Iklan",
@@ -2451,6 +2477,10 @@ export const translations = {
     // Ticket Slip & Compact Card
     ticketScheduleLabel: "Jadwal Tayang",
     scheduleTicketNumbered: "Jadwal #{index}",
+    airingDurationDays: "{days} Hari ({hours} Jam)",
+    rescheduleHandledByTeamShort: "Tim kami yang akan menjadwalkan ulang iklanmu.",
+    scheduleExpiredHintShort: "Link pembayaran jadwal ini sudah kedaluwarsa. Tim kami akan menerbitkan penggantinya.",
+    bannerSubCreditStoppedShort: "Iklan ini sudah sempat tayang, jadi tagihannya tetap berlaku penuh dan tidak punya batas waktu.",
     viewBookingDetails: "Lihat Rincian Pemesanan & Tagihan",
     hideBookingDetails: "Tutup Rincian",
     publicationPendingActivation: "Aktif setelah pembayaran lunas",

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchAdSchedules, getSurveyPagesBySubmissionIds, fetchScheduleBilling, fetchInvoiceGroups, dismissSubmission, cancelOrder, updateFormStatus, type AdScheduleEntry, type FormSubmission, type InvoiceGroup } from '@/utils/supabase';
@@ -29,11 +29,13 @@ import { payLinkForBill, payLinkPath } from '@/utils/payLink';
 import { Phase } from '@/components/status/PhaseRail';
 import { ReviewPhase } from '@/components/status/ReviewPhase';
 import { SchedulePhase } from '@/components/status/SchedulePhase';
+import { OrderSummaryBar } from '@/components/status/OrderSummaryBar';
+import { orderSummaryOf } from '@/components/status/orderSummary';
 import { PublicationPhase } from '@/components/status/PublicationPhase';
 import { buildScheduleCards } from '@/components/status/airingPeriods';
 import { groupInfoFor } from '@/components/status/invoiceGroups';
-import { CreateOrderCards } from '@/components/CreateOrderCards';
-import { deriveOrderUiState, getActiveDashboardPhase, type OrderGroup } from '@/components/status/deriveOrderUiState';
+import { CreateOrderCards, NewOrderFab } from '@/components/CreateOrderCards';
+import { deriveOrderUiState, getActiveDashboardPhase, isAutoReviewed, type OrderGroup } from '@/components/status/deriveOrderUiState';
 import { AdsEntryModal } from '@/components/AdsEntryModal';
 import { ProfileCompletionSheet } from '@/components/ProfileCompletionSheet';
 import { isProfileGateSatisfied } from '@/components/ProfileForm';
@@ -61,7 +63,15 @@ function canCancelOrder(ui: { isPaid: boolean; currentStep: number; callout: str
         'payment', 'awaiting_invoice', 'expired', 'too_late_today'].includes(ui.callout);
 }
 
-function CopySubmissionIdBadge({ id }: { id: string }) {
+/**
+ * Nomor order, gaya nomor faktur: label kecil + kode mono yang lebih besar dan kontras,
+ * tombol salin SELALU terlihat. Ini kode yang dikutip peneliti ke admin (pencarian admin
+ * mencocokkan 8 hex pertama id submission — lihat `submissionIdsForBookingId`), jadi harus
+ * mudah ditemukan & disalin, tapi tetap di bawah judul survei dalam hierarki.
+ *
+ * Sengaja berbeda dari "Booking ID" (kode per JADWAL, di dalam tiket): dua kode, dua nama.
+ */
+function CopyOrderIdBadge({ id }: { id: string }) {
     const { t } = useLanguage();
     const [copied, setCopied] = useState(false);
 
@@ -81,22 +91,27 @@ function CopySubmissionIdBadge({ id }: { id: string }) {
         <button
             type="button"
             onClick={handleCopy}
-            className="group/id inline-flex items-center gap-1.5 h-6 px-2.5 rounded-md text-[11px] text-slate-500 bg-slate-50 hover:bg-slate-100 hover:text-slate-800 border border-slate-200/80 transition-colors cursor-pointer"
+            className="group/id ml-auto -mr-2 inline-flex items-center gap-2 h-8 px-2 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
             title={`${t('copySubmissionId')}: ${id}`}
             aria-label={`${t('copySubmissionId')}: ${id}`}
         >
-            <span className="text-slate-500 font-medium">Submission ID:</span>
-            <span className="font-semibold font-mono text-slate-700 group-hover/id:text-slate-900">
-                #{id.slice(0, 8)}
-            </span>
+            <span className="text-xs font-medium text-slate-500">{t('orderIdLabel')}</span>
+            <span className="font-mono text-sm font-semibold tracking-tight text-slate-800">#{id.slice(0, 8)}</span>
             {copied ? (
-                <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+                <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
             ) : (
-                <Copy className="w-3 h-3 text-slate-400 group-hover/id:text-blue-600 shrink-0 transition-colors" />
+                <Copy className="w-3.5 h-3.5 text-slate-400 group-hover/id:text-jfu-primary shrink-0 transition-colors" />
             )}
         </button>
     );
 }
+
+/** Desktop yang cukup tinggi untuk bingkai daftar order bergulir sendiri. Di bawah ini
+ *  (ponsel, layar pendek) halaman menggulir seperti biasa — bingkai bertinggi tetap di
+ *  layar pendek lebih menyiksa daripada berguna. */
+const FRAME_QUERY = '(min-width: 1024px) and (min-height: 700px)';
+/** Jarak bingkai ke tepi bawah layar. */
+const FRAME_BOTTOM_GUTTER = 24;
 
 export function StatusPage() {
     const { user } = useAuth();
@@ -130,6 +145,52 @@ export function StatusPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const [showScrollTop, setShowScrollTop] = useState(false);
 
+    /* Kartu order yang DIBUKA di ponsel (id submission). Di ponsel kartu default ringkas; di desktop
+       kartu selalu terbuka (`lg:`) dan state ini tak berpengaruh. */
+    const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+    const setOrderExpanded = (id: string, open?: boolean) =>
+        setExpandedOrders((prev) => {
+            const next = new Set(prev);
+            const shouldOpen = open ?? !next.has(id);
+            if (shouldOpen) next.add(id); else next.delete(id);
+            return next;
+        });
+
+    /*
+      Bingkai daftar order. Di desktop yang cukup tinggi (`FRAME_QUERY`) halaman TIDAK
+      menggulir: kepala "My Order" diam, dan hanya bingkai di bawahnya yang menggulir.
+      Tingginya DIUKUR (sisa layar di bawah posisi atasnya), bukan dihitung dari angka
+      navbar — banner "Profil belum lengkap" menggeser semuanya dan angka tetap pasti
+      meleset. `frameHeight === null` = mode biasa: halaman menggulir seperti semula
+      (ponsel, lg yang pendek). Callback-ref karena bingkai baru ada setelah skeleton
+      pemuatan diganti isi.
+    */
+    const [frameEl, setFrameEl] = useState<HTMLDivElement | null>(null);
+    const [frameHeight, setFrameHeight] = useState<number | null>(null);
+    useLayoutEffect(() => {
+        if (!frameEl) return;
+        const mq = window.matchMedia(FRAME_QUERY);
+        const measure = () => {
+            if (!mq.matches) { setFrameHeight(null); return; }
+            // Atas KOLOM, bukan atas bingkai: di mode bingkai kepala melayang di atas bingkai
+            // sehingga posisi atas bingkai sendiri berubah antara sebelum & sesudah diukur.
+            const top = (frameEl.parentElement ?? frameEl).getBoundingClientRect().top + window.scrollY;
+            setFrameHeight(Math.floor(window.innerHeight - top - FRAME_BOTTOM_GUTTER));
+        };
+        measure();
+        mq.addEventListener('change', measure);
+        window.addEventListener('resize', measure);
+        // Banner profil / skeleton yang muncul belakangan menggeser posisi atas bingkai.
+        const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+        ro?.observe(document.body);
+        return () => {
+            mq.removeEventListener('change', measure);
+            window.removeEventListener('resize', measure);
+            ro?.disconnect();
+        };
+    }, [frameEl]);
+    const framed = frameHeight !== null;
+
     // Modal Pintu Masuk Iklan Survei (2-Step Modal)
     const [isAdsModalOpen, setIsAdsModalOpen] = useState(false);
     const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false);
@@ -158,15 +219,21 @@ export function StatusPage() {
     };
 
     useEffect(() => {
+        // Dua kemungkinan penggulir: halaman (mode biasa) atau bingkai (desktop tinggi).
         const handleScroll = () => {
-            setShowScrollTop(window.scrollY > 300);
+            setShowScrollTop(window.scrollY > 300 || (frameEl?.scrollTop ?? 0) > 300);
         };
         window.addEventListener('scroll', handleScroll, { passive: true });
-        return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
+        frameEl?.addEventListener('scroll', handleScroll, { passive: true });
+        return () => {
+            window.removeEventListener('scroll', handleScroll);
+            frameEl?.removeEventListener('scroll', handleScroll);
+        };
+    }, [frameEl]);
 
     const scrollToTop = () => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
+        frameEl?.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const filterParam = searchParams.get('filter') as FilterValue | null;
@@ -178,6 +245,11 @@ export function StatusPage() {
             return params;
         }, { replace: true });
     };
+
+    // Ganti filter = daftar baru; bingkai yang masih tergulir jauh akan tampak kosong/salah tempat.
+    useEffect(() => {
+        frameEl?.scrollTo({ top: 0 });
+    }, [selectedFilter, frameEl]);
 
     // Handle query params for notifications
     useEffect(() => {
@@ -679,18 +751,20 @@ export function StatusPage() {
                     </div>
 
                     <div className="lg:col-span-8 min-w-0 space-y-4">
-                        {/* Skeleton Header My Order & Tools */}
-                        <div className="flex justify-between items-center pb-1">
-                            <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                    <Skeleton className="h-7 w-32 bg-slate-200 rounded-lg" />
-                                    <Skeleton className="h-5 w-8 bg-slate-100 rounded-full" />
+                        {/* Skeleton Control Panel Card */}
+                        <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)]">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <div className="space-y-1.5">
+                                    <div className="flex items-center gap-2">
+                                        <Skeleton className="h-6 w-32 bg-slate-200 rounded-lg" />
+                                        <Skeleton className="h-5 w-8 bg-slate-100 rounded-full" />
+                                    </div>
+                                    <Skeleton className="h-3 w-56 bg-slate-100" />
                                 </div>
-                                <Skeleton className="h-3 w-48 bg-slate-100 hidden sm:block" />
-                            </div>
-                            <div className="flex gap-2">
-                                <Skeleton className="h-9 w-24 sm:w-28 rounded-xl bg-slate-200" />
-                                <Skeleton className="h-9 w-9 sm:w-20 rounded-xl bg-slate-200" />
+                                <div className="flex gap-2">
+                                    <Skeleton className="h-9 w-24 sm:w-28 rounded-xl bg-slate-100" />
+                                    <Skeleton className="h-9 w-9 sm:w-20 rounded-xl bg-slate-100" />
+                                </div>
                             </div>
                         </div>
 
@@ -730,93 +804,145 @@ export function StatusPage() {
                 untuk ponsel (di atas My Order) dan desktop (di kiri), jadi tanpa
                 kelas `order-*`. ⚠️ Jangan beri `relative` pada <aside>: `.relative`
                 di styles.css dimuat setelah Tailwind dan mengalahkan `lg:sticky`. */}
-            <div className="max-w-5xl mx-auto px-4 md:px-6 pt-5 md:pt-8 pb-10 grid lg:grid-cols-12 gap-6 items-start">
-                <aside className="lg:col-span-4 lg:sticky lg:top-24">
+            {/* Mode bingkai: halaman harus pas setinggi layar. `-mb-10` meniadakan `pb-10` <main> milik
+                layout bersama (satu-satunya yang tak bisa diubah dari sini); jarak bawah diganti
+                `FRAME_BOTTOM_GUTTER`. */}
+            {/* Ponsel + sudah punya order: nol padding atas, supaya toolbar langsung rata di bawah navbar tanpa
+                celah (kartu aksi yang tadinya jadi pengisi ruang itu disembunyikan). Belum punya order →
+                kartu Create tampil, jadi jarak atas tetap. */}
+            <div className={`max-w-5xl mx-auto px-4 md:px-6 ${submissions.length > 0 ? 'pt-0 lg:pt-8' : 'pt-5 md:pt-8'} grid lg:grid-cols-12 gap-6 items-start ${framed ? 'pb-6 -mb-10' : 'pb-10'}`}>
+                {/* Ponsel + sudah punya order: kartu Create disembunyikan (ia memakan ±55% layar
+                    pertama padahal peneliti yang kembali mau melihat status). Penggantinya: FAB
+                    "Order baru" dan ikon Chat Mimin di toolbar. Belum punya order → tetap penuh,
+                    karena membuat order satu-satunya yang perlu ia lakukan. */}
+                <aside className={`lg:col-span-4 lg:sticky lg:top-24 ${submissions.length > 0 ? 'max-lg:hidden' : ''}`}>
                     <CreateOrderCards onOpenAdsModal={() => setIsAdsModalOpen(true)} />
                 </aside>
 
                 {/* Daftar order — kolom lebar di kanan (desktop), di bawah kartu aksi (ponsel) */}
-                <div className="lg:col-span-8 min-w-0 space-y-4">
-                    {/* Header bagian Dashboard beserta filter dan refresh */}
-                    <div className="flex items-center justify-between gap-3 pb-1">
-                        <div className="min-w-0">
-                            <div className="flex items-center gap-2 sm:gap-2.5">
-                                <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white truncate">
+                <div className="relative lg:col-span-8 min-w-0 space-y-4">
+                    {/* Integrated Control Bar: My Order, Counter, Subtitle & Toolbar */}
+                    {/* Tinggi 65px di desktop = kepala kiri (`lg:h-16` + 1px border kartu), jadi tepi
+                        bawah dua kepala sejajar. Mode bingkai: kepala MELAYANG di atas bingkai
+                        (absolute) — bingkai mulai dari atas kolom dan isinya digulir di bawah
+                        kepala. Kepala berupa KACA (bg putih 70% + blur): kartu yang digulir tampak
+                        terselip di bawah panel, bukan memudar jadi hantu di bawahnya — dulu mask
+                        65→81px memperlihatkan chip & garis tepi kartu setengah pudar tepat di bawah
+                        sudut membulat, dan itulah yang terbaca sebagai glitch. */}
+                    {/* Toolbar PONSEL (di bawah lg): menempel di bawah navbar, selebar layar, bukan kartu
+                        melayang — di sini halaman menggulir biasa, jadi toolbar rata navbar tak
+                        menyisakan celah tempat kartu mengintip. Berisi judul + filter (dropdown, sama
+                        seperti desktop) + ikon aksi. Di lg+ pembungkus ini `static` dan tak berpenampilan apa pun. */}
+                    <div className="sticky top-14 md:top-16 z-20 -mx-4 md:-mx-6 px-4 md:px-6 bg-white/90 backdrop-blur-md border-b border-slate-200/80 lg:static lg:z-auto lg:mx-0 lg:px-0 lg:bg-transparent lg:backdrop-blur-none lg:border-b-0">
+                    <div className={`flex items-center lg:h-[65px] lg:rounded-2xl lg:border lg:border-slate-200/90 lg:px-5 py-3 sm:py-3.5 ${
+                        framed
+                            ? 'absolute top-0 inset-x-0 z-10 bg-white/70 backdrop-blur-xl backdrop-saturate-150 shadow-[0_8px_24px_-8px_rgba(15,23,42,0.16),0_1px_3px_rgba(15,23,42,0.05)]'
+                            : 'lg:bg-white lg:shadow-[0_1px_3px_0_rgba(0,0,0,0.03),0_4px_12px_-2px_rgba(0,0,0,0.02)]'
+                    }`}>
+                        <div className="flex w-full items-center justify-between gap-3">
+                            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                                {/* `truncate` (bukan shrink-0): di layar sangat sempit judul yang mengalah, tak
+                                    pernah ditimpa dropdown di kanannya. */}
+                                <h1 className="text-base font-bold text-slate-900 dark:text-white min-w-0 truncate">
                                     {t('pageTitle')}
                                 </h1>
                                 {submissions.length > 0 && (
-                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-jfu-primary border border-blue-200/80 shadow-2xs shrink-0">
+                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-jfu-primary border border-blue-200/80 shadow-2xs shrink-0 ${
+                                        /* Ponsel + filter aktif: dropdown butuh lebar untuk namanya, dan angka total ini
+                                           toh bukan jumlah yang sedang ditampilkan. */
+                                        selectedFilter !== 'all' ? 'max-sm:hidden' : ''
+                                    }`}>
                                         {submissions.length}
                                     </span>
                                 )}
+                                {/* Subjudul hanya di md (satu kolom, lebar penuh). Di lg kolomnya
+                                    ±650px dan subjudul selalu terpotong "…" — lebih baik tak ada. */}
+                                <span className="hidden md:inline-block lg:hidden w-px h-4 bg-slate-200 shrink-0" />
+                                <p className="text-xs text-slate-500 truncate hidden md:block lg:hidden">
+                                    {t('orderListSubtitle')}
+                                </p>
                             </div>
-                            <p className="text-xs text-slate-500 mt-0.5 hidden sm:block truncate">
-                                {t('orderListSubtitle')}
-                            </p>
-                        </div>
-                        {submissions.length > 0 && (
-                            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger
-                                        aria-label={t('filterAll')}
-                                        className={`relative inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 h-9 rounded-xl border text-xs font-semibold transition-all outline-none shadow-2xs cursor-pointer ${
-                                            selectedFilter !== 'all'
-                                                ? 'bg-jfu-primary text-white border-jfu-primary shadow-xs'
-                                                : 'bg-white text-slate-700 border-slate-200/90 hover:bg-slate-50 hover:text-slate-900'
-                                        }`}
-                                    >
-                                        <ListFilter className="w-3.5 h-3.5 shrink-0" />
-                                        <span className="max-w-[100px] sm:max-w-none truncate">
-                                            {filterChips.find((c) => c.value === selectedFilter)?.label || t('filterAll')}
-                                        </span>
-                                        {needsActionCount > 0 && (
-                                            <span
-                                                className={`inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full text-[10px] font-bold ${
-                                                    selectedFilter !== 'all'
-                                                        ? 'bg-white text-jfu-primary'
-                                                        : 'bg-red-500 text-white'
-                                                }`}
-                                            >
-                                                {needsActionCount}
+
+                            {submissions.length > 0 && (
+                                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger
+                                            aria-label={t('filterAll')}
+                                            className={`relative inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 h-9 rounded-xl border text-xs font-semibold transition-all outline-none shadow-2xs cursor-pointer ${
+                                                selectedFilter !== 'all'
+                                                    ? 'bg-jfu-primary text-white border-jfu-primary shadow-xs'
+                                                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
+                                            }`}
+                                        >
+                                            <ListFilter className="w-3.5 h-3.5 shrink-0 max-sm:hidden" />
+                                            <span className="truncate max-lg:max-w-[96px]">
+                                                {filterChips.find((c) => c.value === selectedFilter)?.label || t('filterAll')}
                                             </span>
-                                        )}
-                                        <ChevronDown className="w-3 h-3 opacity-60 ml-0.5 shrink-0" />
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="w-48">
-                                        {filterChips.map((chip) => (
-                                            <DropdownMenuItem
-                                                key={chip.value}
-                                                onClick={() => setSelectedFilter(chip.value)}
-                                                className="cursor-pointer justify-between py-2 text-xs"
-                                            >
-                                                <span className={selectedFilter === chip.value ? 'font-semibold text-jfu-primary' : ''}>
-                                                    {chip.label}
-                                                    {typeof chip.count === 'number' && chip.count > 0 && (
-                                                        <span className="ml-1.5 inline-flex items-center justify-center min-w-4 h-4 px-1.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
-                                                            {chip.count}
-                                                        </span>
-                                                    )}
+                                            {needsActionCount > 0 && (
+                                                <span
+                                                    className={`inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full text-[10px] font-bold ${
+                                                        selectedFilter !== 'all'
+                                                            ? 'bg-white text-jfu-primary'
+                                                            : 'bg-red-500 text-white'
+                                                    }`}
+                                                >
+                                                    {needsActionCount}
                                                 </span>
-                                                {selectedFilter === chip.value && <Check className="w-4 h-4 text-jfu-primary" />}
-                                            </DropdownMenuItem>
-                                        ))}
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleRefresh}
-                                    disabled={refreshing}
-                                    title={t('refresh')}
-                                    className="h-9 px-2.5 sm:px-3 rounded-xl bg-white border border-slate-200/90 text-slate-600 hover:text-jfu-primary hover:bg-slate-50 shadow-2xs text-xs font-semibold"
-                                >
-                                    <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-                                    <span className="hidden md:inline ml-1 font-medium">{t('refresh')}</span>
-                                </Button>
-                            </div>
-                        )}
+                                            )}
+                                            <ChevronDown className="w-3 h-3 opacity-60 ml-0.5 shrink-0" />
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end" className="w-48">
+                                            {filterChips.map((chip) => (
+                                                <DropdownMenuItem
+                                                    key={chip.value}
+                                                    onClick={() => setSelectedFilter(chip.value)}
+                                                    className="cursor-pointer justify-between py-2 text-xs"
+                                                >
+                                                    <span className={selectedFilter === chip.value ? 'font-semibold text-jfu-primary' : ''}>
+                                                        {chip.label}
+                                                        {typeof chip.count === 'number' && chip.count > 0 && (
+                                                            <span className="ml-1.5 inline-flex items-center justify-center min-w-4 h-4 px-1.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
+                                                                {chip.count}
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                    {selectedFilter === chip.value && <Check className="w-4 h-4 text-jfu-primary" />}
+                                                </DropdownMenuItem>
+                                            ))}
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleRefresh}
+                                        disabled={refreshing}
+                                        title={t('refresh')}
+                                        className="h-9 max-lg:h-10 max-lg:min-w-10 px-2.5 sm:px-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 hover:text-jfu-primary hover:bg-slate-100 shadow-2xs text-xs font-semibold"
+                                    >
+                                        <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                                        <span className="hidden sm:inline ml-1 font-medium">{t('refresh')}</span>
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
+                    </div>
+
+                    {/* Bingkai daftar order. Desktop tinggi: tinggi diukur & menggulir sendiri, mulai dari
+                        atas kolom DI BAWAH kepala kaca yang melayang. `pt-[81px]` = tinggi kepala 65 +
+                        jarak 16, jadi kartu pertama berhenti 16px di bawah kepala saat belum digulir.
+                        Mask atas (transparan 0–14px, penuh di 30px) hanya menyembunyikan isi di dua
+                        takik sudut membulat kepala — di bawah itu isi terlihat penuh, terblur lewat
+                        kaca. Ujung bawah memudar 20px (`pb-5` supaya kartu terakhir tetap utuh).
+                        `-mx-2 px-2` memberi ruang bayangan/hover kartu. `overscroll-contain` mencegah
+                        roda mouse melompat ke halaman di ujung bingkai. */}
+                    <div
+                        ref={setFrameEl}
+                        style={framed ? { height: frameHeight } : undefined}
+                        className={framed ? '!mt-0 overflow-y-auto overscroll-contain -mx-2 px-2 pt-[81px] pb-5 [scrollbar-width:thin] [scrollbar-color:rgb(203_213_225)_transparent] [mask-image:linear-gradient(to_bottom,transparent_14px,black_30px,black_calc(100%_-_20px),transparent)]' : undefined}
+                    >
                     {submissions.length === 0 ? (
                         /* Modern, Clean & Elevated Empty State Card */
                         <Card className="border border-slate-200/90 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] bg-white/95 rounded-2xl overflow-hidden">
@@ -877,10 +1003,18 @@ export function StatusPage() {
                                         const isCancelled = ui.callout === 'cancelled';
                                         const reachedPhase = isCancelled ? 1 : (activePhase ?? 3);
                                         const isDead = isCancelled || ui.callout === 'revision';
+                                        const orderId = submission.id!;
+                                        const isExpanded = expandedOrders.has(orderId);
+                                        // Aturan tombol datang dari `primaryActionOf` — fungsi yang SAMA dengan
+                                        // banner di dalam kartu, jadi kartu ringkas tak punya aturan uang sendiri.
+                                        const summary = orderSummaryOf(ui.callout, cards, { canSelfReschedule: isAutoReviewed(submission) });
                                         return (
                                             <Card key={submission.id} className="overflow-hidden border border-slate-200/90 shadow-[0_1px_3px_0_rgba(0,0,0,0.03),0_4px_12px_-2px_rgba(0,0,0,0.02)] hover:border-slate-300 transition-colors duration-150 rounded-2xl">
                                                 <CardHeader className="bg-white p-5 md:p-6 pb-4 md:pb-5 space-y-2.5 border-b border-slate-100">
-                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                    {/* Chip produk di kiri, nomor order di kanan (gaya faktur). Judul di
+                                                        baris SENDIRI dan selebar kartu — judul panjang tidak berebut
+                                                        tempat dengan nomor, cukup membungkus (maks 2 baris). */}
+                                                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                                                         <Chip
                                                             variant={submission.distribution_type === 'kilat' ? 'amber' : 'blue'}
                                                             size="sm"
@@ -888,15 +1022,25 @@ export function StatusPage() {
                                                             {submission.distribution_type === 'kilat' ? `⚡ ${t('productKilatTitle')}` : t('productAdsTitle')}
                                                         </Chip>
                                                         {submission.id && (
-                                                            <CopySubmissionIdBadge id={submission.id} />
+                                                            <CopyOrderIdBadge id={submission.id} />
                                                         )}
                                                     </div>
-                                                    <CardTitle className="text-base md:text-lg font-bold text-slate-900 leading-snug line-clamp-2" title={submission.title}>
+                                                    <CardTitle className="text-lg md:text-xl font-bold tracking-tight text-slate-900 leading-snug line-clamp-2" title={submission.title}>
                                                         {submission.title}
                                                     </CardTitle>
                                                 </CardHeader>
 
-                                                <CardContent className="p-5 md:p-6 pt-5 bg-white">
+                                                {/* Ponsel: ringkasan + aksi utama. Isi lengkap di bawahnya disembunyikan
+                                                    (CSS, bukan di-unmount: state fase tetap utuh) sampai Detail dibuka. */}
+                                                <OrderSummaryBar
+                                                    summary={summary}
+                                                    expanded={isExpanded}
+                                                    onToggle={() => setOrderExpanded(orderId)}
+                                                    onExpand={() => setOrderExpanded(orderId, true)}
+                                                    onReschedule={() => handleReschedule(submission)}
+                                                />
+
+                                                <CardContent className={`p-5 md:p-6 pt-5 bg-white ${isExpanded ? '' : 'max-lg:hidden'}`}>
                                                     <Phase number={1} title={t('phaseReviewTitle')} active={reachedPhase >= 1} lineActive={reachedPhase >= 2}>
                                                         <ReviewPhase
                                                             submission={submission}
@@ -967,8 +1111,16 @@ export function StatusPage() {
                             )}
                         </div>
                     )}
+                    </div>
                 </div>
             </div>
+
+            {/* FAB "Order baru" — hanya ponsel & hanya bila sudah punya order (yang belum punya
+                melihat kartu Create penuh). Langsung ke produk bila hanya satu yang tersedia,
+                lembar pilihan bila lebih. Tombol "ke atas" digeser naik supaya tak bertumpuk. */}
+            {submissions.length > 0 && (
+                <NewOrderFab onOpenAdsModal={() => setIsAdsModalOpen(true)} />
+            )}
 
             {/* Floating move to top button */}
             <button
@@ -976,7 +1128,7 @@ export function StatusPage() {
                 onClick={scrollToTop}
                 aria-label="Kembali ke atas"
                 title="Kembali ke atas"
-                className={`fixed bottom-6 right-6 z-50 p-3 rounded-full bg-white text-jfu-primary shadow-xl border border-jfu-primary/20 hover:bg-jfu-primary hover:text-white transition-all duration-300 transform ${showScrollTop ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto' : 'opacity-0 translate-y-4 scale-95 pointer-events-none'}`}
+                className={`fixed bottom-6 ${submissions.length > 0 ? 'max-lg:bottom-[5.5rem]' : ''} right-6 z-50 p-3 rounded-full bg-white text-jfu-primary shadow-xl border border-jfu-primary/20 hover:bg-jfu-primary hover:text-white transition-all duration-300 transform ${showScrollTop ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto' : 'opacity-0 translate-y-4 scale-95 pointer-events-none'}`}
             >
                 <ArrowUp className="w-5 h-5" />
             </button>
