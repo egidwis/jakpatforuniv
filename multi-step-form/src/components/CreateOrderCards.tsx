@@ -37,10 +37,30 @@ const PRODUCTS: Product[] = [
     { id: 'kilat', icon: Zap, accent: 'amber', titleKey: 'productKilatTitle', hookKey: 'productKilatHook', descKey: 'productKilatDesc', ctaKey: 'createKilatOrderBtn', isActionModal: true, comingSoon: true },
 ];
 
-const ACCENT_TILE: Record<Product['accent'], string> = {
-    blue: 'bg-gradient-to-br from-jfu-primary to-jfu-light text-white shadow-xs shadow-jfu-primary/20',
-    amber: 'bg-amber-50 text-amber-500 border border-amber-200/80 shadow-2xs',
-};
+/**
+ * Satu warna per produk, dipakai di SEMUA bagian kartunya (bingkai, tile, chip,
+ * tombol) supaya dua produk terbaca beda sekilas. Selaras dengan chip jenis
+ * order di kartu My Order: Iklan biru, Kilat amber (petir = kuning).
+ * Tombol amber memakai teks gelap — teks putih di atas amber hanya ±2:1.
+ */
+const ACCENT = {
+    blue: {
+        card: 'border-blue-200/90 from-blue-50/70 via-blue-50/20 hover:border-jfu-primary focus:ring-jfu-primary/30',
+        tile: 'bg-gradient-to-br from-jfu-primary to-jfu-light text-white shadow-xs shadow-jfu-primary/25',
+        title: 'group-hover:text-jfu-primary',
+        chip: 'border-blue-200/80 bg-blue-100/70 text-jfu-primary',
+        divider: 'border-blue-100/80',
+        cta: 'bg-gradient-to-r from-jfu-primary to-jfu-light text-white shadow-jfu-primary/20 group-hover:from-jfu-dark group-hover:to-jfu-primary',
+    },
+    amber: {
+        card: 'border-amber-200/90 from-amber-50/80 via-amber-50/25 hover:border-amber-500 focus:ring-amber-400/40',
+        tile: 'bg-gradient-to-br from-amber-400 to-amber-500 text-amber-950 shadow-xs shadow-amber-500/25',
+        title: 'group-hover:text-amber-700',
+        chip: 'border-amber-200/80 bg-amber-100/80 text-amber-800',
+        divider: 'border-amber-100',
+        cta: 'bg-gradient-to-r from-amber-400 to-amber-500 text-amber-950 shadow-amber-500/25 group-hover:from-amber-500 group-hover:to-amber-600',
+    },
+} satisfies Record<Product['accent'], Record<string, string>>;
 
 /**
  * Baris produk di dalam kartu "Buat Order Baru". Dulu grid kartu besar sejajar;
@@ -60,6 +80,7 @@ export function ProductCardGrid({ onOpenAdsModal, onOpenKilatModal, onSelect }: 
 
     const renderProductRow = (product: Product) => {
         const Icon = product.icon;
+        const tone = ACCENT[product.accent];
         const onOpen = product.id === 'kilat' ? onOpenKilatModal : onOpenAdsModal;
         const isComingSoon = !!product.comingSoon && !(product.id === 'kilat' && onOpenKilatModal);
 
@@ -69,15 +90,15 @@ export function ProductCardGrid({ onOpenAdsModal, onOpenKilatModal, onSelect }: 
                     key={product.id}
                     type="button"
                     onClick={() => { onSelect?.(); onOpen?.(); }}
-                    className="w-full text-left p-4 rounded-xl border border-blue-200/90 bg-gradient-to-b from-blue-50/70 via-blue-50/20 to-white hover:border-jfu-primary shadow-xs hover:shadow-md transition-all duration-200 group cursor-pointer block focus:outline-none focus:ring-2 focus:ring-jfu-primary/30"
+                    className={`w-full text-left p-4 rounded-xl border bg-gradient-to-b to-white shadow-xs hover:shadow-md transition-all duration-200 group cursor-pointer block focus:outline-none focus:ring-2 ${tone.card}`}
                 >
                     <div className="flex items-center justify-between gap-2.5 mb-2">
                         <div className="flex items-center gap-2.5 min-w-0">
-                            <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br from-jfu-primary to-jfu-light text-white shadow-xs shadow-jfu-primary/25">
+                            <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${tone.tile}`}>
                                 <Icon className="w-4 h-4" />
                             </span>
                             <div className="flex items-center gap-1.5 min-w-0">
-                                <span className="text-sm font-bold text-slate-900 group-hover:text-jfu-primary transition-colors truncate">
+                                <span className={`text-sm font-bold text-slate-900 transition-colors truncate ${tone.title}`}>
                                     {t(product.titleKey)}
                                 </span>
                                 {product.isNew && (
@@ -88,7 +109,7 @@ export function ProductCardGrid({ onOpenAdsModal, onOpenKilatModal, onSelect }: 
                             </div>
                         </div>
 
-                        <span className="shrink-0 rounded-full border border-blue-200/80 bg-blue-100/70 px-2 py-0.5 text-[10px] font-bold text-jfu-primary">
+                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${tone.chip}`}>
                             {t('productAvailable')}
                         </span>
                     </div>
@@ -100,8 +121,8 @@ export function ProductCardGrid({ onOpenAdsModal, onOpenKilatModal, onSelect }: 
                         {t(product.descKey)}
                     </p>
 
-                    <div className="mt-3.5 pt-2.5 border-t border-blue-100/80">
-                        <span className="w-full py-2 px-3 rounded-lg bg-gradient-to-r from-jfu-primary to-jfu-light text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs shadow-jfu-primary/20 group-hover:from-jfu-dark group-hover:to-jfu-primary group-hover:shadow-sm transition-all duration-150">
+                    <div className={`mt-3.5 pt-2.5 border-t ${tone.divider}`}>
+                        <span className={`w-full py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs group-hover:shadow-sm transition-all duration-150 ${tone.cta}`}>
                             <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                             <span>{t(product.ctaKey)}</span>
                             <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
@@ -147,18 +168,18 @@ export function ProductCardGrid({ onOpenAdsModal, onOpenKilatModal, onSelect }: 
                 key={product.id}
                 to={product.to}
                 onClick={onSelect}
-                className="w-full text-left p-4 rounded-xl border border-blue-200/90 bg-gradient-to-b from-blue-50/70 via-blue-50/20 to-white hover:border-jfu-primary shadow-xs hover:shadow-md transition-all duration-200 group cursor-pointer block focus:outline-none focus:ring-2 focus:ring-jfu-primary/30"
+                className={`w-full text-left p-4 rounded-xl border bg-gradient-to-b to-white shadow-xs hover:shadow-md transition-all duration-200 group cursor-pointer block focus:outline-none focus:ring-2 ${tone.card}`}
             >
                 <div className="flex items-center justify-between gap-2.5 mb-2">
                     <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-gradient-to-br from-jfu-primary to-jfu-light text-white shadow-xs shadow-jfu-primary/25">
+                        <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${tone.tile}`}>
                             <Icon className="w-4 h-4" />
                         </span>
-                        <span className="text-sm font-bold text-slate-900 group-hover:text-jfu-primary transition-colors truncate">
+                        <span className={`text-sm font-bold text-slate-900 transition-colors truncate ${tone.title}`}>
                             {t(product.titleKey)}
                         </span>
                     </div>
-                    <span className="shrink-0 rounded-full border border-blue-200/80 bg-blue-100/70 px-2 py-0.5 text-[10px] font-bold text-jfu-primary">
+                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${tone.chip}`}>
                         {t('productAvailable')}
                     </span>
                 </div>
@@ -170,8 +191,8 @@ export function ProductCardGrid({ onOpenAdsModal, onOpenKilatModal, onSelect }: 
                     {t(product.descKey)}
                 </p>
 
-                <div className="mt-3.5 pt-2.5 border-t border-blue-100/80">
-                    <span className="w-full py-2 px-3 rounded-lg bg-gradient-to-r from-jfu-primary to-jfu-light text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs shadow-jfu-primary/20 group-hover:from-jfu-dark group-hover:to-jfu-primary group-hover:shadow-sm transition-all duration-150">
+                <div className={`mt-3.5 pt-2.5 border-t ${tone.divider}`}>
+                    <span className={`w-full py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs group-hover:shadow-sm transition-all duration-150 ${tone.cta}`}>
                         <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                         <span>{t(product.ctaKey)}</span>
                         <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
