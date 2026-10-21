@@ -11,14 +11,14 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { RateNoticeBlock } from './RateNotice';
 
 /**
- * Tiga hal yang paling sering ditanyakan peneliti ke admin. Kartu kedua
- * (tanpa kuota responden) disorot karena itu salah paham yang paling mahal:
- * peneliti mengira kriteria atau tarif menjamin jumlah responden.
+ * Tiga hal yang paling sering ditanyakan peneliti ke admin. Sengaja setara
+ * (tanpa kartu yang disorot): ketiganya sama pentingnya, jadi yang dijaga
+ * adalah keterbacaan, bukan hierarki.
  */
 const AWARENESS_POINTS = [
-  { key: 'adsAwarenessPoint1', icon: Users, highlight: false },
-  { key: 'adsAwarenessPoint2', icon: Clock, highlight: true },
-  { key: 'adsAwarenessPoint3', icon: ShieldCheck, highlight: false },
+  { key: 'adsAwarenessPoint1', icon: Users },
+  { key: 'adsAwarenessPoint2', icon: Clock },
+  { key: 'adsAwarenessPoint3', icon: ShieldCheck },
 ] as const;
 
 export interface AdsEntryModalProps {
@@ -69,7 +69,7 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-gray-100 shadow-2xl w-full sm:max-w-xl max-h-[92vh] sm:max-h-[86vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
+      <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-gray-100 shadow-2xl w-full sm:max-w-3xl max-h-[92vh] sm:max-h-[86vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
         <div className="sm:hidden pt-2.5 pb-1 flex justify-center shrink-0">
           <div className="w-10 h-1 bg-slate-300 rounded-full" />
         </div>
@@ -99,29 +99,21 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
         </div>
 
         <div className="overflow-y-auto px-5 sm:px-7 py-5 sm:py-6 flex-1 min-h-0 overscroll-contain">
-          <ul className="space-y-3">
-            {AWARENESS_POINTS.map(({ key, icon: Icon, highlight }) => (
+          <ul className="flex [flex-direction:column] gap-3 sm:[display:grid] sm:[grid-template-columns:repeat(3,minmax(0,1fr))]">
+            {AWARENESS_POINTS.map(({ key, icon: Icon }) => (
               <li
                 key={key}
-                className={`flex items-start gap-3.5 rounded-2xl border p-4 ${
-                  highlight
-                    ? 'border-transparent bg-jfu-primary text-white shadow-lg shadow-jfu-primary/25'
-                    : 'border-slate-200/80 bg-white text-slate-900 shadow-2xs'
-                }`}
+                className="flex items-start gap-3.5 sm:[flex-direction:column] sm:gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
               >
                 <span
-                  className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${
-                    highlight ? 'bg-white/15 text-white' : 'bg-blue-50 text-jfu-primary'
-                  }`}
+                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-jfu-primary/10 text-jfu-primary"
                   aria-hidden
                 >
                   <Icon className="size-5" />
                 </span>
                 <div className="min-w-0">
-                  <h3 className="text-[15px] font-bold leading-snug tracking-tight">{t(`${key}Title`)}</h3>
-                  <p className={`mt-1 text-[13px] leading-relaxed ${highlight ? 'text-white/90' : 'text-slate-600'}`}>
-                    {t(`${key}Desc`)}
-                  </p>
+                  <h3 className="text-[15px] font-bold leading-snug tracking-tight text-slate-900">{t(`${key}Title`)}</h3>
+                  <p className="mt-1 text-[13px] leading-relaxed text-slate-600">{t(`${key}Desc`)}</p>
                 </div>
               </li>
             ))}
