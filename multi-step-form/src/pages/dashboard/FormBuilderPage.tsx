@@ -197,8 +197,8 @@ export const FormBuilderPage: React.FC = () => {
     try {
       const publicUrl = await uploadFormImage(file, 'header');
       setHeaderImageUrl(publicUrl);
-    } catch (err) {
-      toast.error('Gagal upload gambar. Silakan coba lagi.');
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal upload gambar. Silakan coba lagi.');
     } finally {
       setUploadingHeaderImage(false);
     }
@@ -285,8 +285,8 @@ export const FormBuilderPage: React.FC = () => {
       if (!formId) {
         navigate(`/dashboard/forms/${savedForm.id}/edit`, { replace: true });
       }
-    } catch (err) {
-      toast.error('Failed to save form');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save form');
     } finally {
       setSaving(false);
     }

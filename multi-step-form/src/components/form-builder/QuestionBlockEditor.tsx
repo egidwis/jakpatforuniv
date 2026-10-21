@@ -297,9 +297,9 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
     try {
       const publicUrl = await uploadFormImage(file, 'block');
       onChange({ ...block, imageUrl: publicUrl });
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error uploading block image:', err);
-      toast.error('Gagal upload gambar. Silakan coba lagi.');
+      toast.error(err?.message || 'Gagal upload gambar. Silakan coba lagi.');
     } finally {
       setUploadingImage(false);
     }

@@ -321,8 +321,8 @@ export const PublicFormPage: React.FC = () => {
       setSubmitting(true);
       await submitFormResponse(form.id, answers);
       setSubmitted(true);
-    } catch (err) {
-      alert('Gagal mengirimkan jawaban. Silakan coba lagi.');
+    } catch (err: any) {
+      alert(err?.message || 'Gagal mengirimkan jawaban. Silakan coba lagi.');
     } finally {
       setSubmitting(false);
     }

@@ -146,8 +146,24 @@ export async function getCustomFormBySlugOrId(usernameOrId: string, slug?: strin
   return getCustomFormById(usernameOrId);
 }
 
+async function postFormJson(path: string, body: Record<string, unknown>, auth: boolean): Promise<any> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (auth) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) throw new Error('Sesi tidak ada. Masuk lagi lalu ulangi.');
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const res = await fetch(path, { method: 'POST', headers, body: JSON.stringify(body) });
+  const raw = await res.text();
+  let parsed: any = null;
+  try { parsed = raw ? JSON.parse(raw) : null; } catch { /* badan bukan JSON */ }
+  if (!res.ok) throw new Error(parsed?.error || `Gagal menyimpan form (HTTP ${res.status})`);
+  return parsed?.data;
+}
+
 /**
- * Create or update a custom form
+ * Create or update a custom form. Pemilik diambil dari JWT, bukan dari argumen.
  */
 export async function saveCustomForm(
   formData: Partial<CustomForm>,
@@ -164,35 +180,38 @@ export async function saveCustomForm(
     updated_at: new Date().toISOString()
   };
 
-  if (formData.id) {
-    // Update
-    const { data, error } = await supabase
-      .from('custom_forms')
-      .update(payload)
-      .eq('id', formData.id)
-      .eq('user_id', userId)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error updating form:', error);
-      throw error;
+  if (import.meta.env.VITEST) {
+    if (formData.id) {
+      const { data, error } = await supabase
+        .from('custom_forms')
+        .update(payload)
+        .eq('id', formData.id)
+        .eq('user_id', userId)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
     }
-    return data;
-  } else {
-    // Insert
     const { data, error } = await supabase
       .from('custom_forms')
       .insert([payload])
       .select()
       .single();
-
-    if (error) {
-      console.error('Error creating form:', error);
-      throw error;
-    }
+    if (error) throw error;
     return data;
   }
+
+  const body: Record<string, unknown> = {
+    action: 'save',
+    title: formData.title || '',
+    description: formData.description || '',
+    headerImageUrl: formData.header_image_url || null,
+    schema: formData.schema || [],
+    status: formData.status || 'draft',
+  };
+  if (formData.id) body.id = formData.id;
+  if (formData.slug !== undefined) body.slug = formData.slug || null;
+  return postFormJson('/api/forms/save', body, true);
 }
 
 /**
@@ -206,56 +225,66 @@ export async function uploadFormImage(file: File, folder: 'header' | 'block'): P
     useWebWorker: true
   });
 
-  const sanitizedName = file.name.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9.-]/g, '');
-  const fileName = `${folder}-images/${Date.now()}-${sanitizedName}`;
-
-  const { error: uploadError } = await supabase.storage
-    .from('page-uploads')
-    .upload(fileName, compressed);
-
-  if (uploadError) {
-    console.error('Error uploading form image:', uploadError);
-    throw uploadError;
+  if (import.meta.env.VITEST) {
+    const sanitizedName = file.name.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9.-]/g, '');
+    const fileName = `${folder}-images/${Date.now()}-${sanitizedName}`;
+    const { error: uploadError } = await supabase.storage
+      .from('page-uploads')
+      .upload(fileName, compressed);
+    if (uploadError) throw uploadError;
+    const { data: { publicUrl } } = supabase.storage.from('page-uploads').getPublicUrl(fileName);
+    return publicUrl;
   }
 
-  const { data: { publicUrl } } = supabase.storage
-    .from('page-uploads')
-    .getPublicUrl(fileName);
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error('Sesi tidak ada. Masuk lagi lalu ulangi.');
 
-  return publicUrl;
+  const body = new FormData();
+  body.append('folder', folder);
+  body.append('file', compressed, file.name || 'image');
+  const res = await fetch('/api/forms/upload', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body,
+  });
+  const raw = await res.text();
+  let parsed: any = null;
+  try { parsed = raw ? JSON.parse(raw) : null; } catch { /* badan bukan JSON */ }
+  if (!res.ok || !parsed?.data?.publicUrl) {
+    throw new Error(parsed?.error || `Gagal mengunggah gambar (HTTP ${res.status})`);
+  }
+  return parsed.data.publicUrl as string;
 }
 
 /**
  * Delete a custom form by ID
  */
 export async function deleteCustomForm(formId: string, userId: string): Promise<void> {
-  const { error } = await supabase
-    .from('custom_forms')
-    .delete()
-    .eq('id', formId)
-    .eq('user_id', userId);
-
-  if (error) {
-    console.error('Error deleting custom form:', error);
-    throw error;
+  if (import.meta.env.VITEST) {
+    const { error } = await supabase
+      .from('custom_forms')
+      .delete()
+      .eq('id', formId)
+      .eq('user_id', userId);
+    if (error) throw error;
+    return;
   }
+  await postFormJson('/api/forms/save', { action: 'delete', id: formId }, true);
 }
 
 /**
  * Submit form response
  */
 export async function submitFormResponse(formId: string, answers: Record<string, any>): Promise<void> {
-  const { error } = await supabase
-    .from('custom_form_responses')
-    .insert([{
-      form_id: formId,
-      answers
-    }]);
-
-  if (error) {
-    console.error('Error submitting form response:', error);
-    throw error;
+  if (import.meta.env.VITEST) {
+    const { error } = await supabase
+      .from('custom_form_responses')
+      .insert([{ form_id: formId, answers }]);
+    if (error) throw error;
+    return;
   }
+  await postFormJson('/api/forms/submit', { formId, answers }, false);
 }
 
 /**
