@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import {
   ArrowLeft, CheckCircle2, ChevronDown, Gift, Info, Loader2, Lock, PlusCircle, RefreshCw, Trophy,
 } from 'lucide-react';
-import { supabase, getFormSubmissionById, fetchAdSchedules, cancelSchedule } from '../../utils/supabase';
+import { getFormSubmissionById, fetchAdSchedules, cancelSchedule, createResearcherExtension } from '../../utils/supabase';
 import type { FormSubmission, AdScheduleEntry } from '../../utils/supabase';
 import { useLanguage } from '../../i18n/LanguageContext';
 
@@ -437,17 +437,16 @@ export function JadwalBaruPage() {
     let bornSourceId: string | null = null;
     try {
       // 1. Jadwalnya lahir di server. Seluruh aturan kelayakan ada di sana.
-      const { data: sourceId, error } = await supabase.rpc('create_ad_schedule', {
-        p_submission_id: submissionId,
-        p_start_date: startIso,
-        p_end_date: endIso,
-        p_duration: effDuration,
-        p_prize_per_winner: willFundReward ? activePrize : 0,
-        p_winner_count: willFundReward ? activeWinners : 0,
-        p_additional_prize_per_winner: 0,
-        p_is_new_period: willFundReward,
+      //    Lewat pintu jadwal (sql/123), bukan RPC dari browser.
+      const sourceId = await createResearcherExtension({
+        submissionId,
+        startDate: startIso,
+        endDate: endIso,
+        duration: effDuration,
+        prizePerWinner: willFundReward ? activePrize : 0,
+        winnerCount: willFundReward ? activeWinners : 0,
+        isNewPeriod: willFundReward,
       });
-      if (error) throw error;
       if (!sourceId) throw new Error('create_ad_schedule tidak memulangkan id jadwal.');
       bornSourceId = String(sourceId);
 

@@ -110,6 +110,16 @@ export function validateAdminContent(body) {
 
   if (body.action === 'insert-page') return checkPatch(body.patch, { insert: true });
 
+  // Simpan urutan Live Feed. Dulu RPC INVOKER dari browser — sejak sql/116
+  // admin tak punya UPDATE survey_pages, jadi ia nol baris tanpa galat.
+  if (body.action === 'reorder-pages') {
+    const ids = body.orderedIds;
+    if (!Array.isArray(ids) || ids.length === 0 || ids.length > 500) return 'Urutan halaman tidak diizinkan';
+    if (!ids.every((id) => typeof id === 'string' && UUID.test(id))) return 'Urutan halaman tidak diizinkan';
+    if (new Set(ids).size !== ids.length) return 'Urutan halaman tidak diizinkan';
+    return null;
+  }
+
   if (body.action === 'patch-pages') {
     const patchError = checkPatch(body.patch, { insert: false });
     if (patchError) return patchError;
@@ -124,4 +134,10 @@ export function pageFilterQuery(filters) {
     if (f.op === 'is') return `${f.col}=is.null`;
     return `${f.col}=${f.op}.${encodeURIComponent(f.val)}`;
   }).join('&');
+}
+
+/** Halaman yang `display_order`-nya tidak mendarat sesuai urutan kiriman. */
+export function reorderMismatch(orderedIds, rows) {
+  const got = new Map((rows || []).map((row) => [row.id, row.display_order]));
+  return orderedIds.filter((id, index) => got.get(id) !== index);
 }

@@ -11,7 +11,7 @@ import { isAutoApprovalPath as computeIsAutoApprovalPath } from '../utils/review
 import { isBookingClosedForDate, isKilatWaveBookable } from '../utils/airing-window';
 import { restoredDraftDuration } from '../utils/draftDuration';
 import { calculateTotalCost } from '../utils/cost-calculator';
-import { submitOrder, orderSubmitErrorKey } from '../utils/submitOrder';
+import { submitOrder, orderSubmitErrorKey, OrderSubmitError } from '../utils/submitOrder';
 import { applyOrderProduct, doorProductOf } from '../utils/orderProduct';
 import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -421,6 +421,18 @@ export function MultiStepForm() {
     } catch (error) {
       toast.dismiss(loadingToast);
       toast.error(t(orderSubmitErrorKey(error)));
+      /*
+        Order SUDAH tersimpan, tanggalnya saja yang gagal dikunci. Tetap di
+        wizard = kirim ulang = order kembar; antar ke layar pilih tanggal
+        order ini (PaymentCheckoutPage → Jadwal & Bayar, layar `pick`).
+      */
+      if (error instanceof OrderSubmitError && error.savedSubmissionId) {
+        isFinalizedRef.current = true;
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(LEGACY_SURVEY_DRAFT_KEY);
+        navigate(`/dashboard/payment/${error.savedSubmissionId}`, { replace: true });
+        return true;
+      }
       return false;
     }
   };

@@ -15,6 +15,8 @@ import {
   rateInstantOf,
 } from './cost-calculator';
 import { compactedSkillSortOrders, orderedAISkills, skillSortHasGaps } from './aiSkillOrder';
+import { doorError } from './dailyQuotaError';
+import { ADMIN_EMAIL } from './kilatAccess';
 
 // Supabase URL dan anon key akan diambil dari environment variables
 // Anda perlu menambahkan variabel ini di file .env.local
@@ -2439,6 +2441,82 @@ async function postSchedule(
   direct: () => PromiseLike<{ data: any; error: any }>,
 ) {
   return postAdminEndpoint('/api/admin/schedule', body, direct, 'Gagal menyimpan jadwal');
+}
+
+/**
+ * Satu pintu tulisan JADWAL (sql/123, rencana 21 Okt 2026). Browser tidak lagi
+ * menulis kolom jadwal sendiri — sql/124 menutup jalannya.
+ *
+ *   peneliti → `/api/schedules/lock` (aksi lock/extend/release/cancel). Kilat,
+ *              perpanjangan, lepas, dan batal berjalan di fungsi `door_*` yang
+ *              memakai klaim peneliti, jadi trigger menilai persis seperti PATCH
+ *              browser dulu;
+ *   admin    → `/api/admin/schedule` (release-slot/cancel-schedule).
+ *
+ * Galatnya `doorError`: `hint` trigger ikut, jadi peta galat gelombang & kuota
+ * tidak berubah.
+ */
+async function postScheduleDoor(
+  path: '/api/schedules/lock' | '/api/admin/schedule',
+  body: Record<string, unknown>,
+  failLabel: string,
+): Promise<any> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error('Sesi tidak ada. Masuk lagi lalu ulangi.');
+
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.text();
+  let parsed: any = null;
+  try { parsed = raw ? JSON.parse(raw) : null; } catch { /* badan bukan JSON */ }
+  if (!res.ok) throw doorError(parsed, `${failLabel} (HTTP ${res.status})`);
+  return parsed?.data ?? null;
+}
+
+/** Lepas/batal oleh admin melewati syarat pemilik — pintunya beda. */
+async function isAdminSession(): Promise<boolean> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return (session?.user?.email || '').toLowerCase() === ADMIN_EMAIL;
+}
+
+/**
+ * Jadwal lanjutan PENELITI ("Jadwalkan lagi" Iklan, "Pesan gelombang lagi"
+ * Kilat). door_create_extension → create_ad_schedule dengan klaim peneliti,
+ * jadi seluruh aturan peneliti di RPC & trigger berlaku. Memulangkan
+ * `source_id` (bukan `ad_schedules.id`), sama dengan RPC-nya.
+ */
+export async function createResearcherExtension(fields: {
+  submissionId: string;
+  startDate: string;
+  endDate: string;
+  duration: number;
+  prizePerWinner: number;
+  winnerCount: number;
+  isNewPeriod: boolean;
+}): Promise<string> {
+  if (import.meta.env.VITEST) {
+    const { data, error } = await supabase.rpc('create_ad_schedule', {
+      p_submission_id: fields.submissionId,
+      p_start_date: fields.startDate,
+      p_end_date: fields.endDate,
+      p_duration: fields.duration,
+      p_prize_per_winner: fields.prizePerWinner,
+      p_winner_count: fields.winnerCount,
+      p_additional_prize_per_winner: 0,
+      p_is_new_period: fields.isNewPeriod,
+    });
+    if (error) throw error;
+    return String(data ?? '');
+  }
+  const done = await postScheduleDoor('/api/schedules/lock', { action: 'extend', ...fields }, 'Gagal membuat jadwal');
+  return String(done?.id ?? '');
 }
 
 export async function setSubmissionCriteria(submissionId: string, criteria: string): Promise<void> {
@@ -4902,21 +4980,34 @@ export const releaseExpiredSlot = async (submissionId: string) => {
       return true;
     }
 
-    // 1. Clear slot data and mark payment as expired in form_submissions
-    const { error: subError } = await supabase
-      .from('form_submissions')
-      .update({
-        start_date: null,
-        end_date: null,
-        slot_booked_by: null,
-        slot_reserved_at: null,
-        submission_status: 'slot_reserved',
-        payment_status: 'expired',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', submissionId);
+    // 1. Lepas slotnya — lewat pintu jadwal (sql/123), bukan PATCH browser.
+    //    Peneliti: hanya hold mandiri ('user') miliknya. Nol baris = sudah
+    //    lepas / sudah lunas / hold admin → BERHENTI, tagihan tidak disentuh
+    //    (tagihan hold admin milik admin).
+    if (!import.meta.env.VITEST) {
+      const admin = await isAdminSession();
+      const released = await postScheduleDoor(
+        admin ? '/api/admin/schedule' : '/api/schedules/lock',
+        { action: admin ? 'release-slot' : 'release', submissionId },
+        'Gagal melepas slot',
+      );
+      if (!released?.id) return true;
+    } else {
+      const { error: subError } = await supabase
+        .from('form_submissions')
+        .update({
+          start_date: null,
+          end_date: null,
+          slot_booked_by: null,
+          slot_reserved_at: null,
+          submission_status: 'slot_reserved',
+          payment_status: 'expired',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', submissionId);
 
-    if (subError) throw subError;
+      if (subError) throw subError;
+    }
 
     // 2. Mark all pending transactions as expired
     const { data: pendingTxs } = await supabase
@@ -5145,25 +5236,52 @@ export const cancelSchedule = async (entry: {
   // mematikan tagihan siapa pun. Pola yang sama dipakai `rebookSlotForSubmission`.
   const unpaidOnly = '("paid","completed")';
 
+  /*
+    Tulisan JADWAL lewat pintu (sql/123): peneliti → door_cancel_schedule
+    (syarat = policy lama, dinilai dengan klaim peneliti), admin →
+    /api/admin/schedule. Bentuknya sama dengan dua cabang VITEST di bawah.
+    Nol baris pulang sebagai `id: null` dan dijelaskan seperti dulu.
+  */
+  const viaDoor = async (): Promise<boolean> => {
+    const admin = await isAdminSession();
+    const done = await postScheduleDoor(
+      admin ? '/api/admin/schedule' : '/api/schedules/lock',
+      {
+        action: admin ? 'cancel-schedule' : 'cancel',
+        submissionId: entry.submissionId,
+        sourceId: entry.sourceId,
+        isExtension: entry.isExtension,
+      },
+      'Gagal membatalkan jadwal',
+    );
+    return !!done?.id;
+  };
+
   if (entry.isExtension) {
     // `ad_schedules.status` MEMANG kosakata sumbu tayang, jadi 'cancelled'
     // langsung tepat — dulu ini ditulis lewat view sebagai `submission_status`,
     // dan mirror-nya meneruskannya apa adanya ke kolom yang sama ini.
-    const { data, error } = await supabase
-      .from('ad_schedules')
-      .update({
-        status: 'cancelled',
-        // Tanggal TETAP. Yang dilepas adalah tahanannya, bukan riwayatnya.
-        slot_booked_by: null,
-        slot_reserved_at: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('source_table', 'form_submissions_extend')
-      .eq('source_id', entry.sourceId)
-      .not('payment_status', 'in', unpaidOnly)
-      .select('id');
-    if (error) throw error;
-    if (!data || data.length === 0) {
+    let hit: boolean;
+    if (!import.meta.env.VITEST) {
+      hit = await viaDoor();
+    } else {
+      const { data, error } = await supabase
+        .from('ad_schedules')
+        .update({
+          status: 'cancelled',
+          // Tanggal TETAP. Yang dilepas adalah tahanannya, bukan riwayatnya.
+          slot_booked_by: null,
+          slot_reserved_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('source_table', 'form_submissions_extend')
+        .eq('source_id', entry.sourceId)
+        .not('payment_status', 'in', unpaidOnly)
+        .select('id');
+      if (error) throw error;
+      hit = !!data && data.length > 0;
+    }
+    if (!hit) {
       throw new Error(await explainNoRowsCancelling(
         'ad_schedules',
         (q) => q.eq('source_table', 'form_submissions_extend').eq('source_id', entry.sourceId),
@@ -5178,6 +5296,14 @@ export const cancelSchedule = async (entry: {
     // gagal, baris tempo masih `pending` dan `/bayar/` memperbaruinya — utang
     // selamat, iklannya tidak tayang gratis.
     await stopCreditOrThrow(entry.id, 'cancel_before_air');
+  } else if (!import.meta.env.VITEST) {
+    if (!(await viaDoor())) {
+      throw new Error(await explainNoRowsCancelling(
+        'form_submissions',
+        (q) => q.eq('id', entry.submissionId),
+        'Order ini',
+      ));
+    }
   } else {
     const { data, error } = await supabase
       .from('form_submissions')
@@ -5427,36 +5553,28 @@ export const rebookSlotForSubmission = async (
 ) => {
   const isKilat = opts.kilatHour != null;
   /*
-    Iklan: lewat /api/schedules/lock (service role, seri keamanan egidwis).
-    Kilat TIDAK BOLEH lewat sana — service_role melewati
-    `validate_kilat_wave_claim` (jam 11/15, hari kerja, H-2 jam, libur,
-    jendela 3 hari kerja), dan lockGate menulis bentuk Iklan (15.00 × durasi)
-    tanpa `kilat_slot_hour`. Kilat tetap PATCH langsung dengan JWT peneliti
-    supaya trigger itu yang menegakkan aturannya.
+    SATU pintu untuk keduanya: /api/schedules/lock (sql/123).
+      Iklan → PATCH service role egidwis (bentuk 15.00 × durasi, cutoff 13.00
+              di lockGate).
+      Kilat → door_lock_kilat_wave dengan klaim peneliti, jadi
+              `validate_kilat_wave_claim` tetap menegakkan jam 11/15, hari
+              kerja, libur, 3 hari kerja, H-2 jam, dan kuota gelombang.
+    Endpoint menolak bentuk yang tidak cocok dengan produknya (Kilat tanpa
+    `kilatHour`, Iklan dengan `kilatHour`) sebelum menulis apa pun.
   */
-  if (!isKilat && !import.meta.env.VITEST) {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-    if (!token) throw new Error('Sesi tidak ada. Masuk lagi lalu ulangi.');
-    const res = await fetch('/api/schedules/lock', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        submissionId,
-        startYmd,
-        duration: Math.max(durationDays || 1, 1),
-      }),
-    });
-    const raw = await res.text();
-    let parsed: any = null;
-    try { parsed = raw ? JSON.parse(raw) : null; } catch { /* badan bukan JSON */ }
-    if (!res.ok) throw new Error(parsed?.error || `Gagal mengunci tanggal (HTTP ${res.status})`);
+  if (!import.meta.env.VITEST) {
+    await postScheduleDoor('/api/schedules/lock', {
+      action: 'lock',
+      submissionId,
+      startYmd,
+      duration: isKilat ? 1 : Math.max(durationDays || 1, 1),
+      ...(isKilat ? { kilatHour: opts.kilatHour } : {}),
+    }, 'Gagal mengunci tanggal');
     return true;
   }
 
+  // VITEST saja — rantai mock tes lama. Sejak sql/124 browser tak bisa lagi
+  // menulis ini; produksi selalu lewat pintu di atas.
   let query = supabase
     .from('form_submissions')
     .update({

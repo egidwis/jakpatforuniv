@@ -82,3 +82,97 @@ export function lockPatch(row, body, now = new Date()) {
     },
   };
 }
+
+/*
+  Satu pintu jadwal peneliti (sql/123). `action` kosong = `lock`, supaya
+  klien lama (sebelum Push A) tetap jalan. Aturan tanggal Kilat, perpanjangan,
+  lepas, dan batal TIDAK ada di sini — fungsi door_* menilainya di DB dengan
+  klaim peneliti. Gerbang ini hanya memeriksa bentuk.
+*/
+const ACTIONS = new Set(['lock', 'extend', 'release', 'cancel']);
+const KILAT_HOURS = new Set([11, 15]);
+const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+function instant(value) {
+  return typeof value === 'string' && INSTANT.test(value) && Number.isFinite(Date.parse(value));
+}
+
+function count(value) {
+  return Number.isInteger(value) && value >= 0;
+}
+
+export function actionOf(body) {
+  return body?.action === undefined ? 'lock' : body.action;
+}
+
+export function validateAction(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return 'Body kosong';
+  const action = actionOf(body);
+  if (!ACTIONS.has(action)) return 'Tindakan tidak diizinkan';
+  if ('paymentStatus' in body || 'submissionStatus' in body || 'totalCost' in body) {
+    return 'Status pembayaran tidak boleh dikirim';
+  }
+  if (typeof body.submissionId !== 'string' || !UUID.test(body.submissionId)) return 'Order tidak diizinkan';
+
+  if (action === 'lock') {
+    const invalid = validateLock(body);
+    if (invalid) return invalid;
+    if ('kilatHour' in body && !KILAT_HOURS.has(body.kilatHour)) return 'Gelombang tidak diizinkan';
+    return null;
+  }
+  if (action === 'extend') {
+    if (!instant(body.startDate) || !instant(body.endDate)) return 'Tanggal tidak diizinkan';
+    if (Date.parse(body.endDate) <= Date.parse(body.startDate)) return 'Tanggal tidak diizinkan';
+    if (!Number.isInteger(body.duration) || body.duration < 1 || body.duration > 366) return 'Durasi tidak diizinkan';
+    if (!count(body.prizePerWinner) || !count(body.winnerCount)) return 'Hadiah tidak diizinkan';
+    if (typeof body.isNewPeriod !== 'boolean') return 'Batch hadiah tidak diizinkan';
+    return null;
+  }
+  if (action === 'cancel') {
+    if (typeof body.sourceId !== 'string' || !UUID.test(body.sourceId)) return 'Jadwal tidak diizinkan';
+    if (typeof body.isExtension !== 'boolean') return 'Jadwal tidak diizinkan';
+    return null;
+  }
+  return null;
+}
+
+/*
+  Bentuk kunci HARUS cocok dengan produknya. Kilat lewat PATCH service role
+  (bentuk Iklan) melompati validate_kilat_wave_claim — jam 11/15, hari kerja,
+  libur, 3 hari kerja, H-2 jam — karena trigger itu mempercayai service_role.
+*/
+export function lockRoute(row, body) {
+  const kilat = row?.distribution_type === 'kilat';
+  const hasHour = body?.kilatHour !== undefined;
+  if (kilat && !hasHour) return { error: 'Order Kilat dikunci per gelombang — pilih jam gelombangnya dulu.' };
+  if (!kilat && hasHour) return { error: 'Order ini bukan Kilat, jadi tidak punya gelombang.' };
+  return { kind: kilat ? 'kilat' : 'iklan' };
+}
+
+/** Argumen RPC door_* — identitas dari /auth/v1/user, bukan dari body. */
+export function doorCall(action, user, body) {
+  const actor = { p_actor: user.id, p_email: user.email, p_submission_id: body.submissionId };
+  if (action === 'lock') {
+    return { fn: 'door_lock_kilat_wave', args: { ...actor, p_ymd: body.startYmd, p_hour: body.kilatHour } };
+  }
+  if (action === 'extend') {
+    return {
+      fn: 'door_create_extension',
+      args: {
+        ...actor,
+        p_start_date: body.startDate,
+        p_end_date: body.endDate,
+        p_duration: body.duration,
+        p_prize_per_winner: body.prizePerWinner,
+        p_winner_count: body.winnerCount,
+        p_additional_prize_per_winner: 0,
+        p_is_new_period: body.isNewPeriod,
+      },
+    };
+  }
+  if (action === 'release') return { fn: 'door_release_slot', args: actor };
+  return {
+    fn: 'door_cancel_schedule',
+    args: { ...actor, p_source_id: body.sourceId, p_is_extension: body.isExtension },
+  };
+}

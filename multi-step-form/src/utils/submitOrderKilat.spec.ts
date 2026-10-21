@@ -4,16 +4,20 @@ import type { SurveyFormData } from '../types';
 /*
   submitOrder() SUNGGUHAN untuk order Kilat (Phase 5 §5.6). Modul supabase
   ditiru supaya yang diuji isi baris yang di-INSERT, bukan teks kodenya:
-    - jalur otomatis = SATU INSERT bertanggal [d, d+1) + kilat_slot_hour + hold 'user';
-    - jalur manual   = tanpa tanggal & tanpa gelombang (Track B1);
+    - jalur otomatis = INSERT TANPA kolom jadwal, lalu kunci lewat pintu jadwal
+      (sql/123/124: browser tak boleh lagi INSERT bertanggal);
+    - jalur manual   = tanpa tanggal & tanpa gelombang (Track B1), tanpa kunci;
     - voucher yang tidak berlaku untuk Kilat tidak tersimpan;
-    - galat trigger sql/117 dipetakan ke pesan gelombang, bukan kuota harian.
+    - galat trigger sql/117 dari pintu dipetakan ke pesan gelombang, bukan kuota
+      harian — dan membawa id order yang sudah tersimpan.
 */
 
 const inserted: any[] = [];
 let occupancy: any[] = [];
 let insertError: any = null;
 const rpcCalls: unknown[][] = [];
+const locks: unknown[][] = [];
+let lockError: any = null;
 
 vi.mock('./supabase', () => ({
   saveFormSubmission: vi.fn(async (row: any) => {
@@ -28,7 +32,17 @@ vi.mock('./supabase', () => ({
     rpcCalls.push(args);
     return occupancy;
   }),
+  rebookSlotForSubmission: vi.fn(async (...args: unknown[]) => {
+    locks.push(args);
+    if (lockError) throw lockError;
+    return true;
+  }),
 }));
+
+const SCHEDULE_COLUMNS = ['start_date', 'end_date', 'kilat_slot_hour', 'slot_booked_by', 'slot_reserved_at'];
+const expectUndated = (row: any) => {
+  for (const col of SCHEDULE_COLUMNS) expect(row).not.toHaveProperty(col);
+};
 vi.mock('./auditService', () => ({ auditSubmissionForm: vi.fn(async () => undefined) }));
 
 const { submitOrder, OrderSubmitError, storedVoucherCode } = await import('./submitOrder');
@@ -77,6 +91,9 @@ const run = (form: SurveyFormData, isAutoApproval = true) =>
 const codeOf = async (p: Promise<unknown>) => {
   try { await p; return null; } catch (e) { return e instanceof OrderSubmitError ? e.code : 'other'; }
 };
+const errorOf = async (p: Promise<unknown>) => {
+  try { await p; return null; } catch (e) { return e as InstanceType<typeof OrderSubmitError>; }
+};
 
 describe('submitOrder — Kilat jalur otomatis', () => {
   beforeEach(() => {
@@ -84,23 +101,24 @@ describe('submitOrder — Kilat jalur otomatis', () => {
     vi.setSystemTime(NOW);
     inserted.length = 0;
     rpcCalls.length = 0;
+    locks.length = 0;
     insertError = null;
+    lockError = null;
     occupancy = [occ('2026-10-19', 11, 0, '2026-10-19T02:00:00Z'), occ('2026-10-19', 15, 0, '2026-10-19T06:00:00Z')];
   });
   afterEach(() => vi.useRealTimers());
 
-  it('SATU INSERT: [tanggal, +1) + kilat_slot_hour + hold user, durasi 1', async () => {
-    await run(kilatForm());
+  it('INSERT tanpa kolom jadwal, lalu SATU kunci gelombang lewat pintu', async () => {
+    const saved = await run(kilatForm());
     expect(inserted).toHaveLength(1);
     expect(inserted[0]).toMatchObject({
-      start_date: '2026-10-19',
-      end_date: '2026-10-20',
-      kilat_slot_hour: 11,
       duration: 1,
       distribution_type: 'kilat',
-      slot_booked_by: 'user',
       submission_status: 'waiting_payment',
     });
+    expectUndated(inserted[0]);
+    expect(locks).toEqual([['new-id', '2026-10-19', 1, { kilatHour: 11 }]]);
+    expect(saved.id).toBe('new-id');
     expect(rpcCalls).toEqual([['2026-10-19', '2026-10-19']]);
   });
 
@@ -120,7 +138,7 @@ describe('submitOrder — Kilat jalur otomatis', () => {
   it('gelombang 15.00 di hari yang sama masih boleh pukul 09.30', async () => {
     vi.setSystemTime(new Date('2026-10-19T02:30:00Z'));
     await run(kilatForm({ kilatSlotHour: 15, startTime: '15:00' }));
-    expect(inserted[0]).toMatchObject({ kilat_slot_hour: 15, start_date: '2026-10-19' });
+    expect(locks).toEqual([['new-id', '2026-10-19', 1, { kilatHour: 15 }]]);
   });
 
   it('tanpa gelombang → no_schedule', async () => {
@@ -128,14 +146,32 @@ describe('submitOrder — Kilat jalur otomatis', () => {
     expect(await codeOf(run(kilatForm({ kilatSlotHour: 14 })))).toBe('no_schedule');
   });
 
-  it('galat trigger kilat_wave_full → slot_full_kilat, BUKAN kuota harian Iklan', async () => {
-    insertError = { message: 'Gelombang JFU Kilat 19 Okt 2026 pukul 11.00 WIB sudah penuh (2 dari 2).', hint: 'kilat_wave_full' };
-    expect(await codeOf(run(kilatForm()))).toBe('slot_full_kilat');
+  it('galat trigger kilat_wave_full dari pintu → slot_full_kilat (BUKAN kuota harian), order tersimpan', async () => {
+    lockError = Object.assign(new Error('Gelombang JFU Kilat 19 Okt 2026 pukul 11.00 WIB sudah penuh (2 dari 2).'), { hint: 'kilat_wave_full' });
+    const err = await errorOf(run(kilatForm()));
+    expect(err?.code).toBe('slot_full_kilat');
+    expect(err?.savedSubmissionId).toBe('new-id');
+    expect(inserted).toHaveLength(1);
   });
 
-  it('galat trigger kilat_wave_closed → kilat_wave_closed', async () => {
-    insertError = { message: 'Pemesanan gelombang pukul 11.00 WIB tanggal 19-10-2026 sudah tutup.', hint: 'kilat_wave_closed' };
+  it('galat trigger kilat_wave_closed dari pintu → kilat_wave_closed', async () => {
+    lockError = Object.assign(new Error('Pemesanan gelombang pukul 11.00 WIB tanggal 19-10-2026 sudah tutup.'), { hint: 'kilat_wave_closed' });
     expect(await codeOf(run(kilatForm()))).toBe('kilat_wave_closed');
+  });
+
+  it('pintu gagal tanpa HINT → lock_failed + id order (diantar ke layar pilih tanggal)', async () => {
+    lockError = new Error('Gelombang tidak bisa dikunci');
+    const err = await errorOf(run(kilatForm()));
+    expect(err?.code).toBe('lock_failed');
+    expect(err?.savedSubmissionId).toBe('new-id');
+  });
+
+  it('INSERT gagal → save_failed TANPA id (tidak ada order yang perlu dibuka)', async () => {
+    insertError = new Error('boom');
+    const err = await errorOf(run(kilatForm()));
+    expect(err?.code).toBe('save_failed');
+    expect(err?.savedSubmissionId).toBeUndefined();
+    expect(locks).toHaveLength(0);
   });
 
   it('di luar 3 hari kerja (Senin → Kamis) → kilat_wave_too_far, tanpa RPC & tanpa INSERT', async () => {
@@ -145,12 +181,12 @@ describe('submitOrder — Kilat jalur otomatis', () => {
   });
 
   it('galat trigger kilat_wave_too_far (sql/122 K3) → kilat_wave_too_far', async () => {
-    insertError = { message: 'Gelombang JFU Kilat hanya bisa dipesan untuk 3 hari kerja ke depan.', hint: 'kilat_wave_too_far' };
+    lockError = { message: 'Gelombang JFU Kilat hanya bisa dipesan untuk 3 hari kerja ke depan.', hint: 'kilat_wave_too_far' };
     expect(await codeOf(run(kilatForm()))).toBe('kilat_wave_too_far');
   });
 
   it('galat trigger kilat_admin_away (mode libur, sql/122) → kilat_admin_away', async () => {
-    insertError = { message: 'JFU Kilat tutup sementara selama tim admin libur.', hint: 'kilat_admin_away' };
+    lockError = { message: 'JFU Kilat tutup sementara selama tim admin libur.', hint: 'kilat_admin_away' };
     expect(await codeOf(run(kilatForm()))).toBe('kilat_admin_away');
   });
 });
@@ -160,7 +196,9 @@ describe('submitOrder — voucher Kilat', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     inserted.length = 0;
+    locks.length = 0;
     insertError = null;
+    lockError = null;
     occupancy = [occ('2026-10-19', 11, 0, '2026-10-19T02:00:00Z')];
   });
   afterEach(() => vi.useRealTimers());
@@ -187,16 +225,18 @@ describe('submitOrder — Kilat jalur manual & Iklan', () => {
     vi.setSystemTime(NOW);
     inserted.length = 0;
     rpcCalls.length = 0;
+    locks.length = 0;
     insertError = null;
+    lockError = null;
   });
   afterEach(() => vi.useRealTimers());
 
   it('manual: tanpa tanggal, tanpa gelombang, tanpa hold — admin yang menugaskan', async () => {
     await run(kilatForm({ startDate: '', startTime: '', kilatSlotHour: null, isManualEntry: true }), false);
-    expect(inserted[0]).toMatchObject({ start_date: null, end_date: null, submission_status: 'in_review', distribution_type: 'kilat' });
-    expect(inserted[0]).not.toHaveProperty('kilat_slot_hour');
-    expect(inserted[0]).not.toHaveProperty('slot_booked_by');
+    expect(inserted[0]).toMatchObject({ submission_status: 'in_review', distribution_type: 'kilat' });
+    expectUndated(inserted[0]);
     expect(rpcCalls).toHaveLength(0);
+    expect(locks).toHaveLength(0);
   });
 
   it('dialihkan karena mode libur: jalur manual + forced_manual_reason, tanpa gelombang dari draft', async () => {
@@ -206,14 +246,14 @@ describe('submitOrder — Kilat jalur manual & Iklan', () => {
       isAutoApproval: false, ilkomunyBlocked: false, forcedManualReason: 'admin_away',
     });
     expect(inserted[0]).toMatchObject({
-      start_date: null, end_date: null, submission_status: 'in_review',
+      submission_status: 'in_review',
       distribution_type: 'kilat', forced_manual_reason: 'admin_away',
       // jenis formulir TIDAK diubah — penandanya yang membuat order manual
       submission_method: 'google_import',
     });
-    expect(inserted[0]).not.toHaveProperty('kilat_slot_hour');
-    expect(inserted[0]).not.toHaveProperty('slot_booked_by');
+    expectUndated(inserted[0]);
     expect(rpcCalls).toHaveLength(0);
+    expect(locks).toHaveLength(0);
   });
 
   it('order biasa TIDAK mengirim forced_manual_reason (tak bergantung kolom sql/122)', async () => {
@@ -221,14 +261,22 @@ describe('submitOrder — Kilat jalur manual & Iklan', () => {
     expect(inserted[0]).not.toHaveProperty('forced_manual_reason');
   });
 
-  it('Iklan tidak berubah: 15.00 WIB × durasi, tanpa kilat_slot_hour', async () => {
+  it('Iklan: INSERT tanpa tanggal, lalu kunci tanggal × durasi tanpa gelombang', async () => {
     await run(kilatForm({ isKilatUpgrade: false, kilatSlotHour: null, duration: 2, startDate: '2026-10-20', startTime: '15:00' }));
-    expect(inserted[0]).toMatchObject({
-      start_date: '2026-10-20T08:00:00.000Z',
-      end_date: '2026-10-22T08:00:00.000Z',
-      duration: 2,
-      distribution_type: 'regular',
-    });
-    expect(inserted[0]).not.toHaveProperty('kilat_slot_hour');
+    expect(inserted[0]).toMatchObject({ duration: 2, distribution_type: 'regular' });
+    expectUndated(inserted[0]);
+    expect(locks).toEqual([['new-id', '2026-10-20', 2, {}]]);
+  });
+
+  it('Iklan: cutoff 13.00 dari lockGate → past_cutoff + id order', async () => {
+    lockError = new Error('Pemesanan untuk tanggal itu sudah ditutup (batas 13.00 WIB)');
+    const err = await errorOf(run(kilatForm({ isKilatUpgrade: false, kilatSlotHour: null, duration: 2, startDate: '2026-10-20', startTime: '15:00' })));
+    expect(err?.code).toBe('past_cutoff');
+    expect(err?.savedSubmissionId).toBe('new-id');
+  });
+
+  it('Iklan: kuota harian penuh dari pintu → slot_full', async () => {
+    lockError = Object.assign(new Error('Tanggal 20 Okt sudah penuh'), { hint: 'daily_quota_full' });
+    expect(await codeOf(run(kilatForm({ isKilatUpgrade: false, kilatSlotHour: null, duration: 2, startDate: '2026-10-20', startTime: '15:00' })))).toBe('slot_full');
   });
 });

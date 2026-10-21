@@ -37,3 +37,20 @@ export function kilatWaveErrorKind(err: unknown): KilatWaveErrorKind | null {
   if (hint === 'kilat_wave_invalid') return 'invalid';
   return null;
 }
+
+/**
+ * Galat pintu jadwal (`/api/schedules/lock`, `/api/admin/schedule`) sebagai
+ * `Error` yang MEMBAWA `hint`/`code` trigger — supaya `kilatWaveErrorKind` dan
+ * `isDailyQuotaFullError` di atas tetap bisa memetakannya. Dulu galat yang
+ * sama datang langsung dari PostgREST dengan field-field itu.
+ */
+export function doorError(
+  body: { error?: unknown; hint?: unknown; code?: unknown } | null | undefined,
+  fallback: string,
+): Error & { hint?: string; code?: string } {
+  const message = typeof body?.error === 'string' && body.error ? body.error : fallback;
+  const error: Error & { hint?: string; code?: string } = new Error(message);
+  if (typeof body?.hint === 'string') error.hint = body.hint;
+  if (typeof body?.code === 'string') error.code = body.code;
+  return error;
+}

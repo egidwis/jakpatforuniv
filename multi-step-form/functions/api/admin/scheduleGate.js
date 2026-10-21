@@ -82,6 +82,17 @@ export function validateScheduleWrite(body) {
     return null;
   }
 
+  if (body.action === 'release-slot') return uuid(body.submissionId, 'Order');
+
+  if (body.action === 'cancel-schedule') {
+    const id = uuid(body.submissionId, 'Order');
+    if (id) return id;
+    const source = uuid(body.sourceId, 'Jadwal');
+    if (source) return source;
+    if (typeof body.isExtension !== 'boolean') return 'Jadwal tidak diizinkan';
+    return null;
+  }
+
   if (body.action === 'create-schedule') {
     const id = uuid(body.submissionId, 'Order');
     if (id) return id;
@@ -107,4 +118,48 @@ export function submissionDatePatch(body) {
   if (body.hour !== undefined) patch.airing_hour_wib = body.hour;
   if (body.minute !== undefined) patch.airing_minute_wib = body.minute;
   return patch;
+}
+
+/*
+  Bagian JADWAL dari releaseExpiredSlot / cancelSchedule versi admin — tulisan
+  yang sama dengan door_release_slot / door_cancel_schedule (sql/123), tanpa
+  syarat pemilik dan hold 'user'. Tagihan & DOKU tetap di klien.
+*/
+export function releaseSlotPatch(now = new Date()) {
+  return {
+    start_date: null,
+    end_date: null,
+    slot_booked_by: null,
+    slot_reserved_at: null,
+    submission_status: 'slot_reserved',
+    payment_status: 'expired',
+    updated_at: now.toISOString(),
+  };
+}
+
+// guard_payment_columns menolak JWT browser yang memindahkan status
+// berkomitmen; service_role melewatinya, jadi syaratnya ada di filter.
+// Tempo (`scheduled` belum lunas) punya jalurnya sendiri: /api/admin/stop-credit.
+export const UNCOMMITTED_ORDER = 'payment_status=not.in.(paid,completed)&submission_status=not.in.(paid,scheduled,live,completed)';
+
+export function cancelScheduleWrite(body, now = new Date()) {
+  const unpaid = 'payment_status=not.in.(paid,completed)';
+  if (body.isExtension) {
+    return {
+      path: `ad_schedules?source_table=eq.form_submissions_extend&source_id=eq.${body.sourceId}&submission_id=eq.${body.submissionId}&${unpaid}`,
+      patch: { status: 'cancelled', slot_booked_by: null, slot_reserved_at: null, updated_at: now.toISOString() },
+    };
+  }
+  return {
+    path: `form_submissions?id=eq.${body.submissionId}&${UNCOMMITTED_ORDER}`,
+    patch: {
+      // `slot_cancelled`, bukan `cancelled` — slotnya yang dilepas, ordernya
+      // tetap hidup. Tanggal TETAP (riwayat).
+      submission_status: 'slot_cancelled',
+      payment_status: 'expired',
+      slot_booked_by: null,
+      slot_reserved_at: null,
+      updated_at: now.toISOString(),
+    },
+  };
 }

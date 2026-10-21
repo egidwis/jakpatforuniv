@@ -5,18 +5,16 @@ import {
   getFormSubmissionById,
   fetchSlotAvailability,
   fetchKilatWaveOccupancy,
+  rebookSlotForSubmission,
   type FormSubmission,
 } from './supabase';
 import { resolveSubmissionMode, type SubmissionMode } from './submissionMode';
 import type { TranslationKey } from '../i18n/translations';
 import { MAX_REGULAR_ADS_PER_DAY, KILAT_SLOT_HOURS } from './constants';
 import {
-  addDaysToYmd,
   isBookingClosedForDate,
   isKilatWaveBookable,
   kilatLastBookableYmd,
-  toAiringStartIso,
-  toAiringEndIso,
   toLocalYmd,
 } from './airing-window';
 import { checkoutBlocker, type CheckoutBlockerCode } from './orderReadiness';
@@ -40,14 +38,23 @@ export type OrderSubmitErrorCode =
   | 'slot_full_kilat'
   | 'slot_full'
   | 'availability_check_failed'
-  | 'save_failed';
+  | 'save_failed'
+  | 'lock_failed';
 
 export class OrderSubmitError extends Error {
   code: OrderSubmitErrorCode;
-  constructor(code: OrderSubmitErrorCode) {
+  /**
+   * Terisi = ordernya SUDAH tersimpan, hanya tanggalnya yang gagal dikunci.
+   * Pemanggil wajib mengantar peneliti ke halaman Jadwal & Bayar order ini
+   * (layar `pick`), bukan membiarkannya di wizard — kirim ulang dari wizard
+   * melahirkan order kembar.
+   */
+  savedSubmissionId?: string;
+  constructor(code: OrderSubmitErrorCode, savedSubmissionId?: string) {
     super(code);
     this.name = 'OrderSubmitError';
     this.code = code;
+    if (savedSubmissionId) this.savedSubmissionId = savedSubmissionId;
   }
 }
 
@@ -69,6 +76,7 @@ const ERROR_KEYS: Record<OrderSubmitErrorCode, TranslationKey> = {
   slot_full: 'errorSlotFullRange',
   availability_check_failed: 'errorAvailabilityCheck',
   save_failed: 'errorSavingData',
+  lock_failed: 'orderSavedLockFailed',
 };
 
 export function orderSubmitErrorKey(error: unknown): TranslationKey {
@@ -78,6 +86,26 @@ export function orderSubmitErrorKey(error: unknown): TranslationKey {
 /** Untuk pemanggil yang punya kodenya langsung, bukan lewat exception. */
 export function orderSubmitErrorKeyForCode(code: OrderSubmitErrorCode): TranslationKey {
   return ERROR_KEYS[code];
+}
+
+/**
+ * Penolakan jadwal dari database → kode yang punya kalimat sendiri.
+ * Gelombang Kilat DULU — pesannya juga memuat "sudah penuh" (lihat
+ * `kilatWaveErrorKind`).
+ */
+function scheduleErrorCode(error: unknown): OrderSubmitErrorCode | null {
+  const waveError = kilatWaveErrorKind(error);
+  if (waveError === 'full') return 'slot_full_kilat';
+  if (waveError === 'closed') return 'kilat_wave_closed';
+  if (waveError === 'away') return 'kilat_admin_away';
+  if (waveError === 'too_far') return 'kilat_wave_too_far';
+  // Penolakan kuota datang dari trigger database (sql/110 → sql/111), bukan
+  // dari cek browser. Tanpa pemetaan ini peneliti hanya melihat "gagal
+  // menyimpan", padahal tanggalnya yang penuh.
+  if (isDailyQuotaFullError(error)) return 'slot_full';
+  // lockGate (cutoff Iklan) tidak ber-HINT.
+  if (error instanceof Error && error.message.includes('13.00')) return 'past_cutoff';
+  return null;
 }
 
 /** Kode voucher yang boleh tersimpan di baris order. */
@@ -112,8 +140,10 @@ export interface SubmitOrderArgs {
  * sementara jalur manual tetap ditulis di Ringkasan. Dua pemanggil, satu
  * aturan; kalau tidak dipisahkan begini, keduanya pasti akan menyimpang.
  *
- * Menulis TEPAT SEKALI. Tidak ada baris setengah jadi yang tertinggal kalau
- * user meninggalkan flow di tengah jalan.
+ * Order lahir TEPAT SEKALI. Jalur otomatis lalu mengunci tanggalnya lewat
+ * pintu jadwal (sql/123); kalau itu gagal, ordernya tetap ada tanpa tanggal
+ * dan `OrderSubmitError.savedSubmissionId` memberi tahu pemanggil ke mana
+ * peneliti harus diantar.
  */
 export async function submitOrder({
   formData,
@@ -164,9 +194,8 @@ export async function submitOrder({
     }
   }
 
-  let calculatedStartDate: string | null = null;
-  let calculatedEndDate: string | null = null;
-
+  // Pra-cek kuota di browser HANYA demi kalimat yang ramah. Penentunya
+  // pintu jadwal di bawah (trigger kuota & gelombang).
   if (isAutoApproval && isKilat && startYmd && kilatHour != null) {
     // Satu gelombang: [tanggal, tanggal + 1) dengan jam di `kilat_slot_hour` —
     // bentuk yang sama dengan `updateKilatSchedule` (admin) dan yang dituntut
@@ -182,9 +211,6 @@ export async function submitOrder({
     if (status === null) throw new OrderSubmitError('availability_check_failed');
     if (status === 'full') throw new OrderSubmitError('slot_full_kilat');
     if (status !== 'open') throw new OrderSubmitError('kilat_wave_closed');
-
-    calculatedStartDate = startYmd;
-    calculatedEndDate = addDaysToYmd(startYmd, 1);
   } else if (isAutoApproval && startYmd && formData.startTime) {
     let counts: Record<string, number>;
     try {
@@ -201,11 +227,6 @@ export async function submitOrder({
       }
       cursor.setDate(cursor.getDate() + 1);
     }
-
-    // Jam tayang dikunci 15.00 WIB lewat helper, bukan setHours device — dulu
-    // user di luar WIB menyimpan instant yang meleset sejam.
-    calculatedStartDate = toAiringStartIso(startYmd);
-    calculatedEndDate = toAiringEndIso(startYmd, formData.duration);
   }
   // ⚠️ DULU ADA CABANG KETIGA DI SINI, dan pembuangannya disengaja (Track B1).
   //
@@ -233,8 +254,9 @@ export async function submitOrder({
     criteria_responden: formData.criteriaResponden,
     // Kilat: satu pemesanan = satu gelombang (trigger juga memaksanya 1).
     duration: isKilat ? 1 : formData.duration,
-    start_date: calculatedStartDate,
-    end_date: calculatedEndDate,
+    // ⚠️ TANPA kolom jadwal (start/end_date, kilat_slot_hour, slot_booked_by,
+    // slot_reserved_at) — sejak sql/124 INSERT bertanggal dari browser
+    // DITOLAK. Tanggalnya dikunci sesudah INSERT, lewat pintu jadwal.
     full_name: formData.fullName,
     email: formData.email,
     phone_number: formData.phoneNumber,
@@ -269,16 +291,6 @@ export async function submitOrder({
     custom_form_id: formData.customFormId || null,
     auth_user_id: authUserId,
     distribution_type: isKilat ? 'kilat' : 'regular',
-    ...(calculatedStartDate && isKilat ? { kilat_slot_hour: kilatHour } : {}),
-    // ⚠️ `isAutoApproval` SAJA — `|| formData.isKilatUpgrade` dibuang di Track B1.
-    // Slot hanya dipesan atas nama peneliti kalau ordernya memang lolos jalur
-    // auto-review. Order Kilat jalur manual dulu ikut mengunci slot `'user'`
-    // di sini meski tanggalnya belum sah, dan `slot_booked_by = 'user'` itulah
-    // yang membuat slotnya dilepas otomatis oleh utils/slotHold.ts — pelepasan
-    // untuk reservasi yang seharusnya tidak pernah ada.
-    ...(isAutoApproval
-      ? { slot_booked_by: 'user', slot_reserved_at: new Date().toISOString() }
-      : {}),
     // Hanya dikirim bila diisi: order biasa tidak bergantung pada kolom sql/122
     // (kolom yang belum ada membuat PostgREST menolak SELURUH insert — lihat
     // custom_form_id di atas).
@@ -292,6 +304,7 @@ export async function submitOrder({
     submissionIdToReplace: formData.submissionIdToReplace,
   };
 
+  let savedRecord: FormSubmission & { id: string };
   try {
     let mode: SubmissionMode = { mode: 'create' };
     if (rescheduleIntent.isReschedule && rescheduleIntent.submissionIdToReplace) {
@@ -310,7 +323,7 @@ export async function submitOrder({
       }
     }
 
-    const savedRecord = mode.mode === 'reschedule'
+    savedRecord = mode.mode === 'reschedule'
       ? await updateFormSubmissionById(mode.submissionId, submissionData)
       : await saveFormSubmission(submissionData);
 
@@ -324,23 +337,33 @@ export async function submitOrder({
         console.warn('[submitOrder] Background AI audit skipped/failed (non-fatal):', err);
       });
     }
-
-    return savedRecord;
   } catch (saveError) {
-    // Gelombang Kilat DULU — pesannya juga memuat "sudah penuh" (lihat
-    // `kilatWaveErrorKind`).
-    const waveError = kilatWaveErrorKind(saveError);
-    if (waveError === 'full') throw new OrderSubmitError('slot_full_kilat');
-    if (waveError === 'closed') throw new OrderSubmitError('kilat_wave_closed');
-    if (waveError === 'away') throw new OrderSubmitError('kilat_admin_away');
-    if (waveError === 'too_far') throw new OrderSubmitError('kilat_wave_too_far');
-    // Penolakan kuota datang dari trigger database (sql/110 → sql/111), bukan
-    // dari cek browser di atas. Tanpa pemetaan ini peneliti hanya melihat
-    // "gagal menyimpan", padahal tanggalnya yang penuh.
-    if (isDailyQuotaFullError(saveError)) {
-      throw new OrderSubmitError('slot_full');
-    }
+    const code = scheduleErrorCode(saveError);
+    if (code) throw new OrderSubmitError(code);
     console.error('Error saat menyimpan data:', saveError);
     throw new OrderSubmitError('save_failed');
   }
+
+  /*
+    Jalur otomatis: kunci tanggalnya lewat pintu jadwal (`/api/schedules/lock`)
+    — dua langkah, bukan satu INSERT bertanggal. Gagal di sini TIDAK
+    menghapus ordernya: ia sudah sah (jalur otomatis, status
+    `waiting_payment`, tanpa tanggal) dan halaman Jadwal & Bayar-nya
+    menampilkan layar `pick` untuk order tanpa tanggal.
+  */
+  if (isAutoApproval && startYmd) {
+    try {
+      await rebookSlotForSubmission(
+        savedRecord.id,
+        startYmd,
+        formData.duration,
+        isKilat && kilatHour != null ? { kilatHour } : {},
+      );
+    } catch (lockError) {
+      console.error('Order tersimpan, tanggal gagal dikunci:', lockError);
+      throw new OrderSubmitError(scheduleErrorCode(lockError) ?? 'lock_failed', savedRecord.id);
+    }
+  }
+
+  return savedRecord;
 }

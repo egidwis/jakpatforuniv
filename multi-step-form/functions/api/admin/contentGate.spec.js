@@ -43,3 +43,23 @@ describe('validateAdminContent', () => {
     ])).toBe(`submission_id=eq.${id}&auto_closed_at=is.null`);
   });
 });
+
+describe('reorder-pages (Simpan urutan Live Feed)', () => {
+  const a = 'b7eb61ca-079a-4787-9787-be253b0a1111';
+  const b = 'c8fc72db-18ab-4898-8898-cf364c1b2222';
+
+  it('larik uuid unik saja', async () => {
+    const { validateAdminContent } = await import('./contentGate.js');
+    expect(validateAdminContent({ action: 'reorder-pages', orderedIds: [a, b] })).toBeNull();
+    expect(validateAdminContent({ action: 'reorder-pages', orderedIds: [] })).toMatch(/Urutan/);
+    expect(validateAdminContent({ action: 'reorder-pages', orderedIds: [a, a] })).toMatch(/Urutan/);
+    expect(validateAdminContent({ action: 'reorder-pages', orderedIds: [a, 'x'] })).toMatch(/Urutan/);
+  });
+
+  it('membaca ulang: halaman yang tidak mendarat di urutannya terlapor', async () => {
+    const { reorderMismatch } = await import('./contentGate.js');
+    expect(reorderMismatch([a, b], [{ id: a, display_order: 0 }, { id: b, display_order: 1 }])).toEqual([]);
+    expect(reorderMismatch([a, b], [{ id: a, display_order: 5 }, { id: b, display_order: 1 }])).toEqual([a]);
+    expect(reorderMismatch([a, b], [])).toEqual([a, b]);
+  });
+});

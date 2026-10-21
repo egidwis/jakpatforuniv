@@ -1,7 +1,7 @@
 import { KILAT_PILOT_EMAILS, KILAT_SELF_SERVE_OPEN } from './constants';
 
 /** Email admin yang dilewatkan trigger sql/117 — sama dengan pemeriksaan dashboard internal. */
-const ADMIN_EMAIL = 'product@jakpat.net';
+export const ADMIN_EMAIL = 'product@jakpat.net';
 
 /**
  * Boleh memesan JFU Kilat sendiri (kartu Kilat, wizard `?product=kilat`)?

@@ -560,6 +560,7 @@ export const translations = {
     // Validation Error Messages - StepFour
     errorCompleteAllSurveyData: "Please complete all survey data",
     errorSavingData: "Failed to save data. Please try again.",
+    orderSavedLockFailed: "Your order is saved, but its date isn't locked yet. Please pick the date again here.",
     errorPaymentFailed: "Failed to create payment. Please try again later.",
     errorSavingDataGeneric: "An error occurred while saving data. Please try again.",
     errorTermsRequired: "Please accept the Terms of Service and Privacy Policy",
@@ -1836,6 +1837,7 @@ export const translations = {
     // Validation Error Messages - StepFour
     errorCompleteAllSurveyData: "Mohon lengkapi semua data survey",
     errorSavingData: "Gagal menyimpan data. Silakan coba lagi.",
+    orderSavedLockFailed: "Pesananmu sudah tersimpan, tapi tanggalnya belum terkunci. Pilih tanggalnya lagi di sini.",
     errorPaymentFailed: "Gagal membuat pembayaran. Silakan coba lagi nanti.",
     errorSavingDataGeneric: "Terjadi kesalahan saat menyimpan data. Silakan coba lagi.",
     errorTermsRequired: "Mohon setujui Syarat & Ketentuan serta Kebijakan Privasi",

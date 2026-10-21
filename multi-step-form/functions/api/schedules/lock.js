@@ -1,4 +1,4 @@
-import { lockPatch, validateLock } from './lockGate.js';
+import { actionOf, doorCall, lockPatch, lockRoute, validateAction } from './lockGate.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -50,7 +50,12 @@ async function rest(env, path, init = {}) {
   try { data = raw ? JSON.parse(raw) : null; } catch { data = null; }
   if (!res.ok) {
     const message = data?.message || data?.error || data?.hint || `PostgREST HTTP ${res.status}`;
-    throw new Error(message);
+    // HINT trigger (kilat_wave_closed, daily_quota_full, …) dipetakan klien
+    // ke kalimat ramah — jangan sampai hilang di sini.
+    const error = new Error(message);
+    if (data?.hint) error.hint = data.hint;
+    if (data?.code) error.code = data.code;
+    throw error;
   }
   return data;
 }
@@ -76,16 +81,26 @@ export async function onRequest(context) {
 
   let body;
   try { body = await request.json(); } catch { return json(400, { error: 'Body bukan JSON' }); }
-  const invalid = validateLock(body);
+  const invalid = validateAction(body);
   if (invalid) return json(400, { error: invalid });
+  const action = actionOf(body);
 
   try {
     const rows = await rest(
       env,
-      `form_submissions?id=eq.${body.submissionId}&select=id,auth_user_id,email,payment_status,submission_status,duration`,
+      `form_submissions?id=eq.${body.submissionId}&select=id,auth_user_id,email,payment_status,submission_status,duration,distribution_type`,
     );
     const row = Array.isArray(rows) ? rows[0] : null;
     if (!row || !owns(row, user)) return json(400, { error: 'Order tidak ditemukan' });
+
+    // Kilat & aksi lain: fungsi door_* (sql/123) menilai sebagai peneliti.
+    const route = action === 'lock' ? lockRoute(row, body) : { kind: 'door' };
+    if (route.error) return json(400, { error: route.error });
+    if (route.kind !== 'iklan') {
+      const call = doorCall(action, user, body);
+      const result = await rest(env, `rpc/${call.fn}`, { method: 'POST', body: JSON.stringify(call.args) });
+      return json(200, { data: { id: result ?? null } });
+    }
 
     const decided = lockPatch(row, body);
     if (decided.error) return json(400, { error: decided.error });
@@ -100,7 +115,11 @@ export async function onRequest(context) {
     }
     return json(200, { data: { id: body.submissionId } });
   } catch (err) {
-    console.error('[schedules/lock]', err?.message || err);
-    return json(400, { error: err?.message || 'Gagal mengunci tanggal' });
+    console.error('[schedules/lock]', action, err?.message || err);
+    return json(400, {
+      error: err?.message || 'Gagal mengunci tanggal',
+      ...(err?.hint ? { hint: err.hint } : {}),
+      ...(err?.code ? { code: err.code } : {}),
+    });
   }
 }

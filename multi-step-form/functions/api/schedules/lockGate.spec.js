@@ -51,3 +51,56 @@ describe('lockPatch', () => {
     ).error).toMatch(/13\.00/);
   });
 });
+
+describe('validateAction (satu pintu jadwal, sql/123)', () => {
+  const lock = { submissionId: id, startYmd: '2026-10-24', duration: 1 };
+
+  it('action kosong = lock, supaya klien lama tetap jalan', async () => {
+    const { actionOf, validateAction } = await import('./lockGate.js');
+    expect(actionOf(lock)).toBe('lock');
+    expect(validateAction(lock)).toBeNull();
+  });
+
+  it('lock Kilat: hanya jam 11 atau 15', async () => {
+    const { validateAction } = await import('./lockGate.js');
+    expect(validateAction({ ...lock, kilatHour: 15 })).toBeNull();
+    expect(validateAction({ ...lock, kilatHour: 13 })).toMatch(/Gelombang/);
+    expect(validateAction({ ...lock, kilatHour: '15' })).toMatch(/Gelombang/);
+  });
+
+  it('extend: instant, durasi, hadiah, batch wajib berbentuk benar', async () => {
+    const { validateAction } = await import('./lockGate.js');
+    const ext = {
+      action: 'extend', submissionId: id,
+      startDate: '2026-10-24T08:00:00.000Z', endDate: '2026-10-25T08:00:00.000Z',
+      duration: 1, prizePerWinner: 0, winnerCount: 0, isNewPeriod: false,
+    };
+    expect(validateAction(ext)).toBeNull();
+    expect(validateAction({ ...ext, endDate: ext.startDate })).toMatch(/Tanggal/);
+    expect(validateAction({ ...ext, startDate: '2026-10-24' })).toMatch(/Tanggal/);
+    expect(validateAction({ ...ext, duration: 0 })).toMatch(/Durasi/);
+    expect(validateAction({ ...ext, winnerCount: -1 })).toMatch(/Hadiah/);
+    expect(validateAction({ ...ext, isNewPeriod: 'ya' })).toMatch(/Batch/);
+  });
+
+  it('release & cancel; status pembayaran dan tindakan asing ditolak', async () => {
+    const { validateAction } = await import('./lockGate.js');
+    expect(validateAction({ action: 'release', submissionId: id })).toBeNull();
+    expect(validateAction({ action: 'cancel', submissionId: id, sourceId: id, isExtension: false })).toBeNull();
+    expect(validateAction({ action: 'cancel', submissionId: id, sourceId: 'x', isExtension: false })).toMatch(/Jadwal/);
+    expect(validateAction({ action: 'cancel', submissionId: id, sourceId: id })).toMatch(/Jadwal/);
+    expect(validateAction({ action: 'release', submissionId: id, paymentStatus: 'paid' })).toMatch(/pembayaran/);
+    expect(validateAction({ action: 'mark-paid', submissionId: id })).toMatch(/Tindakan/);
+  });
+});
+
+describe('lockRoute', () => {
+  it('bentuk kunci harus cocok dengan produknya', async () => {
+    const { lockRoute } = await import('./lockGate.js');
+    expect(lockRoute({ distribution_type: 'kilat' }, { kilatHour: 11 })).toEqual({ kind: 'kilat' });
+    expect(lockRoute({ distribution_type: 'kilat' }, {}).error).toMatch(/gelombang/);
+    expect(lockRoute({ distribution_type: 'regular' }, {})).toEqual({ kind: 'iklan' });
+    expect(lockRoute({ distribution_type: null }, {})).toEqual({ kind: 'iklan' });
+    expect(lockRoute({ distribution_type: 'regular' }, { kilatHour: 15 }).error).toMatch(/bukan Kilat/);
+  });
+});
