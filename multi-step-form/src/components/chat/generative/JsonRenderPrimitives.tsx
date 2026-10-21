@@ -88,7 +88,7 @@ export function JrAlert({
     type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' :
     type === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-800' :
     type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800' :
-    'bg-indigo-50 border-indigo-200 text-indigo-800';
+    'bg-blue-50 border-blue-200 text-jfu-dark';
   return (
     <div className={`p-3 rounded-xl border text-xs ${cls}`}>
       <p className="font-bold">{title}</p>
@@ -113,7 +113,7 @@ export function JrButton({
   const cls =
     variant === 'outline' ? 'border border-slate-200 text-slate-700 hover:bg-slate-50' :
     variant === 'secondary' ? 'bg-slate-100 text-slate-700 hover:bg-slate-200' :
-    'bg-indigo-600 text-white hover:bg-indigo-700';
+    'bg-jfu-primary text-white hover:bg-jfu-dark';
   return (
     <button
       type="button"
@@ -214,7 +214,7 @@ export function JrTabs({
             type="button"
             onClick={() => setActive(tab.label)}
             className={`px-2.5 py-1 text-[11px] font-bold rounded-lg whitespace-nowrap cursor-pointer ${
-              active === tab.label ? 'bg-white text-indigo-700 shadow-2xs' : 'text-slate-600'
+              active === tab.label ? 'bg-white text-jfu-dark shadow-2xs' : 'text-slate-600'
             }`}
           >
             {tab.label}
@@ -232,7 +232,7 @@ export function JrProgress({ value = 0, max = 100, label }: { value?: number; ma
     <div className="w-full">
       {label && <p className="text-[11px] font-semibold text-slate-600 mb-1">{label}</p>}
       <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-        <div className="h-full bg-indigo-600 rounded-full" style={{ width: `${pct}%` }} />
+        <div className="h-full bg-jfu-primary rounded-full" style={{ width: `${pct}%` }} />
       </div>
     </div>
   );

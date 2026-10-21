@@ -960,19 +960,19 @@ function parseMiminResponse(
 
     return (
         <div className="h-[calc(100dvh-3.5rem)] md:h-auto">
-            <div className="max-w-6xl xl:max-w-7xl mx-auto h-full px-0 md:px-6 md:py-4">
-                <div className="h-full md:h-[calc(100vh-7.5rem)] md:grid md:grid-cols-[360px_minmax(0,1fr)] lg:grid-cols-[400px_minmax(0,1fr)] xl:grid-cols-[420px_minmax(0,1fr)] md:gap-6 md:items-stretch overflow-hidden">
+            <div className="max-w-5xl mx-auto h-full px-0 md:px-6 md:pt-8 md:pb-6">
+                <div className="h-full md:h-[calc(100dvh-7.5rem)] lg:[display:grid] lg:[grid-template-columns:repeat(12,minmax(0,1fr))] lg:gap-6 lg:items-stretch">
                     {/* FAQ — desktop saja */}
-                    <div className="hidden md:block h-full min-h-0 min-w-0">
-                        <Card className="h-full flex flex-col overflow-hidden border border-jfu-primary/[0.08] shadow-card bg-white transition-all duration-300 min-w-0" style={{ borderRadius: '24px' }}>
-                            <CardHeader className="pb-3.5 pt-5 px-5 border-b border-gray-100 bg-slate-50/40">
+                    <div className="hidden lg:block lg:col-span-4 h-full min-h-0 min-w-0">
+                        <Card className="h-full flex flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_1px_3px_0_rgba(0,0,0,0.03),0_4px_12px_-2px_rgba(0,0,0,0.02)] min-w-0">
+                            <CardHeader className="shrink-0 min-h-16 justify-center px-5 py-3 space-y-0 border-b border-slate-100 bg-white">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-jfu-primary/[0.08] text-jfu-primary rounded-2xl flex items-center justify-center shrink-0 shadow-2xs">
-                                        <HelpCircle className="w-5 h-5 text-jfu-primary" />
+                                    <div className="w-10 h-10 bg-blue-50 border border-blue-100 text-jfu-primary rounded-xl flex items-center justify-center shrink-0">
+                                        <HelpCircle className="w-5 h-5" />
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <CardTitle className="text-lg font-bold text-slate-900 tracking-tight">FAQ & Knowledge</CardTitle>
-                                        <CardDescription className="text-xs text-slate-500 mt-0.5">Pertanyaan umum seputar Jakpat for Universities.</CardDescription>
+                                        <CardTitle className="text-base font-bold text-slate-900 tracking-tight">FAQ & Knowledge</CardTitle>
+                                        <CardDescription className="text-xs text-slate-500 mt-0.5 truncate">Pertanyaan umum seputar layanan</CardDescription>
                                     </div>
                                 </div>
                             </CardHeader>
@@ -982,7 +982,7 @@ function parseMiminResponse(
                                         <AccordionItem 
                                             key={i} 
                                             value={`item-${i}`} 
-                                            className="border border-slate-200/70 rounded-2xl px-4 py-0 bg-slate-50/40 hover:bg-slate-50/90 transition-all data-[state=open]:bg-white data-[state=open]:border-jfu-primary/30 data-[state=open]:shadow-2xs"
+                                            className="border border-slate-200/80 rounded-xl px-4 py-0 bg-slate-50/40 hover:bg-slate-50/90 transition-all data-[state=open]:bg-white data-[state=open]:border-jfu-primary/30 data-[state=open]:shadow-2xs"
                                         >
                                             <AccordionTrigger className="text-left py-3.5 text-sm font-semibold text-slate-800 hover:text-jfu-primary hover:no-underline transition-colors leading-snug">
                                                 {faq.q}
@@ -998,22 +998,22 @@ function parseMiminResponse(
                     </div>
 
                     {/* Chat Mimin AI — tampilan utama tab Bantuan */}
-                    <div className="h-full min-h-0 min-w-0">
-                        <Card className="border-0 md:border md:border-jfu-primary/[0.08] bg-white h-full flex flex-col rounded-none md:rounded-[24px] shadow-none md:shadow-card overflow-hidden min-w-0">
-                            <CardHeader className="relative bg-white border-b border-gray-100 py-3 md:pb-4 shrink-0">
-                                <div className="flex items-center gap-3 md:gap-4">
+                    <div className="h-full min-h-0 min-w-0 lg:col-span-8">
+                        <Card className="border-0 md:border md:border-slate-200/90 bg-white h-full flex flex-col rounded-none md:rounded-2xl shadow-none md:shadow-[0_1px_3px_0_rgba(0,0,0,0.03),0_4px_12px_-2px_rgba(0,0,0,0.02)] overflow-hidden min-w-0">
+                            <CardHeader className="shrink-0 min-h-16 justify-center px-4 md:px-5 py-3 space-y-0 border-b border-slate-100 bg-white">
+                                <div className="flex items-center gap-3">
                                     <div className="relative">
-                                        <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-jfu-primary to-jfu-light rounded-full flex items-center justify-center shadow-glow">
-                                            <Bot className="w-6 h-6 md:w-7 md:h-7 text-white" />
+                                        <div className="w-10 h-10 bg-jfu-primary rounded-xl flex items-center justify-center">
+                                            <Bot className="w-5 h-5 text-white" />
                                         </div>
-                                        <span className="absolute bottom-0 right-0 w-3 h-3 md:w-3.5 md:h-3.5 bg-green-500 border-2 border-white rounded-full"></span>
+                                        <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></span>
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <CardTitle className="text-lg md:text-xl font-bold text-[#1a1a1a] truncate">
+                                        <CardTitle className="text-base font-bold text-slate-900 truncate">
                                             {replyMode === 'human' ? 'Admin' : 'Mimin AI'}
                                         </CardTitle>
-                                        <CardDescription className="flex items-center gap-1.5 text-xs font-medium text-[#666] mt-0.5">
-                                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${replyMode === 'human' ? 'bg-sky-500' : 'bg-green-400 animate-pulse'}`} />
+                                        <CardDescription className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
+                                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${replyMode === 'human' ? 'bg-sky-500' : 'bg-emerald-500'}`} />
                                             <span className="truncate">
                                                 {replyMode === 'human'
                                                     ? 'Admin sedang membalas'
@@ -1031,7 +1031,7 @@ function parseMiminResponse(
                             )}
 
                             {/* Chat Messages Area */}
-                            <CardContent className="flex-1 overflow-y-auto overflow-x-hidden p-3.5 sm:p-4 md:p-5 space-y-4 md:space-y-5 bg-jfu-bg min-w-0" ref={scrollRef}>
+                            <CardContent className="flex-1 overflow-y-auto overflow-x-hidden p-3.5 sm:p-4 md:p-5 space-y-4 md:space-y-5 bg-slate-50/60 min-w-0" ref={scrollRef}>
                                 {messages.map((msg, idx) => (
                                     <div key={msg.id || idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} w-full min-w-0 animate-in slide-in-from-bottom-2 duration-300`}>
                                         <div className={`flex flex-col min-w-0 max-w-[94%] sm:max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
@@ -1039,12 +1039,12 @@ function parseMiminResponse(
                                                 <span className="text-[10px] font-medium text-sky-700 mb-1 ml-1">Admin</span>
                                             )}
                                         <div className={`
-                                            px-3.5 py-3 md:px-5 md:py-3.5 text-[14px] sm:text-[15px] shadow-sm min-w-0 break-words overflow-hidden box-border
+                                            px-3.5 py-2.5 md:px-4 md:py-3 text-sm shadow-2xs min-w-0 break-words overflow-hidden box-border
                                             ${msg.role === 'user'
-                                                ? 'bg-gradient-to-br from-jfu-primary to-jfu-light text-white rounded-2xl rounded-tr-sm'
+                                                ? 'bg-jfu-primary text-white rounded-2xl rounded-tr-sm'
                                                 : msg.role === 'admin'
-                                                    ? 'bg-sky-50 text-[#1a1a1a] border border-sky-200 rounded-2xl rounded-tl-sm shadow-sm'
-                                                    : 'bg-white text-[#1a1a1a] border border-gray-200 rounded-2xl rounded-tl-sm shadow-sm'
+                                                    ? 'bg-sky-50 text-slate-800 border border-sky-200 rounded-2xl rounded-tl-sm'
+                                                    : 'bg-white text-slate-800 border border-slate-200/90 rounded-2xl rounded-tl-sm'
                                             }
                                         `}>
                                             <ReactMarkdown
@@ -1070,7 +1070,7 @@ function parseMiminResponse(
 
                                             {/* Dynamic Action Buttons / CTAs in Assistant Message */}
                                             {msg.ctas && msg.ctas.length > 0 && (
-                                                <div className="mt-3 pt-2.5 border-t border-gray-100 flex flex-wrap gap-1.5">
+                                                <div className="mt-3 pt-2.5 border-t border-slate-100 flex flex-wrap gap-1.5">
                                                     {msg.ctas.map((cta, ctaIdx) => (
                                                         <button
                                                             key={ctaIdx}
@@ -1079,7 +1079,7 @@ function parseMiminResponse(
                                                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95 ${
                                                                 cta.variant === 'warning'
                                                                     ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200'
-                                                                    : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
+                                                                    : 'bg-blue-50 hover:bg-blue-100 text-jfu-primary border border-blue-200/80'
                                                             }`}
                                                         >
                                                             <span>{cta.label}</span>
@@ -1094,7 +1094,7 @@ function parseMiminResponse(
                                 ))}
                                 {isLoading && (
                                     <div className="flex justify-start animate-in fade-in duration-300">
-                                        <div className="bg-white rounded-2xl rounded-tl-sm px-5 py-3 border border-gray-200 shadow-sm flex items-center gap-3 text-sm text-gray-500">
+                                        <div className="bg-white rounded-2xl rounded-tl-sm px-5 py-3 border border-slate-200/90 shadow-2xs flex items-center gap-3 text-sm text-slate-500">
                                             <div className="flex gap-1">
                                                 <span className="w-1.5 h-1.5 bg-jfu-primary rounded-full animate-bounce [animation-delay:-0.3s]"></span>
                                                 <span className="w-1.5 h-1.5 bg-jfu-primary rounded-full animate-bounce [animation-delay:-0.15s]"></span>
@@ -1107,25 +1107,25 @@ function parseMiminResponse(
                             </CardContent>
 
                             {/* Chat Input Area */}
-                            <div className="p-3 md:p-4 bg-white border-t border-gray-100">
+                            <div className="p-3 md:p-4 bg-white border-t border-slate-100">
                                 <form onSubmit={handleSendMessage} className="flex gap-3 relative">
                                     <Input
                                         placeholder={replyMode === 'human' ? 'Ketik balasan untuk admin...' : 'Ketik pertanyaan atau minta bantuan Mimin...'}
                                         value={input}
                                         onChange={(e) => setInput(e.target.value)}
                                         disabled={isLoading}
-                                        className="flex-1 bg-white text-[#1a1a1a] border border-gray-200 focus-visible:ring-jfu-primary/30 focus-visible:ring-offset-0 focus-visible:border-jfu-primary py-6 pl-5 pr-14 rounded-full text-[15px] shadow-sm transition-all placeholder:text-gray-400"
+                                        className="flex-1 bg-white text-slate-900 border border-slate-200 focus-visible:ring-jfu-primary/30 focus-visible:ring-offset-0 focus-visible:border-jfu-primary h-11 py-0 pl-4 pr-12 rounded-xl text-sm shadow-2xs transition-all placeholder:text-slate-400"
                                     />
                                     <Button
                                         type="submit"
                                         size="icon"
                                         disabled={isLoading || !input.trim()}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 bg-gradient-to-br from-jfu-primary to-jfu-light hover:from-jfu-dark hover:to-jfu-primary text-white rounded-full shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                                        className="absolute right-1.5 top-1/2 -translate-y-1/2 h-8 w-8 bg-jfu-primary hover:bg-jfu-dark text-white rounded-lg transition-all disabled:opacity-50 cursor-pointer"
                                     >
                                         <Send className="w-4 h-4 ml-0.5" />
                                     </Button>
                                 </form>
-                                <div className="hidden md:block text-[11px] font-medium text-center text-gray-400 mt-2.5 tracking-wide">
+                                <div className="hidden md:block text-[11px] font-medium text-center text-slate-400 mt-2.5 tracking-wide">
                                     {replyMode === 'human' ? 'Dibalas oleh admin' : '⚡ Powered by Jakpat Agentic AI'}
                                 </div>
                             </div>
