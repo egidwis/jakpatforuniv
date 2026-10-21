@@ -41,7 +41,11 @@ const PRODUCTS: Product[] = [
  * Satu warna per produk, dipakai di SEMUA bagian kartunya (bingkai, tile, chip,
  * tombol) supaya dua produk terbaca beda sekilas. Selaras dengan chip jenis
  * order di kartu My Order: Iklan biru, Kilat amber (petir = kuning).
- * Tombol amber memakai teks gelap — teks putih di atas amber hanya ±2:1.
+ * Tombol aksi sengaja LEMBUT (latar muda + garis + teks berwarna) dan baru terisi
+ * saat disorot: dua tombol solid bertumpuk menjadi blok warna terkuat di
+ * dashboard, mengalahkan kartu order yang menjadi isi utamanya. Teks amber-700
+ * di atas latar muda ±5:1; teks putih di atas amber/oranye solid hanya ±2:1,
+ * dan amber-700+ sebagai latar terbaca cokelat — jangan dikembalikan.
  */
 const ACCENT = {
     blue: {
@@ -50,15 +54,15 @@ const ACCENT = {
         title: 'group-hover:text-jfu-primary',
         chip: 'border-blue-200/80 bg-blue-100/70 text-jfu-primary',
         divider: 'border-blue-100/80',
-        cta: 'bg-gradient-to-r from-jfu-primary to-jfu-light text-white shadow-jfu-primary/20 group-hover:from-jfu-dark group-hover:to-jfu-primary',
+        cta: 'border-blue-200 bg-white/70 text-jfu-primary group-hover:border-jfu-primary group-hover:bg-jfu-primary group-hover:text-white',
     },
     amber: {
         card: 'border-amber-200/90 from-amber-50/80 via-amber-50/25 hover:border-amber-500 focus:ring-amber-400/40',
-        tile: 'bg-gradient-to-br from-amber-400 to-amber-500 text-amber-950 shadow-xs shadow-amber-500/25',
-        title: 'group-hover:text-amber-700',
-        chip: 'border-amber-200/80 bg-amber-100/80 text-amber-800',
+        tile: 'bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-xs shadow-orange-500/25',
+        title: 'group-hover:text-orange-600',
+        chip: 'border-amber-200/80 bg-amber-100/80 text-amber-700',
         divider: 'border-amber-100',
-        cta: 'bg-gradient-to-r from-amber-400 to-amber-500 text-amber-950 shadow-amber-500/25 group-hover:from-amber-500 group-hover:to-amber-600',
+        cta: 'border-amber-300/80 bg-white/70 text-amber-700 group-hover:border-amber-600 group-hover:bg-amber-600 group-hover:text-white',
     },
 } satisfies Record<Product['accent'], Record<string, string>>;
 
@@ -122,7 +126,7 @@ export function ProductCardGrid({ onOpenAdsModal, onOpenKilatModal, onSelect }: 
                     </p>
 
                     <div className={`mt-3.5 pt-2.5 border-t ${tone.divider}`}>
-                        <span className={`w-full py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs group-hover:shadow-sm transition-all duration-150 ${tone.cta}`}>
+                        <span className={`w-full py-2 px-3 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition-colors duration-150 ${tone.cta}`}>
                             <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                             <span>{t(product.ctaKey)}</span>
                             <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
@@ -192,7 +196,7 @@ export function ProductCardGrid({ onOpenAdsModal, onOpenKilatModal, onSelect }: 
                 </p>
 
                 <div className={`mt-3.5 pt-2.5 border-t ${tone.divider}`}>
-                    <span className={`w-full py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs group-hover:shadow-sm transition-all duration-150 ${tone.cta}`}>
+                    <span className={`w-full py-2 px-3 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition-colors duration-150 ${tone.cta}`}>
                         <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                         <span>{t(product.ctaKey)}</span>
                         <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
