@@ -10,6 +10,17 @@ import {
 import { useLanguage } from '../i18n/LanguageContext';
 import { RateNoticeBlock } from './RateNotice';
 
+/**
+ * Tiga hal yang paling sering ditanyakan peneliti ke admin. Kartu kedua
+ * (tanpa kuota responden) disorot karena itu salah paham yang paling mahal:
+ * peneliti mengira kriteria atau tarif menjamin jumlah responden.
+ */
+const AWARENESS_POINTS = [
+  { key: 'adsAwarenessPoint1', icon: Users, highlight: false },
+  { key: 'adsAwarenessPoint2', icon: Clock, highlight: true },
+  { key: 'adsAwarenessPoint3', icon: ShieldCheck, highlight: false },
+] as const;
+
 export interface AdsEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -88,28 +99,32 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
         </div>
 
         <div className="overflow-y-auto px-5 sm:px-7 py-5 sm:py-6 flex-1 min-h-0 overscroll-contain">
-          <ul className="space-y-6">
-            <li className="flex items-start gap-2.5">
-              <Users className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-slate-900">{t('adsAwarenessPoint1Title')}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-slate-600">{t('adsAwarenessPoint1Desc')}</p>
-              </div>
-            </li>
-            <li className="flex items-start gap-2.5">
-              <Clock className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-slate-900">{t('adsAwarenessPoint2Title')}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-slate-600">{t('adsAwarenessPoint2Desc')}</p>
-              </div>
-            </li>
-            <li className="flex items-start gap-2.5">
-              <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-slate-900">{t('adsAwarenessPoint3Title')}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-slate-600">{t('adsAwarenessPoint3Desc')}</p>
-              </div>
-            </li>
+          <ul className="space-y-3">
+            {AWARENESS_POINTS.map(({ key, icon: Icon, highlight }) => (
+              <li
+                key={key}
+                className={`flex items-start gap-3.5 rounded-2xl border p-4 ${
+                  highlight
+                    ? 'border-transparent bg-jfu-primary text-white shadow-lg shadow-jfu-primary/25'
+                    : 'border-slate-200/80 bg-white text-slate-900 shadow-2xs'
+                }`}
+              >
+                <span
+                  className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${
+                    highlight ? 'bg-white/15 text-white' : 'bg-blue-50 text-jfu-primary'
+                  }`}
+                  aria-hidden
+                >
+                  <Icon className="size-5" />
+                </span>
+                <div className="min-w-0">
+                  <h3 className="text-[15px] font-bold leading-snug tracking-tight">{t(`${key}Title`)}</h3>
+                  <p className={`mt-1 text-[13px] leading-relaxed ${highlight ? 'text-white/90' : 'text-slate-600'}`}>
+                    {t(`${key}Desc`)}
+                  </p>
+                </div>
+              </li>
+            ))}
           </ul>
           <div className="mt-6">
             <RateNoticeBlock />

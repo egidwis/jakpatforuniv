@@ -182,6 +182,7 @@ export const translations = {
     perWinner: "/winner",
     respondentCriteriaPlaceholder: "Example: Age 18-35 years, Jakarta Domicile, Active Student",
     respondentCriteriaLabel: "Respondent Criteria",
+    respondentCriteriaHint: "Only a guide for the prize draw. Your survey still airs to randomly profiled respondents.",
     respondentCriteriaHelp: "Respondent criteria on ads are only used as a *guide for prize draws*. Surveys are still distributed to a *randomly profiled audience*, so the respondents who complete them will be *diverse*.",
 
 
@@ -823,13 +824,13 @@ export const translations = {
 
     // Modal Pintu Masuk Iklan Survei (Ads Entry Modal)
     adsAwarenessModalTitle: "Survey Ads",
-    adsAwarenessModalSubtitle: "Overview of survey publishing mechanism",
-    adsAwarenessPoint1Title: "Random Respondent Profiles",
-    adsAwarenessPoint1Desc: "Surveys are broadcast to active general users with random profiles. Include screening questions in your questionnaire if you require specific respondent criteria.",
-    adsAwarenessPoint2Title: "Duration-Based Publishing",
-    adsAwarenessPoint2Desc: "This service is a duration-based ad broadcast (without guaranteed respondent quotas). The number of responses received is strongly influenced by your target criteria (more specific criteria are harder to match) and the reward you offer.",
-    adsAwarenessPoint3Title: "Review Prior to Publishing",
-    adsAwarenessPoint3Desc: "Each questionnaire will be reviewed beforehand to ensure the survey opens and runs smoothly on the Jakpat app.",
+    adsAwarenessModalSubtitle: "3 things researchers ask us most",
+    adsAwarenessPoint1Title: "Respondents have random profiles",
+    adsAwarenessPoint1Desc: "Your survey airs to active general users. Respondent criteria only decide who is eligible for the prize draw, so very specific criteria can mean fewer people take part. Need specific respondents? Add screening questions.",
+    adsAwarenessPoint2Title: "No guaranteed number of respondents",
+    adsAwarenessPoint2Desc: "You pay for airing days, not for a response quota. How many people answer depends on your topic and the reward you offer.",
+    adsAwarenessPoint3Title: "We check your survey before it airs",
+    adsAwarenessPoint3Desc: "Every questionnaire is verified so it opens and runs smoothly in the Jakpat app. Manual review takes at most 2 working days.",
     adsAwarenessTermsLink: "Learn more in our",
     adsAwarenessCheckboxLabel: "I understand the publishing mechanism and review process for this survey.",
     adsAwarenessContinueBtn: "Continue to survey details",
@@ -1429,6 +1430,7 @@ export const translations = {
     perWinner: "/pemenang",
     respondentCriteriaPlaceholder: "Contoh: Usia 18-35 tahun, Domisili Jakarta, Mahasiswa aktif",
     respondentCriteriaLabel: "Kriteria Responden",
+    respondentCriteriaHint: "Hanya acuan untuk undian hadiah. Surveimu tetap tayang ke responden berprofil acak.",
     respondentCriteriaHelp: "Kriteria responden pada iklan hanya digunakan sebagai *panduan pengundian hadiah*. Survei tetap ditayangkan ke *audiens berprofil acak*, sehingga responden yang mengisi akan *beragam*.",
 
     // Step One Method Selection
@@ -2108,13 +2110,13 @@ export const translations = {
 
     // Modal Pintu Masuk Iklan Survei (Ads Entry Modal)
     adsAwarenessModalTitle: "Iklan Survei",
-    adsAwarenessModalSubtitle: "Informasi mekanisme penayangan survei",
-    adsAwarenessPoint1Title: "Profil Responden Acak",
-    adsAwarenessPoint1Desc: "Survei disiarkan ke pengguna aktif umum dengan profil acak. Gunakan pertanyaan penyaring (screening) di kuesionermu jika memerlukan kriteria responden tertentu.",
-    adsAwarenessPoint2Title: "Penayangan Berbasis Durasi",
-    adsAwarenessPoint2Desc: "Layanan ini berupa penayangan durasi hari (tanpa kuota pasti responden). Jumlah responden yang didapat sangat dipengaruhi oleh kriteria target (semakin spesifik semakin sulit) dan reward yang kamu tawarkan.",
-    adsAwarenessPoint3Title: "Review Sebelum Penayangan",
-    adsAwarenessPoint3Desc: "Setiap kuesioner akan diverifikasi terlebih dahulu untuk memastikan survei dapat dibuka dan berjalan lancar di aplikasi Jakpat.",
+    adsAwarenessModalSubtitle: "3 hal yang paling sering ditanyakan peneliti",
+    adsAwarenessPoint1Title: "Responden berprofil acak",
+    adsAwarenessPoint1Desc: "Surveimu tayang ke pengguna aktif umum. Kriteria responden hanya menentukan siapa yang berhak ikut undian hadiah, jadi kriteria yang sangat spesifik bisa membuat lebih sedikit yang tertarik mengisi. Butuh responden tertentu? Tambahkan pertanyaan screening.",
+    adsAwarenessPoint2Title: "Jumlah responden tidak dijamin",
+    adsAwarenessPoint2Desc: "Kamu membayar hari tayang, bukan kuota responden. Banyaknya yang mengisi bergantung pada topik surveimu dan reward yang kamu tawarkan.",
+    adsAwarenessPoint3Title: "Dicek dulu sebelum tayang",
+    adsAwarenessPoint3Desc: "Setiap kuesioner diverifikasi agar bisa dibuka dan berjalan lancar di aplikasi Jakpat. Tinjauan manual maksimal 2 hari kerja.",
     adsAwarenessTermsLink: "Pelajari selengkapnya di",
     adsAwarenessCheckboxLabel: "Saya memahami mekanisme penayangan dan review survei ini.",
     adsAwarenessContinueBtn: "Lanjut isi detail iklan",
