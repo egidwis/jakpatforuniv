@@ -5277,6 +5277,29 @@ export const rebookSlotForSubmission = async (
   startYmd: string,
   durationDays: number
 ) => {
+  if (!import.meta.env.VITEST) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) throw new Error('Sesi tidak ada. Masuk lagi lalu ulangi.');
+    const res = await fetch('/api/schedules/lock', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        submissionId,
+        startYmd,
+        duration: Math.max(durationDays || 1, 1),
+      }),
+    });
+    const raw = await res.text();
+    let parsed: any = null;
+    try { parsed = raw ? JSON.parse(raw) : null; } catch { /* badan bukan JSON */ }
+    if (!res.ok) throw new Error(parsed?.error || `Gagal mengunci tanggal (HTTP ${res.status})`);
+    return true;
+  }
+
   const { data, error } = await supabase
     .from('form_submissions')
     .update({
