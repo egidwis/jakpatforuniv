@@ -7,8 +7,6 @@ import {
   ShieldCheck,
   ArrowRight,
   Zap,
-  Layers,
-  AlarmClock,
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { TranslationKey } from '../i18n/translations';
@@ -26,6 +24,34 @@ export interface AdsEntryModalProps {
    */
   product?: 'ads' | 'kilat';
 }
+
+/**
+ * Warna produk, selaras kartu produk di dashboard (Iklan biru, Kilat amber).
+ * Hanya modal ini yang berwarna per produk — formulir order di belakangnya
+ * tetap biru; penanda khas Kilat di dalamnya (pemilih gelombang, kartu
+ * Gelombang di Ringkasan) sudah amber sendiri.
+ */
+type Tone = {
+  headerTile: string;
+  pointTile: string;
+  checkbox: string;
+  cta: string;
+};
+
+const TONE: Record<'ads' | 'kilat', Tone> = {
+  ads: {
+    headerTile: 'bg-jfu-primary text-white shadow-md shadow-jfu-primary/25',
+    pointTile: 'bg-jfu-primary/10 text-jfu-primary',
+    checkbox: 'text-jfu-primary accent-jfu-primary focus-visible:ring-jfu-primary',
+    cta: 'bg-jfu-primary hover:bg-jfu-dark focus-visible:ring-jfu-primary',
+  },
+  kilat: {
+    headerTile: 'bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-md shadow-orange-500/25',
+    pointTile: 'bg-amber-50 text-amber-600',
+    checkbox: 'text-amber-600 accent-amber-600 focus-visible:ring-amber-600',
+    cta: 'bg-amber-600 hover:bg-amber-700 focus-visible:ring-amber-600',
+  },
+};
 
 type Copy = {
   icon: typeof Radio;
@@ -59,9 +85,10 @@ const COPY: Record<'ads' | 'kilat', Copy> = {
     title: 'kilatEntryModalTitle',
     subtitle: 'kilatEntryModalSubtitle',
     points: [
-      { icon: Zap, title: 'kilatEntryPoint1Title', desc: 'kilatEntryPoint1Desc' },
-      { icon: Layers, title: 'kilatEntryPoint2Title', desc: 'kilatEntryPoint2Desc' },
-      { icon: AlarmClock, title: 'kilatEntryPoint3Title', desc: 'kilatEntryPoint3Desc' },
+      // Sama dengan Iklan: tiga hal yang paling sering ditanyakan, konteksnya push.
+      { icon: Users, title: 'kilatEntryPoint1Title', desc: 'kilatEntryPoint1Desc' },
+      { icon: Clock, title: 'kilatEntryPoint2Title', desc: 'kilatEntryPoint2Desc' },
+      { icon: ShieldCheck, title: 'kilatEntryPoint3Title', desc: 'kilatEntryPoint3Desc' },
     ],
     checkbox: 'kilatEntryCheckboxLabel',
     cta: 'kilatEntryContinueBtn',
@@ -80,6 +107,7 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
 }) => {
   const { t } = useLanguage();
   const copy = COPY[product];
+  const tone = TONE[product];
   const HeaderIcon = copy.icon;
   const [hasAcknowledged, setHasAcknowledged] = useState(false);
 
@@ -120,7 +148,7 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
 
         <div className="px-5 sm:px-7 py-4 sm:py-4.5 border-b border-gray-100 bg-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-jfu-primary text-white flex items-center justify-center shadow-md shadow-jfu-primary/25 shrink-0">
+            <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center shrink-0 ${tone.headerTile}`}>
               <HeaderIcon className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
             </div>
             <div className="min-w-0">
@@ -150,7 +178,7 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
                 className="flex items-start gap-3.5 sm:[flex-direction:column] sm:gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
               >
                 <span
-                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-jfu-primary/10 text-jfu-primary"
+                  className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${tone.pointTile}`}
                   aria-hidden
                 >
                   <Icon className="size-5" />
@@ -173,7 +201,7 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
               type="checkbox"
               checked={hasAcknowledged}
               onChange={(e) => setHasAcknowledged(e.target.checked)}
-              className="mt-0.5 size-4 shrink-0 rounded border-slate-300 text-jfu-primary focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 cursor-pointer accent-jfu-primary"
+              className={`mt-0.5 size-4 shrink-0 rounded border-slate-300 focus-visible:ring-2 focus-visible:ring-offset-2 cursor-pointer ${tone.checkbox}`}
             />
             <span className="text-sm leading-relaxed text-slate-700">
               {t(copy.checkbox)}
@@ -184,9 +212,9 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
             type="button"
             disabled={!hasAcknowledged}
             onClick={onContinue}
-            className={`w-full py-3.5 px-4 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 ${
+            className={`w-full py-3.5 px-4 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
               hasAcknowledged
-                ? 'bg-jfu-primary hover:bg-jfu-dark text-white cursor-pointer'
+                ? `${tone.cta} text-white cursor-pointer`
                 : 'bg-slate-100 text-slate-600 cursor-not-allowed'
             }`}
           >
