@@ -1,4 +1,5 @@
 import { validateHoliday, holidayRow } from './holidaysGate.js';
+import { translateAwayLabel } from './holidaysTranslate.js';
 
 // Huruf besar mengikuti pola JM_*; PostgREST menerima nama apa adanya.
 const HOLIDAYS_TABLE = 'JFU_operational_holidays';
@@ -57,9 +58,12 @@ export async function onRequest(context) {
   const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceKey) return json(500, { error: 'Supabase service role tidak dikonfigurasi' });
 
-  // Menyalakan/menyunting selalu MENULIS label_en, supaya terjemahan pesan lama
-  // tidak tertinggal; mematikan tidak menyentuhnya.
-  const labelEn = body.isActive ? '' : undefined;
+  // Menyalakan/menyunting selalu MENULIS label_en — hasil terjemahan, atau ''
+  // bila label kosong / terjemahan gagal — supaya terjemahan pesan lama tidak
+  // tertinggal. Mematikan tidak menyentuhnya (dan tidak memanggil OpenRouter).
+  const labelEn = body.isActive
+    ? ((await translateAwayLabel(env, (body.label || '').trim())) ?? '')
+    : undefined;
 
   // Upsert: mematikan = is_active false, bukan DELETE — riwayat masa libur
   // tetap tersimpan.

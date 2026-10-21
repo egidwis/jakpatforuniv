@@ -14,6 +14,7 @@ import {
     FileText,
     Gift,
     Layers,
+    PauseCircle,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -43,6 +44,7 @@ import { primaryActionOf } from './orderAction';
 import { nowWib, toWibYmd } from '@/utils/airing-window';
 import { formatWaveHour } from '@/utils/kilatWaves';
 import { awayBlocksKilatPick } from './AdminAwayModal';
+import { useAdminAway } from '@/utils/operationalHolidays';
 
 const WIB = 'Asia/Jakarta';
 
@@ -604,6 +606,14 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
 }) {
     const { t } = useLanguage();
     const b = card.booking;
+    /** Mode libur (sql/120): baris tambahan di bawah janji "maks 1 hari kerja". */
+    const awayNow = useAdminAway();
+    const awayLine = awayNow ? (
+        <span className="inline-flex items-start gap-1 font-medium text-amber-800">
+            <PauseCircle className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
+            {t('adminAwayInlineNote')}
+        </span>
+    ) : null;
 
     /** Kalimat penutup untuk keadaan yang tanggalnya harus diganti: entah
      *  peneliti yang memilih sendiri, entah tim yang mengerjakannya. Salah
@@ -664,7 +674,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                 tone="slate"
                 icon={<Clock className={bannerIcon} />}
                 title={t('bannerTitleAwaitingInvoice')}
-                lines={[t('bannerSubAwaitingInvoice')]}
+                lines={[t('bannerSubAwaitingInvoice'), awayLine]}
             />
         );
     }
@@ -680,7 +690,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                 icon={<CalendarClock className={bannerIcon} />}
                 title={t('bannerTitleAwaitingAdminSchedule')}
                 // Kilat: tim menugaskan GELOMBANG, bukan tanggal tayang.
-                lines={[t(card.info?.isKilat ? 'bannerSubAwaitingAdminWave' : 'bannerSubAwaitingAdminSchedule')]}
+                lines={[t(card.info?.isKilat ? 'bannerSubAwaitingAdminWave' : 'bannerSubAwaitingAdminSchedule'), awayLine]}
             />
         );
     }

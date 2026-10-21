@@ -41,6 +41,7 @@ import type { ReviewHistoryEntry } from '@/components/submissions/types';
 import { isAutoReviewed } from './deriveOrderUiState';
 import { RowGrid } from './RowGrid';
 import { StatusPill } from './StatusPill';
+import { AdminAwayInlineNote } from './AdminHolidayBanner';
 import { toast } from 'sonner';
 
 /**
@@ -402,6 +403,7 @@ export function ReviewPhase({ submission, first, onDataUpdated, active, hadBille
                                 <p className="text-sm text-slate-600 leading-relaxed">
                                     {t('calloutReviewManual')}
                                 </p>
+                                <AdminAwayInlineNote className="mt-1.5" />
                             </div>
                         )}
 

@@ -94,9 +94,14 @@ export function useAdminAwayControl() {
     setBusy(true);
     try {
       const active = action.kind === 'on' ? [] : await fetchActiveAwayRows();
-      for (const body of adminAwayWrites(action, active)) await postHoliday(body);
+      let last: Awaited<ReturnType<typeof postHoliday>> | null = null;
+      for (const body of adminAwayWrites(action, active)) last = await postHoliday(body);
       await refreshAdminAway();
       toast.success(done);
+      // Terjemahan dikerjakan server; gagal = label_en '' (libur tetap menyala).
+      if (action.kind !== 'off' && action.message.trim() && last && !last.labelEn) {
+        toast.warning('Terjemahan otomatis gagal — peneliti berbahasa Inggris melihat teks Indonesia. Simpan lagi untuk mencoba ulang.');
+      }
       setDialog(null);
       return true;
     } catch (e: any) {
@@ -288,6 +293,17 @@ export function AdminAwayDialog({ control }: { control: AdminAwayControl }) {
             placeholder="Contoh: Libur Natal. Kami kembali Senin, 29 Des."
             className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
           />
+          {!isEdit && <p className="text-xs text-gray-500">Diterjemahkan otomatis ke bahasa Inggris saat disimpan.</p>}
+          {isEdit && away && (
+            <div className="space-y-0.5 pt-1">
+              <p className="text-xs font-semibold text-gray-600">Versi Inggris (otomatis)</p>
+              {away.messageEn
+                ? <p className="text-sm text-gray-700 italic break-words">“{away.messageEn}”</p>
+                : away.message
+                  ? <p className="text-xs text-orange-800">⚠ Terjemahan gagal — peneliti berbahasa Inggris melihat teks Indonesia. Simpan lagi untuk mencoba ulang.</p>
+                  : <p className="text-xs text-gray-500">—</p>}
+            </div>
+          )}
         </div>
 
         <div className="space-y-1.5">
