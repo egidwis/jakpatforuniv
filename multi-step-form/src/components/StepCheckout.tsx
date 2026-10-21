@@ -5,7 +5,9 @@ import { calculateTotalCost, getVoucherInfo, isManualVerificationVoucher } from 
 import { formatRupiah } from '../utils/currency';
 import { getOwnProfile } from '../utils/supabase';
 import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
-import { isAutoApprovalPath } from '../utils/review-path';
+import { checkoutPath, isAutoApprovalPath } from '../utils/review-path';
+import { useAdminAway } from '../utils/operationalHolidays';
+import { awayGuard } from './status/AdminAwayModal';
 import { checkoutBlocker } from '../utils/orderReadiness';
 import { orderSubmitErrorKeyForCode } from '../utils/submitOrder';
 import { formatWaveHour } from '../utils/kilatWaves';
@@ -42,8 +44,11 @@ interface StepCheckoutProps {
   updateFormData: (data: Partial<SurveyFormData>) => void;
   /** Lanjut ke langkah Jadwal — hanya jalur otomatis yang memakainya. */
   nextStep: () => void;
-  /** Menulis order (jalur manual; jalur otomatis menulis di langkah Jadwal). */
-  onSubmitOrder: (overrides?: Partial<SurveyFormData>) => Promise<boolean>;
+  /**
+   * Menulis order (jalur manual; jalur otomatis menulis di langkah Jadwal).
+   * `forceManual` = Kilat jalur otomatis yang dialihkan karena mode libur.
+   */
+  onSubmitOrder: (overrides?: Partial<SurveyFormData>, opts?: { forceManual?: boolean }) => Promise<boolean>;
   onBack: () => void;
   onCancelOrder?: () => void;
 }
@@ -109,7 +114,11 @@ export function StepCheckout({
    * kehilangan tanggal yang sudah lewat batas.
    */
   const hasSchedule = !!formData.startDate;
-  const needsSchedule = isAutoApproval && !hasSchedule;
+  // Mode libur (sql/120) membelokkan HANYA Kilat jalur otomatis — lihat checkoutPath.
+  const away = useAdminAway();
+  const path = checkoutPath({ isAutoApproval, isKilat, hasSchedule, away: !!away });
+  const needsSchedule = path === 'schedule';
+  const divertedAway = path === 'kilat_away';
 
   // Email invoice berbeda dari email login → invoice terkirim ke email custom
   const isEmailMismatch = user?.email && formData.email && formData.email.trim().toLowerCase() !== user.email.toLowerCase();
@@ -209,6 +218,12 @@ export function StepCheckout({
     if (isSubmittingRef.current) return;
     if (!validateBeforeLeaving()) return;
 
+    // Mode libur: modal dulu (sekali per masa libur), baru langkah aslinya.
+    awayGuard({ kind: 'submit', product: isKilat ? 'kilat' : 'ads', path }, () => { void proceed(); });
+  };
+
+  const proceed = async () => {
+    if (isSubmittingRef.current) return;
     // Jalur otomatis tanpa tanggal: belum ada apa pun yang ditulis — lanjut
     // memilih jadwal (Iklan: kalender, Kilat: gelombang), dan order baru lahir
     // saat slot dikunci di sana.
@@ -222,7 +237,13 @@ export function StepCheckout({
     // ⚠️ Diteruskan eksplisit: `updateFormData` di atas baru mendarat di render
     // berikutnya, sedangkan `submitOrderAndRoute` membaca `formData` render
     // INI — tanpa override, `submitOrder()` menolak dengan kode 'terms'.
-    const ok = await onSubmitOrder({ termsAccepted: true });
+    const ok = divertedAway
+      // Gelombang dari draft dibuang: tidak ada reservasi mandiri selama libur.
+      ? await onSubmitOrder(
+          { termsAccepted: true, startDate: '', endDate: '', startTime: '', kilatSlotHour: null },
+          { forceManual: true },
+        )
+      : await onSubmitOrder({ termsAccepted: true });
     if (!ok) {
       isSubmittingRef.current = false;
       setIsSubmitting(false);
@@ -340,7 +361,9 @@ export function StepCheckout({
                     <div className="text-[11px] text-slate-500 mt-1 font-medium truncate">
                       {!isKilat
                         ? t('regularStandardAiring')
-                        : formData.kilatSlotHour != null
+                        : divertedAway
+                          ? t('kilatSummaryAssignedAfterAway')
+                          : formData.kilatSlotHour != null
                           ? t('kilatWaveLabel', { hour: formatWaveHour(formData.kilatSlotHour) })
                           : isAutoApproval ? t('kilatSummaryPickNext') : t('kilatSummaryAssigned')}
                     </div>
@@ -373,7 +396,7 @@ export function StepCheckout({
               </div>
 
               {/* Release Schedule (If Auto Approval) */}
-              {isAutoApproval && formData.startDate && (
+              {isAutoApproval && !divertedAway && formData.startDate && (
                 <div className="bg-white/95 p-3.5 rounded-xl border border-blue-100/90 shadow-2xs flex items-center gap-3">
                   <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                     <CalendarCheck size={15} />
@@ -421,7 +444,7 @@ export function StepCheckout({
               {/* Jalur review — satu-satunya tempat di Ringkasan yang menjawab
                   "jalur apa, kenapa, berapa lama". Dulu dibelah tiga: banner
                   amber PII di sini, blok di kolom kanan, dan tips Kepastian Slot. */}
-              <ReviewPathNotice formData={formData} />
+              <ReviewPathNotice formData={formData} divertedAway={divertedAway} />
 
             </div>
           </div>
@@ -619,6 +642,11 @@ export function StepCheckout({
                 <>
                   <Send size={15} />
                   {t('summaryCtaReview')}
+                </>
+              ) : divertedAway ? (
+                <>
+                  <Send size={15} />
+                  {t('summaryCtaKilatAway')}
                 </>
               ) : needsSchedule ? (
                 <>

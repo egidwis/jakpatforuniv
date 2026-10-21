@@ -133,9 +133,14 @@ describe('submitOrder — Kilat jalur otomatis', () => {
     expect(await codeOf(run(kilatForm()))).toBe('slot_full_kilat');
   });
 
-  it('galat trigger kilat_wave_closed (mis. libur) → kilat_wave_closed', async () => {
-    insertError = { message: 'Tanggal 19-10-2026 libur operasional.', hint: 'kilat_wave_closed' };
+  it('galat trigger kilat_wave_closed → kilat_wave_closed', async () => {
+    insertError = { message: 'Pemesanan gelombang pukul 11.00 WIB tanggal 19-10-2026 sudah tutup.', hint: 'kilat_wave_closed' };
     expect(await codeOf(run(kilatForm()))).toBe('kilat_wave_closed');
+  });
+
+  it('galat trigger kilat_admin_away (mode libur, sql/120) → kilat_admin_away', async () => {
+    insertError = { message: 'JFU Kilat tutup sementara selama tim admin libur.', hint: 'kilat_admin_away' };
+    expect(await codeOf(run(kilatForm()))).toBe('kilat_admin_away');
   });
 });
 
@@ -181,6 +186,28 @@ describe('submitOrder — Kilat jalur manual & Iklan', () => {
     expect(inserted[0]).not.toHaveProperty('kilat_slot_hour');
     expect(inserted[0]).not.toHaveProperty('slot_booked_by');
     expect(rpcCalls).toHaveLength(0);
+  });
+
+  it('dialihkan karena mode libur: jalur manual + forced_manual_reason, tanpa gelombang dari draft', async () => {
+    const form = kilatForm({ startDate: '', startTime: '', kilatSlotHour: null });
+    await submitOrder({
+      formData: form, cost: calculateTotalCost(form, NOW.getTime()),
+      isAutoApproval: false, ilkomunyBlocked: false, forcedManualReason: 'admin_away',
+    });
+    expect(inserted[0]).toMatchObject({
+      start_date: null, end_date: null, submission_status: 'in_review',
+      distribution_type: 'kilat', forced_manual_reason: 'admin_away',
+      // jenis formulir TIDAK diubah — penandanya yang membuat order manual
+      submission_method: 'google_import',
+    });
+    expect(inserted[0]).not.toHaveProperty('kilat_slot_hour');
+    expect(inserted[0]).not.toHaveProperty('slot_booked_by');
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it('order biasa TIDAK mengirim forced_manual_reason (tak bergantung kolom sql/120)', async () => {
+    await run(kilatForm({ startDate: '', startTime: '', kilatSlotHour: null, isManualEntry: true }), false);
+    expect(inserted[0]).not.toHaveProperty('forced_manual_reason');
   });
 
   it('Iklan tidak berubah: 15.00 WIB × durasi, tanpa kilat_slot_hour', async () => {

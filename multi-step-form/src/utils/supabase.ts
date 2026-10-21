@@ -464,6 +464,11 @@ export interface FormSubmission {
   dismissed_at?: string | null;
   review_history?: ReviewHistoryEntry[];
   detected_keywords?: string[];
+  /**
+   * sql/120: 'admin_away' = Kilat jalur otomatis yang dikirim selama mode
+   * libur → jalur MANUAL (`isAutoReviewed` false). NULL = aturan biasa.
+   */
+  forced_manual_reason?: 'admin_away' | null;
   custom_form_id?: string | null;
   admin_notes?: string;
   slot_booked_by?: string;

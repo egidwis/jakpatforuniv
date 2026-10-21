@@ -35,7 +35,7 @@ const TODAY = '2026-10-15';
 const row = (o: Partial<AdminQueueRow>): AdminQueueRow => ({
   id: 'x', distribution_type: 'regular', submission_status: 'in_review', start_date: null,
   slot_booked_by: null, payment_status: 'pending', dismissed_at: null, submission_method: 'manual',
-  survey_url: 'https://example.com', detected_keywords: null, voucher_code: null, ...o,
+  survey_url: 'https://example.com', detected_keywords: null, voucher_code: null, forced_manual_reason: null, ...o,
 });
 const ctx = (hasOpenBill = false) => ({ hasOpenBill, todayYmd: TODAY });
 
@@ -55,6 +55,17 @@ describe('adminActionOf', () => {
     expect(adminActionOf(auto, ctx())).toBeNull();
     // voucher verifikasi manual membuat order Google Form tetap direview admin
     expect(adminActionOf({ ...auto, voucher_code: 'JFUFEB' }, ctx())).toBe('schedule');
+  });
+
+  test('Kilat dialihkan saat mode libur (sql/120) → admin menugaskan gelombang, bukan peneliti', () => {
+    const diverted = row({
+      distribution_type: 'kilat', submission_method: 'google_import',
+      survey_url: 'https://docs.google.com/forms/d/x', forced_manual_reason: 'admin_away',
+    });
+    expect(adminActionOf(diverted, ctx())).toBe('review');
+    expect(adminActionOf({ ...diverted, submission_status: 'approved' }, ctx())).toBe('schedule');
+    // Tanpa penanda, order yang sama milik peneliti.
+    expect(adminActionOf({ ...diverted, forced_manual_reason: null, submission_status: 'approved' }, ctx())).toBeNull();
   });
 
   test('disetujui tapi slotnya kedaluwarsa → bola di peneliti', () => {

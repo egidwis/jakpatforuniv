@@ -1,9 +1,11 @@
-// Bentuk tulisan yang boleh lewat /api/admin/holidays. Satu tanggal per
-// panggilan: saklar di halaman Hari Libur memang menyentuh satu tanggal, dan
-// batas ini menutup jalan "aktifkan setahun penuh" lewat satu body.
+// Bentuk tulisan yang boleh lewat /api/admin/holidays (mode libur, sql/120).
+// Satu baris = satu masa libur: `date` = tanggal WIB saat toggle dinyalakan.
+// Satu tanggal per panggilan — klien mematikan beberapa baris aktif dengan
+// beberapa panggilan, jadi satu body tidak pernah bisa menyentuh setahun penuh.
 
 const YMD = /^(\d{4})-(\d{2})-(\d{2})$/;
 export const HOLIDAY_LABEL_MAX = 80;
+export const HOLIDAY_LABEL_EN_MAX = 160;
 
 export function isCalendarYmd(value) {
   const m = typeof value === 'string' ? YMD.exec(value) : null;
@@ -25,13 +27,21 @@ export function validateHoliday(body) {
   return null;
 }
 
-/** Baris yang ditulis ke operational_holidays. */
-export function holidayRow(body, email, nowIso) {
-  return {
+/**
+ * Baris yang ditulis ke "JFU_operational_holidays".
+ *
+ * `label` hanya ikut bila dikirim: mematikan toggle mengirim `{date,
+ * isActive: false}` saja, dan upsert merge-duplicates TIDAK boleh mengosongkan
+ * pesannya. `labelEn` (terjemahan server) hanya ikut bila diberikan.
+ */
+export function holidayRow(body, email, nowIso, labelEn) {
+  const row = {
     holiday_date: body.date,
-    label: (body.label || '').trim(),
     is_active: body.isActive,
     updated_at: nowIso,
     updated_by: email,
   };
+  if (body.label !== undefined) row.label = (body.label || '').trim();
+  if (labelEn !== undefined) row.label_en = labelEn;
+  return row;
 }

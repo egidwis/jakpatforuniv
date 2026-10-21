@@ -1,9 +1,13 @@
 import { validateHoliday, holidayRow } from './holidaysGate.js';
 
-// Kalender libur operasional (Phase 5 §5.4b). sql/117 hanya memberi SELECT ke
-// anon/authenticated dan TANPA policy tulis — satu-satunya penulis adalah
-// fungsi ini lewat service_role, setelah email pemanggil dicocokkan ke
-// ADMIN_EMAILS (pola seri keamanan sql/110–116).
+// Huruf besar mengikuti pola JM_*; PostgREST menerima nama apa adanya.
+const HOLIDAYS_TABLE = 'JFU_operational_holidays';
+
+// Mode libur tim admin (toggle di halaman Submissions, sql/120). Tabel
+// "JFU_operational_holidays" hanya memberi SELECT ke anon/authenticated dan
+// TANPA policy tulis — satu-satunya penulis adalah fungsi ini lewat
+// service_role, setelah email pemanggil dicocokkan ke ADMIN_EMAILS (pola seri
+// keamanan sql/110–116).
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -53,9 +57,13 @@ export async function onRequest(context) {
   const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceKey) return json(500, { error: 'Supabase service role tidak dikonfigurasi' });
 
-  // Upsert: menonaktifkan tanggal = is_active false, bukan DELETE — labelnya
-  // tetap tersimpan kalau admin menyalakannya lagi.
-  const res = await fetch(`${supabaseUrl}/rest/v1/operational_holidays?on_conflict=holiday_date`, {
+  // Menyalakan/menyunting selalu MENULIS label_en, supaya terjemahan pesan lama
+  // tidak tertinggal; mematikan tidak menyentuhnya.
+  const labelEn = body.isActive ? '' : undefined;
+
+  // Upsert: mematikan = is_active false, bukan DELETE — riwayat masa libur
+  // tetap tersimpan.
+  const res = await fetch(`${supabaseUrl}/rest/v1/${HOLIDAYS_TABLE}?on_conflict=holiday_date`, {
     method: 'POST',
     headers: {
       apikey: serviceKey,
@@ -63,7 +71,7 @@ export async function onRequest(context) {
       'Content-Type': 'application/json',
       Prefer: 'resolution=merge-duplicates,return=representation',
     },
-    body: JSON.stringify(holidayRow(body, email, new Date().toISOString())),
+    body: JSON.stringify(holidayRow(body, email, new Date().toISOString(), labelEn)),
   });
   const raw = await res.text();
   let data = null;

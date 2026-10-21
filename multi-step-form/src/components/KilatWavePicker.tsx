@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Zap } from 'lucide-react';
+import { CalendarOff, Zap } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { KilatWaveAvailability } from '../hooks/useKilatWaveAvailability';
 import { formatWibTime } from '../utils/airing-window';
@@ -53,6 +53,17 @@ export function KilatWavePicker({
           <div key={i} className="h-[84px] rounded-2xl border border-slate-200 bg-white animate-pulse" />
         ))}
       </div>
+    );
+  }
+
+  // Jaring pengaman mode libur (sql/120). Setiap pintu ke pemilih ini sudah
+  // memunculkan modal F lebih dulu; grid "semua Libur" tidak pernah tampil.
+  if (availability.adminAway) {
+    return (
+      <p className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
+        <CalendarOff className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
+        {t('kilatAdminAwayNotice')}
+      </p>
     );
   }
 

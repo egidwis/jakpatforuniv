@@ -149,8 +149,9 @@ describe('kilatLockGate', () => {
     expect(kilatLockGate({ ymd: '2026-10-19', hour: 11 }, ready, NOW)).toEqual({ ok: true, ymd: '2026-10-19', hour: 11 });
   });
 
-  it('libur → ditolak sebagai tutup', () => {
+  it('mode libur (sql/120) → ditolak dengan teguran libur, pilihan dibersihkan', () => {
     const hol = { isReady: true, rows: [row('2026-10-19', 11, { isClosed: true, closedReason: 'holiday' })] };
-    expect(kilatLockGate({ ymd: '2026-10-19', hour: 11 }, hol, NOW)).toMatchObject({ ok: false, reason: 'past_cutoff' });
+    expect(kilatLockGate({ ymd: '2026-10-19', hour: 11 }, hol, NOW))
+      .toMatchObject({ ok: false, reason: 'holiday', messageKey: 'kilatErrorWaveHoliday', clearSelection: true });
   });
 });

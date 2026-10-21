@@ -24,6 +24,8 @@ import { StepCheckout } from './StepCheckout';
 import { OrderFormHeader } from './OrderFormHeader';
 import { segmentTitleOf } from '../utils/segmentTitle';
 import { ReviewSubmissionModal } from './ReviewSubmissionModal';
+import { useAdminAway } from '../utils/operationalHolidays';
+import { awayBlocksKilatPick } from './status/AdminAwayModal';
 // Hanya Loader2 yang tersisa dari sisi main di sini: `Menu`/`Button` ikut hilang
 // bersama header mobile lama (digantikan AppNav), dan `getTodayDate` tidak lagi
 // dipakai sejak flow order disusun ulang.
@@ -161,6 +163,27 @@ export function MultiStepForm() {
 
   // ILKOMUNY yang sudah dipakai akun ini → diskonnya tidak berlaku lagi.
   const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
+
+  /*
+    Mode libur (sql/120): pemilih gelombang Kilat TIDAK PERNAH tampil. Draft
+    Kilat yang dipulihkan di Step 3 (dibuat sebelum libur, atau libur menyala
+    saat layar terbuka) mundur ke Ringkasan, yang lalu mengirimnya sebagai
+    jalur manual (checkoutPath 'kilat_away'). Draft jadwal ulang tidak punya
+    Ringkasan yang sah di belakangnya (lihat exitMode di bawah) — modal F lalu
+    keluar ke dashboard.
+  */
+  const away = useAdminAway();
+  useEffect(() => {
+    if (!away || currentStep !== 3 || !formData.isKilatUpgrade) return;
+    if (formData.isReschedule) {
+      awayBlocksKilatPick({ leave: false });
+      cancelOrder();
+      return;
+    }
+    setFormData((prev) => ({ ...prev, startDate: '', endDate: '', startTime: '', kilatSlotHour: null }));
+    setCurrentStep(2);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [away, currentStep, formData.isKilatUpgrade, formData.isReschedule]);
 
   // Order sudah tersimpan → draft sengaja dibuang dan tidak boleh ditulis
   // ulang oleh efek penyimpanan di bawah saat render terakhir sebelum unmount.
@@ -336,9 +359,15 @@ export function MultiStepForm() {
    * manual dari Ringkasan. Aturannya sendiri hidup di `submitOrder()` — di sini
    * hanya perkara toast, membersihkan draft, dan ke mana user diantar.
    */
-  const submitOrderAndRoute = async (overrides?: Partial<SurveyFormData>): Promise<boolean> => {
+  const submitOrderAndRoute = async (
+    overrides?: Partial<SurveyFormData>,
+    opts: { forceManual?: boolean } = {},
+  ): Promise<boolean> => {
     const merged = { ...formData, ...overrides };
-    const auto = computeIsAutoApprovalPath(merged);
+    // `forceManual` = Kilat jalur otomatis selama mode libur: lahir sebagai
+    // jalur manual (in_review, tanpa gelombang), persis order manual biasa.
+    const forceManual = !!opts.forceManual;
+    const auto = !forceManual && computeIsAutoApprovalPath(merged);
     const effective = ilkomunyBlocked ? { ...merged, voucherCode: '' } : merged;
 
     const loadingToast = toast.loading(auto ? t('lockingSlotLoading') : t('sendingForReviewLoading'));
@@ -351,6 +380,7 @@ export function MultiStepForm() {
         isAutoApproval: auto,
         ilkomunyBlocked,
         authUserId: user?.id,
+        ...(forceManual ? { forcedManualReason: 'admin_away' as const } : {}),
       });
       toast.dismiss(loadingToast);
 
@@ -369,7 +399,12 @@ export function MultiStepForm() {
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(LEGACY_SURVEY_DRAFT_KEY);
 
-      if (!auto) {
+      if (forceManual) {
+        // Modal terima kasih jalur manual menjanjikan "maks 2 hari kerja" —
+        // modal libur (varian C) sudah menjelaskan nasib order ini.
+        toast.success(t('toastKilatDivertedAway'));
+        navigate('/dashboard?status=survey_submitted', { replace: true });
+      } else if (!auto) {
         setReviewModalData({
           isOpen: true,
           email: merged.email || user?.email || '',

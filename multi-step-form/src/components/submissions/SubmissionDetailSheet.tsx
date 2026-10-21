@@ -45,6 +45,7 @@ import type { SurveySubmission, PaymentState, ExistingPage, FormAuditResult } fr
 import { deriveLifecycle, getSubmissionActionDot, isReviewDecisionLocked } from './lifecycle';
 import { resetPageWarningOf, RESET_PAGE_STATE_LABEL, RESET_PAGE_STATE_NOTE } from './resetPageWarning';
 import { ReviewStatusChip } from './ReviewStatusChip';
+import { DivertedAwayChip } from './AdminAwayToggle';
 import { ReviewTimeline, ReviewTimelineToggle } from './ReviewTimeline';
 import { InfoTab } from './tabs/InfoTab';
 import { ReviewTab } from './tabs/ReviewTab';
@@ -1008,7 +1009,10 @@ export function SubmissionDetailSheet({
   );
 
   const title = (
-    <span className="truncate">{submission.formTitle}</span>
+    <span className="flex min-w-0 items-center gap-2">
+      <span className="truncate">{submission.formTitle}</span>
+      <DivertedAwayChip reason={submission.forced_manual_reason} paymentStatus={submission.payment_status} />
+    </span>
   );
 
   // Sub-tampilan menguasai bar tab, badan, dan footer sekaligus. Footer-nya

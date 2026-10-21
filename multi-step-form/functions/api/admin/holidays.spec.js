@@ -16,7 +16,7 @@ function network(email = 'product@jakpat.net') {
     if (u.endsWith('/auth/v1/user')) {
       return new Response(JSON.stringify({ email }), { status: 200 });
     }
-    if (u.includes('/rest/v1/operational_holidays')) {
+    if (u.includes('/rest/v1/JFU_operational_holidays')) {
       const body = JSON.parse(init.body);
       writes.push({ url: u, method: init.method, headers: init.headers, body });
       return new Response(JSON.stringify([body]), { status: 201 });
@@ -50,6 +50,21 @@ describe('/api/admin/holidays', () => {
     expect(w.headers.Prefer).toContain('merge-duplicates');
     expect(w.body).toMatchObject({ holiday_date: '2026-12-25', label: 'Natal', is_active: true, updated_by: 'product@jakpat.net' });
     expect((await res.json()).data.holiday_date).toBe('2026-12-25');
+  });
+
+  it('menyalakan menulis label_en (tidak menyisakan terjemahan pesan lama)', async () => {
+    const { writes } = network();
+    await call({ date: '2026-12-24', isActive: true, label: 'Libur Natal' });
+    expect(writes[0].body).toHaveProperty('label_en');
+  });
+
+  it('mematikan: label dan label_en TIDAK dikirim, supaya merge tidak mengosongkannya', async () => {
+    const { writes } = network();
+    const res = await call({ date: '2026-12-24', isActive: false });
+    expect(res.status).toBe(200);
+    expect(writes[0].body).toEqual(expect.objectContaining({ holiday_date: '2026-12-24', is_active: false }));
+    expect(writes[0].body).not.toHaveProperty('label');
+    expect(writes[0].body).not.toHaveProperty('label_en');
   });
 
   it('bukan admin: 401 dan nol tulisan', async () => {

@@ -42,6 +42,7 @@ import { OrderActionButton } from './OrderActionButton';
 import { primaryActionOf } from './orderAction';
 import { nowWib, toWibYmd } from '@/utils/airing-window';
 import { formatWaveHour } from '@/utils/kilatWaves';
+import { awayBlocksKilatPick } from './AdminAwayModal';
 
 const WIB = 'Asia/Jakarta';
 
@@ -929,6 +930,11 @@ export function SchedulePhase({ submission, kilatOpen = false, cards, entries, o
         ? 'kilat'
         : scheduleAgainBlock(submission, entries, Date.now(), { kilatOpen });
     const showScheduleAgain = againBlock === null;
+    // Mode libur (sql/120): "Pesan gelombang lagi" = pemilih gelombang → modal F, tetap di dashboard.
+    const goScheduleAgain = () => {
+        if (isKilatOrder && awayBlocksKilatPick({ leave: false })) return;
+        navigate(`/dashboard/jadwal/baru/${submission.id}`);
+    };
 
     return (
         <div>
@@ -1105,11 +1111,11 @@ export function SchedulePhase({ submission, kilatOpen = false, cards, entries, o
                             <div
                                 role="button"
                                 tabIndex={0}
-                                onClick={() => navigate(`/dashboard/jadwal/baru/${submission.id}`)}
+                                onClick={goScheduleAgain}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter' || e.key === ' ') {
                                         e.preventDefault();
-                                        navigate(`/dashboard/jadwal/baru/${submission.id}`);
+                                        goScheduleAgain();
                                     }
                                 }}
                                 className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:px-4 sm:py-3 rounded-xl bg-gradient-to-r from-blue-50/80 via-blue-50/40 to-white border border-blue-200/90 hover:border-blue-300 hover:shadow-xs transition-all cursor-pointer text-left active:scale-[0.99]"

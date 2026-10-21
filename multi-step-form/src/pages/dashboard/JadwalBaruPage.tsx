@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -76,11 +76,13 @@ import { useAuth } from '@/context/AuthContext';
 import { canUseKilatSelfServe } from '../../utils/kilatAccess';
 import { KilatWavePicker } from '../../components/KilatWavePicker';
 import { useKilatWaveAvailability } from '../../hooks/useKilatWaveAvailability';
-import { kilatLockGate, formatWaveHour, type KilatWaveDraft } from '../../utils/kilatWaves';
+import { kilatLockGate, kilatWaveErrorMessageKey, formatWaveHour, type KilatWaveDraft } from '../../utils/kilatWaves';
 import { kilatWaveErrorKind } from '../../utils/dailyQuotaError';
 import { kilatWaveInstant } from '../../utils/airing-window';
 import { billExpiryFor } from '../../utils/jadwalBayarGates';
 import { kilatWaveClashesOwn } from '../../utils/canScheduleAgain';
+import { awayBlocksKilatPick, awayGuard, awayGuardWouldOpen } from '../../components/status/AdminAwayModal';
+import { useAdminAway } from '../../utils/operationalHolidays';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -354,6 +356,8 @@ export function JadwalBaruPage() {
   const handleLock = async () => {
     // ⚠️ Tanggal kosong TIDAK lagi pulang diam — gerbang di bawah menegurnya.
     if (!submissionId) return;
+    // Mode libur (sql/120): gelombang Kilat tidak bisa dipesan mandiri.
+    if (isKilat && awayBlocksKilatPick({ leave: true })) return;
 
     /*
       ⚠️ GERBANG YANG SAMA dengan tiga pemanggil lain
@@ -408,6 +412,19 @@ export function JadwalBaruPage() {
     }
     // Lolos gerbang = `picked` ada, jadi keduanya terisi. Penjaga tipe saja.
     if (!startIso || !endIso) return;
+
+    /*
+      Mode libur: modal D sebelum mengunci (mengunci = langsung ke tagihan).
+      Gerbang di atas sudah lolos; "Lanjutkan" mencatat ack, jadi panggilan
+      ulang ini melewati modal dan menjalankan gerbang sekali lagi.
+    */
+    if (!isKilat && awayGuardWouldOpen()) {
+      const schedule = new Date(startIso).toLocaleDateString(language === 'en' ? 'en-US' : 'id-ID', {
+        weekday: 'long', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta',
+      });
+      awayGuard({ kind: 'pay', product: 'ads', schedule }, () => { void handleLock(); });
+      return;
+    }
 
     feedback.clear();
     setIsSaving(true);
@@ -553,7 +570,7 @@ export function JadwalBaruPage() {
       */
       const waveKind = isKilat ? kilatWaveErrorKind(e) : null;
       if (!orphanLeft && waveKind) {
-        feedback.report({ key: waveKind === 'full' ? 'errorSlotFullKilat' : 'kilatErrorWaveClosed', tone: 'error' }, { scroll: true });
+        feedback.report({ key: kilatWaveErrorMessageKey(waveKind), tone: 'error' }, { scroll: true });
         setPickedWave((w) => (w ? { ymd: w.ymd, hour: null } : null));
         void waves.reload();
         return;
@@ -582,6 +599,19 @@ export function JadwalBaruPage() {
   };
 
   // Bingkai tiket yang sama, berdenyut — bukan spinner di tengah layar.
+  /*
+    Mode libur (sql/120): halaman ini untuk Kilat ADALAH pemilih gelombang —
+    modal F begitu dibuka (juga lewat URL langsung / CTA Mimin), dan grid
+    diganti kartu pemberitahuan.
+  */
+  const awayNow = useAdminAway();
+  const kilatAwayWarned = useRef(false);
+  useEffect(() => {
+    if (!awayNow || !isKilat || kilatAwayWarned.current) return;
+    kilatAwayWarned.current = true;
+    awayBlocksKilatPick({ leave: true });
+  }, [awayNow, isKilat]);
+
   if (isLoading) return <TicketSkeleton />;
 
   if (notFound || !submission) {
@@ -686,7 +716,7 @@ export function JadwalBaruPage() {
               </button>
             )}
           </div>
-          <KilatWavePicker availability={waves} value={pickedWave} onChange={pickWave} />
+          <KilatWavePicker availability={awayNow ? { ...waves, adminAway: true } : waves} value={pickedWave} onChange={pickWave} />
         </div>
       ) : (
         /* Tanggal — ⚠️ SchedulePicker, kalender PENELITI. Modal lama memakai

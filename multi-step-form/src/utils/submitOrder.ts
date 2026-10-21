@@ -34,6 +34,7 @@ export type OrderSubmitErrorCode =
   | 'no_schedule'
   | 'past_cutoff'
   | 'kilat_wave_closed'
+  | 'kilat_admin_away'
   | 'slot_full_kilat'
   | 'slot_full'
   | 'availability_check_failed'
@@ -60,6 +61,7 @@ const ERROR_KEYS: Record<OrderSubmitErrorCode, TranslationKey> = {
   no_schedule: 'errorNoScheduleSelected',
   past_cutoff: 'slotErrorPastCutoff',
   kilat_wave_closed: 'kilatErrorWaveClosed',
+  kilat_admin_away: 'kilatErrorWaveHoliday',
   slot_full_kilat: 'errorSlotFullKilat',
   slot_full: 'errorSlotFullRange',
   availability_check_failed: 'errorAvailabilityCheck',
@@ -90,6 +92,12 @@ export interface SubmitOrderArgs {
   /** Voucher ILKOMUNY yang sudah terpakai: disimpan tanpa kode supaya admin tidak menerapkan ulang diskon. */
   ilkomunyBlocked: boolean;
   authUserId?: string;
+  /**
+   * Kilat jalur otomatis yang dialihkan ke manual karena mode libur (sql/120).
+   * Pemanggil juga mengirim `isAutoApproval: false`; penanda ini yang membuat
+   * order TETAP terbaca manual sesudah admin menyetujuinya.
+   */
+  forcedManualReason?: 'admin_away';
 }
 
 /**
@@ -110,6 +118,7 @@ export async function submitOrder({
   isAutoApproval,
   ilkomunyBlocked,
   authUserId,
+  forcedManualReason,
 }: SubmitOrderArgs): Promise<FormSubmission & { id: string }> {
   // Syarat Ringkasan, dinilai ulang di sini karena jalur otomatis menulis
   // order dari layar Jadwal — satu langkah setelah layar yang menegakkannya.
@@ -263,6 +272,10 @@ export async function submitOrder({
     ...(isAutoApproval
       ? { slot_booked_by: 'user', slot_reserved_at: new Date().toISOString() }
       : {}),
+    // Hanya dikirim bila diisi: order biasa tidak bergantung pada kolom sql/120
+    // (kolom yang belum ada membuat PostgREST menolak SELURUH insert — lihat
+    // custom_form_id di atas).
+    ...(forcedManualReason ? { forced_manual_reason: forcedManualReason } : {}),
   } as FormSubmission;
 
   // Niat reschedule ikut menumpang di draft dan bisa basi — draft yang
@@ -312,6 +325,7 @@ export async function submitOrder({
     const waveError = kilatWaveErrorKind(saveError);
     if (waveError === 'full') throw new OrderSubmitError('slot_full_kilat');
     if (waveError === 'closed') throw new OrderSubmitError('kilat_wave_closed');
+    if (waveError === 'away') throw new OrderSubmitError('kilat_admin_away');
     // Penolakan kuota datang dari trigger database (sql/110 → sql/111), bukan
     // dari cek browser di atas. Tanpa pemetaan ini peneliti hanya melihat
     // "gagal menyimpan", padahal tanggalnya yang penuh.

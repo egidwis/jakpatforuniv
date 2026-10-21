@@ -37,6 +37,7 @@ export interface AdminQueueRow {
   survey_url: string | null;
   detected_keywords: string[] | null;
   voucher_code: string | null;
+  forced_manual_reason: string | null;
 }
 
 const SETTLED = ['paid', 'completed'];
@@ -83,7 +84,7 @@ export interface AdminQueueCounts {
 }
 
 const QUEUE_COLUMNS =
-  'id, distribution_type, submission_status, start_date, slot_booked_by, payment_status, dismissed_at, submission_method, survey_url, detected_keywords, voucher_code';
+  'id, distribution_type, submission_status, start_date, slot_booked_by, payment_status, dismissed_at, submission_method, survey_url, detected_keywords, voucher_code, forced_manual_reason';
 
 /** Id order yang menunggu admin, dipisah per jenis distribusi. */
 export async function fetchAdminQueue(now: Date = new Date()): Promise<AdminQueueCounts> {

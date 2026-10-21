@@ -39,6 +39,7 @@ import { canUseKilatSelfServe } from '@/utils/kilatAccess';
 import { deriveOrderUiState, getActiveDashboardPhase, isAutoReviewed, type OrderGroup } from '@/components/status/deriveOrderUiState';
 import { AdsEntryModal } from '@/components/AdsEntryModal';
 import { AdminHolidayBanner } from '@/components/status/AdminHolidayBanner';
+import { awayBlocksKilatPick } from '@/components/status/AdminAwayModal';
 import { ProfileCompletionSheet } from '@/components/ProfileCompletionSheet';
 import { isProfileGateSatisfied } from '@/components/ProfileForm';
 
@@ -702,6 +703,8 @@ export function StatusPage() {
      * sudah berkalender.
      */
     const handleReschedule = (submission: FormSubmission) => {
+        // Mode libur (sql/120): pemilih gelombang Kilat tidak dibuka — modal F, tetap di sini.
+        if (submission.distribution_type === 'kilat' && awayBlocksKilatPick({ leave: false })) return;
         navigate(`/dashboard/payment/${submission.id}?pilih=1`);
     };
 

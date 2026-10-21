@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, BarChart2, Users, CalendarDays, Bot, PanelLeftClose, PanelLeftOpen, Target, CalendarOff } from 'lucide-react';
+import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, BarChart2, Users, CalendarDays, Bot, PanelLeftClose, PanelLeftOpen, Target } from 'lucide-react';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { cn, useMediaQuery } from '@/lib/utils';
@@ -12,14 +12,13 @@ import { PublishPageManagement } from './PublishPageManagement';
 import { CustomersPage } from './CustomersPage';
 import { CustomMissionRequestsPage } from './CustomMissionRequestsPage';
 import MiminAISetup from '../pages/internal-dash/MiminAISetup';
-import { HolidaysPage } from '../pages/internal-dash/HolidaysPage';
 import { useAuth } from '../context/AuthContext';
 import { getAllChatSessions, supabase } from '../utils/supabase';
 
 // 'ad-schedules' = papan Schedule (Phase 3, membaca tabel ad_schedules). Ia
 // menggantikan 'scheduling' (Page Calendar), yang dipensiunkan 2026-08-08 setelah
 // hidup berdampingan sebagai pembanding.
-type Page = 'submissions' | 'custom-missions' | 'transactions' | 'analytics' | 'customers' | 'conversations' | 'ad-schedules' | 'publish-page' | 'mimin-setup' | 'holidays';
+type Page = 'submissions' | 'custom-missions' | 'transactions' | 'analytics' | 'customers' | 'conversations' | 'ad-schedules' | 'publish-page' | 'mimin-setup';
 
 export function InternalDashboardWithLayout() {
   // Supabase Auth
@@ -252,11 +251,6 @@ export function InternalDashboardWithLayout() {
           id: 'publish-page' as Page,
           label: 'Pages',
           icon: Globe,
-        },
-        {
-          id: 'holidays' as Page,
-          label: 'Hari Libur',
-          icon: CalendarOff,
         },
       ]
     },
@@ -629,8 +623,6 @@ export function InternalDashboardWithLayout() {
             <div className="container mx-auto p-4 md:p-8 h-full">
               <MiminAISetup />
             </div>
-          ) : currentPage === 'holidays' ? (
-            <HolidaysPage />
           ) : currentPage === 'ad-schedules' ? (
             // Tanpa pembungkus `container`: papan ini mengurus paddingnya sendiri,
             // sama seperti Submissions dan Transaksi. Pembungkus dengan padding

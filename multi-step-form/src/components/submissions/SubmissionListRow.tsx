@@ -16,6 +16,7 @@ import { getSubmissionActionDot } from './lifecycle';
 import { ClientStatusDot } from '../customers/ClientStatusIcon';
 import type { CustomerTier } from '../customers/types';
 import { missedPaymentWindow } from '@/utils/missedPaymentWindow';
+import { DivertedAwayChip } from './AdminAwayToggle';
 
 interface SubmissionListRowProps {
   submission: SurveySubmission;
@@ -172,6 +173,7 @@ export function SubmissionListRow({
           <span className="text-sm font-semibold text-gray-900 truncate" title={submission.formTitle}>
             {submission.formTitle}
           </span>
+          <DivertedAwayChip reason={submission.forced_manual_reason} paymentStatus={submission.payment_status} />
           {submission.voucher_code && (
             <TooltipProvider>
               <Tooltip>

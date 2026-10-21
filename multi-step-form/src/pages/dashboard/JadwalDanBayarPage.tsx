@@ -38,7 +38,7 @@ import { toWibYmd, toAiringStartIso, isPayDeadlinePassed, payDeadlineFor, format
 import { airingDayCount } from './schedule/scheduleModel';
 import { useSlotAvailability } from '../../hooks/useSlotAvailability';
 import { useKilatWaveAvailability } from '../../hooks/useKilatWaveAvailability';
-import { kilatLockGate, formatWaveHour, type KilatWaveDraft } from '../../utils/kilatWaves';
+import { kilatLockGate, kilatWaveErrorMessageKey, formatWaveHour, type KilatWaveDraft } from '../../utils/kilatWaves';
 import { scheduleLockGate } from '../../utils/scheduleLockGate';
 import { isDailyQuotaFullError, kilatWaveErrorKind } from '../../utils/dailyQuotaError';
 import { schedulePageState } from '../../utils/schedulePageState';
@@ -49,6 +49,8 @@ import { slotReleaseDeadline, isSlotHoldReleased } from '../../utils/slotHold';
 import { payLinkPath } from '../../utils/payLink';
 import { creditPhaseOf } from '../../components/status/scheduleAxes';
 import { isAutoReviewed } from '../../components/status/deriveOrderUiState';
+import { awayBlocksKilatPick, awayGuard, awayGuardWouldOpen } from '../../components/status/AdminAwayModal';
+import { useAdminAway } from '../../utils/operationalHolidays';
 import { createPayment, GroupBillError } from '../../utils/payment';
 import { shouldAutoMint, canRepickInPlace, billExpiryFor } from '../../utils/jadwalBayarGates';
 import { createInFlightGate } from '../../utils/inFlightGate';
@@ -494,6 +496,7 @@ export function JadwalDanBayarPage() {
    */
   const handleLock = async () => {
     if (!entry) return;
+    if (isKilatEntry && awayBlocksKilatPick({ leave: true })) return;
     if (isKilatEntry) {
       await handleLockWave();
       return;
@@ -566,7 +569,7 @@ export function JadwalDanBayarPage() {
       console.error('Gagal mengunci gelombang:', e);
       const kind = kilatWaveErrorKind(e);
       if (kind) {
-        feedback.report({ key: kind === 'full' ? 'errorSlotFullKilat' : 'kilatErrorWaveClosed', tone: 'error' }, { scroll: true });
+        feedback.report({ key: kilatWaveErrorMessageKey(kind), tone: 'error' }, { scroll: true });
         setPickedWave((w) => (w ? { ymd: w.ymd, hour: null } : null));
         void waves.reload();
       } else {
@@ -605,6 +608,25 @@ export function JadwalDanBayarPage() {
   };
 
   // Bingkai tiket yang sama, berdenyut — bukan spinner di tengah layar.
+  /*
+    Mode libur (sql/120): pemilih gelombang Kilat TIDAK PERNAH tampil. Halaman
+    yang dibuka untuk memilih gelombang (pick jalur mandiri, waktu habis yang
+    boleh pilih ulang, atau "pilih gelombang lain") langsung memunculkan modal
+    F; kalau peneliti menutupnya, slot pemilih berisi kartu pemberitahuan.
+  */
+  const awayNow = useAdminAway();
+  const kilatAwayWarned = useRef(false);
+  const kilatNeedsPick = isKilatEntry && !!state && (
+    (state.screen === 'pick' && !!submission && isAutoReviewed(submission))
+    || (state.screen === 'released' && repickAllowed)
+    || (state.screen === 'awaiting_payment' && tooLate && repickAllowed && repickMode)
+  );
+  useEffect(() => {
+    if (!awayNow || !kilatNeedsPick || kilatAwayWarned.current) return;
+    kilatAwayWarned.current = true;
+    awayBlocksKilatPick({ leave: true });
+  }, [awayNow, kilatNeedsPick]);
+
   if (isLoading && !entry) return <TicketSkeleton />;
 
   // ⚠️ Menolak merender tanpa entry — lihat catatan tiga kunci di kepala berkas.
@@ -736,7 +758,9 @@ export function JadwalDanBayarPage() {
         )}
       </div>
       <KilatWavePicker
-        availability={waves}
+        // Libur dari store (bukan hanya dari RPC): kartu pemberitahuan langsung
+        // menggantikan grid begitu toggle admin terbaca menyala.
+        availability={awayNow ? { ...waves, adminAway: true } : waves}
         value={pickedWave}
         onChange={(next) => { setPickedWave(next); feedback.clear(); }}
       />
@@ -846,7 +870,10 @@ export function JadwalDanBayarPage() {
           {entry.isExtension && (
             <button
               type="button"
-              onClick={() => navigate(`/dashboard/jadwal/baru/${entry.submissionId}`)}
+              onClick={() => {
+                if (isKilatEntry && awayBlocksKilatPick({ leave: false })) return;
+                navigate(`/dashboard/jadwal/baru/${entry.submissionId}`);
+              }}
               className="inline-flex items-center gap-2 rounded-xl bg-jfu-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-90"
             >
               <CalendarDays className="w-4 h-4" /> {t('bookNewScheduleCta')}
@@ -973,6 +1000,13 @@ export function JadwalDanBayarPage() {
       (`authoritative_payment_url`, sql/85), bukan saat link dirender. Halaman
       ini paling rawan: countdown-nya berjalan, jarak render→klik bisa satu jam.
     */
+    // Modal libur D (Iklan) / E (Kilat) sebelum bayar — sekali per masa libur.
+    const payCtx = {
+      kind: 'pay' as const,
+      product: isKilatEntry ? 'kilat' as const : 'ads' as const,
+      schedule: lockedLabel ?? undefined,
+      wave: lockedLabel ?? undefined,
+    };
     const canSelfMint = entry.ordinal === 1 && entry.slotBookedBy === 'user' && !owedOnCredit && !holdExpired && !kilatPayClosed;
     const payLabel = offerRepick ? t('payAnywayCta') : t('payNow');
     const payButton = kilatPayClosed ? (
@@ -984,6 +1018,12 @@ export function JadwalDanBayarPage() {
         href={payLinkPath(entry.id)}
         target="_blank"
         rel="noopener noreferrer"
+        onClick={(e) => {
+          if (!awayGuardWouldOpen()) return;
+          e.preventDefault();
+          // Dibuka dari klik "Lanjutkan" — masih gestur pengguna.
+          awayGuard(payCtx, () => { window.open(payLinkPath(entry.id), '_blank', 'noopener,noreferrer'); });
+        }}
         className={offerRepick ? secondaryBtn : primaryBtn}
       >
         <CreditCard size={16} /> {payLabel}
@@ -991,7 +1031,7 @@ export function JadwalDanBayarPage() {
     ) : canSelfMint ? (
       <button
         type="button"
-        onClick={handlePayWithoutBill}
+        onClick={() => awayGuard(payCtx, () => { void handlePayWithoutBill(); })}
         /*
           ⚠️ TIDAK mati selama tagihan disiapkan — klik membuka tab yang
           menunggu tagihan yang sama. Mati hanya sesudah diklik (tab sedang
@@ -1030,7 +1070,14 @@ export function JadwalDanBayarPage() {
     );
 
     const repickButton = (
-      <button type="button" onClick={() => setRepickMode(true)} className={primaryBtn}>
+      <button
+        type="button"
+        onClick={() => {
+          if (isKilatEntry && awayBlocksKilatPick({ leave: false })) return;
+          setRepickMode(true);
+        }}
+        className={primaryBtn}
+      >
         <CalendarDays size={16} /> {mode === 'kilat' ? t('kilatRepickOtherWaveCta') : t('repickOtherDateCta')}
       </button>
     );

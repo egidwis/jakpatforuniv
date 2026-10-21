@@ -135,6 +135,11 @@ export function getActiveDashboardPhase(currentStep: number): DashboardPhase {
  */
 export function isAutoReviewed(submission: FormSubmission): boolean {
     return (
+        // sql/120: Kilat otomatis yang dikirim selama mode libur = jalur manual
+        // SELAMANYA — admin yang menugaskan gelombangnya, bukan peneliti.
+        // ⚠️ Setiap select yang hasilnya masuk ke sini WAJIB memuat kolom ini;
+        // tanpa itu nilainya undefined dan order terbaca otomatis diam-diam.
+        !submission.forced_manual_reason &&
         submission.submission_method !== 'manual' &&
         (submission.survey_url || '').includes('docs.google.com/forms') &&
         !(submission.detected_keywords && submission.detected_keywords.length > 0) &&

@@ -23,7 +23,7 @@ describe('validateHoliday', () => {
     expect(validateHoliday({ date: '2026-12-25' })).toMatch(/aktif/);
   });
 
-  it('label > 80 karakter ditolak (cermin CHECK sql/117)', () => {
+  it('label > 80 karakter ditolak (cermin CHECK sql/117, ikut rename sql/120)', () => {
     expect(validateHoliday({ date: '2026-12-25', isActive: true, label: 'x'.repeat(81) })).toMatch(/80/);
   });
 
@@ -37,5 +37,14 @@ describe('holidayRow', () => {
     expect(holidayRow({ date: '2026-12-25', isActive: true, label: '  Natal ' }, 'a@b.c', 'T')).toEqual({
       holiday_date: '2026-12-25', label: 'Natal', is_active: true, updated_at: 'T', updated_by: 'a@b.c',
     });
+  });
+
+  it('label tidak dikirim → tidak ikut (mematikan tidak mengosongkan pesan)', () => {
+    expect(holidayRow({ date: '2026-12-25', isActive: false }, 'a@b.c', 'T')).not.toHaveProperty('label');
+  });
+
+  it('label_en hanya ikut bila diberikan', () => {
+    expect(holidayRow({ date: '2026-12-25', isActive: true, label: 'x' }, 'a', 'T', 'Hi')).toMatchObject({ label_en: 'Hi' });
+    expect(holidayRow({ date: '2026-12-25', isActive: true, label: 'x' }, 'a', 'T')).not.toHaveProperty('label_en');
   });
 });

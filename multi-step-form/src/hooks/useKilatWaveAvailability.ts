@@ -14,6 +14,12 @@ export interface KilatWaveAvailability {
    */
   isReady: boolean;
   hasError: boolean;
+  /**
+   * Mode libur menyala (sql/120): RPC menandai setiap hari kerja sejak
+   * tanggal nyala 'holiday', jadi jendela yang dimulai hari ini berisi libur
+   * ⇔ tim admin sedang libur. Pemilih TIDAK merender grid saat ini true.
+   */
+  adminAway: boolean;
   reload: () => Promise<void>;
 }
 
@@ -60,5 +66,6 @@ export function useKilatWaveAvailability(excludeSubmissionId?: string, enabled: 
     if (enabled) void reload();
   }, [reload, enabled]);
 
-  return { rows, isLoading, isReady, hasError, reload };
+  const adminAway = rows.some((r) => r.closedReason === 'holiday');
+  return { rows, isLoading, isReady, hasError, adminAway, reload };
 }

@@ -38,3 +38,29 @@ export function isAutoApprovalPath(formData: SurveyFormData): boolean {
     (formData.isKilatUpgrade || !isManualVerificationVoucher(formData.voucherCode))
   );
 }
+
+/**
+ * Ke mana tombol utama Ringkasan membawa order ini.
+ *
+ *   review     → jalur manual: kirim untuk direview.
+ *   schedule   → jalur otomatis tanpa tanggal: lanjut ke langkah Jadwal.
+ *   pay        → jalur otomatis dengan tanggal dari draft: kunci & bayar.
+ *   kilat_away → Kilat jalur otomatis SELAMA MODE LIBUR (sql/120): tidak ada
+ *                reservasi mandiri. Order dikirim TANPA gelombang sebagai
+ *                jalur manual (`forced_manual_reason = 'admin_away'`), termasuk
+ *                bila draft sudah membawa gelombang.
+ *
+ * Iklan jalur otomatis TIDAK berubah saat libur — iklannya tetap tayang.
+ */
+export type CheckoutPath = 'review' | 'schedule' | 'pay' | 'kilat_away';
+
+export function checkoutPath({ isAutoApproval, isKilat, hasSchedule, away }: {
+  isAutoApproval: boolean;
+  isKilat: boolean;
+  hasSchedule: boolean;
+  away: boolean;
+}): CheckoutPath {
+  if (!isAutoApproval) return 'review';
+  if (isKilat && away) return 'kilat_away';
+  return hasSchedule ? 'pay' : 'schedule';
+}

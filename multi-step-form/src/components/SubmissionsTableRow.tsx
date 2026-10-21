@@ -11,6 +11,7 @@ import {
 import type { SurveySubmission, PaymentState, ExistingPage } from './submissions/types';
 import { deriveLifecycle, getDisplayStatus } from './submissions/lifecycle';
 import { ReviewStatusChip } from './submissions/ReviewStatusChip';
+import { DivertedAwayChip } from './submissions/AdminAwayToggle';
 
 // Types moved to ./submissions/types — re-exported here for backward compatibility
 export type { SurveySubmission, PaymentState, ExistingPage } from './submissions/types';
@@ -124,6 +125,7 @@ export function SubmissionsMobileCard({
             <h3 className="font-semibold text-gray-900 leading-tight">
               {submission.formTitle}
             </h3>
+            <DivertedAwayChip reason={submission.forced_manual_reason} paymentStatus={submission.payment_status} />
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
                 {submission.formId.substring(0, 8)}...

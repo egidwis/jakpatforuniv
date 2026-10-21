@@ -1,6 +1,7 @@
 import { KILAT_QUOTA_PER_SLOT } from './constants';
 import { addDaysToYmd, isKilatWaveBookable, toWibYmd } from './airing-window';
 import type { TranslationKey } from '../i18n/translations';
+import type { KilatWaveErrorKind } from './dailyQuotaError';
 
 /**
  * Okupansi gelombang JFU Kilat untuk pemilih peneliti (Phase 5 §5.5, R5).
@@ -134,13 +135,14 @@ export function kilatPickStatus(
 
 export const formatWaveHour = (hour: number) => `${String(hour).padStart(2, '0')}.00`;
 
-export type KilatLockReason = 'no_date' | 'no_wave' | 'past_cutoff' | 'availability_unknown' | 'wave_full';
+export type KilatLockReason = 'no_date' | 'no_wave' | 'past_cutoff' | 'holiday' | 'availability_unknown' | 'wave_full';
 
 /** Kunci i18n per sebab — bertipe supaya salah ketik jadi galat kompilasi. */
 const KILAT_LOCK_MESSAGE: Record<KilatLockReason, TranslationKey> = {
   no_date: 'slotErrorNoDate',
   no_wave: 'kilatErrorNoWave',
   past_cutoff: 'kilatErrorWaveClosed',
+  holiday: 'kilatErrorWaveHoliday',
   availability_unknown: 'slotErrorAvailabilityUnknown',
   wave_full: 'errorSlotFullKilat',
 };
@@ -183,6 +185,15 @@ export function kilatLockGate(
   const status = kilatPickStatus(availability.rows, { ymd: pick.ymd, hour: pick.hour }, now);
   if (status === null) return no('availability_unknown', { shouldReload: true });
   if (status === 'full') return no('wave_full', { clearSelection: true, shouldReload: true });
+  // Mode libur (sql/120): RPC menandai setiap hari sejak tanggal nyala 'holiday'.
+  if (status === 'holiday') return no('holiday', { clearSelection: true });
   if (status !== 'open') return no('past_cutoff', { clearSelection: true });
   return { ok: true, ymd: pick.ymd, hour: pick.hour };
+}
+
+/** Teguran untuk penolakan gelombang dari server (HINT trigger sql/117–120). */
+export function kilatWaveErrorMessageKey(kind: KilatWaveErrorKind): TranslationKey {
+  if (kind === 'full') return 'errorSlotFullKilat';
+  if (kind === 'away') return 'kilatErrorWaveHoliday';
+  return 'kilatErrorWaveClosed';
 }
