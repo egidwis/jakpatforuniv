@@ -1,7 +1,7 @@
 import type { AdminAway } from '@/utils/operationalHolidays';
 
 // ─────────────────────────────────────────────────────────────
-// Bagian STATUS TIM ADMIN di system prompt Mimin (mode libur, sql/120) —
+// Bagian STATUS TIM ADMIN di system prompt Mimin (mode libur, sql/122) —
 // kembaran `miminPricing.ts`, dengan alasan yang sama: prompt DB
 // (`ai_settings.system_prompt`) menimpa prompt bawaan, jadi apa pun yang WAJIB
 // sampai ke Mimin ditempel dari kode, SETELAH prompt mana pun.

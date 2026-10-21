@@ -96,7 +96,7 @@ export interface SubmitOrderArgs {
   ilkomunyBlocked: boolean;
   authUserId?: string;
   /**
-   * Kilat jalur otomatis yang dialihkan ke manual karena mode libur (sql/120).
+   * Kilat jalur otomatis yang dialihkan ke manual karena mode libur (sql/122).
    * Pemanggil juga mengirim `isAutoApproval: false`; penanda ini yang membuat
    * order TETAP terbaca manual sesudah admin menyetujuinya.
    */
@@ -152,7 +152,7 @@ export async function submitOrder({
   // menegakkan hal yang sama — ini supaya pesannya jelas, bukan galat mentah).
   if (startYmd) {
     if (isKilat) {
-      // sql/120 K3: lebih jauh dari 3 hari kerja = teguran sendiri, bukan "tutup".
+      // sql/122 K3: lebih jauh dari 3 hari kerja = teguran sendiri, bukan "tutup".
       if (isAutoApproval && startYmd > kilatLastBookableYmd()) {
         throw new OrderSubmitError('kilat_wave_too_far');
       }
@@ -279,7 +279,7 @@ export async function submitOrder({
     ...(isAutoApproval
       ? { slot_booked_by: 'user', slot_reserved_at: new Date().toISOString() }
       : {}),
-    // Hanya dikirim bila diisi: order biasa tidak bergantung pada kolom sql/120
+    // Hanya dikirim bila diisi: order biasa tidak bergantung pada kolom sql/122
     // (kolom yang belum ada membuat PostgREST menolak SELURUH insert — lihat
     // custom_form_id di atas).
     ...(forcedManualReason ? { forced_manual_reason: forcedManualReason } : {}),

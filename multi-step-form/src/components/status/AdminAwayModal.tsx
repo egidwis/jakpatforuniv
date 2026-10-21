@@ -14,7 +14,7 @@ import {
 } from '@/utils/operationalHolidays';
 
 /**
- * Modal mode libur untuk PENELITI (sql/120, keputusan 21 Okt 2026).
+ * Modal mode libur untuk PENELITI (sql/122, keputusan 21 Okt 2026).
  *
  * Satu host (`AdminAwayModalHost`, dipasang sekali di DashboardLayout) dan
  * dua pintu untuk pemanggil:

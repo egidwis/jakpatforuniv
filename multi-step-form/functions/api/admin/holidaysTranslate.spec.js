@@ -41,7 +41,7 @@ describe('tidyTranslation', () => {
     expect(tidyTranslation('Line one\n\nline two')).toBe('Line one line two');
   });
 
-  it('dipotong ≤160 (cermin CHECK label_en sql/120)', () => {
+  it('dipotong ≤160 (cermin CHECK label_en sql/122)', () => {
     const out = tidyTranslation('a'.repeat(400));
     expect(out.length).toBeLessThanOrEqual(160);
   });

@@ -135,7 +135,7 @@ export function getActiveDashboardPhase(currentStep: number): DashboardPhase {
  */
 export function isAutoReviewed(submission: FormSubmission): boolean {
     return (
-        // sql/120: Kilat otomatis yang dikirim selama mode libur = jalur manual
+        // sql/122: Kilat otomatis yang dikirim selama mode libur = jalur manual
         // SELAMANYA — admin yang menugaskan gelombangnya, bukan peneliti.
         // ⚠️ Setiap select yang hasilnya masuk ke sini WAJIB memuat kolom ini;
         // tanpa itu nilainya undefined dan order terbaca otomatis diam-diam.

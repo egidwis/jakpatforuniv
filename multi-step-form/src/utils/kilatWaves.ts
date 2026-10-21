@@ -43,7 +43,7 @@ export interface KilatWaveDay {
 
 /** Hari kalender yang diminta ke RPC: cukup untuk 3 hari kerja walau melewati akhir pekan. */
 export const KILAT_WAVE_WINDOW_DAYS = 7;
-/** Berapa hari kerja yang ditawarkan ke peneliti (sql/120 K3). Dulu 10 = dua minggu. */
+/** Berapa hari kerja yang ditawarkan ke peneliti (sql/122 K3). Dulu 10 = dua minggu. */
 export const KILAT_WAVE_WORKDAYS = KILAT_SELF_SERVE_WORKDAYS;
 
 export function kilatWaveWindow(now: Date = new Date()): { from: string; to: string } {
@@ -191,7 +191,7 @@ export function kilatLockGate(
   const status = kilatPickStatus(availability.rows, { ymd: pick.ymd, hour: pick.hour }, now);
   if (status === null) return no('availability_unknown', { shouldReload: true });
   if (status === 'full') return no('wave_full', { clearSelection: true, shouldReload: true });
-  // Mode libur (sql/120): RPC menandai setiap hari sejak tanggal nyala 'holiday'.
+  // Mode libur (sql/122): RPC menandai setiap hari sejak tanggal nyala 'holiday'.
   if (status === 'holiday') return no('holiday', { clearSelection: true });
   if (status !== 'open') return no('past_cutoff', { clearSelection: true });
   return { ok: true, ymd: pick.ymd, hour: pick.hour };

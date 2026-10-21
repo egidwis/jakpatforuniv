@@ -3,7 +3,7 @@ import { supabase } from './supabase';
 import { toWibYmd } from './airing-window';
 
 /**
- * Mode libur tim admin (sql/120, keputusan 21 Okt 2026). Menggantikan
+ * Mode libur tim admin (sql/122, keputusan 21 Okt 2026). Menggantikan
  * kalender per tanggal R3 yang tidak pernah dirilis.
  *
  * Satu baris "JFU_operational_holidays" = satu masa libur: `holiday_date` =
@@ -16,7 +16,7 @@ import { toWibYmd } from './airing-window';
  * SELURUH kueri ditolak. Tulis: HANYA lewat `/api/admin/holidays`.
  *
  * Efek menyala: Kilat tutup untuk peneliti di semua gelombang sejak tanggal
- * nyala (trigger sql/120), banner + modal di sisi peneliti, Iklan otomatis
+ * nyala (trigger sql/122), banner + modal di sisi peneliti, Iklan otomatis
  * tetap tayang.
  */
 export const HOLIDAYS_TABLE = 'JFU_operational_holidays';
@@ -128,7 +128,7 @@ export function adminAwayWrites(action: AwayAction, active: readonly AwayRow[], 
  * SATU poller untuk berapa pun pemakai (banner, kartu, modal, chat): baca
  * saat pemakai pertama muncul, saat tab kembali terlihat, dan tiap 60 detik.
  * Gagal baca = keadaan terakhir dipertahankan (sebelum pernah terbaca: tidak
- * libur). Server tetap penjaga terakhir untuk Kilat (trigger sql/120).
+ * libur). Server tetap penjaga terakhir untuk Kilat (trigger sql/122).
  */
 export const ADMIN_AWAY_POLL_MS = 60_000;
 

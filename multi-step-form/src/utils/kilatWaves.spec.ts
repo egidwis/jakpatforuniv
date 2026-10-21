@@ -77,7 +77,7 @@ describe('kilatWaveDays', () => {
       row('2026-10-26', 11, { isClosed: true, closedReason: 'holiday' }),
       row('2026-10-26', 15, { isClosed: true, closedReason: 'holiday' }),
     ];
-    // Kamis 22 Okt → jendela 3 hari kerja s/d Senin 26 Okt (sql/120 K3).
+    // Kamis 22 Okt → jendela 3 hari kerja s/d Senin 26 Okt (sql/122 K3).
     const days = kilatWaveDays(rows, new Date('2026-10-22T01:00:00Z'));
     expect(days.map((d) => d.ymd)).toEqual(['2026-10-23', '2026-10-26']);
     expect(days[1]).toMatchObject({ isHoliday: true, hasOpenWave: false });
@@ -161,7 +161,7 @@ describe('kilatLockGate', () => {
       .toMatchObject({ ok: false, reason: 'too_far', messageKey: 'kilatErrorWaveTooFar', clearSelection: true });
   });
 
-  it('mode libur (sql/120) → ditolak dengan teguran libur, pilihan dibersihkan', () => {
+  it('mode libur (sql/122) → ditolak dengan teguran libur, pilihan dibersihkan', () => {
     const hol = { isReady: true, rows: [row('2026-10-19', 11, { isClosed: true, closedReason: 'holiday' })] };
     expect(kilatLockGate({ ymd: '2026-10-19', hour: 11 }, hol, NOW))
       .toMatchObject({ ok: false, reason: 'holiday', messageKey: 'kilatErrorWaveHoliday', clearSelection: true });

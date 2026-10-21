@@ -609,7 +609,7 @@ export function JadwalDanBayarPage() {
 
   // Bingkai tiket yang sama, berdenyut — bukan spinner di tengah layar.
   /*
-    Mode libur (sql/120): pemilih gelombang Kilat TIDAK PERNAH tampil. Halaman
+    Mode libur (sql/122): pemilih gelombang Kilat TIDAK PERNAH tampil. Halaman
     yang dibuka untuk memilih gelombang (pick jalur mandiri, waktu habis yang
     boleh pilih ulang, atau "pilih gelombang lain") langsung memunculkan modal
     F; kalau peneliti menutupnya, slot pemilih berisi kartu pemberitahuan.

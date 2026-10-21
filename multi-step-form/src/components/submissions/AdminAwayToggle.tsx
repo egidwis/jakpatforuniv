@@ -20,7 +20,7 @@ import {
 
 /**
  * Toggle "Mode libur" di halaman Submissions (keputusan 21 Okt 2026,
- * sql/120). Menggantikan menu kalender "Hari Libur".
+ * sql/122). Menggantikan menu kalender "Hari Libur".
  *
  * `useAdminAwayControl()` dipanggil SEKALI di InternalDashboard; keadaannya
  * dioper ke strip, pill (desktop & ponsel), dan popup — supaya ketiganya

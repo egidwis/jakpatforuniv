@@ -606,7 +606,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
 }) {
     const { t } = useLanguage();
     const b = card.booking;
-    /** Mode libur (sql/120): baris tambahan di bawah janji "maks 1 hari kerja". */
+    /** Mode libur (sql/122): baris tambahan di bawah janji "maks 1 hari kerja". */
     const awayNow = useAdminAway();
     const awayLine = awayNow ? (
         <span className="inline-flex items-start gap-1 font-medium text-amber-800">
@@ -940,7 +940,7 @@ export function SchedulePhase({ submission, kilatOpen = false, cards, entries, o
         ? 'kilat'
         : scheduleAgainBlock(submission, entries, Date.now(), { kilatOpen });
     const showScheduleAgain = againBlock === null;
-    // Mode libur (sql/120): "Pesan gelombang lagi" = pemilih gelombang → modal F, tetap di dashboard.
+    // Mode libur (sql/122): "Pesan gelombang lagi" = pemilih gelombang → modal F, tetap di dashboard.
     const goScheduleAgain = () => {
         if (isKilatOrder && awayBlocksKilatPick({ leave: false })) return;
         navigate(`/dashboard/jadwal/baru/${submission.id}`);

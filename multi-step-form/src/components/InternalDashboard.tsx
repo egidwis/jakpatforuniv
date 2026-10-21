@@ -112,7 +112,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [distTab, setDistTab] = useState<'regular' | 'kilat'>('regular');
-  /** Mode libur tim admin (sql/120) — satu kendali untuk strip, pill, dan popup. */
+  /** Mode libur tim admin (sql/122) — satu kendali untuk strip, pill, dan popup. */
   const awayControl = useAdminAwayControl();
   /** Id order yang menunggu admin per jenis (badge tab + filter "Perlu Ditangani"). */
   const [adminQueue, setAdminQueue] = useState<AdminQueueCounts>({ regular: [], kilat: [] });
@@ -1470,7 +1470,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
               </button>
             );
           })}
-          {/* Ujung kanan baris tab: toggle mode libur (sql/120). */}
+          {/* Ujung kanan baris tab: toggle mode libur (sql/122). */}
           <div className="ml-auto pb-1.5">
             <AdminAwayPill control={awayControl} />
           </div>

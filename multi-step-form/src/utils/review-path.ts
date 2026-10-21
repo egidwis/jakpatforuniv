@@ -45,7 +45,7 @@ export function isAutoApprovalPath(formData: SurveyFormData): boolean {
  *   review     → jalur manual: kirim untuk direview.
  *   schedule   → jalur otomatis tanpa tanggal: lanjut ke langkah Jadwal.
  *   pay        → jalur otomatis dengan tanggal dari draft: kunci & bayar.
- *   kilat_away → Kilat jalur otomatis SELAMA MODE LIBUR (sql/120): tidak ada
+ *   kilat_away → Kilat jalur otomatis SELAMA MODE LIBUR (sql/122): tidak ada
  *                reservasi mandiri. Order dikirim TANPA gelombang sebagai
  *                jalur manual (`forced_manual_reason = 'admin_away'`), termasuk
  *                bila draft sudah membawa gelombang.

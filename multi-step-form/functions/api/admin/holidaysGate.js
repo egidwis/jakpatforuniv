@@ -1,4 +1,4 @@
-// Bentuk tulisan yang boleh lewat /api/admin/holidays (mode libur, sql/120).
+// Bentuk tulisan yang boleh lewat /api/admin/holidays (mode libur, sql/122).
 // Satu baris = satu masa libur: `date` = tanggal WIB saat toggle dinyalakan.
 // Satu tanggal per panggilan — klien mematikan beberapa baris aktif dengan
 // beberapa panggilan, jadi satu body tidak pernah bisa menyentuh setahun penuh.

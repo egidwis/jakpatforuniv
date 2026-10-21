@@ -82,7 +82,7 @@ describe('isKilatWaveBookable', () => {
   });
 });
 
-describe('kilatLastBookableYmd — jendela 3 hari kerja (sql/120 K3)', () => {
+describe('kilatLastBookableYmd — jendela 3 hari kerja (sql/122 K3)', () => {
   test('tabel keputusan: Sen→Rab, Kam→Sen, Jum→Sel, Sab/Min→Rab', () => {
     expect(kilatLastBookableYmd(T('2026-10-26T08:00:00+07:00'))).toBe('2026-10-28');
     expect(kilatLastBookableYmd(T('2026-10-29T08:00:00+07:00'))).toBe('2026-11-02');
@@ -98,7 +98,7 @@ describe('kilatLastBookableYmd — jendela 3 hari kerja (sql/120 K3)', () => {
 
   /*
     PARITAS dengan SQL `kilat_last_bookable_date` — tabel ini adalah keluaran
-    fungsi SQL di harness PGlite sql/120 (24 Okt–6 Nov 2026). Mengubah aturan
+    fungsi SQL di harness PGlite sql/122 (24 Okt–6 Nov 2026). Mengubah aturan
     di salah satu sisi tanpa sisi lain akan memerahkan tes ini.
   */
   test('paritas 14 hari dengan kilat_last_bookable_date (PGlite)', () => {

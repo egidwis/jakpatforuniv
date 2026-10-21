@@ -356,7 +356,7 @@ export function JadwalBaruPage() {
   const handleLock = async () => {
     // ⚠️ Tanggal kosong TIDAK lagi pulang diam — gerbang di bawah menegurnya.
     if (!submissionId) return;
-    // Mode libur (sql/120): gelombang Kilat tidak bisa dipesan mandiri.
+    // Mode libur (sql/122): gelombang Kilat tidak bisa dipesan mandiri.
     if (isKilat && awayBlocksKilatPick({ leave: true })) return;
 
     /*
@@ -600,7 +600,7 @@ export function JadwalBaruPage() {
 
   // Bingkai tiket yang sama, berdenyut — bukan spinner di tengah layar.
   /*
-    Mode libur (sql/120): halaman ini untuk Kilat ADALAH pemilih gelombang —
+    Mode libur (sql/122): halaman ini untuk Kilat ADALAH pemilih gelombang —
     modal F begitu dibuka (juga lewat URL langsung / CTA Mimin), dan grid
     diganti kartu pemberitahuan.
   */

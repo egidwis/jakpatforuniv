@@ -57,7 +57,7 @@ describe('adminActionOf', () => {
     expect(adminActionOf({ ...auto, voucher_code: 'JFUFEB' }, ctx())).toBe('schedule');
   });
 
-  test('Kilat dialihkan saat mode libur (sql/120) → admin menugaskan gelombang, bukan peneliti', () => {
+  test('Kilat dialihkan saat mode libur (sql/122) → admin menugaskan gelombang, bukan peneliti', () => {
     const diverted = row({
       distribution_type: 'kilat', submission_method: 'google_import',
       survey_url: 'https://docs.google.com/forms/d/x', forced_manual_reason: 'admin_away',

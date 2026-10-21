@@ -883,7 +883,7 @@ export const translations = {
     // Kalender libur operasional (Phase 5 §5.4b)
     adminHolidayTitle: "Our admin team is on holiday",
     adminHolidayBody: "Ads keep airing automatically. Kilat bookings, manual reviews & scheduling, issue reports and complaints will be handled once the team is back.",
-    // Modal mode libur (sql/120) — sebelum submit, sebelum bayar, dan pintu pemilih gelombang Kilat.
+    // Modal mode libur (sql/122) — sebelum submit, sebelum bayar, dan pintu pemilih gelombang Kilat.
     awayHighlightAds: "Your ad keeps airing automatically on the schedule you pick.",
     awayHighlightAdsScheduled: "Your ad keeps airing automatically on schedule: {schedule}.",
     awayHighlightReview: "Your order needs an admin review. Reviews resume once the team is back.",
@@ -2226,7 +2226,7 @@ export const translations = {
     // Kalender libur operasional (Phase 5 §5.4b)
     adminHolidayTitle: "Tim admin sedang libur",
     adminHolidayBody: "Iklan tetap tayang otomatis. Pemesanan Kilat, review & penjadwalan manual, lapor kendala dan komplain dilayani setelah tim kembali.",
-    // Modal mode libur (sql/120) — sebelum submit, sebelum bayar, dan pintu pemilih gelombang Kilat.
+    // Modal mode libur (sql/122) — sebelum submit, sebelum bayar, dan pintu pemilih gelombang Kilat.
     awayHighlightAds: "Iklan-mu tetap tayang otomatis sesuai jadwal yang kamu pilih.",
     awayHighlightAdsScheduled: "Iklan-mu tetap tayang otomatis sesuai jadwal: {schedule}.",
     awayHighlightReview: "Order-mu perlu direview admin. Review dikerjakan setelah tim kembali.",

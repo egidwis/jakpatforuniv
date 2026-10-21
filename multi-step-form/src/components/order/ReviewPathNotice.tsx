@@ -16,7 +16,7 @@ import { useLanguage } from '../../i18n/LanguageContext';
  */
 export function ReviewPathNotice({ formData, divertedAway = false }: {
   formData: SurveyFormData;
-  /** Kilat jalur otomatis yang dialihkan ke manual karena mode libur (sql/120). */
+  /** Kilat jalur otomatis yang dialihkan ke manual karena mode libur (sql/122). */
   divertedAway?: boolean;
 }) {
   const { t } = useLanguage();

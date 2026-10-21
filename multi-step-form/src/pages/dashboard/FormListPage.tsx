@@ -64,8 +64,8 @@ export const FormListPage: React.FC = () => {
       await deleteCustomForm(formId, user.id);
       toast.success('Form berhasil dihapus.');
       setForms(prev => prev.filter(f => f.id !== formId));
-    } catch (err) {
-      toast.error('Gagal menghapus form.');
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal menghapus form.');
     }
   };
 

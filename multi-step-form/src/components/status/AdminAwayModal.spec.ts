@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 /*
-  Pintu modal mode libur (sql/120). Store libur ditiru: yang diuji keputusan
+  Pintu modal mode libur (sql/122). Store libur ditiru: yang diuji keputusan
   `awayGuard` / `awayBlocksKilatPick` — kapan aksi langsung jalan, kapan
   modal menahannya.
 */

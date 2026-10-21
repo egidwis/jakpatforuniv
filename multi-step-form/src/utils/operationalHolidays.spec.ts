@@ -17,8 +17,8 @@ const { isAutoReviewed } = await import('../components/status/deriveOrderUiState
 const { awayDayCount } = await import('../components/submissions/AdminAwayToggle');
 
 /*
-  Mode libur (sql/120, keputusan 21 Okt 2026). Penutupan Kilat di server
-  dibuktikan dengan DIJALANKAN di harness PGlite berkas sql/120; di sini aturan
+  Mode libur (sql/122, keputusan 21 Okt 2026). Penutupan Kilat di server
+  dibuktikan dengan DIJALANKAN di harness PGlite berkas sql/122; di sini aturan
   klien: tulisan toggle, store bersama, ack modal, dan percabangan Ringkasan.
 */
 

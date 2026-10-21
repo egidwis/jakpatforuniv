@@ -23,7 +23,7 @@ describe('validateHoliday', () => {
     expect(validateHoliday({ date: '2026-12-25' })).toMatch(/aktif/);
   });
 
-  it('label > 80 karakter ditolak (cermin CHECK sql/117, ikut rename sql/120)', () => {
+  it('label > 80 karakter ditolak (cermin CHECK sql/117, ikut rename sql/122)', () => {
     expect(validateHoliday({ date: '2026-12-25', isActive: true, label: 'x'.repeat(81) })).toMatch(/80/);
   });
 

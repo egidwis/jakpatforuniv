@@ -114,7 +114,7 @@ export function StepCheckout({
    * kehilangan tanggal yang sudah lewat batas.
    */
   const hasSchedule = !!formData.startDate;
-  // Mode libur (sql/120) membelokkan HANYA Kilat jalur otomatis — lihat checkoutPath.
+  // Mode libur (sql/122) membelokkan HANYA Kilat jalur otomatis — lihat checkoutPath.
   const away = useAdminAway();
   const path = checkoutPath({ isAutoApproval, isKilat, hasSchedule, away: !!away });
   const needsSchedule = path === 'schedule';

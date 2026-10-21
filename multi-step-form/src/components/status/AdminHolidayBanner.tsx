@@ -3,7 +3,7 @@ import { useLanguage } from '@/i18n/LanguageContext';
 import { awayMessageFor, useAdminAway, type AdminAway } from '@/utils/operationalHolidays';
 
 /**
- * Pengumuman "tim admin libur" (mode libur, sql/120). Isinya: judul tetap,
+ * Pengumuman "tim admin libur" (mode libur, sql/122). Isinya: judul tetap,
  * pesan admin (versi Inggris bila ada), lalu kalimat tetap tentang apa yang
  * tetap jalan dan apa yang menunggu. Dipakai juga sebagai PRATINJAU di popup
  * admin — karena itu `away` diterima sebagai prop.

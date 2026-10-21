@@ -1,5 +1,5 @@
 -- ============================================================================
--- sql/120 — MODE LIBUR ADMIN + JENDELA PESAN KILAT 3 HARI KERJA
+-- sql/122 — MODE LIBUR ADMIN + JENDELA PESAN KILAT 3 HARI KERJA
 -- ============================================================================
 --
 -- Rencana: ~/.claude/plans/bantu-aku-pelajari-dokumentasi-replicated-lantern.md
@@ -43,7 +43,7 @@
 --
 -- Badan ketiga fungsi DISALIN dari produksi 21 Okt 2026 (pg_get_functiondef,
 -- md5 di Langkah 1a); salinan verbatimnya ada di blok ROLLBACK. Yang berubah
--- ditandai "sql/120".
+-- ditandai "sql/122".
 --
 -- ── URUTAN ──────────────────────────────────────────────────────────────────
 --
@@ -122,7 +122,7 @@ BEGIN
          WHEN 'validate_kilat_extend_claim' THEN '665328493e37cf2289e9d05a86fdf2c5'
          WHEN 'get_kilat_wave_occupancy'    THEN '0a945026b4333c90ac94075e3e0ba287'
        END) THEN
-      RAISE EXCEPTION 'sql/120 dibatalkan: badan % di produksi sudah berubah sejak 21 Okt (md5 %).', r.proname, r.m;
+      RAISE EXCEPTION 'sql/122 dibatalkan: badan % di produksi sudah berubah sejak 21 Okt (md5 %).', r.proname, r.m;
     END IF;
   END LOOP;
 END;
@@ -135,7 +135,7 @@ ALTER TABLE public."JFU_operational_holidays"
   RENAME CONSTRAINT operational_holidays_label_check TO "JFU_operational_holidays_label_check";
 
 COMMENT ON TABLE public."JFU_operational_holidays" IS
-  'Mode libur tim admin (sql/120). Satu baris = satu masa libur: holiday_date = tanggal WIB '
+  'Mode libur tim admin (sql/122). Satu baris = satu masa libur: holiday_date = tanggal WIB '
   'saat toggle dinyalakan, is_active = toggle. Baris aktif ⇒ Kilat tutup untuk peneliti di '
   'semua gelombang ≥ holiday_date; Iklan otomatis tetap tayang. Ditulis HANYA lewat '
   '/api/admin/holidays (service_role).';
@@ -157,7 +157,7 @@ ALTER TABLE public.form_submissions
   CONSTRAINT form_submissions_forced_manual_reason_check
   CHECK (forced_manual_reason IS NULL OR forced_manual_reason = 'admin_away');
 COMMENT ON COLUMN public.form_submissions.forced_manual_reason IS
-  'sql/120. ''admin_away'' = order Kilat jalur otomatis yang dikirim selama mode libur; '
+  'sql/122. ''admin_away'' = order Kilat jalur otomatis yang dikirim selama mode libur; '
   'diproses sebagai jalur manual (isAutoReviewed = false). NULL = jalur mengikuti aturan biasa.';
 
 -- ── 2.4 (K3) Hari terakhir yang boleh dipesan peneliti ─────────────────────
@@ -178,7 +178,7 @@ AS $function$
   ) x;
 $function$;
 COMMENT ON FUNCTION public.kilat_last_bookable_date(date) IS
-  'sql/120 K3. Hari terakhir jendela pesan Kilat peneliti: hari kerja ke-3 mulai p_today.';
+  'sql/122 K3. Hari terakhir jendela pesan Kilat peneliti: hari kerja ke-3 mulai p_today.';
 -- Dipanggil hanya dari trigger SECURITY DEFINER — hibah bawaan
 -- (anon=X, authenticated=X dari pg_default_acl) dicabut.
 REVOKE ALL ON FUNCTION public.kilat_last_bookable_date(date) FROM PUBLIC, anon, authenticated;
@@ -256,7 +256,7 @@ BEGIN
       USING HINT = 'kilat_wave_closed';
   END IF;
 
-  -- sql/120 L3: mode libur menutup SEMUA gelombang sejak tanggal nyalanya.
+  -- sql/122 L3: mode libur menutup SEMUA gelombang sejak tanggal nyalanya.
   SELECT h.label INTO v_label
   FROM "JFU_operational_holidays" h
   WHERE h.holiday_date <= NEW.start_date AND h.is_active
@@ -268,7 +268,7 @@ BEGIN
       USING HINT = 'kilat_admin_away';
   END IF;
 
-  -- sql/120 K3: peneliti hanya memesan 3 hari kerja mulai hari ini WIB.
+  -- sql/122 K3: peneliti hanya memesan 3 hari kerja mulai hari ini WIB.
   v_last := public.kilat_last_bookable_date((now() AT TIME ZONE 'Asia/Jakarta')::date);
   IF NEW.start_date > v_last THEN
     RAISE EXCEPTION 'Gelombang JFU Kilat hanya bisa dipesan untuk 3 hari kerja ke depan (paling jauh %).',
@@ -361,7 +361,7 @@ BEGIN
       USING HINT = 'kilat_wave_closed';
   END IF;
 
-  -- sql/120 L3: mode libur menutup SEMUA gelombang sejak tanggal nyalanya.
+  -- sql/122 L3: mode libur menutup SEMUA gelombang sejak tanggal nyalanya.
   SELECT h.label INTO v_label
   FROM "JFU_operational_holidays" h
   WHERE h.holiday_date <= v_ymd AND h.is_active
@@ -373,7 +373,7 @@ BEGIN
       USING HINT = 'kilat_admin_away';
   END IF;
 
-  -- sql/120 K3: peneliti hanya memesan 3 hari kerja mulai hari ini WIB.
+  -- sql/122 K3: peneliti hanya memesan 3 hari kerja mulai hari ini WIB.
   v_last := kilat_last_bookable_date((now() AT TIME ZONE 'Asia/Jakarta')::date);
   IF v_ymd > v_last THEN
     RAISE EXCEPTION 'Gelombang JFU Kilat hanya bisa dipesan untuk 3 hari kerja ke depan (paling jauh %).',
@@ -408,7 +408,7 @@ BEGIN
       USING HINT = 'kilat_occupancy_window_too_long';
   END IF;
 
-  -- sql/120 L3: LATERAL … LIMIT 1, bukan LEFT JOIN — dengan `<=` beberapa
+  -- sql/122 L3: LATERAL … LIMIT 1, bukan LEFT JOIN — dengan `<=` beberapa
   -- baris aktif akan menggandakan baris hasil.
   RETURN QUERY
   SELECT d.d::date,
@@ -492,7 +492,7 @@ COMMIT;
 --
 -- BEGIN;
 -- INSERT INTO public."JFU_operational_holidays" (holiday_date, label, is_active)
--- VALUES ((now() AT TIME ZONE 'Asia/Jakarta')::date, 'Uji sql/120', true)
+-- VALUES ((now() AT TIME ZONE 'Asia/Jakarta')::date, 'Uji sql/122', true)
 -- ON CONFLICT (holiday_date) DO UPDATE SET is_active = true;
 -- SELECT count(*) FILTER (WHERE closed_reason IS NULL) AS bukan_tutup,
 --        count(*) AS baris

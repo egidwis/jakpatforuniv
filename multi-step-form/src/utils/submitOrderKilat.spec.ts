@@ -144,12 +144,12 @@ describe('submitOrder — Kilat jalur otomatis', () => {
     expect(inserted).toHaveLength(0);
   });
 
-  it('galat trigger kilat_wave_too_far (sql/120 K3) → kilat_wave_too_far', async () => {
+  it('galat trigger kilat_wave_too_far (sql/122 K3) → kilat_wave_too_far', async () => {
     insertError = { message: 'Gelombang JFU Kilat hanya bisa dipesan untuk 3 hari kerja ke depan.', hint: 'kilat_wave_too_far' };
     expect(await codeOf(run(kilatForm()))).toBe('kilat_wave_too_far');
   });
 
-  it('galat trigger kilat_admin_away (mode libur, sql/120) → kilat_admin_away', async () => {
+  it('galat trigger kilat_admin_away (mode libur, sql/122) → kilat_admin_away', async () => {
     insertError = { message: 'JFU Kilat tutup sementara selama tim admin libur.', hint: 'kilat_admin_away' };
     expect(await codeOf(run(kilatForm()))).toBe('kilat_admin_away');
   });
@@ -216,7 +216,7 @@ describe('submitOrder — Kilat jalur manual & Iklan', () => {
     expect(rpcCalls).toHaveLength(0);
   });
 
-  it('order biasa TIDAK mengirim forced_manual_reason (tak bergantung kolom sql/120)', async () => {
+  it('order biasa TIDAK mengirim forced_manual_reason (tak bergantung kolom sql/122)', async () => {
     await run(kilatForm({ startDate: '', startTime: '', kilatSlotHour: null, isManualEntry: true }), false);
     expect(inserted[0]).not.toHaveProperty('forced_manual_reason');
   });

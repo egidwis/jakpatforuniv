@@ -26,7 +26,7 @@ function network(handler) {
 beforeEach(() => { sent.length = 0; });
 afterEach(() => vi.restoreAllMocks());
 
-describe('/api/send-submission-email — mode libur (sql/120)', () => {
+describe('/api/send-submission-email — mode libur (sql/122)', () => {
   it('libur: kotak libur ada, pesan admin & nama di-escape, tabel baru dibaca dengan anon key', async () => {
     let seen;
     network((url, init) => {
@@ -61,7 +61,7 @@ describe('/api/send-submission-email — mode libur (sql/120)', () => {
     expect(sent[0].html).not.toContain('tim admin sedang libur');
   });
 
-  it('HTTP galat dari PostgREST (mis. sebelum sql/120): email biasa', async () => {
+  it('HTTP galat dari PostgREST (mis. sebelum sql/122): email biasa', async () => {
     network(() => new Response('{"message":"relation does not exist"}', { status: 404 }));
     const res = await call({ name: 'Sintya', email: 'p@x.id' });
     expect(res.status).toBe(200);

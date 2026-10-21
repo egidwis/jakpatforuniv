@@ -57,7 +57,7 @@ export function KilatWavePicker({
     );
   }
 
-  // Jaring pengaman mode libur (sql/120). Setiap pintu ke pemilih ini sudah
+  // Jaring pengaman mode libur (sql/122). Setiap pintu ke pemilih ini sudah
   // memunculkan modal F lebih dulu; grid "semua Libur" tidak pernah tampil.
   if (availability.adminAway) {
     return (
@@ -89,7 +89,7 @@ export function KilatWavePicker({
     <div className="space-y-5">
       <fieldset className="space-y-2">
         <legend className="text-sm font-semibold text-slate-800 mb-2">{t('kilatWavePickDay')}</legend>
-        {/* Tiga hari kerja (sql/120 K3) — satu baris, juga di ponsel. */}
+        {/* Tiga hari kerja (sql/122 K3) — satu baris, juga di ponsel. */}
         <div className="grid grid-cols-3 gap-2.5">
           {days.map((day) => {
             const isSelected = value?.ymd === day.ymd;

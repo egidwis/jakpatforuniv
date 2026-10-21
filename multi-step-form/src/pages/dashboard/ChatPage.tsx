@@ -301,7 +301,7 @@ export function ChatPage() {
         [userOrders]
     );
 
-    // Mode libur (sql/120): satu pembacaan untuk banner DAN prompt — keduanya
+    // Mode libur (sql/122): satu pembacaan untuk banner DAN prompt — keduanya
     // harus sepakat soal apakah tim admin sedang libur.
     const adminAway = useAdminAway();
 

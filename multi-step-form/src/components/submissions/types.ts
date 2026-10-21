@@ -65,7 +65,7 @@ export interface SurveySubmission {
   /** Disingkirkan pemilik baris dari daftarnya (sql/69). Bukan keadaan order. */
   dismissed_at?: string | null;
   distribution_type?: 'regular' | 'kilat';
-  /** sql/120: 'admin_away' = Kilat otomatis yang dialihkan ke manual selama mode libur. */
+  /** sql/122: 'admin_away' = Kilat otomatis yang dialihkan ke manual selama mode libur. */
   forced_manual_reason?: string | null;
   /**
    * Gelombang push Kilat dalam jam WIB (8/11/14/17). NULL/undefined pada order

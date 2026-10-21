@@ -110,7 +110,7 @@ export function ReviewSubmissionModal({
                     </span>
                     <span className={`pt-0.5 text-xs leading-relaxed ${i === 0 ? 'text-slate-900 font-medium' : 'text-slate-600'}`}>
                       {text}
-                      {/* Mode libur (sql/120): langkah 1 menjanjikan "maks 2 hari kerja". */}
+                      {/* Mode libur (sql/122): langkah 1 menjanjikan "maks 2 hari kerja". */}
                       {i === 0 && <AdminAwayInlineNote className="mt-1" textKey="reviewModalAwayNote" />}
                     </span>
                   </li>

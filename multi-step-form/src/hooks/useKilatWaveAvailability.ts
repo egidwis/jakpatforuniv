@@ -15,7 +15,7 @@ export interface KilatWaveAvailability {
   isReady: boolean;
   hasError: boolean;
   /**
-   * Mode libur menyala (sql/120): RPC menandai setiap hari kerja sejak
+   * Mode libur menyala (sql/122): RPC menandai setiap hari kerja sejak
    * tanggal nyala 'holiday', jadi jendela yang dimulai hari ini berisi libur
    * ⇔ tim admin sedang libur. Pemilih TIDAK merender grid saat ini true.
    */

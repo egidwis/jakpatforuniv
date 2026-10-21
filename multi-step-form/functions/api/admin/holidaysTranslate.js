@@ -1,6 +1,6 @@
 import { HOLIDAY_LABEL_EN_MAX } from './holidaysGate.js';
 
-// Terjemahan otomatis pesan mode libur ke bahasa Inggris (sql/120 `label_en`).
+// Terjemahan otomatis pesan mode libur ke bahasa Inggris (sql/122 `label_en`).
 // Model & kunci yang sama dengan audit-submission.js. Gagal / lewat batas waktu
 // = null: pemanggil menulis '' dan peneliti berbahasa Inggris melihat teks
 // Indonesia — menyalakan libur TIDAK PERNAH gagal karena terjemahan.

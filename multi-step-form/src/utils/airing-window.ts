@@ -260,14 +260,14 @@ export function isWeekdayYmd(ymd: string): boolean {
 export function isKilatWaveBookable(ymd: string, hour: number, now: Date = new Date()): boolean {
     return (KILAT_SLOT_HOURS as readonly number[]).includes(hour)
         && isWeekdayYmd(ymd)
-        // sql/120 K3: semua pemanggil fungsi ini jalur PENELITI (wizard, Jadwal &
+        // sql/122 K3: semua pemanggil fungsi ini jalur PENELITI (wizard, Jadwal &
         // Bayar, Jadwal Baru). Papan admin memakai `nextWibWorkdays` sendiri.
         && ymd <= kilatLastBookableYmd(now)
         && now.getTime() <= kilatBookingClosesAt(ymd, hour).getTime();
 }
 
 /**
- * Jendela pesan Kilat PENELITI (keputusan 21 Okt 2026, sql/120 K3): Kilat
+ * Jendela pesan Kilat PENELITI (keputusan 21 Okt 2026, sql/122 K3): Kilat
  * menjual kecepatan, jadi hanya 3 hari kerja mulai hari ini WIB — hari ini
  * ikut dihitung walau gelombangnya sudah tutup. Admin tetap 2 minggu.
  */

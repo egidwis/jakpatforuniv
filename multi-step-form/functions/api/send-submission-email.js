@@ -1,6 +1,6 @@
 import { sendMail } from './_mail.js';
 
-// Mode libur (sql/120): status libur dibaca dengan anon key — tabelnya memang
+// Mode libur (sql/122): status libur dibaca dengan anon key — tabelnya memang
 // boleh dibaca anon (4 kolom). Batas 3 detik; gagal/lambat = email biasa.
 // Email konfirmasi TIDAK PERNAH gagal karena status libur.
 const HOLIDAYS_TABLE = 'JFU_operational_holidays';

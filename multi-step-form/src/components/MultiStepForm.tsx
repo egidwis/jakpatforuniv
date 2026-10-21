@@ -165,7 +165,7 @@ export function MultiStepForm() {
   const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
 
   /*
-    Mode libur (sql/120): pemilih gelombang Kilat TIDAK PERNAH tampil. Draft
+    Mode libur (sql/122): pemilih gelombang Kilat TIDAK PERNAH tampil. Draft
     Kilat yang dipulihkan di Step 3 (dibuat sebelum libur, atau libur menyala
     saat layar terbuka) mundur ke Ringkasan, yang lalu mengirimnya sebagai
     jalur manual (checkoutPath 'kilat_away'). Draft jadwal ulang tidak punya

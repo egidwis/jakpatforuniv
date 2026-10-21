@@ -4,7 +4,7 @@ import { translateAwayLabel } from './holidaysTranslate.js';
 // Huruf besar mengikuti pola JM_*; PostgREST menerima nama apa adanya.
 const HOLIDAYS_TABLE = 'JFU_operational_holidays';
 
-// Mode libur tim admin (toggle di halaman Submissions, sql/120). Tabel
+// Mode libur tim admin (toggle di halaman Submissions, sql/122). Tabel
 // "JFU_operational_holidays" hanya memberi SELECT ke anon/authenticated dan
 // TANPA policy tulis — satu-satunya penulis adalah fungsi ini lewat
 // service_role, setelah email pemanggil dicocokkan ke ADMIN_EMAILS (pola seri
