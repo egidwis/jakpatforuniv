@@ -1,5 +1,5 @@
 import { KILAT_QUOTA_PER_SLOT } from './constants';
-import { addDaysToYmd, isKilatWaveBookable, toWibYmd } from './airing-window';
+import { addDaysToYmd, isKilatWaveBookable, kilatLastBookableYmd, KILAT_SELF_SERVE_WORKDAYS, toWibYmd } from './airing-window';
 import type { TranslationKey } from '../i18n/translations';
 import type { KilatWaveErrorKind } from './dailyQuotaError';
 
@@ -41,10 +41,10 @@ export interface KilatWaveDay {
   hasOpenWave: boolean;
 }
 
-/** Hari kalender yang diminta ke RPC: cukup untuk 10 hari kerja walau ada libur. */
-export const KILAT_WAVE_WINDOW_DAYS = 20;
-/** Berapa hari kerja yang ditawarkan ke peneliti. Dua minggu kerja. */
-export const KILAT_WAVE_WORKDAYS = 10;
+/** Hari kalender yang diminta ke RPC: cukup untuk 3 hari kerja walau melewati akhir pekan. */
+export const KILAT_WAVE_WINDOW_DAYS = 7;
+/** Berapa hari kerja yang ditawarkan ke peneliti (sql/120 K3). Dulu 10 = dua minggu. */
+export const KILAT_WAVE_WORKDAYS = KILAT_SELF_SERVE_WORKDAYS;
 
 export function kilatWaveWindow(now: Date = new Date()): { from: string; to: string } {
   const from = toWibYmd(now);
@@ -86,8 +86,11 @@ export function kilatWaveDays(
   count: number = KILAT_WAVE_WORKDAYS,
 ): KilatWaveDay[] {
   const byDay = new Map<string, KilatWaveCell[]>();
+  const last = kilatLastBookableYmd(now);
   for (const row of rows) {
     if (row.closedReason === 'weekend') continue;
+    // Di luar jendela 3 hari kerja: tidak dirender (server juga menolaknya).
+    if (row.date > last) continue;
     const cell: KilatWaveCell = {
       ...row,
       status: kilatWaveStatus(row, now),
@@ -135,12 +138,13 @@ export function kilatPickStatus(
 
 export const formatWaveHour = (hour: number) => `${String(hour).padStart(2, '0')}.00`;
 
-export type KilatLockReason = 'no_date' | 'no_wave' | 'past_cutoff' | 'holiday' | 'availability_unknown' | 'wave_full';
+export type KilatLockReason = 'no_date' | 'no_wave' | 'too_far' | 'past_cutoff' | 'holiday' | 'availability_unknown' | 'wave_full';
 
 /** Kunci i18n per sebab — bertipe supaya salah ketik jadi galat kompilasi. */
 const KILAT_LOCK_MESSAGE: Record<KilatLockReason, TranslationKey> = {
   no_date: 'slotErrorNoDate',
   no_wave: 'kilatErrorNoWave',
+  too_far: 'kilatErrorWaveTooFar',
   past_cutoff: 'kilatErrorWaveClosed',
   holiday: 'kilatErrorWaveHoliday',
   availability_unknown: 'slotErrorAvailabilityUnknown',
@@ -179,6 +183,8 @@ export function kilatLockGate(
 
   if (!pick) return no('no_date');
   if (pick.hour == null) return no('no_wave');
+  // Draf/halaman lama bisa membawa gelombang di luar jendela 3 hari kerja.
+  if (pick.ymd > kilatLastBookableYmd(now)) return no('too_far', { clearSelection: true });
   if (!isKilatWaveBookable(pick.ymd, pick.hour, now)) return no('past_cutoff', { clearSelection: true });
   if (!availability.isReady) return no('availability_unknown', { shouldReload: true });
 
@@ -195,5 +201,6 @@ export function kilatLockGate(
 export function kilatWaveErrorMessageKey(kind: KilatWaveErrorKind): TranslationKey {
   if (kind === 'full') return 'errorSlotFullKilat';
   if (kind === 'away') return 'kilatErrorWaveHoliday';
+  if (kind === 'too_far') return 'kilatErrorWaveTooFar';
   return 'kilatErrorWaveClosed';
 }

@@ -6,6 +6,7 @@ import { formatWibTime } from '../utils/airing-window';
 import {
   formatWaveHour,
   kilatWaveDays,
+  KILAT_WAVE_WORKDAYS,
   type KilatWaveCell,
   type KilatWaveDraft,
 } from '../utils/kilatWaves';
@@ -48,8 +49,8 @@ export function KilatWavePicker({
 
   if (!availability.isReady) {
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5" aria-busy="true">
-        {Array.from({ length: 10 }).map((_, i) => (
+      <div className="grid grid-cols-3 gap-2.5" aria-busy="true">
+        {Array.from({ length: KILAT_WAVE_WORKDAYS }).map((_, i) => (
           <div key={i} className="h-[84px] rounded-2xl border border-slate-200 bg-white animate-pulse" />
         ))}
       </div>
@@ -88,7 +89,8 @@ export function KilatWavePicker({
     <div className="space-y-5">
       <fieldset className="space-y-2">
         <legend className="text-sm font-semibold text-slate-800 mb-2">{t('kilatWavePickDay')}</legend>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+        {/* Tiga hari kerja (sql/120 K3) — satu baris, juga di ponsel. */}
+        <div className="grid grid-cols-3 gap-2.5">
           {days.map((day) => {
             const isSelected = value?.ymd === day.ymd;
             const disabled = !day.hasOpenWave;

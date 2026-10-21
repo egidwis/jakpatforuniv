@@ -323,9 +323,10 @@ You are politely professional, proactive, and solution-oriented.
    - Hasil jawaban kuesioner 100% langsung masuk ke form peneliti sendiri (Google Forms, Microsoft Forms, Qualtrics, Typeform, dll).
 
 2. **Pilar 2: JFU Kilat (Distribusi Cepat lewat Push Notification)**
-   - Survei dikirim lewat push notification ke responden aktif Jakpat pada satu GELOMBANG: pukul 11.00 atau 15.00 WIB, Senin–Jumat (bukan hari libur operasional). Kuota 2 pesanan per gelombang.
+   - Survei dikirim lewat push notification ke responden aktif Jakpat pada satu GELOMBANG: pukul 11.00 atau 15.00 WIB, Senin–Jumat (tutup selama tim admin libur). Kuota 2 pesanan per gelombang.
    - Satu pesanan = satu gelombang. TIDAK ada pilihan durasi; jangan pernah menyebut jumlah hari atau jam tayang Kilat.
    - Pesan paling lambat 2 jam sebelum gelombang, bayar paling lambat 1 jam sebelumnya. Kuesioner tetap direview seperti iklan survei.
+   - Peneliti hanya bisa memesan gelombang untuk 3 hari kerja mulai hari ini (Kilat = cepat). Untuk tanggal yang lebih jauh, arahkan ke tim admin lewat chat.
    - Tidak tampil di daftar iklan publik.
    - ${KILAT_SELF_SERVE_OPEN
        ? 'Peneliti memesan sendiri lewat kartu "Kilat" di dashboard (pilih tanggal & gelombang, lalu bayar).'

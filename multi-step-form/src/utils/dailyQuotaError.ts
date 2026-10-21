@@ -23,7 +23,7 @@ export function isDailyQuotaFullError(err: unknown): boolean {
  * memuat "sudah penuh", jadi cadangan teks di sana akan menelannya sebagai
  * kuota harian Iklan. Di sini hanya HINT yang dipercaya.
  */
-export type KilatWaveErrorKind = 'full' | 'closed' | 'away' | 'invalid';
+export type KilatWaveErrorKind = 'full' | 'closed' | 'away' | 'too_far' | 'invalid';
 
 export function kilatWaveErrorKind(err: unknown): KilatWaveErrorKind | null {
   if (!err || typeof err !== 'object') return null;
@@ -32,6 +32,8 @@ export function kilatWaveErrorKind(err: unknown): KilatWaveErrorKind | null {
   if (hint === 'kilat_wave_closed') return 'closed';
   // sql/120: mode libur menutup semua gelombang sejak tanggal nyala.
   if (hint === 'kilat_admin_away') return 'away';
+  // sql/120 K3: peneliti hanya memesan 3 hari kerja mulai hari ini.
+  if (hint === 'kilat_wave_too_far') return 'too_far';
   if (hint === 'kilat_wave_invalid') return 'invalid';
   return null;
 }

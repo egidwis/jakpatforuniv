@@ -14,6 +14,7 @@ import {
   addDaysToYmd,
   isBookingClosedForDate,
   isKilatWaveBookable,
+  kilatLastBookableYmd,
   toAiringStartIso,
   toAiringEndIso,
   toLocalYmd,
@@ -35,6 +36,7 @@ export type OrderSubmitErrorCode =
   | 'past_cutoff'
   | 'kilat_wave_closed'
   | 'kilat_admin_away'
+  | 'kilat_wave_too_far'
   | 'slot_full_kilat'
   | 'slot_full'
   | 'availability_check_failed'
@@ -62,6 +64,7 @@ const ERROR_KEYS: Record<OrderSubmitErrorCode, TranslationKey> = {
   past_cutoff: 'slotErrorPastCutoff',
   kilat_wave_closed: 'kilatErrorWaveClosed',
   kilat_admin_away: 'kilatErrorWaveHoliday',
+  kilat_wave_too_far: 'kilatErrorWaveTooFar',
   slot_full_kilat: 'errorSlotFullKilat',
   slot_full: 'errorSlotFullRange',
   availability_check_failed: 'errorAvailabilityCheck',
@@ -149,6 +152,10 @@ export async function submitOrder({
   // menegakkan hal yang sama — ini supaya pesannya jelas, bukan galat mentah).
   if (startYmd) {
     if (isKilat) {
+      // sql/120 K3: lebih jauh dari 3 hari kerja = teguran sendiri, bukan "tutup".
+      if (isAutoApproval && startYmd > kilatLastBookableYmd()) {
+        throw new OrderSubmitError('kilat_wave_too_far');
+      }
       if (isAutoApproval && kilatHour != null && !isKilatWaveBookable(startYmd, kilatHour)) {
         throw new OrderSubmitError('kilat_wave_closed');
       }
@@ -326,6 +333,7 @@ export async function submitOrder({
     if (waveError === 'full') throw new OrderSubmitError('slot_full_kilat');
     if (waveError === 'closed') throw new OrderSubmitError('kilat_wave_closed');
     if (waveError === 'away') throw new OrderSubmitError('kilat_admin_away');
+    if (waveError === 'too_far') throw new OrderSubmitError('kilat_wave_too_far');
     // Penolakan kuota datang dari trigger database (sql/110 → sql/111), bukan
     // dari cek browser di atas. Tanpa pemetaan ini peneliti hanya melihat
     // "gagal menyimpan", padahal tanggalnya yang penuh.

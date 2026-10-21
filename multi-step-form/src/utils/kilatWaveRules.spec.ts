@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
-  isKilatWaveBookable, isWeekdayYmd, kilatBookingClosesAt, kilatPayDeadline, kilatWaveInstant, nextWibWorkdays,
+  isKilatWaveBookable, isWeekdayYmd, kilatBookingClosesAt, kilatLastBookableYmd, kilatPayDeadline, kilatWaveInstant, nextWibWorkdays,
 } from './airing-window';
 import {
   KILAT_BOOKING_LEAD_MIN, KILAT_PAY_LEAD_MIN, KILAT_QUOTA_PER_SLOT, KILAT_SELF_SERVE_OPEN, KILAT_SLOT_HOURS,
@@ -68,15 +68,54 @@ describe('isKilatWaveBookable', () => {
   });
 
   test('jam lama & akhir pekan ditolak', () => {
-    const now = T('2026-11-10T08:00:00+07:00');
+    // Jumat 13 Nov: jendela 3 hari kerja s/d Selasa 17 Nov — akhir pekan & Senin di dalamnya.
+    const now = T('2026-11-13T08:00:00+07:00');
+    expect(isKilatWaveBookable('2026-11-16', 11, now)).toBe(true);
     for (const h of [8, 14, 17]) expect(isKilatWaveBookable('2026-11-16', h, now)).toBe(false);
-    expect(isKilatWaveBookable('2026-11-21', 11, now)).toBe(false); // Sabtu
-    expect(isKilatWaveBookable('2026-11-22', 15, now)).toBe(false); // Minggu
+    expect(isKilatWaveBookable('2026-11-14', 11, now)).toBe(false); // Sabtu
+    expect(isKilatWaveBookable('2026-11-15', 15, now)).toBe(false); // Minggu
   });
 
   test('isWeekdayYmd tidak bergantung zona device', () => {
     expect(['2026-11-16', '2026-11-20'].map(isWeekdayYmd)).toEqual([true, true]);
     expect(['2026-11-21', '2026-11-22'].map(isWeekdayYmd)).toEqual([false, false]);
+  });
+});
+
+describe('kilatLastBookableYmd — jendela 3 hari kerja (sql/120 K3)', () => {
+  test('tabel keputusan: Sen→Rab, Kam→Sen, Jum→Sel, Sab/Min→Rab', () => {
+    expect(kilatLastBookableYmd(T('2026-10-26T08:00:00+07:00'))).toBe('2026-10-28');
+    expect(kilatLastBookableYmd(T('2026-10-29T08:00:00+07:00'))).toBe('2026-11-02');
+    expect(kilatLastBookableYmd(T('2026-10-30T14:00:00+07:00'))).toBe('2026-11-03');
+    expect(kilatLastBookableYmd(T('2026-10-31T08:00:00+07:00'))).toBe('2026-11-04');
+    expect(kilatLastBookableYmd(T('2026-11-01T08:00:00+07:00'))).toBe('2026-11-04');
+  });
+
+  test('Jumat 23.30 WIB (16.30 UTC) masih Jumat; 17.30 UTC sudah Sabtu WIB', () => {
+    expect(kilatLastBookableYmd(T('2026-10-30T16:29:00Z'))).toBe('2026-11-03');
+    expect(kilatLastBookableYmd(T('2026-10-30T17:30:00Z'))).toBe('2026-11-04');
+  });
+
+  /*
+    PARITAS dengan SQL `kilat_last_bookable_date` — tabel ini adalah keluaran
+    fungsi SQL di harness PGlite sql/120 (24 Okt–6 Nov 2026). Mengubah aturan
+    di salah satu sisi tanpa sisi lain akan memerahkan tes ini.
+  */
+  test('paritas 14 hari dengan kilat_last_bookable_date (PGlite)', () => {
+    const SQL: Array<[string, string]> = [
+      ['2026-10-24', '2026-10-28'], ['2026-10-25', '2026-10-28'], ['2026-10-26', '2026-10-28'],
+      ['2026-10-27', '2026-10-29'], ['2026-10-28', '2026-10-30'], ['2026-10-29', '2026-11-02'],
+      ['2026-10-30', '2026-11-03'], ['2026-10-31', '2026-11-04'], ['2026-11-01', '2026-11-04'],
+      ['2026-11-02', '2026-11-04'], ['2026-11-03', '2026-11-05'], ['2026-11-04', '2026-11-06'],
+      ['2026-11-05', '2026-11-09'], ['2026-11-06', '2026-11-10'],
+    ];
+    for (const [day, last] of SQL) expect(kilatLastBookableYmd(T(`${day}T10:00:00+07:00`))).toBe(last);
+  });
+
+  test('hari ke-4 tidak bisa dipesan walau gelombangnya masih jauh dari batas', () => {
+    const now = T('2026-11-16T08:00:00+07:00'); // Senin
+    expect(isKilatWaveBookable('2026-11-18', 15, now)).toBe(true);  // Rabu = hari ke-3
+    expect(isKilatWaveBookable('2026-11-19', 15, now)).toBe(false); // Kamis = hari ke-4
   });
 });
 

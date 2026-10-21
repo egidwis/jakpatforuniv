@@ -333,7 +333,7 @@ export const translations = {
     scheduleLockCta: "Lock This Date",
     scheduleHoldHint: "The schedule is held for 1 hour after you lock it, so you have time to complete the payment.",
     // Pemilih gelombang JFU Kilat (Phase 5 §5.5)
-    kilatWaveCutoffNote: "Book at least 2 hours before the wave, pay at least 1 hour before. Monday–Friday only.",
+    kilatWaveCutoffNote: "Bookable for the next 3 working days, starting today. Book at least 2 hours before the wave, pay at least 1 hour before.",
     kilatWavePickDay: "Pick a date",
     kilatWavePickWave: "Pick a push wave",
     kilatWavePickDayFirst: "Pick a date first to see its waves.",
@@ -355,7 +355,8 @@ export const translations = {
     kilatWaveBookBy: "Book by {time} WIB",
     kilatWaveHoliday: "Holiday",
     kilatWaveDayClosed: "Closed",
-    kilatWaveEmpty: "No wave can be booked in the next two weeks. Check again later.",
+    kilatWaveEmpty: "No wave can be booked in the next 3 working days. Check again later.",
+    kilatErrorWaveTooFar: "JFU Kilat waves can only be booked for the next 3 working days, starting today. Please pick a closer wave.",
     scheduleEstimatedTitle: "Estimated Airing Schedule",
     // Halaman Jadwal & Bayar dua kolom — kalender beku & ringkasan
     lockedTileLabel: "Locked for you",
@@ -1610,7 +1611,7 @@ export const translations = {
     scheduleLockCta: "Kunci Tanggal Ini",
     scheduleHoldHint: "Jadwal ditahan 1 jam setelah dikunci supaya kamu sempat menyelesaikan pembayaran.",
     // Pemilih gelombang JFU Kilat (Phase 5 §5.5)
-    kilatWaveCutoffNote: "Pesan paling lambat 2 jam sebelum gelombang, bayar paling lambat 1 jam sebelumnya. Hanya Senin–Jumat.",
+    kilatWaveCutoffNote: "Bisa dipesan untuk 3 hari kerja mulai hari ini. Pesan paling lambat 2 jam sebelum gelombang, bayar paling lambat 1 jam sebelumnya.",
     kilatWavePickDay: "Pilih tanggal",
     kilatWavePickWave: "Pilih gelombang push",
     kilatWavePickDayFirst: "Pilih tanggal dulu untuk melihat gelombangnya.",
@@ -1632,7 +1633,8 @@ export const translations = {
     kilatWaveBookBy: "Pesan s/d {time} WIB",
     kilatWaveHoliday: "Libur",
     kilatWaveDayClosed: "Tutup",
-    kilatWaveEmpty: "Belum ada gelombang yang bisa dipesan dua minggu ke depan. Coba cek lagi nanti.",
+    kilatWaveEmpty: "Belum ada gelombang yang bisa dipesan 3 hari kerja ke depan. Coba cek lagi nanti.",
+    kilatErrorWaveTooFar: "Gelombang JFU Kilat hanya bisa dipesan untuk 3 hari kerja mulai hari ini. Silakan pilih gelombang yang lebih dekat.",
     scheduleEstimatedTitle: "Estimasi Jadwal Tayang",
     // Halaman Jadwal & Bayar dua kolom — kalender beku & ringkasan
     lockedTileLabel: "Ditahan untukmu",

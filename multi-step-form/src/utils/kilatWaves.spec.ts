@@ -77,9 +77,15 @@ describe('kilatWaveDays', () => {
       row('2026-10-26', 11, { isClosed: true, closedReason: 'holiday' }),
       row('2026-10-26', 15, { isClosed: true, closedReason: 'holiday' }),
     ];
-    const days = kilatWaveDays(rows, NOW);
+    // Kamis 22 Okt → jendela 3 hari kerja s/d Senin 26 Okt (sql/120 K3).
+    const days = kilatWaveDays(rows, new Date('2026-10-22T01:00:00Z'));
     expect(days.map((d) => d.ymd)).toEqual(['2026-10-23', '2026-10-26']);
     expect(days[1]).toMatchObject({ isHoliday: true, hasOpenWave: false });
+  });
+
+  it('jendela peneliti = 3 hari kerja mulai hari ini; hari ke-4 tidak dirender', () => {
+    const rows = ['2026-10-19', '2026-10-20', '2026-10-21', '2026-10-22'].map((d) => row(d, 15));
+    expect(kilatWaveDays(rows, NOW).map((d) => d.ymd)).toEqual(['2026-10-19', '2026-10-20', '2026-10-21']);
   });
 
   it('jam diurutkan dan sisa kursi dihitung', () => {
@@ -105,7 +111,7 @@ describe('kilatWaveWindow', () => {
     expect(kilatWaveWindow(new Date('2026-10-18T16:30:00Z')).from).toBe('2026-10-18');
   });
 
-  it('muat batas RPC (≤ 31 hari) dan selalu memuat ≥ 10 hari kerja', () => {
+  it('muat batas RPC (≤ 31 hari) dan selalu memuat jendela hari kerja peneliti', () => {
     expect(KILAT_WAVE_WINDOW_DAYS).toBeLessThanOrEqual(31);
     for (let i = 0; i < 7; i++) {
       const from = addDaysToYmd('2026-10-19', i);
@@ -147,6 +153,12 @@ describe('kilatLockGate', () => {
   it('penuh → teguran + muat ulang; terbuka → lolos', () => {
     expect(kilatLockGate({ ymd: '2026-10-19', hour: 15 }, ready, NOW)).toMatchObject({ ok: false, reason: 'wave_full' });
     expect(kilatLockGate({ ymd: '2026-10-19', hour: 11 }, ready, NOW)).toEqual({ ok: true, ymd: '2026-10-19', hour: 11 });
+  });
+
+  it('di luar 3 hari kerja (draf / halaman lama) → too_far, pilihan dibersihkan', () => {
+    const far = { isReady: true, rows: [row('2026-10-22', 11)] };
+    expect(kilatLockGate({ ymd: '2026-10-22', hour: 11 }, far, NOW))
+      .toMatchObject({ ok: false, reason: 'too_far', messageKey: 'kilatErrorWaveTooFar', clearSelection: true });
   });
 
   it('mode libur (sql/120) → ditolak dengan teguran libur, pilihan dibersihkan', () => {

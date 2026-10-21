@@ -138,6 +138,17 @@ describe('submitOrder — Kilat jalur otomatis', () => {
     expect(await codeOf(run(kilatForm()))).toBe('kilat_wave_closed');
   });
 
+  it('di luar 3 hari kerja (Senin → Kamis) → kilat_wave_too_far, tanpa RPC & tanpa INSERT', async () => {
+    expect(await codeOf(run(kilatForm({ startDate: '2026-10-22', kilatSlotHour: 15, startTime: '15:00' })))).toBe('kilat_wave_too_far');
+    expect(rpcCalls).toHaveLength(0);
+    expect(inserted).toHaveLength(0);
+  });
+
+  it('galat trigger kilat_wave_too_far (sql/120 K3) → kilat_wave_too_far', async () => {
+    insertError = { message: 'Gelombang JFU Kilat hanya bisa dipesan untuk 3 hari kerja ke depan.', hint: 'kilat_wave_too_far' };
+    expect(await codeOf(run(kilatForm()))).toBe('kilat_wave_too_far');
+  });
+
   it('galat trigger kilat_admin_away (mode libur, sql/120) → kilat_admin_away', async () => {
     insertError = { message: 'JFU Kilat tutup sementara selama tim admin libur.', hint: 'kilat_admin_away' };
     expect(await codeOf(run(kilatForm()))).toBe('kilat_admin_away');
