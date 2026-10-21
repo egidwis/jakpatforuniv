@@ -458,8 +458,8 @@ export const JsonRenderGenerativeUi: React.FC<JsonRenderGenerativeUiProps> = ({
   const { registry } = defineRegistry(miminCatalog, {
     components: {
       Card: ({ props, children }) => (
-        <div className="mt-3 p-3.5 sm:p-4 bg-gradient-to-br from-slate-50/95 to-indigo-50/30 border border-indigo-100 rounded-2xl shadow-xs space-y-3 w-full max-w-full overflow-hidden box-border">
-          <div className="flex items-center justify-between gap-2 border-b border-indigo-100/60 pb-2.5">
+        <div className="mt-3 p-3.5 sm:p-4 bg-gradient-to-br from-slate-50/95 to-blue-50/30 border border-blue-100 rounded-2xl shadow-xs space-y-3 w-full max-w-full overflow-hidden box-border">
+          <div className="flex items-center justify-between gap-2 border-b border-blue-100/60 pb-2.5">
             <div className="min-w-0">
               <h4 className="text-xs sm:text-sm font-bold text-slate-800 leading-tight truncate">{props.title}</h4>
               {props.description && (
@@ -467,7 +467,7 @@ export const JsonRenderGenerativeUi: React.FC<JsonRenderGenerativeUiProps> = ({
               )}
             </div>
             {props.badge && (
-              <span className="text-[10px] font-semibold bg-indigo-100/80 text-indigo-700 px-2.5 py-0.5 rounded-full shrink-0">
+              <span className="text-[10px] font-semibold bg-blue-100/80 text-jfu-dark px-2.5 py-0.5 rounded-full shrink-0">
                 {props.badge}
               </span>
             )}
@@ -495,7 +495,7 @@ export const JsonRenderGenerativeUi: React.FC<JsonRenderGenerativeUiProps> = ({
         };
 
         return (
-          <div className="p-3 bg-white border border-slate-200/80 hover:border-indigo-300 rounded-xl shadow-xs transition-all space-y-2 w-full min-w-0">
+          <div className="p-3 bg-white border border-slate-200/80 hover:border-blue-300 rounded-xl shadow-xs transition-all space-y-2 w-full min-w-0">
             <div className="flex items-start justify-between gap-2">
               <h5 className="text-xs font-bold text-slate-900 leading-tight truncate flex-1">
                 {props.title}
@@ -519,7 +519,7 @@ export const JsonRenderGenerativeUi: React.FC<JsonRenderGenerativeUiProps> = ({
                 <button
                   type="button"
                   onClick={() => navigate(props.actionUrl || '/dashboard')}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-2xs transition-all cursor-pointer active:scale-95"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-jfu-primary hover:bg-jfu-dark text-white rounded-xl text-xs font-bold shadow-2xs transition-all cursor-pointer active:scale-95"
                 >
                   <span>{props.actionLabel}</span>
                   <ChevronRight className="w-3.5 h-3.5" />
@@ -547,7 +547,7 @@ export const JsonRenderGenerativeUi: React.FC<JsonRenderGenerativeUiProps> = ({
               ? 'bg-amber-50/80 border-amber-200 text-amber-800'
               : isSuccess
               ? 'bg-emerald-50/80 border-emerald-200 text-emerald-800'
-              : 'bg-indigo-50/80 border-indigo-200 text-indigo-800'
+              : 'bg-blue-50/80 border-blue-200 text-jfu-dark'
           }`}>
             {isWarn ? (
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -570,7 +570,7 @@ export const JsonRenderGenerativeUi: React.FC<JsonRenderGenerativeUiProps> = ({
               ? 'bg-slate-100 hover:bg-slate-200 text-slate-700'
               : props.variant === 'outline'
               ? 'border border-slate-200 hover:bg-slate-50 text-slate-700'
-              : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
+              : 'bg-jfu-primary hover:bg-jfu-dark text-white shadow-xs'
           }`}
         >
           <span>{props.label}</span>
@@ -597,11 +597,11 @@ export const JsonRenderGenerativeUi: React.FC<JsonRenderGenerativeUiProps> = ({
       ),
 
       QuickInfoCard: ({ props }) => (
-        <div className="mt-3 p-3.5 bg-white border border-indigo-100 rounded-2xl shadow-xs space-y-1">
+        <div className="mt-3 p-3.5 bg-white border border-blue-100 rounded-2xl shadow-xs space-y-1">
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-bold text-slate-800">{props.title}</h4>
             {props.badge && (
-              <span className="text-[10px] font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] font-semibold bg-blue-50 text-jfu-dark px-2 py-0.5 rounded-full">
                 {props.badge}
               </span>
             )}

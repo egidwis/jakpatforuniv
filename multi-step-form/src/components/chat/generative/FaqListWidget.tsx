@@ -29,9 +29,9 @@ export const FaqListWidget: React.FC<FaqListWidgetProps> = ({
   const defaultValue = `faq-${safeIndex}`;
 
   return (
-    <div className="mt-3 p-3.5 sm:p-4 bg-gradient-to-br from-slate-50/95 to-indigo-50/30 border border-indigo-100 rounded-2xl shadow-xs w-full max-w-full overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-indigo-100/60 pb-2.5 mb-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-600 text-white shrink-0">
+    <div className="mt-3 p-3.5 sm:p-4 bg-gradient-to-br from-slate-50/95 to-blue-50/30 border border-blue-100 rounded-2xl shadow-xs w-full max-w-full overflow-hidden">
+      <div className="flex items-center gap-2 border-b border-blue-100/60 pb-2.5 mb-2">
+        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-jfu-primary text-white shrink-0">
           <HelpCircle className="w-3.5 h-3.5" />
         </span>
         <div className="min-w-0">
@@ -40,7 +40,7 @@ export const FaqListWidget: React.FC<FaqListWidgetProps> = ({
             Ketuk pertanyaan untuk melihat jawaban resmi dari FAQ JFU.
           </p>
         </div>
-        <span className="ml-auto text-[10px] font-semibold bg-indigo-100/80 text-indigo-700 px-2.5 py-0.5 rounded-full shrink-0">
+        <span className="ml-auto text-[10px] font-semibold bg-blue-100/80 text-jfu-dark px-2.5 py-0.5 rounded-full shrink-0">
           {items.length} FAQ
         </span>
       </div>
@@ -49,9 +49,9 @@ export const FaqListWidget: React.FC<FaqListWidgetProps> = ({
           <AccordionItem
             key={`${i}-${item.q}`}
             value={`faq-${i}`}
-            className="border border-slate-200/80 rounded-xl px-3 py-0 bg-white data-[state=open]:border-indigo-200 data-[state=open]:shadow-2xs"
+            className="border border-slate-200/80 rounded-xl px-3 py-0 bg-white data-[state=open]:border-blue-200 data-[state=open]:shadow-2xs"
           >
-            <AccordionTrigger className="text-left py-2.5 text-xs font-semibold text-slate-800 hover:text-indigo-700 hover:no-underline leading-snug">
+            <AccordionTrigger className="text-left py-2.5 text-xs font-semibold text-slate-800 hover:text-jfu-dark hover:no-underline leading-snug">
               {item.q}
             </AccordionTrigger>
             <AccordionContent className="text-slate-600 text-xs pb-3 leading-relaxed border-t border-slate-100 pt-2">

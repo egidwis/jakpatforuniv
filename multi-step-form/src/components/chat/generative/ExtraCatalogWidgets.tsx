@@ -27,9 +27,9 @@ export function WidgetShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="mt-3 p-3.5 sm:p-4 bg-gradient-to-br from-slate-50/95 to-indigo-50/30 border border-indigo-100 rounded-2xl shadow-xs space-y-3 w-full max-w-full overflow-hidden box-border">
+    <div className="mt-3 p-3.5 sm:p-4 bg-gradient-to-br from-slate-50/95 to-blue-50/30 border border-blue-100 rounded-2xl shadow-xs space-y-3 w-full max-w-full overflow-hidden box-border">
       {(title || badge) && (
-        <div className="flex items-center justify-between gap-2 border-b border-indigo-100/60 pb-2.5">
+        <div className="flex items-center justify-between gap-2 border-b border-blue-100/60 pb-2.5">
           <div className="min-w-0 flex items-start gap-2">
             {icon}
             <div className="min-w-0">
@@ -38,7 +38,7 @@ export function WidgetShell({
             </div>
           </div>
           {badge && (
-            <span className="text-[10px] font-semibold bg-indigo-100/80 text-indigo-700 px-2.5 py-0.5 rounded-full shrink-0">
+            <span className="text-[10px] font-semibold bg-blue-100/80 text-jfu-dark px-2.5 py-0.5 rounded-full shrink-0">
               {badge}
             </span>
           )}
@@ -59,11 +59,11 @@ export function StepListWidget({
   steps?: Array<{ title: string; body?: string }>;
 }) {
   return (
-    <WidgetShell title={title || 'Langkahnya'} description={description} icon={<ListOrdered className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />}>
+    <WidgetShell title={title || 'Langkahnya'} description={description} icon={<ListOrdered className="w-4 h-4 text-jfu-primary mt-0.5 shrink-0" />}>
       <ol className="space-y-2.5">
         {steps.map((step, i) => (
           <li key={i} className="flex gap-2.5">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white mt-0.5">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-jfu-primary text-[10px] font-bold text-white mt-0.5">
               {i + 1}
             </span>
             <div className="min-w-0">
@@ -95,7 +95,7 @@ export function OptionCardsWidget({
             <div className="flex items-start justify-between gap-2">
               <p className="text-xs font-bold text-slate-800 leading-snug">{opt.title}</p>
               {opt.badge && (
-                <span className="text-[10px] font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full shrink-0">
+                <span className="text-[10px] font-semibold bg-blue-50 text-jfu-dark px-2 py-0.5 rounded-full shrink-0">
                   {opt.badge}
                 </span>
               )}
@@ -105,7 +105,7 @@ export function OptionCardsWidget({
               <button
                 type="button"
                 onClick={() => openChatHref(opt.url!, navigate)}
-                className="w-full py-1.5 px-2 rounded-lg text-[11px] font-bold bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer"
+                className="w-full py-1.5 px-2 rounded-lg text-[11px] font-bold bg-jfu-primary text-white hover:bg-jfu-dark cursor-pointer"
               >
                 {opt.actionLabel}
               </button>
@@ -129,7 +129,7 @@ export function ComparisonTableWidget({
   rows?: Array<{ label: string; values: string[] }>;
 }) {
   return (
-    <WidgetShell title={title || 'Perbandingan'} description={description} icon={<Columns3 className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />}>
+    <WidgetShell title={title || 'Perbandingan'} description={description} icon={<Columns3 className="w-4 h-4 text-jfu-primary mt-0.5 shrink-0" />}>
       <div className="overflow-x-auto -mx-1">
         <table className="w-full text-[11px] min-w-[280px]">
           <thead>
@@ -208,12 +208,12 @@ export function ContactCardWidget({
   const href = `mailto:${address}${qs ? `?${qs}` : ''}`;
 
   return (
-    <WidgetShell title={title || 'Hubungi tim'} description={description} icon={<Mail className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />}>
+    <WidgetShell title={title || 'Hubungi tim'} description={description} icon={<Mail className="w-4 h-4 text-jfu-primary mt-0.5 shrink-0" />}>
       <p className="text-xs text-slate-600">{address}</p>
       <button
         type="button"
         onClick={() => openChatHref(href, navigate)}
-        className="w-full py-2 px-3 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer"
+        className="w-full py-2 px-3 rounded-xl text-xs font-bold bg-jfu-primary text-white hover:bg-jfu-dark cursor-pointer"
       >
         {actionLabel || `Email ${address}`}
       </button>
@@ -254,12 +254,12 @@ export function TimelineWidget({
   items?: Array<{ title: string; description?: string; state?: 'done' | 'current' | 'upcoming' }>;
 }) {
   return (
-    <WidgetShell title={title || 'Alur'} description={description} icon={<CircleDot className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />}>
+    <WidgetShell title={title || 'Alur'} description={description} icon={<CircleDot className="w-4 h-4 text-jfu-primary mt-0.5 shrink-0" />}>
       <ol className="space-y-3 relative">
         {items.map((item, i) => {
           const state = item.state || (i === 0 ? 'current' : 'upcoming');
           const dot =
-            state === 'done' ? 'bg-emerald-500' : state === 'current' ? 'bg-indigo-600' : 'bg-slate-300';
+            state === 'done' ? 'bg-emerald-500' : state === 'current' ? 'bg-jfu-primary' : 'bg-slate-300';
           return (
             <li key={i} className="flex gap-2.5">
               <span className={`mt-1 h-2.5 w-2.5 rounded-full shrink-0 ${dot}`} />
@@ -304,7 +304,7 @@ export function PricingTiersWidget({
       title={title || 'Tarif iklan harian'}
       description={description || 'Sebelum PPN 11%. Setiap baris Likert dihitung 1 pertanyaan.'}
       badge="Reguler"
-      icon={<Wallet className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />}
+      icon={<Wallet className="w-4 h-4 text-jfu-primary mt-0.5 shrink-0" />}
     >
       <ul className="space-y-1.5">
         {rows.map((row) => (
@@ -329,14 +329,14 @@ export function LinkListWidget({
 }) {
   const navigate = useNavigate();
   return (
-    <WidgetShell title={title || 'Tautan'} description={description} icon={<Link2 className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />}>
+    <WidgetShell title={title || 'Tautan'} description={description} icon={<Link2 className="w-4 h-4 text-jfu-primary mt-0.5 shrink-0" />}>
       <div className="flex flex-col gap-1.5">
         {links.map((link) => (
           <button
             key={link.url + link.label}
             type="button"
             onClick={() => openChatHref(link.url, navigate)}
-            className="text-left text-xs font-semibold text-indigo-700 hover:text-indigo-900 px-2.5 py-2 rounded-lg bg-white border border-slate-100 cursor-pointer"
+            className="text-left text-xs font-semibold text-jfu-dark hover:text-jfu-dark px-2.5 py-2 rounded-lg bg-white border border-slate-100 cursor-pointer"
           >
             {link.label}
           </button>
@@ -374,7 +374,7 @@ export function ListItemWidget({
           <div className="flex items-start justify-between gap-2">
             <p className="text-xs font-bold text-slate-800 leading-snug">{heading}</p>
             {badge && (
-              <span className="text-[10px] font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full shrink-0">
+              <span className="text-[10px] font-semibold bg-blue-50 text-jfu-dark px-2 py-0.5 rounded-full shrink-0">
                 {badge}
               </span>
             )}
@@ -438,11 +438,11 @@ export function StepperWidget({
 
   const childArray = React.Children.toArray(children);
   return (
-    <WidgetShell title={title || 'Langkah'} description={description} icon={<ListOrdered className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />}>
+    <WidgetShell title={title || 'Langkah'} description={description} icon={<ListOrdered className="w-4 h-4 text-jfu-primary mt-0.5 shrink-0" />}>
       <ol className="space-y-2">
         {childArray.map((child, i) => (
           <li key={i} className="flex gap-2.5">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white mt-0.5">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-jfu-primary text-[10px] font-bold text-white mt-0.5">
               {i + 1}
             </span>
             <div className="min-w-0 flex-1">{child}</div>

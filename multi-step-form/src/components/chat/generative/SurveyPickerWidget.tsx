@@ -43,7 +43,7 @@ export const SurveyPickerWidget: React.FC<SurveyPickerWidgetProps> = ({
         <button
           type="button"
           onClick={() => navigate('/dashboard')}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-jfu-primary hover:bg-jfu-dark text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
         >
           <span>Buka Dashboard</span>
           <ArrowUpRight className="w-3.5 h-3.5" />
@@ -62,11 +62,11 @@ export const SurveyPickerWidget: React.FC<SurveyPickerWidgetProps> = ({
   };
 
   return (
-    <div className="mt-3 p-3 sm:p-4 bg-gradient-to-br from-slate-50/90 to-indigo-50/30 border border-indigo-100/80 rounded-2xl shadow-xs space-y-3 w-full max-w-full overflow-hidden box-border">
+    <div className="mt-3 p-3 sm:p-4 bg-gradient-to-br from-slate-50/90 to-blue-50/30 border border-blue-100/80 rounded-2xl shadow-xs space-y-3 w-full max-w-full overflow-hidden box-border">
       {/* Header Widget */}
-      <div className="flex items-center justify-between border-b border-indigo-100/60 pb-2.5">
+      <div className="flex items-center justify-between border-b border-blue-100/60 pb-2.5">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-600 text-white text-[11px] font-bold shrink-0">
+          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-jfu-primary text-white text-[11px] font-bold shrink-0">
             🎯
           </span>
           <div className="min-w-0">
@@ -76,7 +76,7 @@ export const SurveyPickerWidget: React.FC<SurveyPickerWidgetProps> = ({
             </p>
           </div>
         </div>
-        <span className="text-[10px] font-semibold bg-indigo-100/80 text-indigo-700 px-2 py-0.5 rounded-full shrink-0">
+        <span className="text-[10px] font-semibold bg-blue-100/80 text-jfu-dark px-2 py-0.5 rounded-full shrink-0">
           Generative UI
         </span>
       </div>
@@ -90,7 +90,7 @@ export const SurveyPickerWidget: React.FC<SurveyPickerWidgetProps> = ({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Cari judul survei..."
-            className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all placeholder:text-slate-400"
+            className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-jfu-primary/20 focus:border-jfu-primary outline-none transition-all placeholder:text-slate-400"
           />
         </div>
       )}
@@ -109,12 +109,12 @@ export const SurveyPickerWidget: React.FC<SurveyPickerWidgetProps> = ({
                 onClick={() => setSelectedId(submission.id || '')}
                 className={`w-full text-left p-2.5 rounded-xl border transition-all flex items-start gap-2.5 cursor-pointer min-w-0 ${
                   isSelected
-                    ? 'bg-white border-indigo-500 ring-2 ring-indigo-500/20 shadow-xs'
+                    ? 'bg-white border-jfu-primary ring-2 ring-jfu-primary/20 shadow-xs'
                     : 'bg-white/80 hover:bg-white border-slate-200/70 text-slate-700'
                 }`}
               >
                 <div className={`mt-0.5 w-4 h-4 rounded-full flex items-center justify-center border transition-colors shrink-0 ${
-                  isSelected ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 bg-white'
+                  isSelected ? 'border-jfu-primary bg-jfu-primary text-white' : 'border-slate-300 bg-white'
                 }`}>
                   {isSelected && <CheckCircle2 className="w-3 h-3 stroke-[3]" />}
                 </div>
@@ -141,10 +141,10 @@ export const SurveyPickerWidget: React.FC<SurveyPickerWidgetProps> = ({
 
       {/* Active Selection Details & CTA Action */}
       {selectedOrder && (
-        <div className="pt-2.5 border-t border-indigo-100/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 w-full">
+        <div className="pt-2.5 border-t border-blue-100/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 w-full">
           <div className="min-w-0 flex-1">
             <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Survei Terpilih:</span>
-            <p className="text-xs font-bold text-indigo-900 truncate">
+            <p className="text-xs font-bold text-slate-900 truncate">
               {selectedOrder.submission.title || 'Survei'}
             </p>
           </div>
@@ -152,7 +152,7 @@ export const SurveyPickerWidget: React.FC<SurveyPickerWidgetProps> = ({
           <button
             type="button"
             onClick={handleAction}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-95 shrink-0 text-center"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-jfu-primary to-jfu-dark hover:from-jfu-dark hover:to-jfu-dark text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-95 shrink-0 text-center"
           >
             <span className="truncate">{actionLabel}</span>
             <ChevronRight className="w-3.5 h-3.5 shrink-0" />

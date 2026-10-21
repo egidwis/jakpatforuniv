@@ -36,20 +36,20 @@ export function DashboardLayout() {
           }}
         />
 
-        {/* Titik 2: Mid-Left — Aksen Warm Rose / Blush Pink yang Hidup */}
+        {/* Titik 2: Mid-Left — Pendaran Lembut Selaras Biru Jakpat & Sky Cyan */}
         <div
           className="absolute top-[28%] -left-[8%] md:-left-[4%] w-[550px] md:w-[800px] h-[550px] md:h-[800px] rounded-full pointer-events-none transform-gpu"
           style={{
-            background: 'radial-gradient(circle at center, rgba(251, 113, 133, 0.18) 0%, rgba(244, 114, 182, 0.10) 45%, transparent 75%)',
+            background: 'radial-gradient(circle at center, rgba(56, 189, 248, 0.14) 0%, rgba(24, 124, 255, 0.08) 45%, transparent 75%)',
             filter: 'blur(95px)',
           }}
         />
 
-        {/* Titik 3: Lower-Right — Aksen Soft Rose Pink Hangat */}
+        {/* Titik 3: Lower-Right — Aksen Biru-Ungu Halus Penyeimbang */}
         <div
           className="absolute top-[60%] -right-[5%] md:right-[4%] w-[550px] md:w-[750px] h-[550px] md:h-[750px] rounded-full pointer-events-none transform-gpu"
           style={{
-            background: 'radial-gradient(circle at center, rgba(244, 114, 182, 0.16) 0%, rgba(251, 113, 133, 0.08) 50%, transparent 75%)',
+            background: 'radial-gradient(circle at center, rgba(99, 102, 241, 0.10) 0%, rgba(56, 189, 248, 0.08) 50%, transparent 75%)',
             filter: 'blur(95px)',
           }}
         />

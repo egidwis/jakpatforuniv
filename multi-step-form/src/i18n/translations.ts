@@ -110,7 +110,7 @@ export const translations = {
     incentiveAccumulated: "added to the previous incentive pool",
     periodBatchLabel: "Lottery Period",
     airingDateLabel: "Reservation Date",
-    scheduleExpiredHint: "The payment link for this schedule has expired. Our team will issue a replacement — chat with Mimin below if you need it sooner.",
+    scheduleExpiredHint: "The payment link for this schedule has expired. Our team will issue a replacement — open Chat Mimin on the Dashboard if you need it sooner.",
     extStatusWaitingPayment: "Awaiting Payment",
     extStatusPaid: "Paid",
     extStatusScheduled: "Scheduled",
@@ -120,7 +120,7 @@ export const translations = {
     extStatusExpired: "Expired",
     noSubmissions: "No submissions yet",
     createFirstSurvey: "Create New Survey",
-    noSubmissionsDesc: "You haven't submitted any survey for distribution yet. Choose a service above or create a new form to get started.",
+    noSubmissionsDesc: "You haven't submitted any survey for distribution yet. Choose a service under Create New Order or create a new form to get started.",
     submittedOn: "Submitted on",
     days: "Days",
 
@@ -182,6 +182,7 @@ export const translations = {
     perWinner: "/winner",
     respondentCriteriaPlaceholder: "Example: Age 18-35 years, Jakarta Domicile, Active Student",
     respondentCriteriaLabel: "Respondent Criteria",
+    respondentCriteriaHint: "Only a guide for the prize draw. Your survey still airs to randomly profiled respondents.",
     respondentCriteriaHelp: "Respondent criteria on ads are only used as a *guide for prize draws*. Surveys are still distributed to a *randomly profiled audience*, so the respondents who complete them will be *diverse*.",
 
 
@@ -756,7 +757,6 @@ export const translations = {
     navOrders: "Dashboard",
     navMyOrder: "Dashboard",
     navTheForm: "Form Builder",
-    navChatMimin: "Chat Mimin",
     navCreateOrder: "New Order",
     navHelp: "Help",
     navProfile: "Profile",
@@ -767,7 +767,20 @@ export const translations = {
 
     // Dashboard revamp — homepage product hub
     createNewOrder: "Create New Order",
+    newOrderFab: "New order",
+    summaryPayBefore: "Pay before {when}",
+    summaryActionFix: "Fix questionnaire",
+    summaryMoreNeedAction: "+{count} more schedule(s) need action",
+    orderDetailsShow: "Details",
+    orderDetailsHide: "Hide details",
     comingSoon: "Coming Soon",
+    newBadge: "New",
+    createOrderSubtitle: "Choose how to distribute your survey",
+    createOrderChatCta: "Questions? Chat with Mimin",
+    startOrder: "Start",
+    createAdOrderBtn: "Place Survey Ad Now",
+    productAvailable: "Available",
+    orderListSubtitle: "Track the progress and broadcast schedule of your surveys",
     productAdsTitle: "Survey Ads",
     productAdsHook: "For maximum reach —",
     productAdsDesc: "Air your survey to thousands of active respondents in the Jakpat app.",
@@ -811,13 +824,13 @@ export const translations = {
 
     // Modal Pintu Masuk Iklan Survei (Ads Entry Modal)
     adsAwarenessModalTitle: "Survey Ads",
-    adsAwarenessModalSubtitle: "Overview of survey publishing mechanism",
-    adsAwarenessPoint1Title: "Random Respondent Profiles",
-    adsAwarenessPoint1Desc: "Surveys are broadcast to active general users with random profiles. Include screening questions in your questionnaire if you require specific respondent criteria.",
-    adsAwarenessPoint2Title: "Duration-Based Publishing",
-    adsAwarenessPoint2Desc: "This service is a duration-based ad broadcast (without guaranteed respondent quotas). The number of responses received is strongly influenced by your target criteria (more specific criteria are harder to match) and the reward you offer.",
-    adsAwarenessPoint3Title: "Review Prior to Publishing",
-    adsAwarenessPoint3Desc: "Each questionnaire will be reviewed beforehand to ensure the survey opens and runs smoothly on the Jakpat app.",
+    adsAwarenessModalSubtitle: "3 things researchers ask us most",
+    adsAwarenessPoint1Title: "Random respondents",
+    adsAwarenessPoint1Desc: "Your survey airs to users with random profiles. Use screening questions if you need a specific profile.",
+    adsAwarenessPoint2Title: "No response quota",
+    adsAwarenessPoint2Desc: "You pay for airing days, not a number of respondents. Results depend on your topic and the reward.",
+    adsAwarenessPoint3Title: "Checked before airing",
+    adsAwarenessPoint3Desc: "Questionnaires are reviewed first to run smoothly in the Jakpat app. Admin review takes up to 2 working days.",
     adsAwarenessTermsLink: "Learn more in our",
     adsAwarenessCheckboxLabel: "I understand the publishing mechanism and review process for this survey.",
     adsAwarenessContinueBtn: "Continue to survey details",
@@ -840,7 +853,6 @@ export const translations = {
     noOrdersInFilter: "No orders in this category.",
     noOrdersTitle: "No orders yet",
     createFirstOrder: "Create Your First Order",
-    chatAboutOrder: "Ask Mimin",
 
     // Dashboard revamp — next-step callout
     calloutReviewManual: "Your survey is being reviewed by our admin — max 2 working days (Mon–Fri). We'll notify you by email.",
@@ -862,8 +874,9 @@ export const translations = {
     // Dashboard revamp — survey details & order info accordions
     copyOrderId: "Copy booking ID",
     orderIdCopied: "Booking ID copied to clipboard",
-    copySubmissionId: "Copy submission ID",
-    submissionIdCopied: "Submission ID copied to clipboard",
+    copySubmissionId: "Copy order ID",
+    submissionIdCopied: "Order ID copied to clipboard",
+    orderIdLabel: "Order ID",
     scheduleExtensionPrefix: "Extension",
     scheduleExtensionLabel: "Ad Extension",
     scheduleExtendCardTitle: "Extend Airing Period",
@@ -986,7 +999,7 @@ export const translations = {
     // ditutup 65369c1. Kontrak scheduleCardActions.ts: aksi DIHILANGKAN,
     // bukan disabled, dan alasannya dititipkan ke kartu.
     scheduleAgainBlockedQuota: "Your current schedule is still holding its date. Once it is paid — or you cancel the reservation — you can schedule the next one.",
-    scheduleAgainBlockedInactive: "This order cannot take a new schedule right now. Chat with Mimin below if you need help.",
+    scheduleAgainBlockedInactive: "This order cannot take a new schedule right now. Open Chat Mimin on the Dashboard if you need help.",
     adDuration: "Ad duration",
     totalCost: "Total cost",
     questionsUnit: "questions",
@@ -1093,11 +1106,11 @@ export const translations = {
     // penawaran, bukan catatan. Lihat `utils/scheduleMoney.ts`.
     costIsEstimateNote: "Estimate at the rate locked for this schedule — the invoice is issued by our team.",
     incentiveNoAdditionNote: "No addition — current incentive still applies",
-    calloutCancelledSchedule: "Our team cancelled this schedule. Need an explanation? Chat with Mimin below.",
+    calloutCancelledSchedule: "Our team cancelled this schedule.",
     // Manual-review orders never pick their own airing date — the wizard skips
     // the schedule step for them. This replaces the reschedule button so the
     // card still says who is holding the next step.
-    rescheduleHandledByTeam: "Our team will reschedule this for you. Need an explanation? Chat with Mimin below.",
+    rescheduleHandledByTeam: "Our team will reschedule this for you. Need an explanation? Open Chat Mimin on the Dashboard.",
     // slot_cancelled is NOT "expired" — a person cancelled it. Never say
     // "automatically" here; that sends the researcher looking for a mistake
     // they did not make.
@@ -1114,11 +1127,12 @@ export const translations = {
     bannerTitleCreditEnded: "Your ad has finished airing — its invoice is still unpaid",
     bannerTitleCreditStopped: "Our team stopped this ad",
     creditPageTitle: "Payment to follow",
-    bannerSubCreditStopped: "The ad already aired, so its invoice still stands in full. There is no deadline for it. Need an explanation? Chat with Mimin below.",
+    bannerSubCreditStopped: "The ad already aired, so its invoice still stands in full. There is no deadline for it. Need an explanation? Open Chat Mimin on the Dashboard.",
     bannerSubAiringOnCredit: "There is no deadline for this invoice. The payment button always works; the link refreshes itself when opened.",
     bannerSubAiringOnCreditNoBill: "Your ad airs on schedule. The invoice will be sent to you shortly.",
     bannerTitleSlotCancelled: "Airing date cancelled",
-    bannerSubSlotCancelled: "The Jakpat team cancelled this order's airing date. Your questionnaire is still approved. Need an explanation? Chat with Mimin below.",
+    bannerSubSlotCancelled: "The Jakpat team cancelled this order's airing date. Your questionnaire is still approved.",
+    chatMiminCta: "Ask Chat Mimin",
     scheduleEmptyRejected: "No airing schedule for this order yet.",
     publicationEmptyState: "Airing info will appear once a schedule is paid.",
     adPageLinkLabel: "Ad Page",
@@ -1217,6 +1231,12 @@ export const translations = {
     // Ticket Slip & Compact Card
     ticketScheduleLabel: "Airing Schedule",
     scheduleTicketNumbered: "Schedule #{index}",
+    airingDurationDays: "{days}-day run ({hours} hours)",
+    // Varian TANPA kalimat "Open Chat Mimin on the Dashboard": di kartu order jalan keluarnya
+    // berupa tautan sungguhan (`Banner chatHelp`), bukan instruksi teks.
+    rescheduleHandledByTeamShort: "Our team will reschedule this for you.",
+    scheduleExpiredHintShort: "The payment link for this schedule has expired. Our team will issue a replacement.",
+    bannerSubCreditStoppedShort: "The ad already aired, so its invoice still stands in full. There is no deadline for it.",
     viewBookingDetails: "View Order & Billing Details",
     hideBookingDetails: "Hide Details",
     publicationPendingActivation: "Active after payment is completed",
@@ -1410,6 +1430,7 @@ export const translations = {
     perWinner: "/pemenang",
     respondentCriteriaPlaceholder: "Contoh: Usia 18-35 tahun, Domisili Jakarta, Mahasiswa aktif",
     respondentCriteriaLabel: "Kriteria Responden",
+    respondentCriteriaHint: "Hanya acuan untuk undian hadiah. Surveimu tetap tayang ke responden berprofil acak.",
     respondentCriteriaHelp: "Kriteria responden pada iklan hanya digunakan sebagai *panduan pengundian hadiah*. Survei tetap ditayangkan ke *audiens berprofil acak*, sehingga responden yang mengisi akan *beragam*.",
 
     // Step One Method Selection
@@ -1885,7 +1906,7 @@ export const translations = {
     incentiveAccumulated: "diakumulasi ke insentif sebelumnya",
     periodBatchLabel: "Periode Undian",
     airingDateLabel: "Penayangan",
-    scheduleExpiredHint: "Link pembayaran jadwal ini sudah kedaluwarsa. Tim kami akan menerbitkan penggantinya — chat Mimin di bawah kalau butuh lebih cepat.",
+    scheduleExpiredHint: "Link pembayaran jadwal ini sudah kedaluwarsa. Tim kami akan menerbitkan penggantinya — buka Chat Mimin di Dashboard kalau butuh lebih cepat.",
     extStatusWaitingPayment: "Menunggu Pembayaran",
     extStatusPaid: "Lunas",
     extStatusScheduled: "Terjadwal",
@@ -1895,7 +1916,7 @@ export const translations = {
     extStatusExpired: "Kedaluwarsa",
     noSubmissions: "Belum ada submission",
     createFirstSurvey: "Buat Survey Baru",
-    noSubmissionsDesc: "Kamu belum mengajukan survei untuk didistribusikan. Pilih salah satu layanan di atas atau buat kuesioner baru untuk memulai.",
+    noSubmissionsDesc: "Kamu belum mengajukan survei untuk didistribusikan. Pilih layanan di Buat Order Baru atau buat kuesioner baru untuk memulai.",
     submittedOn: "Diajukan pada",
 
     winner: "pemenang",
@@ -2022,7 +2043,6 @@ export const translations = {
     navOrders: "Dashboard",
     navMyOrder: "Dashboard",
     navTheForm: "Buat Kuesioner",
-    navChatMimin: "Chat Mimin",
     navCreateOrder: "Buat Order",
     navHelp: "Bantuan",
     navProfile: "Profil",
@@ -2033,7 +2053,20 @@ export const translations = {
 
     // Dashboard revamp — hub produk homepage
     createNewOrder: "Buat Order Baru",
+    newOrderFab: "Order baru",
+    summaryPayBefore: "Bayar sebelum {when}",
+    summaryActionFix: "Perbaiki kuesioner",
+    summaryMoreNeedAction: "+{count} jadwal lain perlu tindakan",
+    orderDetailsShow: "Detail",
+    orderDetailsHide: "Tutup detail",
     comingSoon: "Segera Hadir",
+    newBadge: "Baru",
+    createOrderSubtitle: "Pilih cara distribusi surveimu",
+    createOrderChatCta: "Ada pertanyaan? Chat Mimin",
+    startOrder: "Mulai",
+    createAdOrderBtn: "Pasang Iklan Sekarang",
+    productAvailable: "Tersedia",
+    orderListSubtitle: "Pantau progres review dan jadwal distribusi surveimu",
     productAdsTitle: "Iklan Survei",
     productAdsHook: "Untuk jangkauan maksimal —",
     productAdsDesc: "Tayangkan surveimu kepada ribuan responden aktif di aplikasi Jakpat.",
@@ -2077,13 +2110,13 @@ export const translations = {
 
     // Modal Pintu Masuk Iklan Survei (Ads Entry Modal)
     adsAwarenessModalTitle: "Iklan Survei",
-    adsAwarenessModalSubtitle: "Informasi mekanisme penayangan survei",
-    adsAwarenessPoint1Title: "Profil Responden Acak",
-    adsAwarenessPoint1Desc: "Survei disiarkan ke pengguna aktif umum dengan profil acak. Gunakan pertanyaan penyaring (screening) di kuesionermu jika memerlukan kriteria responden tertentu.",
-    adsAwarenessPoint2Title: "Penayangan Berbasis Durasi",
-    adsAwarenessPoint2Desc: "Layanan ini berupa penayangan durasi hari (tanpa kuota pasti responden). Jumlah responden yang didapat sangat dipengaruhi oleh kriteria target (semakin spesifik semakin sulit) dan reward yang kamu tawarkan.",
-    adsAwarenessPoint3Title: "Review Sebelum Penayangan",
-    adsAwarenessPoint3Desc: "Setiap kuesioner akan diverifikasi terlebih dahulu untuk memastikan survei dapat dibuka dan berjalan lancar di aplikasi Jakpat.",
+    adsAwarenessModalSubtitle: "3 hal yang paling sering ditanyakan peneliti",
+    adsAwarenessPoint1Title: "Responden berprofil acak",
+    adsAwarenessPoint1Desc: "Tayang ke pengguna dengan profil acak. Gunakan pertanyaan screening jika perlu profil khusus.",
+    adsAwarenessPoint2Title: "Tanpa kuota responden",
+    adsAwarenessPoint2Desc: "Kamu membayar hari tayang, bukan jumlah responden. Hasilnya bergantung pada topik dan reward.",
+    adsAwarenessPoint3Title: "Dicek dulu sebelum tayang",
+    adsAwarenessPoint3Desc: "Kuesioner ditinjau dulu agar lancar di aplikasi Jakpat. Peninjauan admin maksimal 2 hari kerja.",
     adsAwarenessTermsLink: "Pelajari selengkapnya di",
     adsAwarenessCheckboxLabel: "Saya memahami mekanisme penayangan dan review survei ini.",
     adsAwarenessContinueBtn: "Lanjut isi detail iklan",
@@ -2106,7 +2139,6 @@ export const translations = {
     noOrdersInFilter: "Tidak ada order di kategori ini.",
     noOrdersTitle: "Belum ada order",
     createFirstOrder: "Buat Order Pertama",
-    chatAboutOrder: "Tanya Mimin",
 
     // Dashboard revamp — callout langkah berikutnya
     calloutReviewManual: "Survei kamu sedang direview admin — maksimal 2 hari kerja (Senin–Jumat). Hasilnya kami kabari via email.",
@@ -2128,8 +2160,9 @@ export const translations = {
     // Dashboard revamp — accordion detail survei & info order
     copyOrderId: "Salin Booking ID",
     orderIdCopied: "Booking ID disalin ke clipboard",
-    copySubmissionId: "Salin Submission ID",
-    submissionIdCopied: "Submission ID disalin ke clipboard",
+    copySubmissionId: "Salin ID Order",
+    submissionIdCopied: "ID Order disalin ke clipboard",
+    orderIdLabel: "ID Order",
     scheduleExtensionPrefix: "Perpanjangan",
     scheduleExtensionLabel: "Perpanjangan Iklan",
     scheduleExtendCardTitle: "Perpanjang Masa Tayang Iklan",
@@ -2251,7 +2284,7 @@ export const translations = {
     // ditutup 65369c1. Kontrak scheduleCardActions.ts: aksi DIHILANGKAN,
     // bukan disabled, dan alasannya dititipkan ke kartu.
     scheduleAgainBlockedQuota: "Jadwal Anda yang sekarang masih menahan tanggalnya. Setelah lunas — atau setelah reservasinya dibatalkan — Anda bisa menjadwalkan yang berikutnya.",
-    scheduleAgainBlockedInactive: "Pesanan ini belum bisa menerima jadwal baru. Chat Mimin di bawah kalau butuh bantuan.",
+    scheduleAgainBlockedInactive: "Pesanan ini belum bisa menerima jadwal baru. Buka Chat Mimin di Dashboard kalau butuh bantuan.",
     adDuration: "Durasi iklan",
     totalCost: "Total biaya",
     questionsUnit: "pertanyaan",
@@ -2342,8 +2375,8 @@ export const translations = {
     scheduleKilatHourPending: "jam tayang ditetapkan tim kami",
     costIsEstimateNote: "Estimasi dengan tarif yang terkunci untuk jadwal ini — tagihan resmi diterbitkan tim kami.",
     incentiveNoAdditionNote: "Tanpa tambahan — insentif berjalan tetap berlaku",
-    calloutCancelledSchedule: "Jadwal ini dibatalkan tim kami. Butuh penjelasan? Chat Mimin di bawah.",
-    rescheduleHandledByTeam: "Tim kami yang akan menjadwalkan ulang iklanmu. Butuh penjelasan? Chat Mimin di bawah.",
+    calloutCancelledSchedule: "Jadwal ini dibatalkan tim kami.",
+    rescheduleHandledByTeam: "Tim kami yang akan menjadwalkan ulang iklanmu. Butuh penjelasan? Buka Chat Mimin di Dashboard.",
     bookingStatusSlotCancelled: "Dibatalkan",
     // sql/102 — tayang sebelum lunas dengan tagihan tempo. TANPA tenggat: link
     // bayarnya diperbarui otomatis saat dibuka.
@@ -2357,11 +2390,12 @@ export const translations = {
     bannerTitleCreditEnded: "Iklanmu sudah selesai tayang — tagihannya belum dibayar",
     bannerTitleCreditStopped: "Penayangan iklan ini dihentikan tim kami",
     creditPageTitle: "Pembayaran menyusul",
-    bannerSubCreditStopped: "Iklan ini sudah sempat tayang, jadi tagihannya tetap berlaku penuh dan tidak punya batas waktu. Butuh penjelasan? Chat Mimin di bawah.",
+    bannerSubCreditStopped: "Iklan ini sudah sempat tayang, jadi tagihannya tetap berlaku penuh dan tidak punya batas waktu. Butuh penjelasan? Buka Chat Mimin di Dashboard.",
     bannerSubAiringOnCredit: "Tagihan ini tidak punya batas waktu. Tombol bayar selalu bisa dipakai; link-nya diperbarui otomatis saat dibuka.",
     bannerSubAiringOnCreditNoBill: "Iklanmu tayang sesuai jadwal. Tagihannya akan segera kami kirimkan.",
     bannerTitleSlotCancelled: "Jadwal tayang dibatalkan",
-    bannerSubSlotCancelled: "Tim Jakpat membatalkan tanggal tayang pesanan ini. Kuesionermu tetap lolos review. Butuh penjelasan? Chat Mimin di bawah.",
+    bannerSubSlotCancelled: "Tim Jakpat membatalkan tanggal tayang pesanan ini. Kuesionermu tetap lolos review.",
+    chatMiminCta: "Tanya Chat Mimin",
     scheduleEmptyRejected: "Belum ada jadwal iklan untuk pesanan ini.",
     publicationEmptyState: "Info penayangan akan muncul setelah ada jadwal yang lunas.",
     adPageLinkLabel: "Halaman Iklan",
@@ -2445,6 +2479,10 @@ export const translations = {
     // Ticket Slip & Compact Card
     ticketScheduleLabel: "Jadwal Tayang",
     scheduleTicketNumbered: "Jadwal #{index}",
+    airingDurationDays: "{days} Hari ({hours} Jam)",
+    rescheduleHandledByTeamShort: "Tim kami yang akan menjadwalkan ulang iklanmu.",
+    scheduleExpiredHintShort: "Link pembayaran jadwal ini sudah kedaluwarsa. Tim kami akan menerbitkan penggantinya.",
+    bannerSubCreditStoppedShort: "Iklan ini sudah sempat tayang, jadi tagihannya tetap berlaku penuh dan tidak punya batas waktu.",
     viewBookingDetails: "Lihat Rincian Pemesanan & Tagihan",
     hideBookingDetails: "Tutup Rincian",
     publicationPendingActivation: "Aktif setelah pembayaran lunas",

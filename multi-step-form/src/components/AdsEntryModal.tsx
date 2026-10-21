@@ -10,6 +10,17 @@ import {
 import { useLanguage } from '../i18n/LanguageContext';
 import { RateNoticeBlock } from './RateNotice';
 
+/**
+ * Tiga hal yang paling sering ditanyakan peneliti ke admin. Sengaja setara
+ * (tanpa kartu yang disorot): ketiganya sama pentingnya, jadi yang dijaga
+ * adalah keterbacaan, bukan hierarki.
+ */
+const AWARENESS_POINTS = [
+  { key: 'adsAwarenessPoint1', icon: Users },
+  { key: 'adsAwarenessPoint2', icon: Clock },
+  { key: 'adsAwarenessPoint3', icon: ShieldCheck },
+] as const;
+
 export interface AdsEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -58,7 +69,7 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-gray-100 shadow-2xl w-full sm:max-w-xl max-h-[92vh] sm:max-h-[86vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
+      <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-gray-100 shadow-2xl w-full sm:max-w-3xl max-h-[92vh] sm:max-h-[86vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
         <div className="sm:hidden pt-2.5 pb-1 flex justify-center shrink-0">
           <div className="w-10 h-1 bg-slate-300 rounded-full" />
         </div>
@@ -88,28 +99,24 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
         </div>
 
         <div className="overflow-y-auto px-5 sm:px-7 py-5 sm:py-6 flex-1 min-h-0 overscroll-contain">
-          <ul className="space-y-6">
-            <li className="flex items-start gap-2.5">
-              <Users className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-slate-900">{t('adsAwarenessPoint1Title')}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-slate-600">{t('adsAwarenessPoint1Desc')}</p>
-              </div>
-            </li>
-            <li className="flex items-start gap-2.5">
-              <Clock className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-slate-900">{t('adsAwarenessPoint2Title')}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-slate-600">{t('adsAwarenessPoint2Desc')}</p>
-              </div>
-            </li>
-            <li className="flex items-start gap-2.5">
-              <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" aria-hidden />
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-slate-900">{t('adsAwarenessPoint3Title')}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-slate-600">{t('adsAwarenessPoint3Desc')}</p>
-              </div>
-            </li>
+          <ul className="flex [flex-direction:column] gap-3 sm:[display:grid] sm:[grid-template-columns:repeat(3,minmax(0,1fr))]">
+            {AWARENESS_POINTS.map(({ key, icon: Icon }) => (
+              <li
+                key={key}
+                className="flex items-start gap-3.5 sm:[flex-direction:column] sm:gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+              >
+                <span
+                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-jfu-primary/10 text-jfu-primary"
+                  aria-hidden
+                >
+                  <Icon className="size-5" />
+                </span>
+                <div className="min-w-0">
+                  <h3 className="text-[15px] font-bold leading-snug tracking-tight text-slate-900">{t(`${key}Title`)}</h3>
+                  <p className="mt-1 text-[13px] leading-relaxed text-slate-600">{t(`${key}Desc`)}</p>
+                </div>
+              </li>
+            ))}
           </ul>
           <div className="mt-6">
             <RateNoticeBlock />
