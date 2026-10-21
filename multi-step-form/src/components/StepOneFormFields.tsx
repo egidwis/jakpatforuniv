@@ -724,6 +724,7 @@ export function StepOneFormFields({
             required
             counter={`${formData.criteriaResponden?.length || 0}/300`}
             tooltip={criteriaTooltip}
+            hint={t('respondentCriteriaHint')}
             error={attemptedSubmit ? errors.criteriaResponden : undefined}
           >
             <textarea

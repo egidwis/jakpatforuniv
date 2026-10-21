@@ -1,31 +1,14 @@
 import { ExternalLink, Eye, Sparkles, Lightbulb, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '@/i18n/LanguageContext';
-import type { TranslationKey } from '@/i18n/translations';
 import { extendStatusLabelKey, extendStatusStyle } from '@/utils/extend-ui';
 import { publicPagePath } from '@/utils/page-url';
-import { airingStartHourWib, pickPublicationHighlight, type ScheduleCard } from './airingPeriods';
+import { airingStartHourWib, type ScheduleCard } from './airingPeriods';
 
 interface PublicationPhaseProps {
     cards: ScheduleCard[];
     pageInfo?: { views: number; slug: string | null };
     isCancelled?: boolean;
-}
-
-/** Chip status heading Fase ③ — jadwal paling relevan (tayang > terjadwal
- * terdekat > selesai terakhir). `t` dioper sebagai parameter (pola yang sama
- * dengan `getReviewChip`) karena fungsi ini bukan komponen React — dipanggil
- * dari StatusPage sebelum render `<Phase>`. */
-export function getPublicationChip(cards: ScheduleCard[], t: (key: TranslationKey) => string) {
-    const picked = pickPublicationHighlight(cards);
-    if (!picked) return null;
-    const style = extendStatusStyle(picked.state);
-    return (
-        <span className={`flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold shrink-0 ${style.bg} ${style.text}`}>
-            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
-            {t(extendStatusLabelKey(picked.state))}
-        </span>
-    );
 }
 
 function PublicationRow({ card }: { card: ScheduleCard }) {

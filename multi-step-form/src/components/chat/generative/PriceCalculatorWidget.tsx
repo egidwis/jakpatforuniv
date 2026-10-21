@@ -46,11 +46,11 @@ export const PriceCalculatorWidget: React.FC = () => {
   };
 
   return (
-    <div className="mt-3 p-4 bg-gradient-to-br from-indigo-50/70 via-white to-purple-50/50 border border-indigo-100 rounded-2xl shadow-xs space-y-4 max-w-full">
+    <div className="mt-3 p-4 bg-gradient-to-br from-blue-50/70 via-white to-blue-50/50 border border-blue-100 rounded-2xl shadow-xs space-y-4 max-w-full">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-indigo-100/70 pb-2.5">
+      <div className="flex items-center justify-between border-b border-blue-100/70 pb-2.5">
         <div className="flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-600 text-white text-[11px] font-bold">
+          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-jfu-primary text-white text-[11px] font-bold">
             <Calculator className="w-3.5 h-3.5" />
           </span>
           <div>
@@ -71,7 +71,7 @@ export const PriceCalculatorWidget: React.FC = () => {
           onClick={() => setServiceType('regular')}
           className={`py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
             serviceType === 'regular'
-              ? 'bg-white text-indigo-700 shadow-2xs'
+              ? 'bg-white text-jfu-dark shadow-2xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
@@ -84,7 +84,7 @@ export const PriceCalculatorWidget: React.FC = () => {
           onClick={() => setServiceType('kilat')}
           className={`py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
             serviceType === 'kilat'
-              ? 'bg-white text-indigo-700 shadow-2xs'
+              ? 'bg-white text-jfu-dark shadow-2xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
@@ -99,7 +99,7 @@ export const PriceCalculatorWidget: React.FC = () => {
         <div>
           <div className="flex justify-between items-center text-xs mb-1">
             <span className="font-semibold text-slate-700">Jumlah Soal:</span>
-            <span className="font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
+            <span className="font-bold text-jfu-primary bg-blue-50 px-2 py-0.5 rounded-md">
               {questionCount >= 100 ? '100+' : questionCount} Soal
             </span>
           </div>
@@ -110,7 +110,7 @@ export const PriceCalculatorWidget: React.FC = () => {
             step={1}
             value={questionCount}
             onChange={(e) => setQuestionCount(Number(e.target.value))}
-            className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+            className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-jfu-primary"
           />
           <div className="flex justify-between text-[10px] text-slate-500 mt-0.5">
             <span>1</span>
@@ -124,7 +124,7 @@ export const PriceCalculatorWidget: React.FC = () => {
           <div>
             <div className="flex justify-between items-center text-xs mb-1">
               <span className="font-semibold text-slate-700">Durasi Penayangan Iklan:</span>
-              <span className="font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
+              <span className="font-bold text-jfu-primary bg-blue-50 px-2 py-0.5 rounded-md">
                 {durationDays} Hari
               </span>
             </div>
@@ -135,7 +135,7 @@ export const PriceCalculatorWidget: React.FC = () => {
               step={1}
               value={durationDays}
               onChange={(e) => setDurationDays(Number(e.target.value))}
-              className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+              className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-jfu-primary"
             />
             <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
               <span>1 Hari</span>
@@ -147,7 +147,7 @@ export const PriceCalculatorWidget: React.FC = () => {
       </div>
 
       {/* Summary Box */}
-      <div className="p-3 bg-white border border-indigo-100 rounded-xl space-y-2">
+      <div className="p-3 bg-white border border-blue-100 rounded-xl space-y-2">
         <div className="flex justify-between items-center">
           <span className="text-xs font-semibold text-slate-600">Estimasi Total Biaya:</span>
           <span className="text-right">
@@ -156,7 +156,7 @@ export const PriceCalculatorWidget: React.FC = () => {
                 Rp {calculation.listTotal.toLocaleString('id-ID')}
               </span>
             )}
-            <span className="text-base font-extrabold text-indigo-700">
+            <span className="text-base font-extrabold text-jfu-dark">
               Rp {calculation.total.toLocaleString('id-ID')}
             </span>
           </span>
@@ -176,7 +176,7 @@ export const PriceCalculatorWidget: React.FC = () => {
       <button
         type="button"
         onClick={handleOrderNow}
-        className="w-full inline-flex items-center justify-center gap-2 py-2 px-4 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-98"
+        className="w-full inline-flex items-center justify-center gap-2 py-2 px-4 bg-gradient-to-r from-jfu-primary to-jfu-dark hover:from-jfu-dark hover:to-jfu-dark text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-98"
       >
         <span>Buat Order Baru dengan Pilihan Ini</span>
         <ArrowRight className="w-3.5 h-3.5" />

@@ -1,10 +1,9 @@
-import { Fragment, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
 import {
     AlertCircle,
     ArrowRight,
-    Bookmark,
     CalendarClock,
     CalendarPlus,
     CalendarRange,
@@ -15,11 +14,8 @@ import {
     FileText,
     Gift,
     Layers,
-    RotateCcw,
-    Ticket,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
     Accordion,
     AccordionContent,
@@ -40,6 +36,10 @@ import {
 import { formatIDR } from '@/utils/currency';
 import { CostBreakdown } from '@/components/CostBreakdown';
 import { isAutoReviewed } from './deriveOrderUiState';
+import { RowGrid, valueTone, type RowDef } from './RowGrid';
+import { StatusPill } from './StatusPill';
+import { OrderActionButton } from './OrderActionButton';
+import { primaryActionOf } from './orderAction';
 import { nowWib, toWibYmd } from '@/utils/airing-window';
 import { formatWaveHour } from '@/utils/kilatWaves';
 
@@ -172,10 +172,9 @@ function ScheduleChip({ card }: { card: ScheduleCard }) {
     if (card.booking.state === 'in_review') return null;
     const style = bookingStatusStyle(card.booking.state);
     return (
-        <span className={`flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold shrink-0 ${style.bg} ${style.text}`}>
-            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
+        <StatusPill bg={style.bg} text={style.text} dot={style.dot}>
             {bookingStatusLabel(card, t)}
-        </span>
+        </StatusPill>
     );
 }
 
@@ -216,30 +215,6 @@ const formatDateRangeTrigger = (start: Date | null, end: Date | null) => {
  */
 const triggerEndOf = (card: ScheduleCard) => (card.info?.isKilat ? card.startDate : card.endDate);
 
-function getScheduleTriggerTitle(card: ScheduleCard, t: (k: TranslationKey) => string): string {
-    const dateRangeText = formatDateRangeTrigger(card.startDate, triggerEndOf(card));
-    if (dateRangeText) {
-        return dateRangeText;
-    }
-    return t('airingPeriodLabel');
-}
-
-/**
- * Warna kolom value (kanan). Kartu yang masih menunggu review diredam jadi
- * abu-abu bersama labelnya: angkanya memang sudah final sejak checkout, tapi
- * belum mengikat apa pun sampai admin menyetujui — jangan tampil setegas kartu
- * yang sudah berjalan. Dipakai di semua titik yang dulu hardcode `#1a1a1a`,
- * supaya tidak ada value yang ketinggalan hitam sendirian.
- */
-const valueTone = (muted?: boolean) => (muted ? 'text-slate-400' : 'text-slate-900');
-
-interface RowDef {
-    key: string;
-    icon: ReactNode;
-    label: string;
-    value: ReactNode;
-}
-
 const formatWithWeekday = (d: Date | null, withYear = true) => {
     if (!d) return '';
     const weekday = d.toLocaleDateString('id-ID', { timeZone: WIB, weekday: 'short' });
@@ -247,25 +222,6 @@ const formatWithWeekday = (d: Date | null, withYear = true) => {
     const month = d.toLocaleDateString('id-ID', { timeZone: WIB, month: 'long' });
     const year = d.toLocaleDateString('id-ID', { timeZone: WIB, year: 'numeric' });
     return withYear ? `${weekday}, ${day} ${month} ${year}` : `${weekday}, ${day} ${month}`;
-};
-
-const formatDateRangeClean = (start: Date | null, end: Date | null, fallback?: string) => {
-    if (!start && !end) return fallback || '—';
-    if (start && !end) return formatWithWeekday(start, true);
-    if (!start && end) return formatWithWeekday(end, true);
-    if (start && end) {
-        if (start.getTime() === end.getTime()) {
-            return formatWithWeekday(start, true);
-        }
-        const sYear = start.toLocaleDateString('id-ID', { timeZone: WIB, year: 'numeric' });
-        const eYear = end.toLocaleDateString('id-ID', { timeZone: WIB, year: 'numeric' });
-
-        if (sYear === eYear) {
-            return `${formatWithWeekday(start, false)} – ${formatWithWeekday(end, true)}`;
-        }
-        return `${formatWithWeekday(start, true)} – ${formatWithWeekday(end, true)}`;
-    }
-    return fallback || '—';
 };
 
 const formatPeriodBatch = (batch: string) => {
@@ -280,27 +236,6 @@ const formatPeriodBatch = (batch: string) => {
     }
     return batch;
 };
-
-/**
- * Baris data gaya kuitansi: SATU pasangan label:value per baris di semua
- * viewport. Kolom label adaptif di mobile dan fixed 9.5rem di desktop.
- */
-function RowGrid({ rows, muted }: { rows: RowDef[]; muted?: boolean }) {
-    if (rows.length === 0) return null;
-    return (
-        <dl className="[display:grid] grid-cols-[auto_1fr] sm:grid-cols-[9.5rem_1fr] gap-x-3 gap-y-2.5 items-start">
-            {rows.map((row) => (
-                <Fragment key={row.key}>
-                    <dt className="flex items-center gap-1.5 text-xs text-slate-500 font-medium whitespace-nowrap pt-0.5 pr-1">
-                        <span className="text-slate-400 shrink-0">{row.icon}</span>
-                        {row.label}
-                    </dt>
-                    <dd className={`text-sm font-semibold min-w-0 break-words ${valueTone(muted)}`}>{row.value}</dd>
-                </Fragment>
-            ))}
-        </dl>
-    );
-}
 
 function IncentiveValue({ info, muted }: { info: IncentiveInfo; muted?: boolean }) {
     const { t } = useLanguage();
@@ -328,9 +263,6 @@ function IncentiveValue({ info, muted }: { info: IncentiveInfo; muted?: boolean 
 }
 
 const iconCls = 'w-3.5 h-3.5 text-slate-400 shrink-0';
-const ctaButtonClass = 'max-md:w-full min-h-9 text-xs px-4 justify-center whitespace-nowrap';
-const ctaRoyal = 'rounded-full font-bold text-white bg-gradient-to-r from-jfu-primary to-jfu-light hover:from-jfu-dark hover:to-jfu-primary shadow-xs hover:shadow transition-all';
-const ctaSoftAmber = 'rounded-full font-semibold bg-white text-amber-800 border border-amber-300 hover:bg-amber-50 shadow-2xs transition-all gap-1.5';
 
 /**
  * ⚠️ `submission` SENGAJA TIDAK LAGI DITERIMA. Dulu ia dipakai untuk menghitung
@@ -350,14 +282,9 @@ function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
     const bState = card?.booking?.state;
     const b = card?.booking || {};
 
-    if (card?.info?.bookingId) {
-        rows.push({
-            key: 'bookingId',
-            icon: <Bookmark className={iconCls} />,
-            label: 'Booking ID',
-            value: <span className={`font-mono text-xs font-normal text-slate-600 ${valueTone(muted)}`}>#{card.info.bookingId}</span>,
-        });
-    }
+    /* ⚠️ Booking ID TIDAK ada di sini. Ia sudah tampil di stub tiket (selalu terlihat, tanpa
+       perlu membuka apa pun) — dulu diulang lagi sebagai baris di bawah DAN sebagai sufiks
+       label toggle, jadi satu kode muncul tiga kali di satu kartu. Satu kode, satu tempat. */
     if (card?.info?.incentive) {
         rows.push({ key: 'prize', icon: <Gift className={iconCls} />, label: t('rewardRespondentLabel'), value: <IncentiveValue info={card.info.incentive} muted={muted} /> });
     }
@@ -501,11 +428,6 @@ function InfoSection({ card, muted }: { card: ScheduleCard; muted?: boolean }) {
                 <span className="flex items-center gap-1.5 min-w-0">
                     <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     <span className="truncate">{isDetailsOpen ? t('hideBookingDetails') : t('viewBookingDetails')}</span>
-                    {!isDetailsOpen && card.info?.bookingId && (
-                        <span className="text-[11px] font-mono text-slate-400 font-normal shrink-0">
-                            (#{card.info.bookingId})
-                        </span>
-                    )}
                 </span>
                 <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 shrink-0 ${isDetailsOpen ? 'rotate-180' : ''}`} />
             </button>
@@ -553,14 +475,19 @@ const BANNER_TONE: Record<BannerTone, { box: string; icon: string }> = {
     amber: { box: 'border-amber-200/80 bg-amber-50/70', icon: 'text-amber-600' },
 };
 
-function Banner({ tone, icon, title, lines, cta }: {
+function Banner({ tone, icon, title, lines, cta, chatHelp }: {
     tone: BannerTone;
     icon: ReactNode;
     title: string;
     /** Kalimat isi, urut. `null`/`false` disaring — lihat aturan emas. */
     lines: (ReactNode | null | false)[];
     cta?: ReactNode;
+    /** Tautan "Tanya Chat Mimin" di bawah isi — untuk keadaan yang ditangani tim, di mana
+     *  satu-satunya langkah peneliti adalah bertanya. Menggantikan kalimat "Buka Chat Mimin
+     *  di Dashboard" yang menyuruh ke tempat yang sedang ia pakai dan bukan tautan. */
+    chatHelp?: boolean;
 }) {
+    const { t } = useLanguage();
     const style = BANNER_TONE[tone];
     const body = lines.filter(Boolean);
     return (
@@ -573,6 +500,15 @@ function Banner({ tone, icon, title, lines, cta }: {
                         {body.map((line, i) => (
                             <p key={i} className="text-xs text-slate-600 leading-relaxed">{line}</p>
                         ))}
+                        {chatHelp && (
+                            <Link
+                                to="/dashboard/chat"
+                                className="inline-flex items-center gap-1 pt-0.5 text-xs font-semibold text-jfu-primary hover:text-jfu-dark hover:underline"
+                            >
+                                {t('chatMiminCta')}
+                                <ArrowRight className="w-3 h-3" />
+                            </Link>
+                        )}
                     </div>
                 </div>
                 {cta && <div className="shrink-0 max-md:w-full max-md:mt-1 md:ml-auto">{cta}</div>}
@@ -631,6 +567,25 @@ function GroupBillBlock({ group, portion, t }: {
 
 const bannerIcon = 'w-4 h-4';
 
+/** Keadaan jadwal yang sudah mati (dibatalkan tim). Sengaja BUKAN `Banner`: judul
+ *  "apa yang terjadi" sudah jadi headline tiket dan chip di stub, jadi di sini
+ *  tinggal satu kalimat + satu jalan keluar — tanpa kartu di dalam kartu. */
+function DeadNote({ text }: { text: string }) {
+    const { t } = useLanguage();
+    return (
+        <div className="space-y-1.5 px-0.5">
+            <p className="text-sm text-slate-600 leading-relaxed">{text}</p>
+            <Link
+                to="/dashboard/chat"
+                className="inline-flex items-center gap-1 text-sm font-semibold text-jfu-primary hover:text-jfu-dark hover:underline"
+            >
+                {t('chatMiminCta')}
+                <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+        </div>
+    );
+}
+
 function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
     card: ScheduleCard;
     onReschedule: () => void;
@@ -653,17 +608,13 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
      *  peneliti yang memilih sendiri, entah tim yang mengerjakannya. Salah
      *  satu SELALU benar, jadi tidak ada keadaan tanpa langkah berikutnya. */
     const nextStepLine = (selfKey: TranslationKey) =>
-        canSelfReschedule ? t(selfKey) : t('rescheduleHandledByTeam');
+        canSelfReschedule ? t(selfKey) : t('rescheduleHandledByTeamShort');
 
-    /** Tombol jadwal-ulang — hanya untuk jadwal pertama jalur auto-review.
-     *  Jadwal ke-2 dst. tidak punya alur pemilihan tanggal mandiri, dan order
-     *  jalur manual tanggalnya milik admin (keputusan produk 2026-08-25). */
-    const rescheduleCta = card.kind === 'original' && canSelfReschedule ? (
-        <Button size="sm" variant="outline" onClick={onReschedule} className={`${ctaButtonClass} ${ctaSoftAmber}`}>
-            <RotateCcw className="w-3.5 h-3.5" />
-            {t('rescheduleSlot')}
-        </Button>
-    ) : undefined;
+    /** Tombol yang boleh tampil untuk jadwal ini — diputuskan SATU fungsi (`primaryActionOf`) yang
+     *  juga dipakai kartu ringkas ponsel, jadi aturannya (grup, kredit, jalur auto/manual, jadwal
+     *  mati) tidak punya salinan kedua. Banner hanya menggambarnya. */
+    const action = primaryActionOf(card, { canSelfReschedule });
+    const actionCta = action ? <OrderActionButton action={action} onReschedule={onReschedule} /> : undefined;
 
     if (b.state === 'in_review') {
         return (
@@ -740,12 +691,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                 icon={<CalendarClock className={bannerIcon} />}
                 title={t('bannerTitleChooseSchedule')}
                 lines={[t('bannerSubChooseSchedule')]}
-                cta={
-                    <Button size="sm" variant="outline" onClick={onReschedule} className={`${ctaButtonClass} ${ctaSoftAmber}`}>
-                        <CalendarClock className="w-3.5 h-3.5" />
-                        {t('chooseSchedule')}
-                    </Button>
-                }
+                cta={actionCta}
             />
         );
     }
@@ -758,9 +704,8 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
     */
     const onCredit = b.state === 'airing_on_credit';
     if (b.state === 'waiting_payment' || onCredit) {
-        // `payTargetFor` (airingPeriods) memutuskannya untuk KEDUA jenis kartu:
-        // halaman Jadwal & Bayar = rute SPA, `/bayar/` = Pages Function.
-        const isExternal = b.isExternalLink;
+        // Tujuan tombol bayar (`payTargetFor`, airingPeriods) dan jenis elemennya (rute SPA vs
+        // `/bayar/` Pages Function) diputuskan `primaryActionOf` + `OrderActionButton`.
         /*
           ⚠️ AKIBAT TENGGATNYA BEDA, JADI KALIMATNYA HARUS BEDA.
           `deadlineCause` sudah dihitung sejak lama tapi tidak pernah dirender,
@@ -803,7 +748,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
         const creditStopped = onCredit && b.creditPhase === 'stopped';
         const deadlineLine = onCredit
             ? (creditStopped
-                ? t('bannerSubCreditStopped')
+                ? t('bannerSubCreditStoppedShort')
                 : b.payUrl ? t('bannerSubAiringOnCredit') : t('bannerSubAiringOnCreditNoBill'))
             : deadlineTime && b.deadlineCause === 'slot'
             ? t('bannerSubWaitingPaymentSlot', { time: deadlineTime })
@@ -850,21 +795,10 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                         }),
                         t('groupBillFollowerHint'),
                     ]}
-                    cta={
-                        <Link to={`/invoices/${b.group.paymentId}`} className="block max-md:w-full md:inline-block">
-                            <Button size="sm" variant="outline" className={`${ctaButtonClass} gap-1.5`}>
-                                <FileText className="w-3.5 h-3.5" />
-                                {t('groupBillFollowerCta')}
-                            </Button>
-                        </Link>
-                    }
+                    cta={actionCta}
                 />
             );
         }
-
-        const payLabel = b.group
-            ? t('groupBillPayCta', { amount: formatIDR(b.group.total) })
-            : isPartial ? t('payRemaining') : t('payNow');
 
         return (
             <Banner
@@ -885,24 +819,8 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                     }),
                     deadlineLine,
                 ]}
-                cta={b.payUrl ? (
-                    isExternal ? (
-                        <a href={b.payUrl} target="_blank" rel="noopener noreferrer" className="block max-md:w-full md:inline-block">
-                            <Button size="sm" className={`${ctaButtonClass} ${ctaRoyal} gap-1.5`}>
-                                <CreditCard className="w-3.5 h-3.5" />
-                                {payLabel}
-                                <ExternalLink className="w-3.5 h-3.5 opacity-70" />
-                            </Button>
-                        </a>
-                    ) : (
-                        <Link to={b.payUrl} className="block max-md:w-full md:inline-block">
-                            <Button size="sm" className={`${ctaButtonClass} ${ctaRoyal} gap-1.5`}>
-                                <CreditCard className="w-3.5 h-3.5" />
-                                {payLabel}
-                            </Button>
-                        </Link>
-                    )
-                ) : undefined}
+                chatHelp={creditStopped}
+                cta={actionCta}
             />
         );
     }
@@ -913,14 +831,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
            diberi tombol "Jadwalkan Ulang" yang MENGHIDUPKAN KEMBALI jadwal yang
            baru saja dibatalkan (penjaganya sekarang di `rebookSlotForSubmission`).
            Nol CTA di sini bukan kelalaian: tidak ada langkah milik peneliti. */
-        return (
-            <Banner
-                tone="slate"
-                icon={<AlertCircle className={bannerIcon} />}
-                title={t('bannerTitleSlotCancelled')}
-                lines={[t('bannerSubSlotCancelled')]}
-            />
-        );
+        return <DeadNote text={t('bannerSubSlotCancelled')} />;
     }
 
     if (b.state === 'expired') {
@@ -931,7 +842,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                 title={t('bannerTitleExpired')}
                 lines={[
                     ...(card.kind === 'extend'
-                        ? [t('scheduleExpiredHint')]
+                        ? [t('scheduleExpiredHintShort')]
                         : [t('bannerSubExpired'), nextStepLine('bannerSubPickNewDate')]),
                     /*
                       Grup yang kedaluwarsa mati SEKALIGUS — satu link, satu masa
@@ -940,7 +851,8 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                     */
                     b.group && t('groupBillExpiredNote'),
                 ]}
-                cta={rescheduleCta}
+                cta={actionCta}
+                chatHelp={card.kind === 'extend' || !canSelfReschedule}
             />
         );
     }
@@ -960,20 +872,14 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                     ),
                     card.kind === 'original' && nextStepLine('bannerSubPickNextDate'),
                 ]}
-                cta={rescheduleCta}
+                cta={actionCta}
+                chatHelp={card.kind === 'original' && !canSelfReschedule}
             />
         );
     }
 
     if (b.state === 'cancelled') {
-        return (
-            <Banner
-                tone="slate"
-                icon={<AlertCircle className={bannerIcon} />}
-                title={t('bannerTitleCancelledSchedule')}
-                lines={[t('calloutCancelledSchedule')]}
-            />
-        );
+        return <DeadNote text={t('calloutCancelledSchedule')} />;
     }
 
     /* `paid` sengaja tanpa banner: order lunas tidak menunggu apa pun, dan Fase
@@ -1036,7 +942,7 @@ export function SchedulePhase({ submission, kilatOpen = false, cards, entries, o
                 <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-slate-200/70 bg-slate-50/40 text-xs text-slate-400">
                     <span>{t('scheduleEmptyRejected')}</span>
                     <span className="text-[10px] font-semibold bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full border border-slate-200/60">
-                        {submission.review_status === 'cancelled' || submission.status === 'cancelled'
+                        {entries[0]?.reviewStatus === 'cancelled' || submission.status === 'cancelled'
                             ? t('reviewChipCancelled')
                             : t('publicationNotActive')}
                     </span>
@@ -1054,7 +960,15 @@ export function SchedulePhase({ submission, kilatOpen = false, cards, entries, o
                                 ? t('scheduleTicketNumbered', { index: String(index + 1) })
                                 : t('ticketScheduleLabel');
                             const dateRangeText = formatDateRangeTrigger(card.startDate, triggerEndOf(card));
-                            const mutedTitle = card.booking.state === 'in_review' || card.booking.state === 'cancelled';
+                            /* `slot_cancelled` ikut mati: chip-nya sudah "Dibatalkan", dan
+                               dulu cuma `cancelled` yang diredupkan — harganya tetap biru
+                               brand, warna tombol utama, di jadwal yang tidak ditagih. */
+                            const isDead = card.booking.state === 'cancelled' || card.booking.state === 'slot_cancelled';
+                            const mutedTitle = card.booking.state === 'in_review' || isDead;
+                            /* Tiket mati di antara tiket lain mundur jadi satu baris; tiket
+                               mati yang sendirian tetap menampilkan headline-nya. */
+                            const collapseDead = isDead && cards.length > 1;
+                            const deadBodyHide = collapseDead ? 'group-data-[state=closed]:hidden' : '';
                             const pendingReview = card.booking.state === 'in_review';
 
                             const duration = card?.info?.airingDays || card?.info?.duration || 1;
@@ -1070,7 +984,7 @@ export function SchedulePhase({ submission, kilatOpen = false, cards, entries, o
                                     : t('kilatWaveLabel', { hour: formatWaveHour(card.info.kilatSlotHour) });
                             } else if (card.startDate) {
                                 const timePart = startTimeWib ? t('airingStartTimeAt', { time: startTimeWib }) : kilatHourPending ? t('scheduleKilatHourPending') : '';
-                                const durPart = `${duration} Hari (${totalHours} Jam)`;
+                                const durPart = t('airingDurationDays', { days: String(duration), hours: String(totalHours) });
                                 timeSubtext = timePart ? `${timePart} • ${durPart}` : durPart;
                             } else if (card.booking.state === 'choose_schedule') {
                                 timeSubtext = t('scheduleNotYetChosen');
@@ -1078,15 +992,26 @@ export function SchedulePhase({ submission, kilatOpen = false, cards, entries, o
                                 timeSubtext = t('bookingStatusAwaitingAdminSchedule');
                             } else if (card.booking.state === 'in_review') {
                                 timeSubtext = t('schedulePendingReview');
-                            } else if (card.booking.state === 'cancelled' || card.booking.state === 'slot_cancelled') {
-                                timeSubtext = t('scheduleCancelled');
                             }
+                            /* Tanpa tanggal, headline = KEADAANNYA (subteks yang tadi dihitung, atau
+                               "dibatalkan" untuk jadwal mati), lalu "Belum dijadwalkan" sebagai
+                               cadangan. Dulu cadangannya `airingPeriodLabel` ("Ad Schedule") — kata
+                               yang sama persis dengan judul Fase ② tepat di atas tiketnya. */
+                            const deadHeadline = card.booking.state === 'slot_cancelled' ? t('bannerTitleSlotCancelled')
+                                : card.booking.state === 'cancelled' ? t('bannerTitleCancelledSchedule')
+                                : '';
+                            const ticketHeadline = dateRangeText || deadHeadline || timeSubtext || t('scheduleNotYetChosen');
+                            if (!dateRangeText) timeSubtext = '';
 
                             return (
                             <AccordionItem
                                 key={card.key}
                                 value={card.key}
-                                className="rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-xs transition-all duration-200 hover:border-slate-400"
+                                className={`rounded-2xl border overflow-hidden transition-all duration-200 ${
+                                    isDead
+                                        ? 'border-slate-200 bg-slate-50/60 hover:border-slate-300'
+                                        : 'border-slate-300 bg-white shadow-xs hover:border-slate-400'
+                                }`}
                             >
                                 <AccordionPrimitive.Header className="flex items-center w-full [&[data-state=open]>button>div>div>.ticket-chevron]:rotate-180">
                                     <AccordionPrimitive.Trigger
@@ -1095,14 +1020,18 @@ export function SchedulePhase({ submission, kilatOpen = false, cards, entries, o
                                     >
                                         {/* Top Header Stub: Micro-Badge + Booking ID & Status Chip */}
                                         <div className="flex items-center justify-between gap-2 w-full px-3.5 sm:px-4 py-2.5 bg-slate-50/90 group-hover:bg-slate-100/80 transition-colors">
-                                            <div className="flex items-center gap-1.5 min-w-0">
-                                                <span className="inline-flex items-center gap-1 text-xs font-extrabold uppercase tracking-wider text-slate-700 bg-white border border-slate-300 px-2 py-0.5 rounded-md shadow-2xs">
-                                                    <Ticket className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                                    <span className="truncate">{ticketBadge}</span>
-                                                </span>
+                                            {/* Identitas tiket = label, bukan konten: teks polos abu, tanpa kotak/ikon.
+                                                Yang boleh terpotong adalah KODE-nya, bukan "Jadwal #2" — nomor urut itulah
+                                                yang membedakan tiket (dulu badge `truncate` → "Schedule …"). */}
+                                            <div className="flex items-center gap-1.5 min-w-0 text-xs">
+                                                <span className="font-semibold text-slate-600 shrink-0 whitespace-nowrap">{ticketBadge}</span>
                                                 {card.info?.bookingId && (
-                                                    <span className="text-xs font-mono text-slate-500 font-semibold shrink-0">
-                                                        #{card.info.bookingId}
+                                                    /* "Booking ID" = kode per JADWAL (pencarian admin mencocokkannya);
+                                                       kode ORDER ada di kepala kartu sebagai "Order ID". Dua kode,
+                                                       dua nama — label ini yang mencegah tertukar. */
+                                                    <span className="text-slate-400 min-w-0 truncate">
+                                                        · <span className="hidden sm:inline">Booking ID </span>
+                                                        <span className="font-mono">{card.info.bookingId}</span>
                                                     </span>
                                                 )}
                                             </div>
@@ -1113,7 +1042,7 @@ export function SchedulePhase({ submission, kilatOpen = false, cards, entries, o
                                         </div>
 
                                         {/* Perforated tear line with left & right semicircular ticket bites */}
-                                        <div className="relative flex items-center justify-between w-full h-2.5 bg-white select-none pointer-events-none">
+                                        <div className={`relative flex items-center justify-between w-full h-2.5 select-none pointer-events-none ${isDead ? 'bg-slate-50/60' : 'bg-white'} ${deadBodyHide}`}>
                                             {/* Left Notch */}
                                             <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border border-slate-300 shadow-[inset_-1px_0_2px_rgba(0,0,0,0.06)] z-10" />
                                             {/* Dashed Perforation Line */}
@@ -1123,24 +1052,24 @@ export function SchedulePhase({ submission, kilatOpen = false, cards, entries, o
                                         </div>
 
                                         {/* Bottom Main Ticket Body: Dates + Time/Duration & Total Cost */}
-                                        <div className="flex items-end justify-between gap-3 w-full px-3.5 sm:px-4 pt-1.5 pb-3 bg-white group-hover:bg-slate-50/40 transition-colors">
+                                        <div className={`flex items-end justify-between gap-3 w-full px-3.5 sm:px-4 pt-1.5 pb-3 transition-colors ${isDead ? 'bg-transparent' : 'bg-white group-hover:bg-slate-50/40'} ${deadBodyHide}`}>
                                             <div className="min-w-0 flex-1">
-                                                <p className={`text-sm sm:text-base font-bold truncate leading-snug ${mutedTitle ? 'text-slate-500' : 'text-slate-900'}`}>
-                                                    {dateRangeText || t('airingPeriodLabel')}
+                                                <p className={`text-sm sm:text-[15px] font-semibold truncate leading-snug ${mutedTitle ? 'text-slate-500' : 'text-slate-900'}`}>
+                                                    {ticketHeadline}
                                                 </p>
                                                 {timeSubtext && (
-                                                    <p className="text-xs sm:text-sm text-slate-500 truncate mt-0.5 font-normal">
+                                                    <p className="text-xs sm:text-sm text-slate-500 sm:truncate mt-0.5 font-normal">
                                                         {timeSubtext}
                                                     </p>
                                                 )}
                                             </div>
                                             <div className="text-right shrink-0">
-                                                <span className={`text-sm sm:text-base font-extrabold tabular-nums block leading-tight ${mutedTitle ? 'text-slate-400' : 'text-jfu-primary'}`}>
+                                                <span className={`text-sm sm:text-[15px] font-bold tabular-nums block leading-tight ${isDead ? 'text-slate-400 line-through decoration-slate-300' : mutedTitle ? 'text-slate-400' : 'text-jfu-primary'}`}>
                                                     {formatIDR(card.money.total)}
                                                 </span>
                                                 {card.money.isEstimate && (
                                                     <span className="text-[11px] text-slate-400 font-normal italic block leading-none mt-0.5">
-                                                        estimasi
+                                                        {t('orderCompanionEstimate').toLowerCase()}
                                                     </span>
                                                 )}
                                             </div>
@@ -1148,7 +1077,7 @@ export function SchedulePhase({ submission, kilatOpen = false, cards, entries, o
                                     </AccordionPrimitive.Trigger>
                                 </AccordionPrimitive.Header>
 
-                                <AccordionContent className="pb-4 pt-2 px-3.5 sm:px-4 space-y-3.5 bg-white border-t border-slate-100">
+                                <AccordionContent className={`pb-4 pt-3 px-3.5 sm:px-4 space-y-3.5 border-t ${isDead ? 'bg-transparent border-slate-200/70' : 'bg-white border-slate-100'}`}>
                                     <ScheduleBanner card={card} onReschedule={onReschedule} canSelfReschedule={selfReschedule} />
 
                                     {card.booking.group && card.booking.state === 'paid' && (

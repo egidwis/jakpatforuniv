@@ -136,8 +136,8 @@ export function AppNav() {
                                                 <Sparkles className={`w-4 h-4 ${isAnalyzerActive ? 'text-indigo-600' : 'text-slate-500'}`} />
                                                 <span className="text-sm">Data Analyzer</span>
                                             </div>
-                                            <span className="px-1.5 py-0.5 text-[9px] font-bold leading-none rounded-full bg-indigo-100 text-indigo-800 uppercase tracking-tight border border-indigo-200/80">
-                                                AI
+                                            <span className="px-1.5 py-0.5 text-[9px] font-bold leading-none rounded-full bg-amber-100 text-amber-800 uppercase tracking-tight border border-amber-200/80">
+                                                Beta
                                             </span>
                                         </DropdownMenuItem>
                                     </DropdownMenuContent>
@@ -290,8 +290,8 @@ export function AppNav() {
                                                     <Sparkles className={`w-4 h-4 shrink-0 ${isAnalyzerActive ? 'text-white' : 'text-indigo-500'}`} />
                                                     <span>Data Analyzer</span>
                                                 </div>
-                                                <span className={`text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${isAnalyzerActive ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-800 border border-indigo-200/60'}`}>
-                                                    AI
+                                                <span className={`text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${isAnalyzerActive ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800 border border-amber-200/60'}`}>
+                                                    Beta
                                                 </span>
                                             </Link>
                                         </SheetClose>

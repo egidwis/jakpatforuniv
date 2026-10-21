@@ -39,6 +39,8 @@ import {
 } from '@/utils/supabase';
 import type { ReviewHistoryEntry } from '@/components/submissions/types';
 import { isAutoReviewed } from './deriveOrderUiState';
+import { RowGrid } from './RowGrid';
+import { StatusPill } from './StatusPill';
 import { toast } from 'sonner';
 
 /**
@@ -92,35 +94,15 @@ export function getReviewChip(first: AdScheduleEntry, t: (key: TranslationKey) =
     if (state === 'cancelled') {
         // Abu, bukan merah, dan tanpa denyut: ini KEPUTUSAN, bukan kegagalan,
         // dan tidak ada yang perlu ditindak.
-        return (
-            <span className="flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold shrink-0 bg-slate-100 border-slate-200 text-slate-600">
-                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                {t('reviewChipCancelled')}
-            </span>
-        );
+        return <StatusPill bg="bg-slate-100 border-slate-200" text="text-slate-600" dot="bg-slate-400">{t('reviewChipCancelled')}</StatusPill>;
     }
     if (state === 'rejected') {
-        return (
-            <span className="flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold shrink-0 bg-rose-50 border-rose-200/80 text-rose-700">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-                {t('reviewChipRejected')}
-            </span>
-        );
+        return <StatusPill bg="bg-rose-50 border-rose-200/80" text="text-rose-700" dot="bg-rose-500" pulse>{t('reviewChipRejected')}</StatusPill>;
     }
     if (state === 'pending') {
-        return (
-            <span className="flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold shrink-0 bg-sky-50 border-sky-200/80 text-sky-700">
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
-                {t('reviewChipPending')}
-            </span>
-        );
+        return <StatusPill bg="bg-sky-50 border-sky-200/80" text="text-sky-700" dot="bg-sky-500" pulse>{t('reviewChipPending')}</StatusPill>;
     }
-    return (
-        <span className="flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold shrink-0 bg-emerald-50 border-emerald-200/80 text-emerald-700">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            {t('reviewChipApproved')}
-        </span>
-    );
+    return <StatusPill bg="bg-emerald-50 border-emerald-200/80" text="text-emerald-700" dot="bg-emerald-500">{t('reviewChipApproved')}</StatusPill>;
 }
 
 /**
@@ -144,11 +126,11 @@ function ReviewMethodChip({ auto }: { auto: boolean }) {
     return (
         <>
             {auto ? (
-                <Bot className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                <Bot className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             ) : (
-                <UserCheck className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                <UserCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             )}
-            <span className="text-[#1a1a1a] font-bold text-xs">
+            <span className="text-slate-900 font-bold text-xs">
                 {t(auto ? 'reviewMethodAuto' : 'reviewMethodManual')}
             </span>
             <InfoTooltip content={t(auto ? 'reviewMethodAutoHint' : 'reviewMethodManualHint')} />
@@ -274,8 +256,8 @@ export function ReviewPhase({ submission, first, onDataUpdated, active, hadBille
                                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
                                     <div className="flex-1 min-w-0 space-y-3">
                                         <div>
-                                            <p className="text-sm font-semibold text-gray-900 leading-snug">{t('reviewTitleRejected')}</p>
-                                            <p className="text-xs text-gray-600 leading-relaxed mt-0.5">
+                                            <p className="text-sm font-semibold text-slate-900 leading-snug">{t('reviewTitleRejected')}</p>
+                                            <p className="text-xs text-slate-600 leading-relaxed mt-0.5">
                                                 {t('reviewSubRejected')}
                                             </p>
                                         </div>
@@ -285,7 +267,7 @@ export function ReviewPhase({ submission, first, onDataUpdated, active, hadBille
                                                 <span className="font-semibold text-amber-900 block text-[11px] uppercase tracking-wider">
                                                     {t('reviewerNotesTitle')}:
                                                 </span>
-                                                <p className="whitespace-pre-line leading-relaxed text-gray-800 font-normal">
+                                                <p className="whitespace-pre-line leading-relaxed text-slate-800 font-normal">
                                                     &ldquo;{submission.admin_notes}&rdquo;
                                                 </p>
                                             </div>
@@ -297,7 +279,7 @@ export function ReviewPhase({ submission, first, onDataUpdated, active, hadBille
                                             </div>
                                         )}
 
-                                        <p className="text-xs text-gray-600 font-normal">
+                                        <p className="text-xs text-slate-600 font-normal">
                                             {t('reviewGuideText')}
                                         </p>
 
@@ -323,9 +305,9 @@ export function ReviewPhase({ submission, first, onDataUpdated, active, hadBille
                                                         setNewSurveyUrl(submission.survey_url || '');
                                                         setIsEditLinkOpen(true);
                                                     }}
-                                                    className="rounded-full font-semibold bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 text-xs px-3.5 h-9 gap-1.5 shadow-xs transition-all"
+                                                    className="rounded-full font-semibold bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 text-xs px-3.5 h-9 gap-1.5 shadow-xs transition-all"
                                                 >
-                                                    <PenLine className="w-3.5 h-3.5 text-gray-500" /> {t('btnChangeLink')}
+                                                    <PenLine className="w-3.5 h-3.5 text-slate-500" /> {t('btnChangeLink')}
                                                 </Button>
                                             </div>
 
@@ -350,9 +332,9 @@ export function ReviewPhase({ submission, first, onDataUpdated, active, hadBille
                                                         setNewSurveyUrl(submission.survey_url || '');
                                                         setIsEditLinkOpen(true);
                                                     }}
-                                                    className="w-full rounded-full font-semibold bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 text-xs px-2.5 h-9 gap-1.5 shadow-xs transition-all justify-center"
+                                                    className="w-full rounded-full font-semibold bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 text-xs px-2.5 h-9 gap-1.5 shadow-xs transition-all justify-center"
                                                 >
-                                                    <PenLine className="w-3.5 h-3.5 text-gray-500" /> {t('btnChangeLink')}
+                                                    <PenLine className="w-3.5 h-3.5 text-slate-500" /> {t('btnChangeLink')}
                                                 </Button>
                                             </div>
                                         </div>
@@ -372,10 +354,10 @@ export function ReviewPhase({ submission, first, onDataUpdated, active, hadBille
                                     <Ban className="w-4 h-4 shrink-0 mt-0.5 text-slate-400" />
                                     <div className="flex-1 min-w-0 space-y-3">
                                         <div>
-                                            <p className="text-sm font-semibold text-gray-900 leading-snug">
+                                            <p className="text-sm font-semibold text-slate-900 leading-snug">
                                                 {t('reviewTitleCancelled')}
                                             </p>
-                                            <p className="text-xs text-gray-600 leading-relaxed mt-0.5">
+                                            <p className="text-xs text-slate-600 leading-relaxed mt-0.5">
                                                 {cancelledByResearcher
                                                     ? t('cancelledByResearcher')
                                                     : t('cancelledByAdmin')}
@@ -392,7 +374,7 @@ export function ReviewPhase({ submission, first, onDataUpdated, active, hadBille
                                                 <span className="font-semibold text-slate-500 block text-[11px] uppercase tracking-wider">
                                                     {t('reviewerNotesTitle')}:
                                                 </span>
-                                                <p className="whitespace-pre-line leading-relaxed text-gray-800 font-normal">
+                                                <p className="whitespace-pre-line leading-relaxed text-slate-800 font-normal">
                                                     &ldquo;{submission.admin_notes}&rdquo;
                                                 </p>
                                             </div>
@@ -407,7 +389,7 @@ export function ReviewPhase({ submission, first, onDataUpdated, active, hadBille
                                             </div>
                                         )}
 
-                                        <p className="text-xs text-gray-600 font-normal">
+                                        <p className="text-xs text-slate-600 font-normal">
                                             {t('cancelledNextStep')}
                                         </p>
                                     </div>
@@ -416,50 +398,47 @@ export function ReviewPhase({ submission, first, onDataUpdated, active, hadBille
                         )}
 
                         {inReview && (
-                            <div className="rounded-xl border p-3 border-gray-200 bg-gray-50">
-                                <p className="text-sm text-gray-600 leading-relaxed">
+                            <div className="rounded-xl border p-3 border-slate-200 bg-slate-50">
+                                <p className="text-sm text-slate-600 leading-relaxed">
                                     {t('calloutReviewManual')}
                                 </p>
                             </div>
                         )}
 
-                        <dl className="[display:grid] grid-cols-[auto_1fr] sm:grid-cols-[9.5rem_1fr] gap-x-3 gap-y-2.5 items-start pt-1">
-                            <dt className="flex items-center gap-1.5 text-xs text-[#888] whitespace-nowrap pt-0.5 pr-1">
-                                <Link2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                                {t('questionnaireLabel')}
-                            </dt>
-                            <dd className="text-sm font-medium min-w-0 break-words">
-                                {submission.survey_url ? (
-                                    <a
-                                        href={submission.survey_url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="truncate text-blue-600 font-medium hover:text-blue-700 hover:underline block"
-                                        title={submission.survey_url}
-                                    >
-                                        {submission.survey_url.replace(/^https?:\/\//, '')}
-                                    </a>
-                                ) : (
-                                    <span className="text-gray-400 font-normal">—</span>
-                                )}
-                            </dd>
-
-                            <dt className="flex items-center gap-1.5 text-xs text-[#888] whitespace-nowrap pt-0.5 pr-1">
-                                <FileText className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                                {t('questionsCountLabel')}
-                            </dt>
-                            <dd className="text-sm font-semibold text-gray-900 min-w-0 break-words">
-                                {submission.question_count} {t('questionsItemUnit')}
-                            </dd>
-
-                            <dt className="flex items-center gap-1.5 text-xs text-[#888] whitespace-nowrap pt-0.5 pr-1">
-                                <Users className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                                {t('criteriaRespondentLabel')}
-                            </dt>
-                            <dd className="text-sm font-semibold text-gray-900 min-w-0 break-words">
-                                {submission.criteria_responden || '—'}
-                            </dd>
-                        </dl>
+                        <RowGrid
+                            rows={[
+                                {
+                                    key: 'questionnaire',
+                                    icon: <Link2 className="w-3.5 h-3.5" />,
+                                    label: t('questionnaireLabel'),
+                                    value: submission.survey_url ? (
+                                        <a
+                                            href={submission.survey_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="truncate text-blue-600 font-medium hover:text-blue-700 hover:underline block"
+                                            title={submission.survey_url}
+                                        >
+                                            {submission.survey_url.replace(/^https?:\/\//, '')}
+                                        </a>
+                                    ) : (
+                                        <span className="text-slate-400 font-normal">—</span>
+                                    ),
+                                },
+                                {
+                                    key: 'questions',
+                                    icon: <FileText className="w-3.5 h-3.5" />,
+                                    label: t('questionsCountLabel'),
+                                    value: `${submission.question_count} ${t('questionsItemUnit')}`,
+                                },
+                                {
+                                    key: 'criteria',
+                                    icon: <Users className="w-3.5 h-3.5" />,
+                                    label: t('criteriaRespondentLabel'),
+                                    value: submission.criteria_responden || '—',
+                                },
+                            ]}
+                        />
                     </AccordionContent>
                 </AccordionItem>
             </Accordion>

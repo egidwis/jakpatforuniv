@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 interface PhaseProps {
     number: number;
     title: string;
-    chip?: ReactNode;
     isLast?: boolean;
     /** Sudah tercapai/sedang berjalan (kumulatif) — nomor menyala biru.
      * Belum tercapai — nomor abu-abu netral. Default `true` supaya caller
@@ -24,7 +23,7 @@ interface PhaseProps {
  * Menggantikan stepper: nomor + garis penghubung tetap memberi rasa
  * "perjalanan", tapi isi tiap fase adalah data, bukan simbol abstrak.
  */
-export function Phase({ number, title, chip, isLast, active = true, lineActive, children }: PhaseProps) {
+export function Phase({ number, title, isLast, active = true, lineActive, children }: PhaseProps) {
     const lineOn = lineActive ?? active;
     return (
         <div className={`relative pl-8 sm:pl-9 ${isLast ? '' : 'pb-6'}`}>
@@ -41,8 +40,7 @@ export function Phase({ number, title, chip, isLast, active = true, lineActive, 
                 {number}
             </div>
             <div className="flex items-center justify-between gap-2 min-h-[24px] mb-2.5">
-                <h3 className={`text-sm font-bold tracking-tight ${active ? 'text-slate-900' : 'text-slate-400'}`}>{title}</h3>
-                {chip}
+                <h3 className={`text-[15px] font-bold tracking-tight ${active ? 'text-slate-900' : 'text-slate-400'}`}>{title}</h3>
             </div>
             {children}
         </div>
