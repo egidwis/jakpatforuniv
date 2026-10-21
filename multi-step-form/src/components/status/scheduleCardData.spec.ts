@@ -118,6 +118,17 @@ describe('buildScheduleCards — aturan emas jam tayang', () => {
         expect(card.info.kilatSlotHour).toBe(11);
     });
 
+    it('rentang tanggal Kilat = tanggal gelombang saja, bukan "3 Sep–4 Sep"', () => {
+        // end_date Kilat = +24 jam akhir-eksklusif; dirangkai seperti Iklan ia
+        // terbaca dua hari di kepala kartu (OrderSummaryBar).
+        const first = scheduleOf({ distributionType: 'kilat', kilatSlotHour: 11 });
+        const [kilat] = buildScheduleCards(uiOf(first), {}, null, t, submissionOf({ distribution_type: 'kilat' }));
+        const [iklan] = buildScheduleCards(uiOf(scheduleOf()), {}, null, t, submissionOf());
+
+        expect(kilat.dateRange).not.toContain('–');
+        expect(iklan.dateRange).toContain('–');
+    });
+
     it('iklan reguler tidak pernah ditandai Kilat', () => {
         const [card] = buildScheduleCards(uiOf(scheduleOf()), {}, null, t, submissionOf());
         expect(card.info.isKilat).toBe(false);

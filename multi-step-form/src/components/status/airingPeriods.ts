@@ -232,6 +232,17 @@ export interface ScheduleCard {
 export const fmtShort = (d: Date | null) =>
     d ? d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '—';
 
+/**
+ * Rentang tanggal tiket. Kilat = satu gelombang (Phase 5 §5.8): tanggal
+ * gelombangnya saja — `end`-nya +24 jam (akhir-eksklusif) dan terbaca
+ * "19 Okt–20 Okt" kalau ikut dirangkai seperti Iklan. Pasangan `triggerEndOf`
+ * di SchedulePhase; ringkasan kepala kartu (OrderSummaryBar) membaca ini.
+ */
+export const dateRangeOf = (start: Date | null, end: Date | null, isKilat: boolean): string => {
+    if (!start && !end) return '—';
+    return isKilat ? fmtShort(start) : `${fmtShort(start)}–${fmtShort(end)}`;
+};
+
 function buildIncentive(s: AdScheduleEntry): IncentiveInfo | null {
     if (s.ordinal > 1) {
         if (s.isNewPeriod && s.prizePerWinner > 0) {
@@ -390,7 +401,7 @@ export function buildScheduleCards(
             kind: 'original',
             label: totalPeriods > 1 ? `${t('airingPeriodLabel')} 1` : t('airingPeriodLabel'),
             ordinal: 1,
-            dateRange: oStart || oEnd ? `${fmtShort(oStart)}–${fmtShort(oEnd)}` : '—',
+            dateRange: dateRangeOf(oStart, oEnd, isKilatSchedule(first, submission)),
             startDate: oStart,
             endDate: oEnd,
             info: {
@@ -525,7 +536,7 @@ export function buildScheduleCards(
             kind: 'extend',
             label: `${t('airingPeriodLabel')} ${s.ordinal}`,
             ordinal: s.ordinal,
-            dateRange: start || end ? `${fmtShort(start)}–${fmtShort(end)}` : '—',
+            dateRange: dateRangeOf(start, end, isKilatSchedule(s, submission)),
             startDate: start,
             endDate: end,
             info: {
