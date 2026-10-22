@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { EXTENSION_SOURCE_TABLE, supabase } from './supabase';
 
 /**
  * Konteks batch hadiah untuk sebuah jendela tayang.
@@ -66,7 +66,7 @@ export async function scheduleIdFromSourceId(sourceId: string): Promise<string |
   const { data, error } = await supabase
     .from('ad_schedules')
     .select('id')
-    .eq('source_table', 'form_submissions_extend')
+    .eq('source_table', EXTENSION_SOURCE_TABLE)
     .eq('source_id', sourceId)
     .limit(1);
   if (error) {

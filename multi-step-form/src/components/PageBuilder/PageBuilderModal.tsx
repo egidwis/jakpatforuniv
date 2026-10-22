@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 // import { Switch } from '@/components/ui/switch'; // Removed unused
 import { BlockEditor } from './BlockEditor';
-import { adminContent, firstAdminRow, setSubmissionAiringStatus, setSubmissionCriteria, supabase, syncSubmissionDates } from '@/utils/supabase';
+import { adminContent, EXTENSION_SOURCE_TABLE, firstAdminRow, setSubmissionAiringStatus, setSubmissionCriteria, supabase, syncSubmissionDates } from '@/utils/supabase';
 import { airingWindowState, toAiringStartIso, toWibYmd } from '@/utils/airing-window';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -189,7 +189,7 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                         const { data: others } = await supabase
                             .from('ad_schedules')
                             .select('id')
-                            .eq('source_table', 'form_submissions_extend')
+                            .eq('source_table', EXTENSION_SOURCE_TABLE)
                             .eq('submission_id', submissionId)
                             .in('status', ['waiting_payment', 'paid', 'scheduled', 'live'])
                             .limit(1);
