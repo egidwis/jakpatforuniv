@@ -6,6 +6,7 @@ import { formatRupiah } from '../utils/currency';
 import { getOwnProfile } from '../utils/supabase';
 import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
 import { isAutoApprovalPath } from '../utils/review-path';
+import { awayGuard } from './status/AdminAwayModal';
 import { checkoutBlocker } from '../utils/orderReadiness';
 import { orderSubmitErrorKeyForCode } from '../utils/submitOrder';
 import { useAuth } from '../context/AuthContext';
@@ -213,6 +214,14 @@ export function StepCheckout({
     if (isSubmittingRef.current) return;
     if (!validateBeforeLeaving()) return;
 
+    // Mode libur: modal dulu (sekali per masa libur), baru langkah aslinya.
+    // `main` tidak punya Kilat swalayan, jadi selalu produk Iklan (modal A/B).
+    const path = !isAutoApproval ? 'review' : needsSchedule ? 'schedule' : 'pay';
+    awayGuard({ kind: 'submit', product: 'ads', path }, () => { void proceed(); });
+  };
+
+  const proceed = async () => {
+    if (isSubmittingRef.current) return;
     // Jalur otomatis tanpa tanggal: belum ada apa pun yang ditulis — lanjut
     // memilih jadwal, dan order baru lahir saat slot dikunci di sana. Kilat
     // dikembalikan ke pemilihnya sendiri, bukan ke kalender reguler, karena

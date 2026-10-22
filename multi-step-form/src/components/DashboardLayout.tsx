@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, Outlet } from 'react-router-dom';
 import { AppNav } from './AppNav';
 import { ProfileCompletionSheet } from './ProfileCompletionSheet';
+import { AdminAwayModalHost } from './status/AdminAwayModal';
 import { getOwnProfile, isProfileComplete } from '../utils/supabase';
 
 export function DashboardLayout() {
@@ -106,6 +107,11 @@ export function DashboardLayout() {
         <main className={isChat ? 'min-w-0 flex-1' : 'min-w-0 pb-10 flex-1'}>
           <Outlet />
         </main>
+
+        {/* Satu host modal mode libur untuk seluruh dashboard peneliti — juga
+            yang menjaga poller status libur tetap hidup (bukan di akar App:
+            halaman publik survei tidak perlu ikut membaca setiap menit). */}
+        <AdminAwayModalHost />
       </div>
     </div>
   );

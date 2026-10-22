@@ -37,6 +37,7 @@ import { groupInfoFor } from '@/components/status/invoiceGroups';
 import { CreateOrderCards, NewOrderFab } from '@/components/CreateOrderCards';
 import { deriveOrderUiState, getActiveDashboardPhase, isAutoReviewed, type OrderGroup } from '@/components/status/deriveOrderUiState';
 import { AdsEntryModal } from '@/components/AdsEntryModal';
+import { AdminHolidayBanner } from '@/components/status/AdminHolidayBanner';
 import { ProfileCompletionSheet } from '@/components/ProfileCompletionSheet';
 import { isProfileGateSatisfied } from '@/components/ProfileForm';
 
@@ -943,6 +944,9 @@ export function StatusPage() {
                         style={framed ? { height: frameHeight } : undefined}
                         className={framed ? '!mt-0 overflow-y-auto overscroll-contain -mx-2 px-2 pt-[81px] pb-5 [scrollbar-width:thin] [scrollbar-color:rgb(203_213_225)_transparent] [mask-image:linear-gradient(to_bottom,transparent_14px,black_30px,black_calc(100%_-_20px),transparent)]' : undefined}
                     >
+                    {/* Hari libur tim admin (Phase 5 §5.4b) — hanya pada tanggal libur aktif. Di DALAM
+                        bingkai (bukan di atas kepala kaca) supaya kepala tetap menempel di atas kolom. */}
+                    <AdminHolidayBanner className="mb-4" />
                     {submissions.length === 0 ? (
                         /* Modern, Clean & Elevated Empty State Card */
                         <Card className="border border-slate-200/90 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] bg-white/95 rounded-2xl overflow-hidden">

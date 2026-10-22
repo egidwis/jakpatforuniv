@@ -46,6 +46,7 @@ import { slotReleaseDeadline, isSlotHoldReleased } from '../../utils/slotHold';
 import { payLinkPath } from '../../utils/payLink';
 import { creditPhaseOf } from '../../components/status/scheduleAxes';
 import { isAutoReviewed } from '../../components/status/deriveOrderUiState';
+import { awayGuard, awayGuardWouldOpen } from '../../components/status/AdminAwayModal';
 import { createPayment, GroupBillError } from '../../utils/payment';
 import { shouldAutoMint, canRepickInPlace, billExpiryFor } from '../../utils/jadwalBayarGates';
 import { createInFlightGate } from '../../utils/inFlightGate';
@@ -864,6 +865,15 @@ export function JadwalDanBayarPage() {
       (`authoritative_payment_url`, sql/85), bukan saat link dirender. Halaman
       ini paling rawan: countdown-nya berjalan, jarak render→klik bisa satu jam.
     */
+    /*
+      Modal libur D sebelum bayar Iklan — sekali per masa libur. Entri Kilat
+      (buatan admin) dibayar tanpa modal: varian E butuh label gelombang yang
+      belum ada di `main`.
+    */
+    const payGuard = (action: () => void) => {
+      if (mode === 'kilat') { action(); return; }
+      awayGuard({ kind: 'pay', product: 'ads', schedule: lockedYmd ? shortDate(lockedYmd) : undefined }, action);
+    };
     const canSelfMint = entry.ordinal === 1 && entry.slotBookedBy === 'user' && !owedOnCredit && !holdExpired;
     const payLabel = offerRepick ? t('payAnywayCta') : t('payNow');
     const payButton = hasOpenBill ? (
@@ -871,6 +881,12 @@ export function JadwalDanBayarPage() {
         href={payLinkPath(entry.id)}
         target="_blank"
         rel="noopener noreferrer"
+        onClick={(e) => {
+          if (mode === 'kilat' || !awayGuardWouldOpen()) return;
+          e.preventDefault();
+          // Dibuka dari klik "Lanjutkan" — masih gestur pengguna.
+          payGuard(() => { window.open(payLinkPath(entry.id), '_blank', 'noopener,noreferrer'); });
+        }}
         className={offerRepick ? secondaryBtn : primaryBtn}
       >
         <CreditCard size={16} /> {payLabel}
@@ -878,7 +894,7 @@ export function JadwalDanBayarPage() {
     ) : canSelfMint ? (
       <button
         type="button"
-        onClick={handlePayWithoutBill}
+        onClick={() => payGuard(() => { void handlePayWithoutBill(); })}
         /*
           ⚠️ TIDAK mati selama tagihan disiapkan — klik membuka tab yang
           menunggu tagihan yang sama. Mati hanya sesudah diklik (tab sedang

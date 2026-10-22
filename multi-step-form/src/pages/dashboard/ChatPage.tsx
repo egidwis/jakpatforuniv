@@ -28,6 +28,9 @@ import {
 } from "@/components/ui/accordion";
 import ReactMarkdown from 'react-markdown';
 import { buildMiminPricingSection } from '@/utils/miminPricing';
+import { buildMiminAwaySection } from '@/utils/miminAway';
+import { useAdminAway } from '@/utils/operationalHolidays';
+import { AdminHolidayBanner } from '@/components/status/AdminHolidayBanner';
 import { GenerativeUiRenderer, type GenerativeUiData } from '@/components/chat/generative/GenerativeUiRenderer';
 import { openChatHref } from '@/utils/chatLinks';
 import {
@@ -297,6 +300,10 @@ export function ChatPage() {
         [userOrders]
     );
 
+    // Mode libur (sql/120): satu pembacaan untuk banner DAN prompt — keduanya
+    // harus sepakat soal apakah tim admin sedang libur.
+    const adminAway = useAdminAway();
+
     // Build system prompt with Comprehensive Product Knowledge, Agentic Skills & Action Capabilities
     const buildSystemPrompt = useCallback(() => {
         const basePersona = systemPrompt || `You are Mimin AI, the Agentic AI Assistant & Virtual Admin for Jakpat for Universities (JFU).
@@ -459,9 +466,10 @@ ${skillsContext}
 FAQ di bawah ini selalu tersedia. Jika sebuah SOP punya blok "FAQ TERKAIT", utamakan Q&A itu untuk situasi SOP tersebut.
 ${currentFaqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
 ${orderContext}
+${buildMiminAwaySection(adminAway)}
 ${jsonContract}
 `;
-    }, [systemPrompt, skills, faqs, orderStates]);
+    }, [systemPrompt, skills, faqs, orderStates, adminAway]);
 
 function extractJsonObject(text: string): Record<string, any> | null {
     if (!text) return null;
@@ -1023,6 +1031,7 @@ function parseMiminResponse(
                                     </div>
                                 </div>
                             </CardHeader>
+                            <AdminHolidayBanner className="mx-3 mt-3 shrink-0" away={adminAway} />
 
                             {replyMode === 'human' && (
                                 <div className="px-4 py-2 bg-sky-50 text-sky-900 text-xs border-b border-sky-100">

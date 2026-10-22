@@ -21,6 +21,7 @@ import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { SubmissionsMobileCard } from './SubmissionsTableRow';
 import type { SurveySubmission, PaymentState, ReviewHistoryEntry, ExistingPage, FormAuditResult } from './submissions/types';
 import { deriveLifecycle, type ScheduleSignals } from './submissions/lifecycle';
+import { AdminAwayDialog, AdminAwayPill, AdminAwayStrip, useAdminAwayControl } from './submissions/AdminAwayToggle';
 import { fetchAdSchedules } from '../utils/supabase';
 import { occupiesSlot } from '@/pages/dashboard/schedule/scheduleModel';
 import { SubmissionListRow } from './submissions/SubmissionListRow';
@@ -103,6 +104,8 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [distTab, setDistTab] = useState<'regular' | 'kilat'>('regular');
+  /** Mode libur tim admin (sql/120) — satu kendali untuk strip, pill, dan popup. */
+  const awayControl = useAdminAwayControl();
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
 
   // Derived schedule state: Set of submission IDs that have a slot reserved (start_date set)
@@ -1242,6 +1245,9 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
       {/* Content */}
       <div className={hideAuth ? 'p-4 md:p-6 flex-1 min-h-0 flex flex-col gap-4' : 'max-w-[1400px] mx-auto w-full px-4 sm:px-6 py-6 flex-1 min-h-0 flex flex-col gap-4'}>
 
+        <AdminAwayStrip control={awayControl} />
+        <AdminAwayDialog control={awayControl} />
+
         {/* Mobile-only filter card. Legacy src/styles.css loads after Tailwind and
             redefines `.flex`, which overrides `md:hidden` — so this element must not
             use `flex` for its own layout (space-y keeps the same vertical stack). */}
@@ -1287,6 +1293,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
 
             {/* Right: Actions */}
             <div className="flex items-center gap-2 shrink-0 ml-auto">
+              <AdminAwayPill control={awayControl} compact />
               <Button
                 onClick={loadSubmissions}
                 variant="outline"
@@ -1384,6 +1391,10 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
               {label}
             </button>
           ))}
+          {/* Ujung kanan baris tab: toggle mode libur (sql/120). */}
+          <div className="ml-auto pb-1.5">
+            <AdminAwayPill control={awayControl} />
+          </div>
         </div>
 
         {/* Desktop: unified list surface — toolbar, column header, rows, pagination in one card */}

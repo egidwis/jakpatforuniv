@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { CheckCircle2, ArrowRight, FileText } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import { AdminAwayInlineNote } from './status/AdminHolidayBanner';
 
 interface ReviewSubmissionModalProps {
   isOpen: boolean;
@@ -109,6 +110,8 @@ export function ReviewSubmissionModal({
                     </span>
                     <span className={`pt-0.5 text-xs leading-relaxed ${i === 0 ? 'text-slate-900 font-medium' : 'text-slate-600'}`}>
                       {text}
+                      {/* Mode libur (sql/120): langkah 1 menjanjikan "maks 2 hari kerja". */}
+                      {i === 0 && <AdminAwayInlineNote className="mt-1" textKey="reviewModalAwayNote" />}
                     </span>
                   </li>
                 );

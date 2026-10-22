@@ -72,6 +72,7 @@ import {
   fieldRowListClass,
 } from '../../components/SurveyFieldRow';
 import { lockRollbackDecision } from '../../utils/lockRollback';
+import { awayGuard, awayGuardWouldOpen } from '../../components/status/AdminAwayModal';
 
 /**
  * Halaman "Jadwal Baru" — tempat jadwal perpanjangan LAHIR.
@@ -342,6 +343,19 @@ export function JadwalBaruPage() {
     }
     // Lolos gerbang = `picked` ada, jadi keduanya terisi. Penjaga tipe saja.
     if (!startIso || !endIso) return;
+
+    /*
+      Mode libur: modal D sebelum mengunci (mengunci = langsung ke tagihan).
+      Gerbang di atas sudah lolos; "Lanjutkan" mencatat ack, jadi panggilan
+      ulang ini melewati modal dan menjalankan gerbang sekali lagi.
+    */
+    if (awayGuardWouldOpen()) {
+      const schedule = new Date(startIso).toLocaleDateString(language === 'en' ? 'en-US' : 'id-ID', {
+        weekday: 'long', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta',
+      });
+      awayGuard({ kind: 'pay', product: 'ads', schedule }, () => { void handleLock(); });
+      return;
+    }
 
     feedback.clear();
     setIsSaving(true);
