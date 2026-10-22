@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bookingClosed, lockInstants, lockPatch, validateLock } from './lockGate.js';
+import { bookingClosed, lockInstants, lockPatch, selfBookingBlock, validateLock } from './lockGate.js';
 
 const id = 'b7eb61ca-079a-4787-9787-be253b0a1111';
 
@@ -49,5 +49,21 @@ describe('lockPatch', () => {
       { startYmd: '2026-10-20', duration: 1 },
       now,
     ).error).toMatch(/13\.00/);
+  });
+});
+
+describe('selfBookingBlock (sql/125, tutup reservasi mandiri)', () => {
+  it('saklar terbuka & order tanpa cap: lolos', () => {
+    expect(selfBookingBlock({ self_booking_closed_at: null }, false)).toBeNull();
+  });
+
+  it('saklar tertutup: semua kunci peneliti ditolak dengan kode', () => {
+    expect(selfBookingBlock({ self_booking_closed_at: null }, true)).toMatchObject({ code: 'self_booking_closed' });
+  });
+
+  it('order bercap: ditolak walau saklar sudah dibuka lagi', () => {
+    const block = selfBookingBlock({ self_booking_closed_at: '2026-10-22T03:00:00Z' }, false);
+    expect(block).toMatchObject({ code: 'self_booking_closed' });
+    expect(block.error).toMatch(/tim Jakpat/);
   });
 });

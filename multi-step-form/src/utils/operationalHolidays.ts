@@ -135,7 +135,7 @@ export const ADMIN_AWAY_POLL_MS = 60_000;
 const sameAway = (a: AdminAway | null, b: AdminAway | null) =>
   a === b || (!!a && !!b && a.since === b.since && a.message === b.message && a.messageEn === b.messageEn);
 
-export function createAdminAwayStore(fetcher: () => Promise<AdminAway | null>) {
+export function createAdminAwayStore(fetcher: () => Promise<AdminAway | null>, logLabel = 'mode libur') {
   let current: AdminAway | null = null;
   let users = 0;
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -153,7 +153,7 @@ export function createAdminAwayStore(fetcher: () => Promise<AdminAway | null>) {
         return current;
       })
       .catch((err) => {
-        console.warn('[mode libur] gagal membaca status:', err);
+        console.warn(`[${logLabel}] gagal membaca status:`, err);
         return current;
       })
       .finally(() => { inflight = null; });

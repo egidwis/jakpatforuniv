@@ -285,7 +285,14 @@ export function deriveOrderUiState(
         // struktural: ketidakpresisiannya (lihat docstring fungsi itu) hanya
         // bisa salah ke arah "dianggap auto" — dan itu jatuh ke perilaku
         // sekarang, bukan ke peneliti yang terdampar menunggu admin.
-        callout = isAutoReviewed(submission) ? 'choose_schedule' : 'awaiting_admin_schedule';
+        //
+        // Cap sql/125 (`self_booking_closed_at`): order jalur otomatis yang lahir
+        // saat reservasi mandiri ditutup — tim yang menjadwalkannya, PERMANEN.
+        // Saklar yang sedang tutup TIDAK dibaca di sini (fungsi ini murni dari
+        // baris): order tanpa cap tetap `choose_schedule`, CTA-nya yang ditahan.
+        callout = isAutoReviewed(submission) && !submission.self_booking_closed_at
+            ? 'choose_schedule'
+            : 'awaiting_admin_schedule';
     } else if (currentStep === 2) {
         // too_late_today menang atas payment/awaiting_invoice: menawarkan bayar
         // untuk jadwal yang sudah tidak bisa dikejar cuma memindahkan kekecewaan

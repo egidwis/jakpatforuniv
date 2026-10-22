@@ -82,3 +82,24 @@ export function lockPatch(row, body, now = new Date()) {
     },
   };
 }
+
+export const SELF_BOOKING_CLOSED = 'self_booking_closed';
+
+/**
+ * Tutup reservasi mandiri (sql/125). Jalur ini menulis dengan service_role,
+ * jadi trigger DB `trg_01_self_booking` TIDAK menjaganya — keputusan di sini
+ * satu-satunya penjaga server untuk "Kunci tanggal" Iklan.
+ *
+ * Order bercap (`self_booking_closed_at`) ditolak SELAMANYA, walau saklar
+ * sudah dibuka lagi: tim yang menjadwalkannya, dan menawarkan kunci mandiri
+ * di situ mengundang balapan slot dengan admin.
+ */
+export function selfBookingBlock(row, closed) {
+  if (row?.self_booking_closed_at) {
+    return { code: SELF_BOOKING_CLOSED, error: 'Jadwal order ini ditetapkan tim Jakpat — tunggu tagihan dari tim, atau hubungi tim lewat Chat Mimin.' };
+  }
+  if (closed) {
+    return { code: SELF_BOOKING_CLOSED, error: 'Reservasi mandiri sedang ditutup sementara. Coba lagi nanti, atau minta tim Jakpat menjadwalkan lewat Chat Mimin.' };
+  }
+  return null;
+}

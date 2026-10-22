@@ -65,6 +65,8 @@ export interface SurveySubmission {
   /** Disingkirkan pemilik baris dari daftarnya (sql/69). Bukan keadaan order. */
   dismissed_at?: string | null;
   distribution_type?: 'regular' | 'kilat';
+  /** sql/125: cap "jadwal oleh tim" — lahir saat reservasi mandiri ditutup. */
+  self_booking_closed_at?: string | null;
   /**
    * Gelombang push Kilat dalam jam WIB (8/11/14/17). NULL/undefined pada order
    * Kilat berarti slotnya belum ditugaskan admin — keadaan yang sah untuk order

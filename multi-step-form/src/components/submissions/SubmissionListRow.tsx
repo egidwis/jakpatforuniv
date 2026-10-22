@@ -16,6 +16,7 @@ import { getSubmissionActionDot } from './lifecycle';
 import { ClientStatusDot } from '../customers/ClientStatusIcon';
 import type { CustomerTier } from '../customers/types';
 import { missedPaymentWindow } from '@/utils/missedPaymentWindow';
+import { SelfBookingClosedChip } from './AdminSelfBookingToggle';
 
 interface SubmissionListRowProps {
   submission: SurveySubmission;
@@ -170,6 +171,7 @@ export function SubmissionListRow({
           <span className="text-sm font-semibold text-gray-900 truncate" title={submission.formTitle}>
             {submission.formTitle}
           </span>
+          <SelfBookingClosedChip cappedAt={submission.self_booking_closed_at} startDate={submission.start_date} />
           {submission.voucher_code && (
             <TooltipProvider>
               <Tooltip>

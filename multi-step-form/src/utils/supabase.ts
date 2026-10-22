@@ -473,6 +473,12 @@ export interface FormSubmission {
   created_at?: string;
   updated_at?: string;
   distribution_type?: 'regular' | 'kilat';
+  /**
+   * sql/125: cap "jadwal oleh tim" — order jalur otomatis yang lahir selama
+   * reservasi mandiri ditutup. Ditulis trigger, permanen: peneliti tidak
+   * pernah mengunci tanggal order ini (`canSelfSchedule`).
+   */
+  self_booking_closed_at?: string | null;
   ai_prescreening?: any;
 }
 
@@ -5296,7 +5302,13 @@ export const rebookSlotForSubmission = async (
     const raw = await res.text();
     let parsed: any = null;
     try { parsed = raw ? JSON.parse(raw) : null; } catch { /* badan bukan JSON */ }
-    if (!res.ok) throw new Error(parsed?.error || `Gagal mengunci tanggal (HTTP ${res.status})`);
+    if (!res.ok) {
+      // `code` ikut diteruskan: 'self_booking_closed' (409, sql/125) dikenali
+      // halaman lewat `isSelfBookingClosedError`, bukan dari teks pesannya.
+      throw Object.assign(new Error(parsed?.error || `Gagal mengunci tanggal (HTTP ${res.status})`), {
+        code: parsed?.code,
+      });
+    }
     return true;
   }
 

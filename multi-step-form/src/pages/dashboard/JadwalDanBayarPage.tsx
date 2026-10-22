@@ -46,6 +46,8 @@ import { slotReleaseDeadline, isSlotHoldReleased } from '../../utils/slotHold';
 import { payLinkPath } from '../../utils/payLink';
 import { creditPhaseOf } from '../../components/status/scheduleAxes';
 import { isAutoReviewed } from '../../components/status/deriveOrderUiState';
+import { isSelfBookingClosedError, refreshSelfBookingClosure, selfBookingBlocked, useSelfBookingClosure } from '../../utils/selfBookingClosure';
+import { SelfBookingNotice } from '../../components/order/SelfBookingNotice';
 import { awayGuard, awayGuardWouldOpen } from '../../components/status/AdminAwayModal';
 import { createPayment, GroupBillError } from '../../utils/payment';
 import { shouldAutoMint, canRepickInPlace, billExpiryFor } from '../../utils/jadwalBayarGates';
@@ -138,13 +140,23 @@ export function JadwalDanBayarPage() {
   const mounted = useRef(true);
   useEffect(() => () => { mounted.current = false; }, []);
 
-  const repickAllowed = !!entry && !!submission && canRepickInPlace({
+  const repickEligible = !!entry && !!submission && canRepickInPlace({
     ordinal: entry.ordinal,
     siblingCount: siblings.length || 1,
     submissionStatus: submission.submission_status,
     scheduleStatus: entry.status,
     autoReviewed: isAutoReviewed(submission),
   });
+  /*
+    Reservasi mandiri ditutup (sql/125: saklar admin atau cap order) menahan
+    SETIAP pilih tanggal di halaman ini — layar `pick`, pilih ulang sesudah
+    waktu habis, dan "Pilih Tanggal Lain" lewat 14.00. Membayar slot yang
+    SUDAH terkunci tetap jalan (keputusan 22 Okt). Server menolak juga
+    (lock.js 409), jadi ini soal tampilan, bukan satu-satunya penjaga.
+  */
+  const selfBookingClosure = useSelfBookingClosure();
+  const selfBookingHeld = !!submission && selfBookingBlocked(submission, selfBookingClosure);
+  const repickAllowed = repickEligible && !selfBookingHeld;
 
   // Kuota ikut jenis distribusi jadwal ini. ⚠️ Order sendiri hanya dikecualikan
   // saat PILIH ULANG order berjadwal tunggal — tanggal yang sedang ia lepas
@@ -491,7 +503,15 @@ export function JadwalDanBayarPage() {
       await load();
     } catch (e) {
       console.error('Gagal mengunci tanggal:', e);
-      if (isDailyQuotaFullError(e)) {
+      if (isSelfBookingClosedError(e)) {
+        // Saklar ditutup sesudah halaman terbuka: segarkan store — kalender
+        // berganti catatan 🔒 di render berikutnya.
+        void refreshSelfBookingClosure();
+        setPicked(null);
+        setRepickMode(false);
+        toast.error(t('selfBookingClosedToast'));
+        void load();
+      } else if (isDailyQuotaFullError(e)) {
         // Ditolak trigger kuota harian (sql/111): kalender tertinggal dari
         // server. Kosongkan pilihan dan muat ulang supaya hari itu tampil penuh.
         // Teguran yang SAMA dengan penolakan klien `range_full`.
@@ -723,6 +743,22 @@ export function JadwalDanBayarPage() {
       );
     }
 
+    // Sah pilih ulang di tempat, tapi reservasi mandiri ditutup: catatan 🔒.
+    if (repickEligible && selfBookingHeld) {
+      return (
+        <div className="max-w-2xl mx-auto px-6 pt-24 space-y-5">
+          <SelfBookingNotice variant={submission?.self_booking_closed_at ? 'capped' : 'pick'} closure={selfBookingClosure} />
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard')}
+            className="inline-flex items-center gap-2 rounded-xl bg-jfu-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-90"
+          >
+            <ArrowLeft className="w-4 h-4" /> {t('backToOrders')}
+          </button>
+        </div>
+      );
+    }
+
     return (
       <div className="max-w-2xl mx-auto px-6 pt-24 space-y-5">
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start gap-2.5">
@@ -766,7 +802,9 @@ export function JadwalDanBayarPage() {
       dashboard tidak memberinya tombol pilih jadwal, dan halaman ini tidak
       boleh menjadi jalan memutarnya.
     */
-    const selfPick = !!submission && isAutoReviewed(submission);
+    const selfPickEligible = !!submission && isAutoReviewed(submission);
+    // sql/125: bercap = tim yang menjadwalkan (permanen); saklar tutup = sementara.
+    const selfPick = selfPickEligible && !selfBookingHeld;
     return (
       <ScheduleReservationLayout
         onBack={() => navigate('/dashboard')}
@@ -788,7 +826,9 @@ export function JadwalDanBayarPage() {
           />
         }
         mobileBarInfo={selfPick ? <MobileBarInfo total={quote.total} /> : undefined}
-        calendar={selfPick ? liveCalendar : (
+        calendar={selfPick ? liveCalendar : selfPickEligible ? (
+          <SelfBookingNotice variant={submission?.self_booking_closed_at ? 'capped' : 'pick'} closure={selfBookingClosure} />
+        ) : (
           <p className="flex items-start gap-2 text-sm text-slate-600">
             <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
             {t('rescheduleHandledByTeam')}

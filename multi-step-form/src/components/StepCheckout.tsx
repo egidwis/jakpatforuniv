@@ -5,7 +5,8 @@ import { calculateTotalCost, getVoucherInfo, isManualVerificationVoucher } from 
 import { formatRupiah } from '../utils/currency';
 import { getOwnProfile } from '../utils/supabase';
 import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
-import { isAutoApprovalPath } from '../utils/review-path';
+import { checkoutPath, isAutoApprovalPath } from '../utils/review-path';
+import { useSelfBookingClosure } from '../utils/selfBookingClosure';
 import { awayGuard } from './status/AdminAwayModal';
 import { checkoutBlocker } from '../utils/orderReadiness';
 import { orderSubmitErrorKeyForCode } from '../utils/submitOrder';
@@ -36,14 +37,18 @@ import {
 
 import { OrderLiveCompanion } from './order/OrderLiveCompanion';
 import { ReviewPathNotice } from './order/ReviewPathNotice';
+import { SelfBookingNotice } from './order/SelfBookingNotice';
 
 interface StepCheckoutProps {
   formData: SurveyFormData;
   updateFormData: (data: Partial<SurveyFormData>) => void;
   /** Lanjut ke langkah Jadwal — hanya jalur otomatis yang memakainya. */
   nextStep: () => void;
-  /** Menulis order (jalur manual, dan jalur Kilat yang jadwalnya sudah dipilih). */
-  onSubmitOrder: (overrides?: Partial<SurveyFormData>) => Promise<boolean>;
+  /**
+   * Menulis order (jalur manual, dan jalur Kilat yang jadwalnya sudah dipilih).
+   * `selfBookingClosed` = "Kirim Pesanan" saat reservasi mandiri ditutup (sql/125).
+   */
+  onSubmitOrder: (overrides?: Partial<SurveyFormData>, opts?: { selfBookingClosed?: boolean }) => Promise<boolean>;
   onBack: () => void;
   onUpgradeKilat?: () => void;
   onUndoKilat?: () => void;
@@ -116,7 +121,11 @@ export function StepCheckout({
    * tanpa jalan kembali ke pemilih Kilat.
    */
   const hasSchedule = !!formData.startDate;
-  const needsSchedule = isAutoApproval && !hasSchedule;
+  // Reservasi mandiri ditutup (sql/125) membelokkan HANYA jalur otomatis — lihat checkoutPath.
+  const selfBookingClosure = useSelfBookingClosure();
+  const path = checkoutPath({ isAutoApproval, hasSchedule, selfBookingClosed: !!selfBookingClosure });
+  const needsSchedule = path === 'schedule';
+  const adminSchedule = path === 'admin_schedule';
 
   // Email invoice berbeda dari email login → invoice terkirim ke email custom
   const isEmailMismatch = user?.email && formData.email && formData.email.trim().toLowerCase() !== user.email.toLowerCase();
@@ -214,9 +223,12 @@ export function StepCheckout({
     if (isSubmittingRef.current) return;
     if (!validateBeforeLeaving()) return;
 
+    // "Kirim Pesanan" saat reservasi mandiri ditutup: tanpa modal libur — modal A
+    // menjanjikan "tayang sesuai jadwal yang kamu pilih", padahal tim yang memilih.
+    // Kotak 🔒 di Ringkasan dan modal sesudah kirim sudah memuat catatan libur.
+    if (path === 'admin_schedule') { void proceed(); return; }
     // Mode libur: modal dulu (sekali per masa libur), baru langkah aslinya.
     // `main` tidak punya Kilat swalayan, jadi selalu produk Iklan (modal A/B).
-    const path = !isAutoApproval ? 'review' : needsSchedule ? 'schedule' : 'pay';
     awayGuard({ kind: 'submit', product: 'ads', path }, () => { void proceed(); });
   };
 
@@ -237,7 +249,10 @@ export function StepCheckout({
     // ⚠️ Diteruskan eksplisit: `updateFormData` di atas baru mendarat di render
     // berikutnya, sedangkan `submitOrderAndRoute` membaca `formData` render
     // INI — tanpa override, `submitOrder()` menolak dengan kode 'terms'.
-    const ok = await onSubmitOrder({ termsAccepted: true });
+    const ok = adminSchedule
+      // Tanggal dari draft dibuang: tidak ada reservasi mandiri selama ditutup.
+      ? await onSubmitOrder({ termsAccepted: true, startDate: '', endDate: '', startTime: '' }, { selfBookingClosed: true })
+      : await onSubmitOrder({ termsAccepted: true });
     if (!ok) {
       isSubmittingRef.current = false;
       setIsSubmitting(false);
@@ -382,7 +397,7 @@ export function StepCheckout({
               </div>
 
               {/* Release Schedule (If Auto Approval) */}
-              {isAutoApproval && formData.startDate && (
+              {isAutoApproval && !adminSchedule && formData.startDate && (
                 <div className="bg-white/95 p-3.5 rounded-xl border border-blue-100/90 shadow-2xs flex items-center gap-3">
                   <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                     <CalendarCheck size={15} />
@@ -424,7 +439,9 @@ export function StepCheckout({
               {/* Jalur review — satu-satunya tempat di Ringkasan yang menjawab
                   "jalur apa, kenapa, berapa lama". Dulu dibelah tiga: banner
                   amber PII di sini, blok di kolom kanan, dan tips Kepastian Slot. */}
-              <ReviewPathNotice formData={formData} />
+              {adminSchedule
+                ? <SelfBookingNotice variant="checkout" closure={selfBookingClosure} />
+                : <ReviewPathNotice formData={formData} />}
 
               {/* Mode JFU Kilat Active Banner */}
               {formData.isKilatUpgrade && (
@@ -666,6 +683,11 @@ export function StepCheckout({
                 <>
                   <Send size={15} />
                   {t('summaryCtaReview')}
+                </>
+              ) : adminSchedule ? (
+                <>
+                  <Send size={15} />
+                  {t('summaryCtaAdminSchedule')}
                 </>
               ) : needsSchedule ? (
                 <>

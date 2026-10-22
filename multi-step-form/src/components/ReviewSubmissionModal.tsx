@@ -10,6 +10,11 @@ interface ReviewSubmissionModalProps {
   surveyTitle?: string;
   /** `form_submissions.id` order yang baru lahir — ditampilkan sebagai #bookingId. */
   orderId?: string;
+  /**
+   * `admin_schedule` = "Kirim Pesanan" saat reservasi mandiri ditutup (sql/125):
+   * review SUDAH lolos otomatis, yang menunggu tim hanya tanggal & tagihan.
+   */
+  variant?: 'review' | 'admin_schedule';
 }
 
 /**
@@ -36,6 +41,7 @@ export function ReviewSubmissionModal({
   email,
   surveyTitle,
   orderId,
+  variant = 'review',
 }: ReviewSubmissionModalProps) {
   const { t } = useLanguage();
   const ctaRef = useRef<HTMLButtonElement>(null);
@@ -49,11 +55,14 @@ export function ReviewSubmissionModal({
   // Format = `bookingId` di kartu dashboard (scheduleAxes.ts), supaya cocok.
   const bookingId = orderId ? orderId.slice(0, 8).toUpperCase() : '';
 
+  const adminSchedule = variant === 'admin_schedule';
   const steps = [
-    t('reviewModalStep1'),
-    t('reviewModalStep2'),
+    t(adminSchedule ? 'adminScheduleModalStep1' : 'reviewModalStep1'),
+    t(adminSchedule ? 'adminScheduleModalStep2' : 'reviewModalStep2'),
     email ? t('reviewModalStep3Email', { email }) : t('reviewModalStep3'),
   ];
+  // Mode libur: catatan menempel di langkah yang menjanjikan waktu kerja tim.
+  const awayStep = adminSchedule ? 1 : 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -71,9 +80,9 @@ export function ReviewSubmissionModal({
             </div>
             <div>
               <h3 id="review-modal-title" className="text-lg md:text-xl font-bold text-slate-900 tracking-tight">
-                {t('reviewModalTitle')}
+                {t(adminSchedule ? 'adminScheduleModalTitle' : 'reviewModalTitle')}
               </h3>
-              <p className="text-xs text-slate-500 mt-1">{t('reviewModalSubtitle')}</p>
+              <p className="text-xs text-slate-500 mt-1">{t(adminSchedule ? 'adminScheduleModalSubtitle' : 'reviewModalSubtitle')}</p>
             </div>
 
             {(surveyTitle || bookingId) && (
@@ -110,8 +119,10 @@ export function ReviewSubmissionModal({
                     </span>
                     <span className={`pt-0.5 text-xs leading-relaxed ${i === 0 ? 'text-slate-900 font-medium' : 'text-slate-600'}`}>
                       {text}
-                      {/* Mode libur (sql/120): langkah 1 menjanjikan "maks 2 hari kerja". */}
-                      {i === 0 && <AdminAwayInlineNote className="mt-1" textKey="reviewModalAwayNote" />}
+                      {/* Mode libur (sql/120): langkah yang menjanjikan waktu kerja tim. */}
+                      {i === awayStep && (
+                        <AdminAwayInlineNote className="mt-1" textKey={adminSchedule ? 'adminAwayInlineNote' : 'reviewModalAwayNote'} />
+                      )}
                     </span>
                   </li>
                 );

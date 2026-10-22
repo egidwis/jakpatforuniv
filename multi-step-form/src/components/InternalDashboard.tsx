@@ -22,6 +22,7 @@ import { SubmissionsMobileCard } from './SubmissionsTableRow';
 import type { SurveySubmission, PaymentState, ReviewHistoryEntry, ExistingPage, FormAuditResult } from './submissions/types';
 import { deriveLifecycle, type ScheduleSignals } from './submissions/lifecycle';
 import { AdminAwayDialog, AdminAwayPill, AdminAwayStrip, useAdminAwayControl } from './submissions/AdminAwayToggle';
+import { AdminSelfBookingDialog, AdminSelfBookingPill, AdminSelfBookingStrip, useSelfBookingControl } from './submissions/AdminSelfBookingToggle';
 import { fetchAdSchedules } from '../utils/supabase';
 import { occupiesSlot } from '@/pages/dashboard/schedule/scheduleModel';
 import { SubmissionListRow } from './submissions/SubmissionListRow';
@@ -106,6 +107,8 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
   const [distTab, setDistTab] = useState<'regular' | 'kilat'>('regular');
   /** Mode libur tim admin (sql/120) — satu kendali untuk strip, pill, dan popup. */
   const awayControl = useAdminAwayControl();
+  /** Tutup reservasi mandiri (sql/125) — kendali bersama strip, pill, dan popup. */
+  const selfBookingControl = useSelfBookingControl();
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
 
   // Derived schedule state: Set of submission IDs that have a slot reserved (start_date set)
@@ -328,6 +331,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
           review_history: sub.review_history || [],
           dismissed_at: sub.dismissed_at,
           distribution_type: sub.distribution_type,
+          self_booking_closed_at: sub.self_booking_closed_at ?? null,
           kilat_slot_hour: sub.kilat_slot_hour,
           ai_prescreening: sub.ai_prescreening || null,
           has_transactions: false, // Default, will verify below
@@ -1247,6 +1251,11 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
 
         <AdminAwayStrip control={awayControl} />
         <AdminAwayDialog control={awayControl} />
+        <AdminSelfBookingStrip
+          control={selfBookingControl}
+          onShowOrders={() => { setStatusFilter('approved'); setCurrentPage(1); }}
+        />
+        <AdminSelfBookingDialog control={selfBookingControl} />
 
         {/* Mobile-only filter card. Legacy src/styles.css loads after Tailwind and
             redefines `.flex`, which overrides `md:hidden` — so this element must not
@@ -1294,6 +1303,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
             {/* Right: Actions */}
             <div className="flex items-center gap-2 shrink-0 ml-auto">
               <AdminAwayPill control={awayControl} compact />
+              <AdminSelfBookingPill control={selfBookingControl} compact />
               <Button
                 onClick={loadSubmissions}
                 variant="outline"
@@ -1392,7 +1402,8 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
             </button>
           ))}
           {/* Ujung kanan baris tab: toggle mode libur (sql/120). */}
-          <div className="ml-auto pb-1.5">
+          <div className="ml-auto pb-1.5 flex items-center gap-2">
+            <AdminSelfBookingPill control={selfBookingControl} />
             <AdminAwayPill control={awayControl} />
           </div>
         </div>

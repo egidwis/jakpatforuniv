@@ -35,9 +35,10 @@ import { PublicationPhase } from '@/components/status/PublicationPhase';
 import { buildScheduleCards } from '@/components/status/airingPeriods';
 import { groupInfoFor } from '@/components/status/invoiceGroups';
 import { CreateOrderCards, NewOrderFab } from '@/components/CreateOrderCards';
-import { deriveOrderUiState, getActiveDashboardPhase, isAutoReviewed, type OrderGroup } from '@/components/status/deriveOrderUiState';
+import { deriveOrderUiState, getActiveDashboardPhase, type OrderGroup } from '@/components/status/deriveOrderUiState';
 import { AdsEntryModal } from '@/components/AdsEntryModal';
 import { AdminHolidayBanner } from '@/components/status/AdminHolidayBanner';
+import { canSelfSchedule, useSelfBookingClosure } from '@/utils/selfBookingClosure';
 import { ProfileCompletionSheet } from '@/components/ProfileCompletionSheet';
 import { isProfileGateSatisfied } from '@/components/ProfileForm';
 
@@ -116,6 +117,8 @@ const FRAME_BOTTOM_GUTTER = 24;
 
 export function StatusPage() {
     const { user } = useAuth();
+    /** Reservasi mandiri ditutup (sql/125) — kartu ringkas menahan CTA pilih tanggal. */
+    const selfBookingClosure = useSelfBookingClosure();
     const { t } = useLanguage();
     const navigate = useNavigate();
     const [submissions, setSubmissions] = useState<FormSubmission[]>([]);
@@ -1011,7 +1014,7 @@ export function StatusPage() {
                                         const isExpanded = expandedOrders.has(orderId);
                                         // Aturan tombol datang dari `primaryActionOf` — fungsi yang SAMA dengan
                                         // banner di dalam kartu, jadi kartu ringkas tak punya aturan uang sendiri.
-                                        const summary = orderSummaryOf(ui.callout, cards, { canSelfReschedule: isAutoReviewed(submission) });
+                                        const summary = orderSummaryOf(ui.callout, cards, { canSelfReschedule: canSelfSchedule(submission, selfBookingClosure) });
                                         return (
                                             <Card key={submission.id} className="overflow-hidden border border-slate-200/90 shadow-[0_1px_3px_0_rgba(0,0,0,0.03),0_4px_12px_-2px_rgba(0,0,0,0.02)] hover:border-slate-300 transition-colors duration-150 rounded-2xl">
                                                 <CardHeader className="bg-white p-5 md:p-6 pb-4 md:pb-5 space-y-2.5 border-b border-slate-100">

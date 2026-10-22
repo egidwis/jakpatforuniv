@@ -26,8 +26,12 @@ const team = { canSelfReschedule: false };
 
 describe('primaryActionOf — aturan tombol untuk satu jadwal', () => {
     describe('choose_schedule', () => {
-        it('selalu menawarkan pilih tanggal', () => {
+        it('menawarkan pilih tanggal bila peneliti boleh menjadwalkan sendiri', () => {
             expect(primaryActionOf(card('choose_schedule'), self)).toEqual({ kind: 'choose_schedule' });
+        });
+
+        it('reservasi mandiri ditutup (sql/125) → tanpa tombol pilih tanggal', () => {
+            expect(primaryActionOf(card('choose_schedule'), team)).toBeNull();
         });
     });
 

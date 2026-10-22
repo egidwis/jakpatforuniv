@@ -29,6 +29,8 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { buildMiminPricingSection } from '@/utils/miminPricing';
 import { buildMiminAwaySection } from '@/utils/miminAway';
+import { buildMiminSelfBookingSection } from '@/utils/miminSelfBooking';
+import { useSelfBookingClosure } from '@/utils/selfBookingClosure';
 import { useAdminAway } from '@/utils/operationalHolidays';
 import { AdminHolidayBanner } from '@/components/status/AdminHolidayBanner';
 import { GenerativeUiRenderer, type GenerativeUiData } from '@/components/chat/generative/GenerativeUiRenderer';
@@ -303,6 +305,8 @@ export function ChatPage() {
     // Mode libur (sql/120): satu pembacaan untuk banner DAN prompt — keduanya
     // harus sepakat soal apakah tim admin sedang libur.
     const adminAway = useAdminAway();
+    // Tutup reservasi mandiri (sql/125): Mimin tidak boleh mengarahkan ke kalender.
+    const selfBookingClosure = useSelfBookingClosure();
 
     // Build system prompt with Comprehensive Product Knowledge, Agentic Skills & Action Capabilities
     const buildSystemPrompt = useCallback(() => {
@@ -467,9 +471,10 @@ FAQ di bawah ini selalu tersedia. Jika sebuah SOP punya blok "FAQ TERKAIT", utam
 ${currentFaqs.map(f => `Q: ${f.q}\nA: ${f.a}`).join('\n')}
 ${orderContext}
 ${buildMiminAwaySection(adminAway)}
+${buildMiminSelfBookingSection(selfBookingClosure)}
 ${jsonContract}
 `;
-    }, [systemPrompt, skills, faqs, orderStates, adminAway]);
+    }, [systemPrompt, skills, faqs, orderStates, adminAway, selfBookingClosure]);
 
 function extractJsonObject(text: string): Record<string, any> | null {
     if (!text) return null;

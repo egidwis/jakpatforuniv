@@ -35,3 +35,28 @@ export function isAutoApprovalPath(formData: SurveyFormData): boolean {
     !isManualVerificationVoucher(formData.voucherCode)
   );
 }
+
+/**
+ * Ke mana tombol utama Ringkasan membawa order ini.
+ *
+ *   review          → jalur manual: kirim untuk direview.
+ *   schedule        → jalur otomatis tanpa tanggal: lanjut ke langkah Jadwal.
+ *   pay             → jalur otomatis dengan tanggal dari draft: kunci & bayar.
+ *   admin_schedule  → jalur otomatis SAAT RESERVASI MANDIRI DITUTUP (sql/125):
+ *                     "Kirim Pesanan" — order lahir tanpa tanggal, tim yang
+ *                     menetapkan tanggal & menerbitkan tagihan. Termasuk bila
+ *                     draft sudah membawa tanggal.
+ *
+ * Jalur manual tidak berubah saat ditutup — tanggalnya memang milik admin.
+ */
+export type CheckoutPath = 'review' | 'schedule' | 'pay' | 'admin_schedule';
+
+export function checkoutPath({ isAutoApproval, hasSchedule, selfBookingClosed }: {
+  isAutoApproval: boolean;
+  hasSchedule: boolean;
+  selfBookingClosed: boolean;
+}): CheckoutPath {
+  if (!isAutoApproval) return 'review';
+  if (selfBookingClosed) return 'admin_schedule';
+  return hasSchedule ? 'pay' : 'schedule';
+}

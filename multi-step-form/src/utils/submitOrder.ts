@@ -71,6 +71,13 @@ export interface SubmitOrderArgs {
   /** Voucher ILKOMUNY yang sudah terpakai: disimpan tanpa kode supaya admin tidak menerapkan ulang diskon. */
   ilkomunyBlocked: boolean;
   authUserId?: string;
+  /**
+   * "Kirim Pesanan" saat reservasi mandiri ditutup (sql/125): jalur otomatis
+   * yang TIDAK memesan slot. Pemanggil mengirim `isAutoApproval: false`; order
+   * lahir `approved` tanpa kolom jadwal, dan trigger server yang menulis cap
+   * "jadwal oleh tim" — klien tidak pernah menulis kolom cap.
+   */
+  selfBookingClosed?: boolean;
 }
 
 /**
@@ -91,6 +98,7 @@ export async function submitOrder({
   isAutoApproval,
   ilkomunyBlocked,
   authUserId,
+  selfBookingClosed = false,
 }: SubmitOrderArgs): Promise<FormSubmission & { id: string }> {
   // Syarat Ringkasan, dinilai ulang di sini karena jalur otomatis menulis
   // order dari layar Jadwal — satu langkah setelah layar yang menegakkannya.
@@ -104,7 +112,9 @@ export async function submitOrder({
 
   // `startDate` disimpan sebagai YYYY-MM-DD, tapi draft lama / hasil reschedule
   // bisa membawa ISO penuh — potong supaya perbandingan tanggal apple-to-apple.
-  const startYmd = formData.startDate ? String(formData.startDate).slice(0, 10) : '';
+  // Saat reservasi mandiri ditutup, tanggal draft bukan milik peneliti lagi —
+  // diabaikan, termasuk untuk cek batas 13.00 di bawah.
+  const startYmd = formData.startDate && !selfBookingClosed ? String(formData.startDate).slice(0, 10) : '';
 
   // Batas pemesanan hari-H (13.00 WIB) bisa terlewat sementara user memilih.
   // Cek terakhir sebelum INSERT, sebelum tanggal apa pun dimaterialisasi.
@@ -179,7 +189,7 @@ export async function submitOrder({
     university: formData.university,
     department: formData.department,
     status: formData.status || 'pending',
-    submission_status: isAutoApproval ? 'waiting_payment' : 'in_review',
+    submission_status: selfBookingClosed ? 'approved' : isAutoApproval ? 'waiting_payment' : 'in_review',
     referral_source:
       formData.referralSource === 'Lainnya' && formData.referralSourceOther
         ? `Lainnya: ${formData.referralSourceOther}`
