@@ -36,7 +36,8 @@ import {
 } from './airingPeriods';
 import { formatIDR } from '@/utils/currency';
 import { CostBreakdown } from '@/components/CostBreakdown';
-import { isAutoReviewed } from './deriveOrderUiState';
+import { canSelfSchedule, useSelfBookingClosure } from '@/utils/selfBookingClosure';
+import { SelfBookingNotice } from '@/components/order/SelfBookingNotice';
 import { RowGrid, valueTone, type RowDef } from './RowGrid';
 import { StatusPill } from './StatusPill';
 import { OrderActionButton } from './OrderActionButton';
@@ -595,9 +596,10 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
     /**
      * Apakah peneliti ini BERHAK menentukan tanggalnya sendiri.
      *
-     * Diturunkan dari `isAutoReviewed(submission)` di pemanggil — predikat yang
-     * SUDAH ADA di `deriveOrderUiState.ts` dan sudah dipakai untuk memilih antara
-     * callout `choose_schedule` dan `awaiting_admin_schedule`. Sengaja tidak
+     * Diturunkan dari `canSelfSchedule(submission, closure)` di pemanggil —
+     * `isAutoReviewed` (predikat yang memilih antara callout `choose_schedule`
+     * dan `awaiting_admin_schedule`) DAN reservasi mandiri tidak ditutup
+     * (sql/125: saklar admin atau cap order). Sengaja tidak
      * ditulis ulang di sini: dua definisi "siapa yang memilih jadwal" akan
      * menyimpang, dan yang menyimpang diam-diam adalah yang menentukan apakah
      * seorang peneliti boleh mengunci slot.
@@ -606,6 +608,8 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
 }) {
     const { t } = useLanguage();
     const b = card.booking;
+    /** Saklar tutup reservasi mandiri (sql/125) — sumber pesan admin di catatan 🔒. */
+    const closure = useSelfBookingClosure();
     /** Mode libur (sql/122): baris tambahan di bawah janji "maks 1 hari kerja". */
     const awayNow = useAdminAway();
     const awayLine = awayNow ? (
@@ -693,6 +697,12 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                 lines={[t(card.info?.isKilat ? 'bannerSubAwaitingAdminWave' : 'bannerSubAwaitingAdminSchedule'), awayLine]}
             />
         );
+    }
+
+    // Reservasi mandiri ditutup (sql/125): order ini masih milik peneliti, tapi
+    // memilih tanggal ditahan sampai saklar dibuka — catatan, tanpa CTA.
+    if (b.state === 'choose_schedule' && !canSelfReschedule) {
+        return <SelfBookingNotice variant="pick" closure={closure} />;
     }
 
     if (b.state === 'choose_schedule') {
@@ -906,7 +916,8 @@ export function SchedulePhase({ submission, kilatOpen = false, cards, entries, o
     const { t } = useLanguage();
     // Satu perhitungan untuk seluruh kartu order ini — hak menjadwalkan melekat
     // pada ORDER, bukan pada jadwal. Lihat catatan di prop `canSelfReschedule`.
-    const selfReschedule = isAutoReviewed(submission);
+    const selfBookingClosure = useSelfBookingClosure();
+    const selfReschedule = canSelfSchedule(submission, selfBookingClosure);
 
     const navigate = useNavigate();
 

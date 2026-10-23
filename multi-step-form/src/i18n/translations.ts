@@ -1381,6 +1381,23 @@ export const translations = {
     resetPasswordInvalidDesc: "The reset link is invalid or has expired. Please request a new link from the login page.",
 
     closePopup: "Close popup",
+    // Tutup reservasi mandiri (sql/125).
+    summaryCtaAdminSchedule: "Send Order",
+    sendingOrderLoading: "Sending your order...",
+    adminScheduleModalTitle: "Order Received",
+    adminScheduleModalSubtitle: "Your questionnaire passed the automatic review.",
+    adminScheduleModalStep1: "Self-booking is temporarily closed, so our team picks your airing date.",
+    adminScheduleModalStep2: "The team sets the date and prepares your invoice (max 1 business day).",
+    selfBookingClosedTitle: "Date picking is temporarily closed",
+    selfBookingCheckoutTitle: "Self-booking is temporarily closed",
+    selfBookingCheckoutBody: "Your questionnaire still passes the automatic review. Our team sets the airing date and sends the invoice — max 1 business day.",
+    selfBookingCheckoutBodyAway: "Your questionnaire still passes the automatic review. Our team sets the airing date and sends the invoice once the team is back.",
+    selfBookingCappedBodyAway: "Your questionnaire passed review. Our team sets the airing date and prepares the invoice once the team is back.",
+    selfBookingPickBody: "Our team is adjusting the airing schedule. Try again later, or ask the team to schedule it for you.",
+    selfBookingExtendTitle: "Self-service extensions are temporarily closed",
+    selfBookingExtendBody: "Our team is adjusting the airing schedule. Try again later, or ask the team to add the schedule for you.",
+    selfBookingAskMimin: "Ask Mimin",
+    selfBookingClosedToast: "Self-booking was just closed — our team handles the schedule.",
   },
 
   id: {
@@ -2683,6 +2700,23 @@ export const translations = {
     resetPasswordInvalidDesc: "Tautan reset tidak valid atau sudah kedaluwarsa. Silakan minta tautan baru dari halaman login.",
 
     closePopup: "Tutup popup",
+    // Tutup reservasi mandiri (sql/125).
+    summaryCtaAdminSchedule: "Kirim Pesanan",
+    sendingOrderLoading: "Mengirim pesananmu...",
+    adminScheduleModalTitle: "Pesanan Diterima",
+    adminScheduleModalSubtitle: "Kuesionermu lolos review otomatis.",
+    adminScheduleModalStep1: "Reservasi mandiri sedang ditutup, jadi tim kami yang memilih tanggal tayangmu.",
+    adminScheduleModalStep2: "Tim menetapkan tanggal dan menyiapkan tagihannya (maks 1 hari kerja).",
+    selfBookingClosedTitle: "Pemilihan tanggal ditutup sementara",
+    selfBookingCheckoutTitle: "Reservasi mandiri ditutup sementara",
+    selfBookingCheckoutBody: "Kuesionermu tetap lolos review otomatis. Tim kami yang menetapkan tanggal tayang dan mengirim tagihannya — maksimal 1 hari kerja.",
+    selfBookingCheckoutBodyAway: "Kuesionermu tetap lolos review otomatis. Tim kami yang menetapkan tanggal tayang dan mengirim tagihannya setelah tim kembali.",
+    selfBookingCappedBodyAway: "Kuesionermu sudah lolos review. Tim kami menetapkan tanggal tayang dan menyiapkan tagihannya setelah tim kembali.",
+    selfBookingPickBody: "Tim kami sedang menyesuaikan jadwal tayang. Coba lagi nanti, atau minta tim menjadwalkan untukmu.",
+    selfBookingExtendTitle: "Perpanjangan mandiri ditutup sementara",
+    selfBookingExtendBody: "Tim kami sedang menyesuaikan jadwal tayang. Coba lagi nanti, atau minta tim menambahkan jadwalnya untukmu.",
+    selfBookingAskMimin: "Tanya Mimin",
+    selfBookingClosedToast: "Reservasi mandiri baru saja ditutup — jadwalnya diurus tim kami.",
   }
 };
 

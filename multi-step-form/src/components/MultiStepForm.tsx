@@ -26,6 +26,7 @@ import { segmentTitleOf } from '../utils/segmentTitle';
 import { ReviewSubmissionModal } from './ReviewSubmissionModal';
 import { useAdminAway } from '../utils/operationalHolidays';
 import { awayBlocksKilatPick } from './status/AdminAwayModal';
+import { useSelfBookingClosure } from '../utils/selfBookingClosure';
 // Hanya Loader2 yang tersisa dari sisi main di sini: `Menu`/`Button` ikut hilang
 // bersama header mobile lama (digantikan AppNav), dan `getTodayDate` tidak lagi
 // dipakai sejak flow order disusun ulang.
@@ -195,7 +196,21 @@ export function MultiStepForm() {
     email: string;
     surveyTitle?: string;
     orderId?: string;
+    /** `admin_schedule` = order lahir saat reservasi mandiri ditutup (sql/125). */
+    variant?: 'review' | 'admin_schedule';
   } | null>(null);
+
+  /*
+    Reservasi mandiri ditutup (sql/125) saat layar Jadwal terbuka: kembali ke
+    Ringkasan, yang lalu mengirim order lewat "Kirim Pesanan" tanpa tanggal.
+    Tanggal draft dibiarkan — `submitOrder` mengabaikannya selama ditutup.
+  */
+  const selfBookingClosure = useSelfBookingClosure();
+  useEffect(() => {
+    if (!selfBookingClosure || currentStep < 3) return;
+    setCurrentStep(2);
+    window.scrollTo(0, 0);
+  }, [selfBookingClosure, currentStep]);
 
   // Save to localStorage whenever state changes
   useEffect(() => {
@@ -361,16 +376,22 @@ export function MultiStepForm() {
    */
   const submitOrderAndRoute = async (
     overrides?: Partial<SurveyFormData>,
-    opts: { forceManual?: boolean } = {},
+    opts: { forceManual?: boolean; selfBookingClosed?: boolean } = {},
   ): Promise<boolean> => {
     const merged = { ...formData, ...overrides };
     // `forceManual` = Kilat jalur otomatis selama mode libur: lahir sebagai
     // jalur manual (in_review, tanpa gelombang), persis order manual biasa.
     const forceManual = !!opts.forceManual;
-    const auto = !forceManual && computeIsAutoApprovalPath(merged);
+    // "Kirim Pesanan" saat reservasi mandiri ditutup (sql/125): jalur otomatis
+    // yang TIDAK memesan slot — lahir `approved`, tim yang menjadwalkan.
+    // Libur menang (checkoutPath): Kilat yang dialihkan tetap jalur manual.
+    const selfBookingClosed = !forceManual && !!opts.selfBookingClosed;
+    const auto = !forceManual && !selfBookingClosed && computeIsAutoApprovalPath(merged);
     const effective = ilkomunyBlocked ? { ...merged, voucherCode: '' } : merged;
 
-    const loadingToast = toast.loading(auto ? t('lockingSlotLoading') : t('sendingForReviewLoading'));
+    const loadingToast = toast.loading(
+      auto ? t('lockingSlotLoading') : selfBookingClosed ? t('sendingOrderLoading') : t('sendingForReviewLoading'),
+    );
     try {
       const saved = await submitOrder({
         formData: merged,
@@ -378,20 +399,30 @@ export function MultiStepForm() {
         // dipaksakan sql/103 saat INSERT).
         cost: calculateTotalCost(effective, Date.now()),
         isAutoApproval: auto,
+        selfBookingClosed,
         ilkomunyBlocked,
         authUserId: user?.id,
         ...(forceManual ? { forcedManualReason: 'admin_away' as const } : {}),
       });
       toast.dismiss(loadingToast);
 
+      // Tab yang dibuka sebelum saklar ditutup: INSERT bertanggalnya diubah
+      // trigger sql/125 jadi order bercap tanpa tanggal — antar ke modal yang
+      // sama dengan "Kirim Pesanan", bukan ke halaman bayar.
+      const teamSchedules = selfBookingClosed || !!saved.self_booking_closed_at;
+
       // Email "terima kasih, akan kami review" HANYA untuk jalur manual. Dulu
       // ia dikirim ke semua orang, termasuk jalur otomatis — yang tidak pernah
       // direview dan tidak akan pernah menerima email lanjutan yang dijanjikan.
-      if (!auto) {
+      if (!auto || teamSchedules) {
         fetch('/api/send-submission-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: merged.fullName || 'Kak', email: merged.email }),
+          body: JSON.stringify({
+            name: merged.fullName || 'Kak',
+            email: merged.email,
+            ...(teamSchedules ? { kind: 'admin_schedule' } : {}),
+          }),
         }).catch(err => console.error('Failed to send email:', err));
       }
 
@@ -404,12 +435,13 @@ export function MultiStepForm() {
         // modal libur (varian C) sudah menjelaskan nasib order ini.
         toast.success(t('toastKilatDivertedAway'));
         navigate('/dashboard?status=survey_submitted', { replace: true });
-      } else if (!auto) {
+      } else if (!auto || teamSchedules) {
         setReviewModalData({
           isOpen: true,
           email: merged.email || user?.email || '',
           surveyTitle: merged.title || '',
           orderId: saved.id,
+          variant: teamSchedules ? 'admin_schedule' : 'review',
         });
       } else {
         toast.success(t('slotLockedSuccess'));
@@ -592,6 +624,7 @@ export function MultiStepForm() {
         email={reviewModalData?.email || ''}
         surveyTitle={reviewModalData?.surveyTitle}
         orderId={reviewModalData?.orderId}
+        variant={reviewModalData?.variant}
         onConfirm={handleReviewModalConfirm}
       />
     </div>

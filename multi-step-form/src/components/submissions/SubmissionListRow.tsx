@@ -17,6 +17,7 @@ import { ClientStatusDot } from '../customers/ClientStatusIcon';
 import type { CustomerTier } from '../customers/types';
 import { missedPaymentWindow } from '@/utils/missedPaymentWindow';
 import { DivertedAwayChip } from './AdminAwayToggle';
+import { SelfBookingClosedChip } from './AdminSelfBookingToggle';
 
 interface SubmissionListRowProps {
   submission: SurveySubmission;
@@ -174,6 +175,7 @@ export function SubmissionListRow({
             {submission.formTitle}
           </span>
           <DivertedAwayChip reason={submission.forced_manual_reason} paymentStatus={submission.payment_status} />
+          <SelfBookingClosedChip cappedAt={submission.self_booking_closed_at} startDate={submission.start_date} />
           {submission.voucher_code && (
             <TooltipProvider>
               <Tooltip>

@@ -49,10 +49,41 @@ export function awayNoticeHtml(away) {
             </div>`;
 }
 
+/**
+ * Varian tutup reservasi mandiri (sql/125): order jalur otomatis yang lahir
+ * saat saklar ditutup. Review-nya SUDAH lolos — yang menunggu tim hanya
+ * tanggal tayang & tagihan, jadi kalimat "akan kami review" salah di sini.
+ */
+function adminScheduleMail(name, away) {
+    const awayBox = away
+        ? `
+            <div style="border:1px solid #fcd34d; background:#fffbeb; border-radius:8px; padding:12px 14px; margin:12px 0; color:#78350f;">
+              Saat ini tim admin sedang libur${away.label ? `: "${escapeHtml(away.label)}"` : ''}. Penjadwalan dan tagihan kami kirim setelah tim kembali.
+            </div>`
+        : '';
+    return {
+        subject: 'Pesanan Iklan diterima — tim kami menjadwalkan 🗓️',
+        html: `
+          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <p>Halo Kak <strong>${escapeHtml(name)}</strong>,</p>
+            <p>Terima kasih, pesanan Iklan Kakak di Jakpat for Universities sudah kami terima dan kuesionernya lolos review otomatis 🙏</p>${awayBox}
+            <p>Saat ini reservasi mandiri sedang ditutup sementara, jadi tim kami yang menetapkan tanggal tayang dan menyiapkan tagihannya — ${away
+                ? 'setelah tim kembali.'
+                : 'maksimal 1 hari kerja.'}</p>
+            <p>Kakak tidak perlu memilih jadwal sendiri. Tagihannya akan muncul di halaman Order Saya dan kami kabari lewat e-mail.</p>
+            <p>Terima kasih atas kepercayaan Kakak kepada Jakpat for Universities.</p>
+            <br>
+            <p>Salam,</p>
+            <p><strong>Tim Jakpat for Universities</strong></p>
+          </div>
+        `,
+    };
+}
+
 export async function onRequestPost(context) {
     try {
         const { request, env } = context;
-        const { name, email } = await request.json();
+        const { name, email, kind } = await request.json();
 
 
         if (!email || !name) {
@@ -61,7 +92,7 @@ export async function onRequestPost(context) {
 
         const away = await fetchAdminAway(env);
 
-        const result = await sendMail(env, {
+        const result = await sendMail(env, kind === 'admin_schedule' ? { to: email, ...adminScheduleMail(name, away) } : {
             to: email,
             subject: 'Terima kasih telah submit Form Order Iklan di Jakpat for Universities 🙏',
             html: `

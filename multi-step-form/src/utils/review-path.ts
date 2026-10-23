@@ -42,25 +42,33 @@ export function isAutoApprovalPath(formData: SurveyFormData): boolean {
 /**
  * Ke mana tombol utama Ringkasan membawa order ini.
  *
- *   review     → jalur manual: kirim untuk direview.
- *   schedule   → jalur otomatis tanpa tanggal: lanjut ke langkah Jadwal.
- *   pay        → jalur otomatis dengan tanggal dari draft: kunci & bayar.
- *   kilat_away → Kilat jalur otomatis SELAMA MODE LIBUR (sql/122): tidak ada
- *                reservasi mandiri. Order dikirim TANPA gelombang sebagai
- *                jalur manual (`forced_manual_reason = 'admin_away'`), termasuk
- *                bila draft sudah membawa gelombang.
+ *   review          → jalur manual: kirim untuk direview.
+ *   schedule        → jalur otomatis tanpa tanggal: lanjut ke langkah Jadwal.
+ *   pay             → jalur otomatis dengan tanggal dari draft: kunci & bayar.
+ *   kilat_away      → Kilat jalur otomatis SELAMA MODE LIBUR (sql/122): tidak
+ *                     ada reservasi mandiri. Order dikirim TANPA gelombang
+ *                     sebagai jalur manual (`forced_manual_reason =
+ *                     'admin_away'`), termasuk bila draft sudah membawa
+ *                     gelombang. Menang atas admin_schedule: tim sedang libur.
+ *   admin_schedule  → jalur otomatis SAAT RESERVASI MANDIRI DITUTUP (sql/125):
+ *                     "Kirim Pesanan" — order lahir tanpa tanggal, tim yang
+ *                     menetapkan tanggal & menerbitkan tagihan. Termasuk bila
+ *                     draft sudah membawa tanggal.
  *
  * Iklan jalur otomatis TIDAK berubah saat libur — iklannya tetap tayang.
+ * Jalur manual tidak berubah saat ditutup — tanggalnya memang milik admin.
  */
-export type CheckoutPath = 'review' | 'schedule' | 'pay' | 'kilat_away';
+export type CheckoutPath = 'review' | 'schedule' | 'pay' | 'kilat_away' | 'admin_schedule';
 
-export function checkoutPath({ isAutoApproval, isKilat, hasSchedule, away }: {
+export function checkoutPath({ isAutoApproval, isKilat, hasSchedule, away, selfBookingClosed }: {
   isAutoApproval: boolean;
   isKilat: boolean;
   hasSchedule: boolean;
   away: boolean;
+  selfBookingClosed: boolean;
 }): CheckoutPath {
   if (!isAutoApproval) return 'review';
   if (isKilat && away) return 'kilat_away';
+  if (selfBookingClosed) return 'admin_schedule';
   return hasSchedule ? 'pay' : 'schedule';
 }

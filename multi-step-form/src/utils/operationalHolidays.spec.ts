@@ -109,7 +109,7 @@ describe('store bersama', () => {
 });
 
 describe('checkoutPath (Ringkasan)', () => {
-  const base = { isAutoApproval: true, isKilat: false, hasSchedule: false, away: false };
+  const base = { isAutoApproval: true, isKilat: false, hasSchedule: false, away: false, selfBookingClosed: false };
 
   test('tanpa libur: perilaku lama', () => {
     expect(checkoutPath(base)).toBe('schedule');

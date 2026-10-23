@@ -39,6 +39,16 @@ console.log('Running in offline mode:', isPlaceholderUrl || isPlaceholderKey);
 // Buat Supabase client dengan URL dan key yang valid
 export const supabase = createClient(validSupabaseUrl, validSupabaseKey);
 
+/**
+ * Nilai `ad_schedules.source_table` untuk PERPANJANGAN (ordinal ≥ 2). Ini
+ * LABEL, bukan nama tabel: tabel/view `form_submissions_extend` sudah dicabut
+ * (sql/73–76) dan semua jadwal kini setara di `ad_schedules`. `source_id`
+ * perpanjangan = uuid acak dari `create_ad_schedule`, tidak menunjuk ke mana
+ * pun. Nilainya sengaja tidak diganti — CHECK, unique key, 13 fungsi DB, dan
+ * md5 sql/123 bergantung padanya (lihat sql/126).
+ */
+export const EXTENSION_SOURCE_TABLE = 'form_submissions_extend';
+
 // ─────────────────────────────────────────────────────────────
 // PEREDAM PERMINTAAN KEMBAR
 //
@@ -481,6 +491,12 @@ export interface FormSubmission {
   distribution_type?: 'regular' | 'kilat';
   /** Gelombang Kilat (jam WIB). NULL = belum ditugaskan / bukan Kilat. */
   kilat_slot_hour?: number | null;
+  /**
+   * sql/125: cap "jadwal oleh tim" — order jalur otomatis yang lahir selama
+   * reservasi mandiri ditutup. Ditulis trigger, permanen: peneliti tidak
+   * pernah mengunci tanggal order ini (`canSelfSchedule`).
+   */
+  self_booking_closed_at?: string | null;
   ai_prescreening?: any;
 }
 
@@ -1107,7 +1123,7 @@ export async function writeExtensionBillAmounts(
     () => supabase
       .from('ad_schedules')
       .update(patch)
-      .eq('source_table', 'form_submissions_extend')
+      .eq('source_table', EXTENSION_SOURCE_TABLE)
       .eq('source_id', sourceId),
   );
   if (error) throw new Error(error.message);
@@ -1180,7 +1196,7 @@ export const markScheduleAsPaid = async (
       'ad_schedules',
       credit ? { payment_status: 'paid' } : { payment_status: 'paid', status: 'scheduled' },
       [
-        { op: 'eq', col: 'source_table', val: 'form_submissions_extend' },
+        { op: 'eq', col: 'source_table', val: EXTENSION_SOURCE_TABLE },
         { op: 'eq', col: 'source_id', val: entry.sourceId },
       ],
       'id',
@@ -1453,7 +1469,7 @@ export const unmarkScheduleAsPaid = async (
       'ad_schedules',
       credit ? { payment_status: 'pending' } : { payment_status: 'pending', status: 'waiting_payment' },
       [
-        { op: 'eq', col: 'source_table', val: 'form_submissions_extend' },
+        { op: 'eq', col: 'source_table', val: EXTENSION_SOURCE_TABLE },
         { op: 'eq', col: 'source_id', val: entry.sourceId },
       ],
       'id',
@@ -2595,7 +2611,7 @@ export async function holdExtendSlot(sourceId: string): Promise<void> {
     () => supabase.from('ad_schedules').update({
       payment_status: 'pending',
       updated_at: new Date().toISOString(),
-    }).eq('source_table', 'form_submissions_extend').eq('source_id', sourceId),
+    }).eq('source_table', EXTENSION_SOURCE_TABLE).eq('source_id', sourceId),
   );
   if (error) throw new Error(error.message);
 }
@@ -4028,7 +4044,7 @@ export const updateScheduleDates = async (
     const { data: otherSchedules, error: otherError } = await supabase
       .from('ad_schedules')
       .select('id')
-      .eq('source_table', 'form_submissions_extend')
+      .eq('source_table', EXTENSION_SOURCE_TABLE)
       .eq('submission_id', submissionId)
       .in('status', ['waiting_payment', 'paid', 'scheduled', 'live'])
       .limit(1);
@@ -4146,7 +4162,7 @@ export const updateExtendScheduleDates = async (
         end_date: toAiringEndIso(startYmd, durationDays, hourWib, minuteWib),
         updated_at: new Date().toISOString(),
       })
-      .eq('source_table', 'form_submissions_extend')
+      .eq('source_table', EXTENSION_SOURCE_TABLE)
       .eq('source_id', extendId),
   );
 
@@ -4843,7 +4859,7 @@ export const fetchKilatSchedule = async (
     .from('ad_schedules')
     .select('submission_id, start_date, kilat_slot_hour, status, payment_status, slot_booked_by, slot_reserved_at, created_at')
     .eq('distribution_type', 'kilat')
-    .eq('source_table', 'form_submissions_extend')
+    .eq('source_table', EXTENSION_SOURCE_TABLE)
     .in('status', ['waiting_payment', 'paid', 'scheduled', 'live', 'completed'])
     .gte('start_date', kilatWaveInstant(fromYmd, 0).toISOString())
     .lt('start_date', kilatWaveInstant(addDaysToYmd(toYmd, 1), 0).toISOString());
@@ -5164,7 +5180,7 @@ export const cancelSchedule = async (entry: {
       const { data, error } = await supabase
         .from('ad_schedules')
         .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-        .eq('source_table', 'form_submissions_extend')
+        .eq('source_table', EXTENSION_SOURCE_TABLE)
         .eq('source_id', entry.sourceId)
         .not('payment_status', 'in', unpaid)
         .select('id');
@@ -5274,7 +5290,7 @@ export const cancelSchedule = async (entry: {
           slot_reserved_at: null,
           updated_at: new Date().toISOString(),
         })
-        .eq('source_table', 'form_submissions_extend')
+        .eq('source_table', EXTENSION_SOURCE_TABLE)
         .eq('source_id', entry.sourceId)
         .not('payment_status', 'in', unpaidOnly)
         .select('id');
@@ -5284,7 +5300,7 @@ export const cancelSchedule = async (entry: {
     if (!hit) {
       throw new Error(await explainNoRowsCancelling(
         'ad_schedules',
-        (q) => q.eq('source_table', 'form_submissions_extend').eq('source_id', entry.sourceId),
+        (q) => q.eq('source_table', EXTENSION_SOURCE_TABLE).eq('source_id', entry.sourceId),
         'Jadwal ini',
       ));
     }
@@ -6060,7 +6076,7 @@ export const fetchAdSchedules = async (
       id: row.id,
       submissionId: row.submission_id,
       ordinal: row.ordinal,
-      isExtension: row.source_table === 'form_submissions_extend',
+      isExtension: row.source_table === EXTENSION_SOURCE_TABLE,
       sourceId: row.source_id,
       bookingId: row.booking_id,
       startDate: row.start_date,

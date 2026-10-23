@@ -129,6 +129,13 @@ export interface SubmitOrderArgs {
    * order TETAP terbaca manual sesudah admin menyetujuinya.
    */
   forcedManualReason?: 'admin_away';
+  /**
+   * "Kirim Pesanan" saat reservasi mandiri ditutup (sql/125): jalur otomatis
+   * yang TIDAK memesan slot. Pemanggil mengirim `isAutoApproval: false`; order
+   * lahir `approved` tanpa kolom jadwal, dan trigger server yang menulis cap
+   * "jadwal oleh tim" — klien tidak pernah menulis kolom cap.
+   */
+  selfBookingClosed?: boolean;
 }
 
 /**
@@ -152,6 +159,7 @@ export async function submitOrder({
   ilkomunyBlocked,
   authUserId,
   forcedManualReason,
+  selfBookingClosed = false,
 }: SubmitOrderArgs): Promise<FormSubmission & { id: string }> {
   // Syarat Ringkasan, dinilai ulang di sini karena jalur otomatis menulis
   // order dari layar Jadwal — satu langkah setelah layar yang menegakkannya.
@@ -175,7 +183,9 @@ export async function submitOrder({
 
   // `startDate` disimpan sebagai YYYY-MM-DD, tapi draft lama / hasil reschedule
   // bisa membawa ISO penuh — potong supaya perbandingan tanggal apple-to-apple.
-  const startYmd = formData.startDate ? String(formData.startDate).slice(0, 10) : '';
+  // Saat reservasi mandiri ditutup, tanggal draft bukan milik peneliti lagi —
+  // diabaikan, termasuk untuk cek batas 13.00 di bawah.
+  const startYmd = formData.startDate && !selfBookingClosed ? String(formData.startDate).slice(0, 10) : '';
 
   // Batas pesan bisa terlewat sementara user memilih. Cek terakhir sebelum
   // INSERT. Iklan: 13.00 WIB hari-H. Kilat: H-2 jam per gelombang (sql/117
@@ -263,7 +273,7 @@ export async function submitOrder({
     university: formData.university,
     department: formData.department,
     status: formData.status || 'pending',
-    submission_status: isAutoApproval ? 'waiting_payment' : 'in_review',
+    submission_status: selfBookingClosed ? 'approved' : isAutoApproval ? 'waiting_payment' : 'in_review',
     referral_source:
       formData.referralSource === 'Lainnya' && formData.referralSourceOther
         ? `Lainnya: ${formData.referralSourceOther}`
@@ -350,8 +360,13 @@ export async function submitOrder({
     menghapus ordernya: ia sudah sah (jalur otomatis, status
     `waiting_payment`, tanpa tanggal) dan halaman Jadwal & Bayar-nya
     menampilkan layar `pick` untuk order tanpa tanggal.
+
+    Order bercap (sql/125 — tab yang dibuka sebelum saklar ditutup: trigger
+    mengubah INSERT-nya jadi `approved` tanpa tanggal) TIDAK dikunci: pintu
+    akan menolaknya 409, dan pemanggil mengantarnya ke modal "tim yang
+    menjadwalkan" lewat `self_booking_closed_at`.
   */
-  if (isAutoApproval && startYmd) {
+  if (isAutoApproval && startYmd && !savedRecord.self_booking_closed_at) {
     try {
       await rebookSlotForSubmission(
         savedRecord.id,

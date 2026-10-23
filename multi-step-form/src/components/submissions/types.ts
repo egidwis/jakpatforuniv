@@ -67,6 +67,8 @@ export interface SurveySubmission {
   distribution_type?: 'regular' | 'kilat';
   /** sql/122: 'admin_away' = Kilat otomatis yang dialihkan ke manual selama mode libur. */
   forced_manual_reason?: string | null;
+  /** sql/125: cap "jadwal oleh tim" — lahir saat reservasi mandiri ditutup. */
+  self_booking_closed_at?: string | null;
   /**
    * Gelombang push Kilat dalam jam WIB (8/11/14/17). NULL/undefined pada order
    * Kilat berarti slotnya belum ditugaskan admin — keadaan yang sah untuk order

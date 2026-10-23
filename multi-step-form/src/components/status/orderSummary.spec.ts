@@ -91,3 +91,15 @@ describe('orderSummaryOf — ringkasan kartu ponsel', () => {
         expect(s.moreNeedAction).toBe(0); // a tak punya tombol, c tak punya tombol mandiri
     });
 });
+
+describe('orderSummaryOf — reservasi mandiri ditutup (sql/125)', () => {
+    it('choose_schedule saat ditutup: abu, judul "ditutup sementara", tanpa tombol', () => {
+        expect(orderSummaryOf('choose_schedule', [card('choose_schedule')], { canSelfReschedule: false }))
+            .toMatchObject({ tone: 'slate', titleKey: 'selfBookingClosedTitle', action: null });
+    });
+
+    it('choose_schedule saat terbuka: amber + tombol (perilaku lama)', () => {
+        expect(orderSummaryOf('choose_schedule', [card('choose_schedule')], { canSelfReschedule: true }))
+            .toMatchObject({ tone: 'amber', titleKey: 'bannerTitleChooseSchedule', action: { kind: 'choose_schedule' } });
+    });
+});

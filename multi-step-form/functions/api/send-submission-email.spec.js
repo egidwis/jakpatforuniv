@@ -68,3 +68,33 @@ describe('/api/send-submission-email — mode libur (sql/122)', () => {
     expect(sent[0].html).not.toContain('tim admin sedang libur');
   });
 });
+
+describe('/api/send-submission-email — varian tutup reservasi mandiri (sql/125)', () => {
+  it('kind admin_schedule: lolos review otomatis, tim menjadwalkan maks 1 hari kerja', async () => {
+    network(() => new Response('[]', { status: 200 }));
+    const res = await call({ name: 'Sintya', email: 'p@x.id', kind: 'admin_schedule' });
+    expect(res.status).toBe(200);
+    expect(sent[0].subject).toContain('tim kami menjadwalkan');
+    const html = sent[0].html;
+    expect(html).toContain('lolos review otomatis');
+    expect(html).toContain('menetapkan tanggal tayang');
+    expect(html).toContain('maksimal 1 hari kerja');
+    expect(html).not.toContain('akan kami review');
+  });
+
+  it('kind admin_schedule saat libur: janji bergeser ke "setelah tim kembali", pesan admin di-escape', async () => {
+    network(() => new Response(JSON.stringify([{ holiday_date: '2026-12-24', label: 'Libur <b>Natal</b>' }]), { status: 200 }));
+    await call({ name: 'Sintya', email: 'p@x.id', kind: 'admin_schedule' });
+    const html = sent[0].html;
+    expect(html).toContain('setelah tim kembali');
+    expect(html).toContain('Libur &lt;b&gt;Natal&lt;/b&gt;');
+    expect(html).not.toContain('maksimal 1 hari kerja');
+    expect(html).not.toContain('Review akan kami kerjakan');
+  });
+
+  it('kind tak dikenal: email review biasa', async () => {
+    network(() => new Response('[]', { status: 200 }));
+    await call({ name: 'Sintya', email: 'p@x.id', kind: 'apa-saja' });
+    expect(sent[0].html).toContain('akan kami review');
+  });
+});

@@ -57,6 +57,9 @@ export function orderSummaryOf(
         case 'in_review':
             titleKey = 'bannerTitleInReview'; break;
         case 'choose_schedule':
+            // Reservasi mandiri ditutup (sql/125): tidak ada yang bisa dikerjakan
+            // peneliti sekarang — abu, bukan amber "pilih tanggal".
+            if (!ctx.canSelfReschedule) { titleKey = 'selfBookingClosedTitle'; break; }
             tone = 'amber'; titleKey = 'bannerTitleChooseSchedule'; break;
         case 'awaiting_admin_schedule':
             titleKey = 'bannerTitleAwaitingAdminSchedule'; break;

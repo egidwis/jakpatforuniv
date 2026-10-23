@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { cn } from '@/lib/utils';
 import { MAX_EXTRA_ADS_PER_DAY, MAX_REGULAR_ADS_PER_DAY } from '@/utils/constants';
 import {
-  createAdminSchedule, fetchScheduleBilling, fetchSlotAvailability, holdExtendSlot,
+  createAdminSchedule, EXTENSION_SOURCE_TABLE, fetchScheduleBilling, fetchSlotAvailability, holdExtendSlot,
   holdSubmissionSlot, killDokuLinksForSchedule,
   setScheduleExtraAd, supabase, updateExtendScheduleDates, updateScheduleDates,
   type AdScheduleEntry, type DokuKillReport,
@@ -443,7 +443,7 @@ export function ScheduleForm({
       const { data: freshExt } = await supabase
         .from('ad_schedules')
         .select('payment_status, status')
-        .eq('source_table', 'form_submissions_extend')
+        .eq('source_table', EXTENSION_SOURCE_TABLE)
         .eq('source_id', entry.sourceId)
         .maybeSingle();
 

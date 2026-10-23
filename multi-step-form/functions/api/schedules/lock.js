@@ -1,4 +1,4 @@
-import { actionOf, doorCall, lockPatch, lockRoute, validateAction } from './lockGate.js';
+import { actionOf, doorCall, lockPatch, lockRoute, selfBookingBlock, validateAction } from './lockGate.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -60,6 +60,21 @@ async function rest(env, path, init = {}) {
   return data;
 }
 
+/**
+ * Saklar tutup reservasi mandiri (sql/125). Gagal dibaca = TERBUKA (perilaku
+ * lama) — galat sementara tidak boleh mematikan pembayaran semua peneliti;
+ * tabelnya wajib sudah ada sebelum kode ini dideploy.
+ */
+async function selfBookingClosed(env) {
+  try {
+    const rows = await rest(env, 'JFU_self_booking_closures?select=closed_on&is_active=eq.true&limit=1');
+    return Array.isArray(rows) && rows.length > 0;
+  } catch (err) {
+    console.error('[schedules/lock] status reservasi mandiri tak terbaca:', err?.message || err);
+    return false;
+  }
+}
+
 function owns(row, user) {
   if (row.auth_user_id && row.auth_user_id === user.id) return true;
   if (!row.auth_user_id && user.email && (row.email || '').toLowerCase() === user.email) return true;
@@ -88,10 +103,18 @@ export async function onRequest(context) {
   try {
     const rows = await rest(
       env,
-      `form_submissions?id=eq.${body.submissionId}&select=id,auth_user_id,email,payment_status,submission_status,duration,distribution_type`,
+      `form_submissions?id=eq.${body.submissionId}&select=id,auth_user_id,email,payment_status,submission_status,duration,distribution_type,self_booking_closed_at`,
     );
     const row = Array.isArray(rows) ? rows[0] : null;
     if (!row || !owns(row, user)) return json(400, { error: 'Order tidak ditemukan' });
+
+    // Tutup reservasi mandiri (sql/125): kunci (Iklan & Kilat) ditahan saat
+    // ditutup ATAU bercap; perpanjangan hanya saat ditutup — persis trigger
+    // trg_01_self_booking. Lepas & batal tetap boleh.
+    if (action === 'lock' || action === 'extend') {
+      const blocked = selfBookingBlock(action === 'lock' ? row : null, await selfBookingClosed(env));
+      if (blocked) return json(409, blocked);
+    }
 
     // Kilat & aksi lain: fungsi door_* (sql/123) menilai sebagai peneliti.
     const route = action === 'lock' ? lockRoute(row, body) : { kind: 'door' };

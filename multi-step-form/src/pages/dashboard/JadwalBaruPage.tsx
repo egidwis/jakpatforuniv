@@ -83,6 +83,8 @@ import { billExpiryFor } from '../../utils/jadwalBayarGates';
 import { kilatWaveClashesOwn } from '../../utils/canScheduleAgain';
 import { awayBlocksKilatPick, awayGuard, awayGuardWouldOpen } from '../../components/status/AdminAwayModal';
 import { useAdminAway } from '../../utils/operationalHolidays';
+import { isSelfBookingClosedError, refreshSelfBookingClosure, useSelfBookingClosure } from '../../utils/selfBookingClosure';
+import { SelfBookingNotice } from '../../components/order/SelfBookingNotice';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -122,6 +124,13 @@ export function JadwalBaruPage() {
   const navigate = useNavigate();
   const { t, language } = useLanguage();
   const { user } = useAuth();
+  /*
+    Reservasi mandiri ditutup (sql/125): perpanjangan mandiri ikut ditutup —
+    halaman ini (juga lewat URL langsung / CTA Mimin) menampilkan catatan 🔒,
+    bukan kalender. Cap order TIDAK dibaca di sini: perpanjangan order bercap
+    di kemudian hari mengikuti saklar saja (keputusan 22 Okt).
+  */
+  const selfBookingClosure = useSelfBookingClosure();
 
   const [submission, setSubmission] = useState<FormSubmission | null>(null);
   /** Semua jadwal order ini — teguran dini jarak 24 jam antargelombang Kilat. */
@@ -562,6 +571,14 @@ export function JadwalBaruPage() {
 
       console.error('[JadwalBaruPage] gagal mengunci jadwal:', e);
 
+      // Saklar ditutup sesudah halaman terbuka (pintu 409 / trigger sql/125): jadwalnya
+      // tidak pernah lahir; store disegarkan dan halaman berganti catatan 🔒.
+      if (!orphanLeft && isSelfBookingClosedError(e)) {
+        void refreshSelfBookingClosure();
+        toast.error(t('selfBookingClosedToast'));
+        return;
+      }
+
       /*
         Gelombang ditolak server (sql/117 kuota, sql/119 klaim). ⚠️ SEBELUM
         `isDailyQuotaFullError`: pesan gelombang penuh juga memuat "sudah
@@ -643,6 +660,21 @@ export function JadwalBaruPage() {
           type="button"
           onClick={() => navigate('/dashboard')}
           className="inline-flex items-center gap-2 text-sm font-semibold text-jfu-primary hover:underline"
+        >
+          <ArrowLeft className="w-4 h-4" /> {t('backToOrders')}
+        </button>
+      </div>
+    );
+  }
+
+  if (selfBookingClosure) {
+    return (
+      <div className="max-w-2xl mx-auto px-6 pt-24 space-y-5">
+        <SelfBookingNotice variant="extend" closure={selfBookingClosure} />
+        <button
+          type="button"
+          onClick={() => navigate('/dashboard')}
+          className="inline-flex items-center gap-2 rounded-xl bg-jfu-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-90"
         >
           <ArrowLeft className="w-4 h-4" /> {t('backToOrders')}
         </button>

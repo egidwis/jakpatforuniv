@@ -28,8 +28,11 @@ export function primaryActionOf(
 ): PrimaryAction | null {
     const b = card.booking;
     switch (b.state) {
+        // `canSelfReschedule` false di sini = reservasi mandiri ditutup (sql/125):
+        // state ini hanya lahir untuk jalur auto-review, jadi satu-satunya alasan
+        // peneliti tak boleh memilih adalah saklar admin.
         case 'choose_schedule':
-            return { kind: 'choose_schedule' };
+            return ctx.canSelfReschedule ? { kind: 'choose_schedule' } : null;
 
         // Tombol jadwal-ulang hanya untuk jadwal pertama jalur auto-review. Jadwal ke-2 dst. tidak
         // punya alur pemilihan tanggal mandiri, dan order jalur manual tanggalnya milik admin
