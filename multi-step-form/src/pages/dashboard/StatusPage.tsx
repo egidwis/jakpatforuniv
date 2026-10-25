@@ -35,9 +35,11 @@ import { PublicationPhase } from '@/components/status/PublicationPhase';
 import { buildScheduleCards } from '@/components/status/airingPeriods';
 import { groupInfoFor } from '@/components/status/invoiceGroups';
 import { CreateOrderCards, NewOrderFab } from '@/components/CreateOrderCards';
+import { canUseKilatSelfServe } from '@/utils/kilatAccess';
 import { deriveOrderUiState, getActiveDashboardPhase, type OrderGroup } from '@/components/status/deriveOrderUiState';
 import { AdsEntryModal } from '@/components/AdsEntryModal';
 import { AdminHolidayBanner } from '@/components/status/AdminHolidayBanner';
+import { awayBlocksKilatPick } from '@/components/status/AdminAwayModal';
 import { canSelfSchedule, useSelfBookingClosure } from '@/utils/selfBookingClosure';
 import { ProfileCompletionSheet } from '@/components/ProfileCompletionSheet';
 import { isProfileGateSatisfied } from '@/components/ProfileForm';
@@ -196,30 +198,36 @@ export function StatusPage() {
     const framed = frameHeight !== null;
 
     // Modal Pintu Masuk Iklan Survei (2-Step Modal)
-    const [isAdsModalOpen, setIsAdsModalOpen] = useState(false);
+    // Satu modal pintu masuk untuk kedua produk; `null` = tertutup.
+    const [entryProduct, setEntryProduct] = useState<'ads' | 'kilat' | null>(null);
     const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false);
-    const [pendingContinue, setPendingContinue] = useState(false);
+    const [pendingContinue, setPendingContinue] = useState<'ads' | 'kilat' | null>(null);
+    // Pintu Kilat dibuka bertahap (Phase 5 §5.6): admin & akun uji dulu.
+    const kilatOpen = canUseKilatSelfServe(user?.email);
 
-    const openSurveyOrder = () => {
-        navigate('/dashboard/submit-iklan');
+    // Jenis order ditetapkan oleh pintu yang dipakai — wizard membaca `?product`.
+    const openSurveyOrder = (product: 'ads' | 'kilat') => {
+        navigate(product === 'kilat' ? '/dashboard/submit-iklan?product=kilat' : '/dashboard/submit-iklan');
     };
 
-    const handleContinueAds = async () => {
-        setIsAdsModalOpen(false);
+    const handleContinueEntry = async () => {
+        const product = entryProduct ?? 'ads';
+        setEntryProduct(null);
         const isProfileSatisfied = await isProfileGateSatisfied();
         if (!isProfileSatisfied) {
-            setPendingContinue(true);
+            setPendingContinue(product);
             setIsProfileSheetOpen(true);
             return;
         }
-        openSurveyOrder();
+        openSurveyOrder(product);
     };
 
     const handleProfileCompleted = () => {
         setIsProfileSheetOpen(false);
         if (!pendingContinue) return;
-        setPendingContinue(false);
-        openSurveyOrder();
+        const product = pendingContinue;
+        setPendingContinue(null);
+        openSurveyOrder(product);
     };
 
     useEffect(() => {
@@ -698,6 +706,8 @@ export function StatusPage() {
      * sudah berkalender.
      */
     const handleReschedule = (submission: FormSubmission) => {
+        // Mode libur (sql/122): pemilih gelombang Kilat tidak dibuka — modal F, tetap di sini.
+        if (submission.distribution_type === 'kilat' && awayBlocksKilatPick({ leave: false })) return;
         navigate(`/dashboard/payment/${submission.id}?pilih=1`);
     };
 
@@ -820,7 +830,10 @@ export function StatusPage() {
                     "Order baru" dan ikon Chat Mimin di toolbar. Belum punya order → tetap penuh,
                     karena membuat order satu-satunya yang perlu ia lakukan. */}
                 <aside className={`lg:col-span-4 lg:sticky lg:top-24 ${submissions.length > 0 ? 'max-lg:hidden' : ''}`}>
-                    <CreateOrderCards onOpenAdsModal={() => setIsAdsModalOpen(true)} />
+                    <CreateOrderCards
+                        onOpenAdsModal={() => setEntryProduct('ads')}
+                        onOpenKilatModal={kilatOpen ? () => setEntryProduct('kilat') : undefined}
+                    />
                 </aside>
 
                 {/* Daftar order — kolom lebar di kanan (desktop), di bawah kartu aksi (ponsel) */}
@@ -968,7 +981,7 @@ export function StatusPage() {
                                 <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3">
                                     <button
                                         type="button"
-                                        onClick={() => setIsAdsModalOpen(true)}
+                                        onClick={() => setEntryProduct('ads')}
                                         className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-jfu-primary text-white text-xs sm:text-sm font-semibold shadow-xs hover:bg-jfu-dark transition-all cursor-pointer"
                                     >
                                         <span>Pasang Iklan Survei</span>
@@ -1061,6 +1074,7 @@ export function StatusPage() {
                                                     <Phase number={2} title={t('airingPeriodLabel')} active={reachedPhase >= 2} lineActive={reachedPhase >= 3}>
                                                         <SchedulePhase
                                                             submission={submission}
+                                                            kilatOpen={kilatOpen}
                                                             cards={cards}
                                                             entries={[ui.first, ...ui.later]}
                                                             onReschedule={() => handleReschedule(submission)}
@@ -1126,7 +1140,10 @@ export function StatusPage() {
                 melihat kartu Create penuh). Langsung ke produk bila hanya satu yang tersedia,
                 lembar pilihan bila lebih. Tombol "ke atas" digeser naik supaya tak bertumpuk. */}
             {submissions.length > 0 && (
-                <NewOrderFab onOpenAdsModal={() => setIsAdsModalOpen(true)} />
+                <NewOrderFab
+                    onOpenAdsModal={() => setEntryProduct('ads')}
+                    onOpenKilatModal={kilatOpen ? () => setEntryProduct('kilat') : undefined}
+                />
             )}
 
             {/* Floating move to top button */}
@@ -1208,9 +1225,10 @@ export function StatusPage() {
 
             {/* Modal Pintu Masuk Iklan Survei (Awareness + Review Method) */}
             <AdsEntryModal
-                isOpen={isAdsModalOpen}
-                onClose={() => setIsAdsModalOpen(false)}
-                onContinue={handleContinueAds}
+                isOpen={entryProduct !== null}
+                product={entryProduct ?? 'ads'}
+                onClose={() => setEntryProduct(null)}
+                onContinue={handleContinueEntry}
             />
 
             {/* Sheet Kelengkapan Profil */}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 import { LogOut, Eye, EyeOff, RefreshCw, Lock, Search, CreditCard, ChevronLeft, ChevronRight, X, ListFilter, ArrowDownWideNarrow, ArrowUpNarrowWide, Zap, Calendar, ShieldCheck, ArrowRight, Loader2, Plus } from 'lucide-react';
 import logoMark from '../assets/Jakpat Navbar Logo.webp';
@@ -21,6 +21,7 @@ import { PageBuilderModal } from './PageBuilder/PageBuilderModal';
 import { SubmissionsMobileCard } from './SubmissionsTableRow';
 import type { SurveySubmission, PaymentState, ReviewHistoryEntry, ExistingPage, FormAuditResult } from './submissions/types';
 import { deriveLifecycle, type ScheduleSignals } from './submissions/lifecycle';
+import { ADMIN_QUEUE_CHANGED, fetchAdminQueue, type AdminQueueCounts } from '../utils/adminQueue';
 import { AdminAwayDialog, AdminAwayPill, AdminAwayStrip, useAdminAwayControl } from './submissions/AdminAwayToggle';
 import { AdminSelfBookingDialog, AdminSelfBookingPill, AdminSelfBookingStrip, useSelfBookingControl } from './submissions/AdminSelfBookingToggle';
 import { fetchAdSchedules } from '../utils/supabase';
@@ -44,10 +45,14 @@ const isMissedPaymentWindow = (sub: {
   status?: string | null;
   submission_status?: string | null;
   payment_status?: string | null;
+  distribution_type?: string | null;
+  kilat_slot_hour?: number | null;
 }) => missedPaymentWindow({
   startDate: sub.start_date,
   submissionStatus: sub.submission_status || sub.status,
   paymentStatus: sub.payment_status,
+  distributionType: sub.distribution_type,
+  kilatHour: sub.kilat_slot_hour,
 });
 import './InternalDashboard.css';
 
@@ -66,6 +71,9 @@ const SERVER_STATUS_FILTERS = ['in_review', 'rejected', 'cancelled', 'spam'] as 
 
 const STATUS_FILTER_OPTIONS = [
   { id: 'all', label: 'All' },
+  /** Antrean kerja admin lintas bulan — angka yang sama dengan badge tab
+   *  Iklan/Kilat (`adminQueue.ts`, Phase 5 §5.4b). */
+  { id: 'needs_admin', label: 'Perlu Ditangani' },
   { id: 'in_review', label: 'Need Review' },
   { id: 'rejected', label: 'Menunggu Perbaikan' },
   { id: 'approved', label: 'Approved' },
@@ -105,10 +113,12 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [distTab, setDistTab] = useState<'regular' | 'kilat'>('regular');
-  /** Mode libur tim admin (sql/120) — satu kendali untuk strip, pill, dan popup. */
+  /** Mode libur tim admin (sql/122) — satu kendali untuk strip, pill, dan popup. */
   const awayControl = useAdminAwayControl();
   /** Tutup reservasi mandiri (sql/125) — kendali bersama strip, pill, dan popup. */
   const selfBookingControl = useSelfBookingControl();
+  /** Id order yang menunggu admin per jenis (badge tab + filter "Perlu Ditangani"). */
+  const [adminQueue, setAdminQueue] = useState<AdminQueueCounts>({ regular: [], kilat: [] });
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
 
   // Derived schedule state: Set of submission IDs that have a slot reserved (start_date set)
@@ -223,8 +233,40 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
     return () => { cancelled = true; };
   }, [submissions]);
 
+  /**
+   * Badge tab Iklan/Kilat. Dihitung ulang saat dibuka, setiap kali daftar
+   * dimuat ulang (= sesudah admin bertindak), tiap 5 menit, dan pada event
+   * `ADMIN_QUEUE_CHANGED` — pola yang sama dengan badge Conversations.
+   */
+  const refreshAdminQueue = useCallback(async () => {
+    try {
+      const next = await fetchAdminQueue();
+      setAdminQueue((prev) =>
+        prev.regular.join() === next.regular.join() && prev.kilat.join() === next.kilat.join() ? prev : next);
+    } catch (err) {
+      console.error('Gagal menghitung antrean admin', err);
+    }
+  }, []);
+
+  useEffect(() => { refreshAdminQueue(); }, [submissions, refreshAdminQueue]);
+
+  useEffect(() => {
+    const timer = setInterval(refreshAdminQueue, 5 * 60_000);
+    window.addEventListener(ADMIN_QUEUE_CHANGED, refreshAdminQueue);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener(ADMIN_QUEUE_CHANGED, refreshAdminQueue);
+    };
+  }, [refreshAdminQueue]);
+
+  // Mobile tidak punya tab jenis, jadi filter memuat kedua jenis; desktop
+  // menyaringnya lagi per tab lewat `desktopSubmissions`.
+  const adminQueueIds = [...adminQueue.regular, ...adminQueue.kilat];
+  const adminQueueKey = statusFilter === 'needs_admin' ? adminQueueIds.join() : '';
+
   const statusCounts = {
     all: submissions.length,
+    needs_admin: adminQueueIds.length,
     in_review: queueCounts.in_review,
     rejected: queueCounts.rejected,
     approved: submissions.filter(s => s.status === 'approved').length,
@@ -276,7 +318,8 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
         startOfMonth.toISOString(),
         endOfMonth.toISOString(),
         sortDir === 'asc',
-        serverStatuses
+        serverStatuses,
+        statusFilter === 'needs_admin' ? adminQueueIds : undefined
       );
 
       if (data) {
@@ -331,6 +374,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
           review_history: sub.review_history || [],
           dismissed_at: sub.dismissed_at,
           distribution_type: sub.distribution_type,
+          forced_manual_reason: sub.forced_manual_reason ?? null,
           self_booking_closed_at: sub.self_booking_closed_at ?? null,
           kilat_slot_hour: sub.kilat_slot_hour,
           ai_prescreening: sub.ai_prescreening || null,
@@ -595,7 +639,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
     }
     // `statusFilter` ikut di sini sejak penyaringannya pindah ke server:
     // mengubah tab kini mengubah QUERY-nya, bukan cuma menyaring hasil.
-  }, [isAdmin, currentPage, searchQuery, currentDate, sortDir, statusFilter]);
+  }, [isAdmin, currentPage, searchQuery, currentDate, sortDir, statusFilter, adminQueueKey]);
 
   // Re-render every 60s so time-based chips (Reserved <1h / Expired) stay honest
   const [, setNowTick] = useState(0);
@@ -1249,7 +1293,10 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
       {/* Content */}
       <div className={hideAuth ? 'p-4 md:p-6 flex-1 min-h-0 flex flex-col gap-4' : 'max-w-[1400px] mx-auto w-full px-4 sm:px-6 py-6 flex-1 min-h-0 flex flex-col gap-4'}>
 
-        <AdminAwayStrip control={awayControl} />
+        <AdminAwayStrip
+          control={awayControl}
+          onOpenKilat={() => { setDistTab('kilat'); setStatusFilter('needs_admin'); setCurrentPage(1); }}
+        />
         <AdminAwayDialog control={awayControl} />
         <AdminSelfBookingStrip
           control={selfBookingControl}
@@ -1337,6 +1384,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
             <div className="flex flex-wrap gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-hide">
               {[
                 { id: 'all', label: 'All', count: statusCounts.all, color: 'bg-gray-100 text-gray-700' },
+                { id: 'needs_admin', label: 'Perlu Ditangani', count: statusCounts.needs_admin, color: 'bg-red-50 text-red-700' },
                 { id: 'in_review', label: 'Need Review', count: statusCounts.in_review, color: 'bg-blue-50 text-blue-700' },
                 { id: 'rejected', label: 'Menunggu Perbaikan', count: statusCounts.rejected, color: 'bg-amber-50 text-amber-700' },
                 { id: 'approved', label: 'Approved', count: statusCounts.approved, color: 'bg-green-50 text-green-700' },
@@ -1356,7 +1404,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
                   {tab.label}
                   {/* Angka hanya untuk dua antrean kerja — keduanya dihitung
                       dari DB tanpa filter bulan (lihat `queueCounts`). */}
-                  {['in_review', 'rejected'].includes(tab.id) && (
+                  {['needs_admin', 'in_review', 'rejected'].includes(tab.id) && (
                     <span className={`
                       px-1.5 py-0.5 rounded-md text-[10px] font-bold min-w-[18px] text-center
                       ${statusFilter === tab.id
@@ -1386,22 +1434,53 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
           {([
             ['regular', 'Iklan', Calendar],
             ['kilat', 'Kilat', Zap]
-          ] as const).map(([id, label, Icon]) => (
-            <button
-              key={id}
-              onClick={() => setDistTab(id)}
-              className={cn(
-                'flex items-center gap-1.5 px-4 py-2.5 -mb-px text-sm font-semibold border-b-2 transition-colors',
-                distTab === id
-                  ? 'border-blue-600 text-blue-700'
-                  : 'border-transparent text-gray-500 hover:text-gray-800'
-              )}
-            >
-              <Icon className="w-4 h-4" />
-              {label}
-            </button>
-          ))}
-          {/* Ujung kanan baris tab: toggle mode libur (sql/120). */}
+          ] as const).map(([id, label, Icon]) => {
+            const waiting = adminQueue[id].length;
+            return (
+              <button
+                key={id}
+                onClick={() => setDistTab(id)}
+                className={cn(
+                  'flex items-center gap-1.5 px-4 py-2.5 -mb-px text-sm font-semibold border-b-2 transition-colors',
+                  distTab === id
+                    ? 'border-blue-600 text-blue-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-800'
+                )}
+              >
+                <Icon className="w-4 h-4" />
+                {label}
+                {waiting > 0 && (
+                  // Gaya badge Conversations. Klik angkanya = saring ke "Perlu Ditangani".
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    title={`${waiting} order menunggu admin — klik untuk menyaring`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDistTab(id);
+                      setStatusFilter('needs_admin');
+                      setCurrentPage(1);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter' && e.key !== ' ') return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDistTab(id);
+                      setStatusFilter('needs_admin');
+                      setCurrentPage(1);
+                    }}
+                    className={cn(
+                      'ml-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold',
+                      distTab === id ? 'bg-blue-600 text-white' : 'bg-red-500 text-white'
+                    )}
+                  >
+                    {waiting > 99 ? '99+' : waiting}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+          {/* Ujung kanan baris tab: toggle reservasi mandiri (sql/125) & mode libur (sql/122). */}
           <div className="ml-auto pb-1.5 flex items-center gap-2">
             <AdminSelfBookingPill control={selfBookingControl} />
             <AdminAwayPill control={awayControl} />

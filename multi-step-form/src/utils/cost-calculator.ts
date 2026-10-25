@@ -1,5 +1,5 @@
 import type { SurveyFormData, CostCalculation } from '../types';
-import { AD_RATE_SCHEDULE, type AdRateEntry, KILAT_ADDON_COST, KILAT_ADDON_COST_VOUCHER, PPN_PERCENT, ILKOMUNY_VALID_UNTIL, JFUFEB_VALID_UNTIL, JFUSUHUD_VALID_UNTIL, PPISWEDIA_VALID_UNTIL } from './constants';
+import { AD_RATE_SCHEDULE, type AdRateEntry, KILAT_ADDON_COST, KILAT_ADDON_COST_VOUCHER, KILAT_RATE_SCHEDULE, KILAT_TARIFF_FROM, PPN_PERCENT, ILKOMUNY_VALID_UNTIL, JFUFEB_VALID_UNTIL, JFUSUHUD_VALID_UNTIL, PPISWEDIA_VALID_UNTIL } from './constants';
 
 // DUPLICATED in functions/api/doku/create-payment.js (server-side authoritative
 // copy) — the two MUST be changed together: price tiers, voucher list, the
@@ -125,6 +125,51 @@ export function adRateAt(questionCount: number, atMs: number): {
   const list = entry.list[i];
   const effective = entry.effective[i];
   return { list, effective, introUntil: list > effective ? entry.introUntil : null };
+}
+
+/** Tabel tarif Kilat (KILAT_RATE_SCHEDULE) sudah berlaku pada instan tarif `atMs`? */
+export function isKilatTariffActive(atMs: number): boolean {
+  return KILAT_TARIFF_FROM !== null && atMs >= Date.parse(KILAT_TARIFF_FROM);
+}
+
+/**
+ * Tarif SATU gelombang JFU Kilat pada instan tarif `atMs`, sebelum voucher.
+ *
+ * Dua bentuk, dipilih oleh `isKilatTariffActive(atMs)`:
+ *   - rumus lama  → `list/effective` = tarif harian Iklan, `addon` = KILAT_ADDON_COST.
+ *                   Ditagih `effective + addon`; struknya dua baris.
+ *   - tabel Kilat → `list/effective` = KILAT_RATE_SCHEDULE, `addon` = 0.
+ *                   Satu baris tarif Kilat (+ "Harga perkenalan" bila list > effective).
+ *
+ * Pemanggil cukup menjumlah `effective + addon` — tidak perlu tahu bentuk mana
+ * yang berlaku. `legacy` hanya untuk label & aturan voucher.
+ */
+export function kilatRateAt(questionCount: number, atMs: number): {
+  list: number; effective: number; introUntil: string | null; addon: number; legacy: boolean;
+} {
+  if (!isKilatTariffActive(atMs)) {
+    const rate = adRateAt(questionCount, atMs);
+    // Add-on tetap ditambahkan pada 0 soal — persis rumus lama.
+    return { ...rate, addon: KILAT_ADDON_COST, legacy: true };
+  }
+  if (!questionCount) return { list: 0, effective: 0, introUntil: null, addon: 0, legacy: false };
+  let entry = KILAT_RATE_SCHEDULE[0];
+  for (const e of KILAT_RATE_SCHEDULE) {
+    if (e.from === null || atMs >= Date.parse(e.from)) entry = e;
+  }
+  const i = tierIndexOf(questionCount);
+  const list = entry.list[i];
+  const effective = entry.effective[i];
+  return { list, effective, introUntil: list > effective ? entry.introUntil : null, addon: 0, legacy: false };
+}
+
+/**
+ * Biaya iklan satu gelombang Kilat yang ditagih sebelum voucher
+ * (`effective + addon` dari `kilatRateAt`).
+ */
+export function kilatAdCostAt(questionCount: number, atMs: number): number {
+  const rate = kilatRateAt(questionCount, atMs);
+  return rate.effective + rate.addon;
 }
 
 /**
@@ -264,6 +309,54 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
 }
 
 /**
+ * Diskon voucher untuk satu gelombang Kilat (keputusan 14 Okt 2026).
+ *
+ * Hanya kode yang `kilatEligible` di VOUCHER_CATALOG yang bekerja:
+ *   - kode ambassador → 10% dari TARIF Kilat (`kilatAdCost`), bukan dari hadiah;
+ *   - JFUTGRX         → total (iklan + hadiah) dipatok Rp 1.000, sama seperti Iklan.
+ * Kode lain = 0.
+ *
+ * Sebelum KILAT_TARIFF_FROM (rumus lama): kode ambassador = 0 (order Kilat lama
+ * memang dikutip tanpa diskon), TETAPI JFUTGRX tetap Rp 1.000 — voucher uji
+ * internal, dipakai bayar DOKU nyata di Push Uji (keputusan 16 Okt, opsi A).
+ * Pada rumus lama `kilatAdCost` = tarif + add-on, jadi add-on ikut terpatok.
+ *
+ * `rateAtMs` = instan tarif (yang memilih rumus). Kode yang berlaku untuk Kilat
+ * tidak punya masa berlaku, jadi instan voucher tidak dibutuhkan.
+ */
+export function calculateKilatDiscount(
+  voucherCode: string | undefined | null,
+  kilatAdCost: number,
+  incentiveCost: number,
+  rateAtMs: number,
+): number {
+  if (!voucherCode) return 0;
+  const code = voucherCode.toUpperCase();
+  if (!KILAT_VOUCHER_CODES.includes(code)) return 0;
+  if (code === 'JFUTGRX') {
+    const totalBeforeDiscount = kilatAdCost + incentiveCost;
+    return totalBeforeDiscount > 1000 ? totalBeforeDiscount - 1000 : 0;
+  }
+  if (!isKilatTariffActive(rateAtMs)) return 0;
+  return kilatAdCost * 0.1;
+}
+
+/**
+ * Subtotal (DPP) satu gelombang Kilat: tarif + add-on (rumus lama) + hadiah −
+ * voucher Kilat. Satu rumus untuk semua penghitung Kilat di klien (Ringkasan
+ * memakai `calculateTotalCost`, yang hasilnya sama).
+ */
+export function kilatSubtotalAt(
+  questionCount: number,
+  atMs: number,
+  voucherCode: string | undefined | null,
+  incentiveCost: number,
+): number {
+  const adCost = kilatAdCostAt(questionCount, atMs);
+  return adCost + incentiveCost - calculateKilatDiscount(voucherCode, adCost, incentiveCost, atMs);
+}
+
+/**
  * Katalog voucher — SATU daftar, dibaca oleh validasi form DAN oleh dashboard.
  *
  * ## Kenapa ini ada
@@ -302,6 +395,11 @@ export interface VoucherCatalogEntry {
   internal?: boolean;
   /** Catatan yang harus ikut tampil di dashboard. */
   note?: string;
+  /**
+   * Berlaku untuk JFU Kilat (keputusan 14 Okt 2026): hanya kode ambassador dan
+   * JFUTGRX. Lihat `calculateKilatDiscount`.
+   */
+  kilatEligible?: boolean;
 }
 
 const AMBASSADOR_CODES = [
@@ -338,14 +436,16 @@ export const VOUCHER_CATALOG: readonly VoucherCatalogEntry[] = [
   },
   ...AMBASSADOR_CODES.map((code) => ({
     code,
-    terms: 'Diskon 10% biaya iklan (kode ambassador).',
+    terms: 'Diskon 10% biaya iklan (kode ambassador). Berlaku juga untuk JFU Kilat: 10% dari tarif Kilat.',
     validUntil: null,
+    kilatEligible: true,
   })),
   {
     code: 'JFUTGRX',
     terms: 'Memangkas total biaya jadi Rp 1.000 — voucher uji sistem, bukan promo.',
     validUntil: null,
     internal: true,
+    kilatEligible: true,
   },
   {
     code: 'JAKPATUNIV2025',
@@ -365,14 +465,49 @@ export function isVoucherActive(entry: VoucherCatalogEntry, atMs: number = Date.
 export const OFFICIAL_VOUCHER_CODES: readonly string[] = VOUCHER_CATALOG.map((v) => v.code);
 
 /**
+ * Kode yang berlaku untuk JFU Kilat. DUPLICATED sebagai literal di
+ * create-payment.js — rateSchedule.spec.ts membandingkan keduanya.
+ */
+export const KILAT_VOUCHER_CODES: readonly string[] = VOUCHER_CATALOG
+  .filter((v) => v.kilatEligible && !v.retired)
+  .map((v) => v.code);
+
+/**
  * Mendapatkan informasi voucher berdasarkan kode
  * @param voucherCode Kode voucher
  * @returns Informasi voucher atau null jika tidak valid
  */
-export function getVoucherInfo(voucherCode: string | undefined, duration: number = 0, atMs: number = Date.now()): { isValid: boolean; message?: string; discount?: number; isError?: boolean; isKilatEligible?: boolean } {
+export function getVoucherInfo(
+  voucherCode: string | undefined,
+  duration: number = 0,
+  atMs: number = Date.now(),
+  product: 'regular' | 'kilat' = 'regular',
+): { isValid: boolean; message?: string; discount?: number; isError?: boolean; isKilatEligible?: boolean } {
   if (!voucherCode) return { isValid: false, isError: false };
 
   const upperCode = voucherCode.toUpperCase();
+
+  // Form Kilat: kode yang tidak berlaku DITOLAK di sini (lalu tidak disimpan),
+  // supaya JFUFEB/ILKOMUNY tidak bisa membelokkan order Kilat ke antrean
+  // review manual. Kode resmi lain diberi pesan khusus, bukan "tidak dikenal".
+  if (product === 'kilat') {
+    if (upperCode === 'JFUTGRX') return { isValid: true };
+    if (KILAT_VOUCHER_CODES.includes(upperCode)) {
+      // Kode ambassador baru memotong sejak tarif Kilat baru (opsi A, 16 Okt).
+      return isKilatTariffActive(atMs)
+        ? { isValid: true, message: 'Diskon 10% dari tarif JFU Kilat (kode ambassador)', discount: 10 }
+        : { isValid: false, message: 'Kode ambassador belum memotong harga JFU Kilat saat ini.', isError: false };
+    }
+    if (OFFICIAL_VOUCHER_CODES.includes(upperCode)) {
+      return {
+        isValid: false,
+        message: 'Kode ini tidak berlaku untuk JFU Kilat. Kilat hanya menerima kode ambassador.',
+        discount: 0,
+        isError: true,
+      };
+    }
+    return { isValid: false, message: 'Voucher code not recognized.', isError: false };
+  }
 
   if (upperCode === 'JAKPATUNIV2025') {
     return {
@@ -473,21 +608,21 @@ export function getVoucherInfo(voucherCode: string | undefined, duration: number
  */
 export function calculateTotalCost(formData: SurveyFormData, atMs: number, voucherAtMs: number = atMs): CostCalculation {
   if (formData.isKilatUpgrade) {
-    // Kilat: base rate (no duration multiplier) + add-on + incentive
-    const rate = adRateAt(formData.questionCount, atMs);
-    const adCostBase = rate.effective; // 1x only
+    // Kilat: satu gelombang, tanpa pengali durasi. Rumus lama (tarif harian +
+    // add-on) atau tabel Kilat — `kilatRateAt` yang memilih, lihat di sana.
+    const rate = kilatRateAt(formData.questionCount, atMs);
     const incentiveCost = calculateIncentiveCost(formData.winnerCount, formData.prizePerWinner);
-    const kilatAddon = getKilatAddonCost(formData.voucherCode);
-    // No discount applied on top of Kilat add-on
-    const subtotal = adCostBase + kilatAddon + incentiveCost;
+    const discount = calculateKilatDiscount(formData.voucherCode, rate.effective + rate.addon, incentiveCost, atMs);
+    const subtotal = rate.effective + rate.addon + incentiveCost - discount;
     const ppn = calculatePpn(subtotal);
     return {
-      adCost: adCostBase,
+      adCost: rate.effective,
       adCostList: rate.list,
       introUntil: rate.introUntil,
       incentiveCost,
-      discount: 0,
-      kilatAddonCost: kilatAddon,
+      discount,
+      kilatAddonCost: rate.addon,
+      kilatTariff: !rate.legacy,
       subtotal,
       ppn,
       totalCost: subtotal + ppn,

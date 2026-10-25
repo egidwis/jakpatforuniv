@@ -1,7 +1,7 @@
 import type { AdScheduleEntry } from '@/utils/supabase';
 import {
-  calculateIncentiveCost, calculateDiscount, calculatePpn, getKilatAddonCost,
-  adRateAt, rateInstantOf, voucherInstantOf,
+  calculateIncentiveCost, calculateDiscount, calculatePpn, calculateKilatDiscount,
+  adRateAt, kilatRateAt, rateInstantOf, voucherInstantOf,
 } from '@/utils/cost-calculator';
 import { formatYmdId } from '@/utils/airing-window';
 
@@ -203,7 +203,12 @@ export function deriveScheduleMoney(
   // berbeda, persis seperti create-payment.js. NULL/rusak → sekarang.
   const rateAt = rateInstantOf(entry.rateLockedAt);
   const voucherAt = voucherInstantOf(entry.submissionCreatedAt);
-  const rate = adRateAt(questionCount, rateAt);
+  // Kilat: tarif satu gelombang — rumus lama (harian + add-on) atau tabel
+  // Kilat, `kilatRateAt` yang memilih. `kilatRate` null untuk Iklan.
+  const kilatRate = isKilat ? kilatRateAt(questionCount, rateAt) : null;
+  const rate = kilatRate ?? adRateAt(questionCount, rateAt);
+  // Baris iklan berlabel "JFU Kilat" hanya untuk tabel Kilat; rumus lama tetap "Iklan".
+  const kilatTariff = kilatRate != null && !kilatRate.legacy;
 
   // ── Sudah ditagih ────────────────────────────────────────
   if (entry.totalCost > 0) {
@@ -236,7 +241,7 @@ export function deriveScheduleMoney(
         bentuk lama yang tampil. Kalimatnya tidak pernah menebak.
       */
       let introMatched = false;
-      const kilatAddon = isKilat ? getKilatAddonCost(voucher) : 0;
+      const kilatAddon = kilatRate?.addon ?? 0;
 
       if (!isKilat && !voucher && netAdCost != null && netAdCost > 0) {
         const expected = rate.effective * duration;
@@ -245,8 +250,11 @@ export function deriveScheduleMoney(
           introMatched = true;
         }
       } else if (isKilat && netAdCost != null && netAdCost > 0) {
-        if (rate.effective > 0 && Math.abs((rate.effective + kilatAddon) - netAdCost) < 10) {
+        // Diskon Kilat selalu 0 pada rumus lama — pencocokannya tetap seperti dulu.
+        const kilatDiscount = calculateKilatDiscount(voucher, rate.effective + kilatAddon, incentive || 0, rateAt);
+        if (rate.effective > 0 && Math.abs((rate.effective + kilatAddon - kilatDiscount) - netAdCost) < 10) {
           grossAdCost = rate.effective;
+          discountAmount = kilatDiscount;
           introMatched = true;
         }
       } else if (voucher && netAdCost != null) {
@@ -300,7 +308,13 @@ export function deriveScheduleMoney(
         const listAdCost = introMatched
           ? (isKilat ? rate.list : rate.list * duration)
           : grossAdCost;
-        lines.push({
+        lines.push(kilatTariff ? {
+          label: 'JFU Kilat',
+          labelKey: 'costLineKilat',
+          hint: '1 gelombang',
+          hintKey: 'costHintOneWave',
+          amount: listAdCost,
+        } : {
           label: 'Iklan',
           labelKey: 'costLineAd',
           hint: entry.duration ? `${entry.duration} hari` : undefined,
@@ -380,20 +394,29 @@ export function deriveScheduleMoney(
     ? calculateIncentiveCost(entry.winnerCount, entry.prizePerWinner)
     : 0;
 
-  // Kilat: base rate 1× (durasi tidak berlaku — selesai ~2 jam), plus add-on,
-  // tanpa diskon voucher. Rumus yang sama dipakai invoice admin dan
-  // functions/api/doku/create-payment.js.
+  // Kilat: satu gelombang, tanpa pengali durasi. Rumus lama = tarif harian +
+  // add-on tanpa voucher; tabel Kilat = satu tarif, voucher Kilat. Rumus yang
+  // sama dipakai invoice admin dan functions/api/doku/create-payment.js.
   const adCost = isKilat ? rate.effective : rate.effective * duration;
   const adCostList = isKilat ? rate.list : rate.list * duration;
   const voucher = effectiveVoucher(entry.voucherCode, orderVoucher);
-  const addon = isKilat ? getKilatAddonCost(voucher) : 0;
-  const discount = isKilat ? 0 : calculateDiscount(voucher, adCost, incentive, duration, voucherAt);
+  const addon = kilatRate?.addon ?? 0;
+  const discount = isKilat
+    ? calculateKilatDiscount(voucher, adCost + addon, incentive, rateAt)
+    : calculateDiscount(voucher, adCost, incentive, duration, voucherAt);
 
   const subtotal = adCost - discount + addon + incentive;
   const ppn = calculatePpn(subtotal);
 
   const lines: MoneyLine[] = [
-    {
+    kilatTariff ? {
+      label: 'JFU Kilat',
+      labelKey: 'costLineKilat',
+      hint: `${questionCount} Qs · 1 gelombang`,
+      hintKey: 'costHintQsOneWave',
+      hintVars: { q: questionCount },
+      amount: adCostList,
+    } : {
       label: 'Iklan',
       labelKey: 'costLineAd',
       hint: isKilat ? `${questionCount} Qs · base rate` : `${questionCount} Qs × ${duration} hari`,

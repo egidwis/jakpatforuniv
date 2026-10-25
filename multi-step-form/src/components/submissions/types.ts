@@ -65,6 +65,8 @@ export interface SurveySubmission {
   /** Disingkirkan pemilik baris dari daftarnya (sql/69). Bukan keadaan order. */
   dismissed_at?: string | null;
   distribution_type?: 'regular' | 'kilat';
+  /** sql/122: 'admin_away' = Kilat otomatis yang dialihkan ke manual selama mode libur. */
+  forced_manual_reason?: string | null;
   /** sql/125: cap "jadwal oleh tim" — lahir saat reservasi mandiri ditutup. */
   self_booking_closed_at?: string | null;
   /**

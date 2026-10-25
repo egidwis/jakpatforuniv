@@ -43,6 +43,8 @@ import { StatusPill } from './StatusPill';
 import { OrderActionButton } from './OrderActionButton';
 import { primaryActionOf } from './orderAction';
 import { nowWib, toWibYmd } from '@/utils/airing-window';
+import { formatWaveHour } from '@/utils/kilatWaves';
+import { awayBlocksKilatPick } from './AdminAwayModal';
 import { useAdminAway } from '@/utils/operationalHolidays';
 
 const WIB = 'Asia/Jakarta';
@@ -57,6 +59,11 @@ const formatDateLong = (d: string) =>
 
 interface SchedulePhaseProps {
     submission: FormSubmission;
+    /**
+     * Pintu Kilat swalayan terbuka untuk akun ini (`canUseKilatSelfServe`).
+     * Kartu "Pesan gelombang lagi" ikut pintu itu — lihat `ScheduleAgainOpts`.
+     */
+    kilatOpen?: boolean;
     cards: ScheduleCard[];
     /**
      * Baris `ad_schedules` MENTAH order ini (ordinal 1 + sisanya).
@@ -205,6 +212,12 @@ const formatDateRangeTrigger = (start: Date | null, end: Date | null) => {
     return null;
 };
 
+/**
+ * Kilat = satu gelombang (Phase 5 §5.8): judulnya TANGGAL GELOMBANG saja.
+ * `endDate`-nya +24 jam (akhir-eksklusif) dan terbaca "19 – 20 Okt" kalau ikut
+ * dirangkai seperti Iklan.
+ */
+const triggerEndOf = (card: ScheduleCard) => (card.info?.isKilat ? card.startDate : card.endDate);
 
 const formatWithWeekday = (d: Date | null, withYear = true) => {
     if (!d) return '';
@@ -597,7 +610,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
     const b = card.booking;
     /** Saklar tutup reservasi mandiri (sql/125) — sumber pesan admin di catatan 🔒. */
     const closure = useSelfBookingClosure();
-    /** Mode libur (sql/120): baris tambahan di bawah janji "maks 1 hari kerja". */
+    /** Mode libur (sql/122): baris tambahan di bawah janji "maks 1 hari kerja". */
     const awayNow = useAdminAway();
     const awayLine = awayNow ? (
         <span className="inline-flex items-start gap-1 font-medium text-amber-800">
@@ -680,7 +693,8 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                 tone="slate"
                 icon={<CalendarClock className={bannerIcon} />}
                 title={t('bannerTitleAwaitingAdminSchedule')}
-                lines={[t('bannerSubAwaitingAdminSchedule'), awayLine]}
+                // Kilat: tim menugaskan GELOMBANG, bukan tanggal tayang.
+                lines={[t(card.info?.isKilat ? 'bannerSubAwaitingAdminWave' : 'bannerSubAwaitingAdminSchedule'), awayLine]}
             />
         );
     }
@@ -898,7 +912,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
  * Fase ② — Jadwal Iklan: list kartu setara (asli + tiap perpanjangan), tiap
  * kartu membawa dua blok sendiri (Info Booking, Detail Pembayaran).
  */
-export function SchedulePhase({ submission, cards, entries, onReschedule, active }: SchedulePhaseProps) {
+export function SchedulePhase({ submission, kilatOpen = false, cards, entries, onReschedule, active }: SchedulePhaseProps) {
     const { t } = useLanguage();
     // Satu perhitungan untuk seluruh kartu order ini — hak menjadwalkan melekat
     // pada ORDER, bukan pada jadwal. Lihat catatan di prop `canSelfReschedule`.
@@ -911,10 +925,15 @@ export function SchedulePhase({ submission, cards, entries, onReschedule, active
       ⚠️ Kilat ditandai di DUA tempat, dan sebagian baris lama hanya punya yang
       kedua — aturan yang sama dipakai `isKilatSchedule` (airingPeriods.ts) dan
       `deriveScheduleMoney`. Di sini pertanyaannya tingkat ORDER ("boleh
-      menjadwalkan lagi?"), jadi kartu mana pun yang Kilat mengunci tombolnya.
+      menjadwalkan lagi?").
+
+      Phase 5 §5.10: order yang Kilat menurut KOLOM ORDER boleh "Pesan
+      gelombang lagi" — `JadwalBaruPage` dan `create_ad_schedule` sama-sama
+      memilih mode dari kolom itu. Order yang hanya bertanda Kilat di kartunya
+      tetap terkunci: halaman akan membukanya sebagai Iklan.
     */
-    const isKilatOrder =
-        submission.distribution_type === 'kilat' || cards.some((c) => !!c.info?.isKilat);
+    const isKilatOrder = submission.distribution_type === 'kilat';
+    const kilatOnlyOnCards = !isKilatOrder && cards.some((c) => !!c.info?.isKilat);
 
     /*
       Gerbang tombol "Jadwalkan Iklan Lagi" — satu helper murni, diuji
@@ -925,13 +944,18 @@ export function SchedulePhase({ submission, cards, entries, onReschedule, active
       RPC, SESUDAH penelitinya mengisi panel hadiah. Itu kasus yang melahirkan
       spec 2026-09-12.
 
-      ⚠️ Kilat dibaca dari DUA tempat (lihat `isKilatOrder` di atas), jadi
-      sebabnya dioper apa adanya — helper hanya melihat kolom order.
+      ⚠️ Kilat dibaca dari DUA tempat (lihat `kilatOnlyOnCards` di atas):
+      helper hanya melihat kolom order, jadi tanda di kartu dioper di sini.
     */
-    const againBlock = isKilatOrder
+    const againBlock = kilatOnlyOnCards
         ? 'kilat'
-        : scheduleAgainBlock(submission, entries);
+        : scheduleAgainBlock(submission, entries, Date.now(), { kilatOpen });
     const showScheduleAgain = againBlock === null;
+    // Mode libur (sql/122): "Pesan gelombang lagi" = pemilih gelombang → modal F, tetap di dashboard.
+    const goScheduleAgain = () => {
+        if (isKilatOrder && awayBlocksKilatPick({ leave: false })) return;
+        navigate(`/dashboard/jadwal/baru/${submission.id}`);
+    };
 
     return (
         <div>
@@ -962,7 +986,7 @@ export function SchedulePhase({ submission, cards, entries, onReschedule, active
                             const ticketBadge = cards.length > 1
                                 ? t('scheduleTicketNumbered', { index: String(index + 1) })
                                 : t('ticketScheduleLabel');
-                            const dateRangeText = formatDateRangeTrigger(card.startDate, card.endDate);
+                            const dateRangeText = formatDateRangeTrigger(card.startDate, triggerEndOf(card));
                             /* `slot_cancelled` ikut mati: chip-nya sudah "Dibatalkan", dan
                                dulu cuma `cancelled` yang diredupkan — harganya tetap biru
                                brand, warna tombol utama, di jadwal yang tidak ditagih. */
@@ -980,7 +1004,12 @@ export function SchedulePhase({ submission, cards, entries, onReschedule, active
                             const kilatHourPending = !!card?.info?.isKilat && card.info.kilatSlotHour == null;
 
                             let timeSubtext = '';
-                            if (card.startDate) {
+                            if (card.startDate && card.info?.isKilat) {
+                                // Tanggal + gelombang saja — durasi Kilat tidak pernah tampil (keputusan 7 Okt).
+                                timeSubtext = card.info.kilatSlotHour == null
+                                    ? t('scheduleKilatHourPending')
+                                    : t('kilatWaveLabel', { hour: formatWaveHour(card.info.kilatSlotHour) });
+                            } else if (card.startDate) {
                                 const timePart = startTimeWib ? t('airingStartTimeAt', { time: startTimeWib }) : kilatHourPending ? t('scheduleKilatHourPending') : '';
                                 const durPart = t('airingDurationDays', { days: String(duration), hours: String(totalHours) });
                                 timeSubtext = timePart ? `${timePart} • ${durPart}` : durPart;
@@ -1103,11 +1132,11 @@ export function SchedulePhase({ submission, cards, entries, onReschedule, active
                             <div
                                 role="button"
                                 tabIndex={0}
-                                onClick={() => navigate(`/dashboard/jadwal/baru/${submission.id}`)}
+                                onClick={goScheduleAgain}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter' || e.key === ' ') {
                                         e.preventDefault();
-                                        navigate(`/dashboard/jadwal/baru/${submission.id}`);
+                                        goScheduleAgain();
                                     }
                                 }}
                                 className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:px-4 sm:py-3 rounded-xl bg-gradient-to-r from-blue-50/80 via-blue-50/40 to-white border border-blue-200/90 hover:border-blue-300 hover:shadow-xs transition-all cursor-pointer text-left active:scale-[0.99]"
@@ -1118,16 +1147,16 @@ export function SchedulePhase({ submission, cards, entries, onReschedule, active
                                     </div>
                                     <div className="min-w-0">
                                         <p className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-jfu-primary transition-colors leading-tight">
-                                            {t('scheduleExtendCardTitle')}
+                                            {t(isKilatOrder ? 'kilatExtendCardTitle' : 'scheduleExtendCardTitle')}
                                         </p>
                                         <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 leading-snug">
-                                            {t('scheduleExtendCardDesc')}
+                                            {t(isKilatOrder ? 'kilatExtendCardDesc' : 'scheduleExtendCardDesc')}
                                         </p>
                                     </div>
                                 </div>
                                 <div className="flex items-center justify-end shrink-0 sm:self-center">
                                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-jfu-primary text-white group-hover:bg-jfu-dark font-semibold text-xs shadow-2xs transition-all shrink-0">
-                                        <span>{t('scheduleExtendCardBtn')}</span>
+                                        <span>{t(isKilatOrder ? 'kilatExtendCardBtn' : 'scheduleExtendCardBtn')}</span>
                                         <ArrowRight className="w-3.5 h-3.5" />
                                     </span>
                                 </div>

@@ -32,7 +32,6 @@ import { buildMiminAwaySection } from '@/utils/miminAway';
 import { buildMiminSelfBookingSection } from '@/utils/miminSelfBooking';
 import { useSelfBookingClosure } from '@/utils/selfBookingClosure';
 import { useAdminAway } from '@/utils/operationalHolidays';
-import { AdminHolidayBanner } from '@/components/status/AdminHolidayBanner';
 import { GenerativeUiRenderer, type GenerativeUiData } from '@/components/chat/generative/GenerativeUiRenderer';
 import { openChatHref } from '@/utils/chatLinks';
 import {
@@ -44,6 +43,8 @@ import {
 import { faqsForSkill, formatLinkedFaqsForPrompt } from '@/utils/miminSkillFaqs';
 import { ensureFaqListUi } from '@/utils/miminFaqUi';
 import { mergeIncomingMessage, normalizeReplyMode, toModelHistory } from '@/utils/miminHandoff';
+import { AdminHolidayBanner } from '@/components/status/AdminHolidayBanner';
+import { KILAT_SELF_SERVE_OPEN } from '@/utils/constants';
 
 interface ChatCta {
     id: string;
@@ -302,7 +303,7 @@ export function ChatPage() {
         [userOrders]
     );
 
-    // Mode libur (sql/120): satu pembacaan untuk banner DAN prompt — keduanya
+    // Mode libur (sql/122): satu pembacaan untuk banner DAN prompt — keduanya
     // harus sepakat soal apakah tim admin sedang libur.
     const adminAway = useAdminAway();
     // Tutup reservasi mandiri (sql/125): Mimin tidak boleh mengarahkan ke kalender.
@@ -325,10 +326,15 @@ You are politely professional, proactive, and solution-oriented.
    - Peneliti wajib menyediakan reward pool (insentif undian berupa saldo e-wallet untuk 1-5 pemenang undian acak).
    - Hasil jawaban kuesioner 100% langsung masuk ke form peneliti sendiri (Google Forms, Microsoft Forms, Qualtrics, Typeform, dll).
 
-2. **Pilar 2: JFU Kilat (Distribusi Cepat Prioritas)**
-   - Layanan distribusi cepat berbasis landing page publik di website Jakpat for Univ (/pages).
-   - Sangat cocok untuk mahasiswa dengan deadline mendesak (butuh responden dalam hitungan jam / hari ini juga).
-   - Responden tervalidasi langsung mengakses kuesioner tanpa antre jadwal slot harian.
+2. **Pilar 2: JFU Kilat (Distribusi Cepat lewat Push Notification)**
+   - Survei dikirim lewat push notification ke responden aktif Jakpat pada satu GELOMBANG: pukul 11.00 atau 15.00 WIB, Senin–Jumat (tutup selama tim admin libur). Kuota 2 pesanan per gelombang.
+   - Satu pesanan = satu gelombang. TIDAK ada pilihan durasi; jangan pernah menyebut jumlah hari atau jam tayang Kilat.
+   - Pesan paling lambat 2 jam sebelum gelombang, bayar paling lambat 1 jam sebelumnya. Kuesioner tetap direview seperti iklan survei.
+   - Peneliti hanya bisa memesan gelombang untuk 3 hari kerja mulai hari ini (Kilat = cepat). Untuk tanggal yang lebih jauh, arahkan ke tim admin lewat chat.
+   - Tidak tampil di daftar iklan publik.
+   - ${KILAT_SELF_SERVE_OPEN
+       ? 'Peneliti memesan sendiri lewat kartu "Kilat" di dashboard (pilih tanggal & gelombang, lalu bayar).'
+       : 'Belum bisa dipesan sendiri dari dashboard. Arahkan peneliti ke tim admin lewat chat untuk mengatur Kilat.'}
 
 3. **Pilar 3: Respondent Access (Panel Terverifikasi)**
    - Akses langsung ke panel 1,7+ Juta responden asli Indonesia di aplikasi Jakpat.

@@ -17,6 +17,7 @@
 // duplication is unavoidable: Pages Functions can't import from src/. The
 // client copy only renders estimates; THIS copy decides what gets charged.
 
+// Add-on Kilat — HANYA rumus lama (instan tarif < KILAT_TARIFF_FROM).
 const KILAT_ADDON_COST = 200000;
 const KILAT_ADDON_COST_VOUCHER = 200000;
 
@@ -88,6 +89,115 @@ export const AD_RATE_SCHEDULE = [
   },
 ];
 
+// Tarif JFU Kilat per GELOMBANG (Phase 5 Task 5.1). Cermin literal
+// KILAT_TARIFF_FROM + KILAT_RATE_SCHEDULE di src/utils/constants.ts — WAJIB
+// identik; rateSchedule.spec.ts membandingkan keduanya. `null` = tabel belum
+// berlaku: semua Kilat memakai rumus lama (tarif harian + add-on, tanpa voucher).
+export const KILAT_TARIFF_FROM = null;
+
+export const KILAT_RATE_SCHEDULE = [
+  {
+    from: '2026-10-01T00:00:00+07:00',
+    list: [500000, 875000, 1250000, 1625000, 2000000],
+    effective: [375000, 500000, 750000, 1000000, 1250000],
+    introUntil: '2026-11-30',
+  },
+  {
+    from: '2026-12-01T00:00:00+07:00',
+    list: [500000, 875000, 1250000, 1625000, 2000000],
+    effective: [400000, 700000, 1000000, 1300000, 1600000],
+    introUntil: '2026-12-31',
+  },
+  {
+    from: '2027-01-01T00:00:00+07:00',
+    list: [500000, 875000, 1250000, 1625000, 2000000],
+    effective: [500000, 875000, 1250000, 1625000, 2000000],
+    introUntil: null,
+  },
+];
+
+// Kode yang berlaku untuk Kilat: 12 kode ambassador + JFUTGRX. Cermin
+// KILAT_VOUCHER_CODES (diturunkan dari VOUCHER_CATALOG) di cost-calculator.ts.
+export const KILAT_VOUCHER_CODES = [
+  'JFUTYR', 'SEKARJFU', 'ADINDAJFU', 'RAJAJFU', 'SACIJFU', 'JFUGITA',
+  'JFUTANIA', 'JFUEDO', 'JFURAISA', 'JFUANA', 'JFUSALSA', 'JFUNATALIA',
+  'JFUTGRX',
+];
+
+// ── BATAS BAYAR GELOMBANG KILAT (Phase 5 §5.7, R6) ─────────────────────
+//
+// Cermin `kilatWaveInstant`/`kilatPayDeadline` (airing-window.ts) dan
+// `KILAT_PAY_LEAD_MIN` (constants.ts) — Pages Function tidak bisa mengimpor
+// dari src/, jadi disalin dan paritasnya diuji (`kilatPaymentGate.spec.ts`).
+//
+// ⚠️ INSTAN GELOMBANG DIHITUNG DARI TANGGAL WIB + `kilat_slot_hour`, BUKAN
+// dibaca dari jam `ad_schedules.start_date`. Diukur 16 Okt 2026: 20 dari 21
+// cermin Kilat bertanggal memang memegang instan gelombangnya, tapi satu
+// (e56f4853, gelombang 11.00) bercermin 15.00 — sisa sebelum sinkron jam
+// gelombang. Membaca jamnya akan memberi baris itu batas bayar 4 jam terlambat.
+
+/** Batas bayar = gelombang − 60 menit. Cermin `KILAT_PAY_LEAD_MIN`. */
+export const KILAT_PAY_LEAD_MIN = 60;
+const WIB_OFFSET_MS = 7 * 3_600_000;
+
+/** Tanggal kalender WIB (YYYY-MM-DD) dari sebuah instan; `null` bila tak terbaca. */
+export function wibYmdOf(value) {
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms + WIB_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/** Instan gelombang `hour`.00 WIB pada tanggal `ymd`, dalam ms. */
+export function kilatWaveInstantMs(ymd, hour) {
+  const [y, m, d] = String(ymd).split('-').map(Number);
+  return Date.UTC(y, m - 1, d, hour) - WIB_OFFSET_MS;
+}
+
+/**
+ * Boleh menerbitkan tagihan untuk gelombang ini? Kilat TIDAK punya "tetap
+ * bayar" seperti Iklan lewat 14.00 — push gelombang yang terlewat tidak bisa
+ * "dikonfirmasi tanggal barunya" oleh tim; peneliti memilih gelombang lain.
+ *
+ * Tepat di detik batas masih boleh (`now >`), sama dengan klien
+ * (`isPayDeadlinePassed`) dan dengan batas pesan di sql/117.
+ *
+ * @param {{ startDate: string | null | undefined, kilatHour: number | string | null | undefined }} wave
+ * @returns {{ ok: true, deadlineMs: number } | { ok: false, code: 'kilat_wave_missing' | 'kilat_pay_closed', error: string, deadlineMs?: number }}
+ */
+export function kilatPaymentGate(wave, nowMs = Date.now()) {
+  const hour = wave?.kilatHour == null ? NaN : Number(wave.kilatHour);
+  const ymd = wave?.startDate ? wibYmdOf(wave.startDate) : null;
+  if (!ymd || !Number.isInteger(hour)) {
+    return {
+      ok: false,
+      code: 'kilat_wave_missing',
+      error: 'Order Kilat ini belum punya gelombang. Pilih gelombang dulu di halaman Jadwal & Bayar.',
+    };
+  }
+  const deadlineMs = kilatWaveInstantMs(ymd, hour) - KILAT_PAY_LEAD_MIN * 60_000;
+  if (nowMs > deadlineMs) {
+    return {
+      ok: false,
+      code: 'kilat_pay_closed',
+      deadlineMs,
+      error: 'Batas bayar gelombang Kilat ini sudah lewat (1 jam sebelum gelombang). Pilih gelombang lain di halaman Jadwal & Bayar.',
+    };
+  }
+  return { ok: true, deadlineMs };
+}
+
+/**
+ * Umur link DOKU (menit) untuk Kilat: tidak boleh melewati batas bayar.
+ * Lantai 1 menit — `payment_due_date: 0` di DOKU berarti "pakai setelan
+ * dashboard", bukan "mati seketika" (lihat `dokuLifetimeMinutes`, payment.ts).
+ * Akibatnya link yang terbit di menit terakhir bisa hidup ≤ 60 detik melewati
+ * batas; itu lebih murah daripada link tanpa umur.
+ */
+export function kilatDueMinutes(requestedMinutes, deadlineMs, nowMs = Date.now()) {
+  const left = Math.floor((deadlineMs - nowMs) / 60_000);
+  return Math.max(1, Math.min(requestedMinutes, left));
+}
+
 function tierIndexOf(questionCount) {
   if (questionCount <= 15) return 0;
   if (questionCount <= 30) return 1;
@@ -113,6 +223,47 @@ export function calculateAdCostPerDay(questionCount, atMs) {
     if (e.from === null || atMs >= Date.parse(e.from)) entry = e;
   }
   return entry.effective[tierIndexOf(questionCount)];
+}
+
+/**
+ * Tarif satu gelombang Kilat sebelum voucher. Cermin `kilatRateAt()` di
+ * cost-calculator.ts: sebelum `tariffFrom` → tarif harian Iklan + add-on
+ * (rumus lama); sesudahnya → KILAT_RATE_SCHEDULE, add-on 0.
+ *
+ * `tariffFrom` hanya diisi tes; produksi selalu memakai KILAT_TARIFF_FROM.
+ */
+export function kilatRateAt(questionCount, atMs, tariffFrom = KILAT_TARIFF_FROM) {
+  if (typeof atMs !== 'number' || Number.isNaN(atMs)) {
+    throw new Error('rate_instant_missing');
+  }
+  const active = tariffFrom !== null && atMs >= Date.parse(tariffFrom);
+  if (!active) {
+    return { effective: calculateAdCostPerDay(questionCount, atMs), addon: KILAT_ADDON_COST, legacy: true };
+  }
+  if (!questionCount) return { effective: 0, addon: 0, legacy: false };
+  let entry = KILAT_RATE_SCHEDULE[0];
+  for (const e of KILAT_RATE_SCHEDULE) {
+    if (e.from === null || atMs >= Date.parse(e.from)) entry = e;
+  }
+  return { effective: entry.effective[tierIndexOf(questionCount)], addon: 0, legacy: false };
+}
+
+/**
+ * Diskon voucher Kilat. Cermin `calculateKilatDiscount()` di cost-calculator.ts:
+ * ambassador = 10% tarif Kilat (0 pada rumus lama), JFUTGRX = total dipatok
+ * Rp 1.000 (juga pada rumus lama), kode lain 0.
+ */
+export function calculateKilatDiscount(voucherCode, kilatAdCost, incentiveCost, legacy) {
+  if (!voucherCode) return 0;
+  const code = String(voucherCode).toUpperCase();
+  if (!KILAT_VOUCHER_CODES.includes(code)) return 0;
+  // JFUTGRX = Rp 1.000 juga pada rumus lama (opsi A, 16 Okt); ambassador tidak.
+  if (code === 'JFUTGRX') {
+    const totalBeforeDiscount = kilatAdCost + incentiveCost;
+    return totalBeforeDiscount > 1000 ? totalBeforeDiscount - 1000 : 0;
+  }
+  if (legacy) return 0;
+  return kilatAdCost * 0.1;
 }
 
 /**
@@ -352,7 +503,7 @@ function orderInstant(sub) {
 
 // Mirrors calculateTotalCost(SurveyFormData) but takes the snake_case DB row.
 // Returns { subtotal, ppn, total } — `total` (subtotal + PPN) is what gets charged.
-export function computeTotalCostFromSubmission(sub) {
+export function computeTotalCostFromSubmission(sub, kilatTariffFrom = KILAT_TARIFF_FROM) {
   const questionCount = Number(sub.question_count) || 0;
   const duration = Number(sub.duration) || 0;
   const winnerCount = Number(sub.winner_count) || 0;
@@ -364,13 +515,12 @@ export function computeTotalCostFromSubmission(sub) {
 
   let subtotal;
   if (isKilat) {
-    // Kilat: base rate (no duration multiplier) + add-on + incentive, no discount
-    const adCostBase = calculateAdCostPerDay(questionCount, sub.rate_instant);
-    const kilatAddon =
-      voucherCode && voucherCode.toUpperCase() === 'JFUSUHUD'
-        ? KILAT_ADDON_COST_VOUCHER
-        : KILAT_ADDON_COST;
-    subtotal = adCostBase + kilatAddon + incentiveCost;
+    // Kilat: satu gelombang, tanpa pengali durasi. Rumus lama (tarif harian +
+    // add-on, tanpa voucher) atau tabel Kilat — `kilatRateAt` yang memilih.
+    const rate = kilatRateAt(questionCount, sub.rate_instant, kilatTariffFrom);
+    const kilatAdCost = rate.effective + rate.addon;
+    const discount = calculateKilatDiscount(voucherCode, kilatAdCost, incentiveCost, rate.legacy);
+    subtotal = kilatAdCost + incentiveCost - discount;
   } else {
     const adCost = calculateAdCostPerDay(questionCount, sub.rate_instant) * duration;
     const discount = calculateDiscount(voucherCode, adCost, incentiveCost, duration, orderInstant(sub));
@@ -404,7 +554,7 @@ export function computeTotalCostFromSubmission(sub) {
  *
  * Dikunci create-payment-schedule-price.spec.ts.
  */
-export function buildNoteItems(sub, pricingSub) {
+export function buildNoteItems(sub, pricingSub, kilatTariffFrom = KILAT_TARIFF_FROM) {
   // Milik ORDER.
   const noteQuestionCount = Number(sub.question_count) || 0;
   const noteIsKilat = sub.distribution_type === 'kilat';
@@ -418,24 +568,55 @@ export function buildNoteItems(sub, pricingSub) {
   const noteVoucherCode = pricingSub.voucher_code || undefined;
 
   const noteItems = [];
+  const noteIncentive = noteWinnerCount * notePrizePerWinner;
+  // JFUTGRX mematok iklan + hadiah jadi Rp 1.000 — tak bisa dipecah ke baris
+  // iklan & hadiah tanpa harga negatif (dulu: iklan Rp0 + hadiah penuh, jumlah
+  // ≠ subtotal). Satu baris biaya uji, sama dengan prefill invoice admin
+  // (`buildOrderInvoiceItems`). Berlaku juga untuk Kilat rumus lama (opsi A,
+  // 16 Okt): basisnya tarif + add-on, persis `calculateKilatDiscount`.
+  const testingFee = (base) => {
+    if (!noteVoucherCode || noteVoucherCode.toUpperCase() !== 'JFUTGRX') return false;
+    const total = base + noteIncentive;
+    if (total <= 1000) return false;
+    noteItems.push({ name: 'System Testing Fee (JFUTGRX)', qty: 1, price: 1000, category: 'Lainnya' });
+    return true;
+  };
   if (noteIsKilat) {
-    noteItems.push({
-      name: 'Jakpat for Universities (ads)',
-      qty: 1,
-      price: calculateAdCostPerDay(noteQuestionCount, pricingSub.rate_instant),
-      category: 'Jakpat for Universities (ads)',
-    });
-    noteItems.push({
-      name: 'Add-on JFU Kilat',
-      qty: 1,
-      price: noteVoucherCode && noteVoucherCode.toUpperCase() === 'JFUSUHUD' ? KILAT_ADDON_COST_VOUCHER : KILAT_ADDON_COST,
-      category: 'Lainnya',
-    });
+    const rate = kilatRateAt(noteQuestionCount, pricingSub.rate_instant, kilatTariffFrom);
+    if (testingFee(rate.effective + rate.addon)) return noteItems;
+    if (rate.legacy) {
+      // Rumus lama — dua baris, persis seperti yang dulu ditagih.
+      noteItems.push({
+        name: 'Jakpat for Universities (ads)',
+        qty: 1,
+        price: rate.effective,
+        category: 'Jakpat for Universities (ads)',
+      });
+      noteItems.push({
+        name: 'Add-on JFU Kilat',
+        qty: 1,
+        price: noteVoucherCode && noteVoucherCode.toUpperCase() === 'JFUSUHUD' ? KILAT_ADDON_COST_VOUCHER : KILAT_ADDON_COST,
+        category: 'Lainnya',
+      });
+    } else {
+      // Tabel Kilat — satu baris tarif gelombang, diskon voucher dilebur ke
+      // harganya (pola yang sama dengan `discountedPerDay` Iklan di bawah).
+      const discount = calculateKilatDiscount(noteVoucherCode, rate.effective, noteIncentive, false);
+      if (rate.effective > 0) {
+        noteItems.push({
+          name: 'JFU Kilat (1 gelombang)',
+          qty: 1,
+          price: Math.max(0, rate.effective - discount),
+          category: 'Jakpat for Universities (ads)',
+        });
+      }
+    }
   } else {
     // Instan tarif yang SAMA dengan `amount` — kalau beda, rincian kwitansi
     // tidak lagi menjumlah ke subtotal yang ditagih.
     const adCostBase = calculateAdCostPerDay(noteQuestionCount, pricingSub.rate_instant);
-    const discount = calculateDiscount(noteVoucherCode, adCostBase * noteDuration, noteWinnerCount * notePrizePerWinner, noteDuration, orderInstant(sub));
+    if (testingFee(adCostBase * noteDuration)) return noteItems;
+    const discount = calculateDiscount(noteVoucherCode, adCostBase * noteDuration, noteIncentive, noteDuration, orderInstant(sub));
     const discountedPerDay = discount > 0 && noteDuration > 0 ? Math.max(0, adCostBase - Math.ceil(discount / noteDuration)) : adCostBase;
     if (adCostBase > 0 && noteDuration > 0) {
       noteItems.push({
@@ -702,7 +883,7 @@ export async function onRequest(context) {
       const schedRes = await fetch(
         `${supabaseUrl}/rest/v1/ad_schedules?id=eq.${encodeURIComponent(scheduleId)}` +
           `&select=id,submission_id,source_id,ordinal,status,payment_status,` +
-          `slot_booked_by,slot_reserved_at,start_date,end_date,duration,` +
+          `slot_booked_by,slot_reserved_at,start_date,end_date,duration,kilat_slot_hour,` +
           `prize_per_winner,winner_count,additional_prize_per_winner,is_new_period,voucher_code,` +
           // ⚠️ Kolom sql/103. Belum diterapkan = SELECT ini ditolak = SEMUA
           // checkout jadwal ke-2 dst. 502. SQL-nya wajib mendahului deploy.
@@ -789,6 +970,41 @@ export async function onRequest(context) {
       }
     } catch (e) {
       console.warn('[create-payment] Pemeriksaan kredit gagal — dilanjutkan seperti biasa:', e);
+    }
+
+    /*
+      ── KILAT: GELOMBANG WAJIB ADA & BATAS BAYARNYA BELUM LEWAT (R6) ──────
+      Sesudah penjaga kredit (tagihan tempo menjawab lebih dulu) dan SEBELUM
+      penulisan apa pun — koreksi `total_cost`, pencabutan tagihan lama, DOKU.
+      Gagal membaca jadwal = 502, bukan lolos: menebak di sini menerbitkan link
+      untuk gelombang yang mungkin sudah lewat.
+
+      Jadwal ke-2 dst. (5.10) membawa gelombangnya sendiri di baris jadwal;
+      ordinal 1 dibaca dari cerminnya.
+    */
+    let kilatDeadlineMs = null;
+    if (sub.distribution_type === 'kilat') {
+      let wave = schedule ? { startDate: schedule.start_date, kilatHour: schedule.kilat_slot_hour } : null;
+      if (!wave) {
+        const waveRes = await fetch(
+          `${supabaseUrl}/rest/v1/ad_schedules?submission_id=eq.${encodeURIComponent(formSubmissionId)}` +
+            `&ordinal=eq.1&select=start_date,kilat_slot_hour&limit=1`,
+          { headers: sbHeaders }
+        );
+        if (!waveRes.ok) {
+          console.error(`[create-payment] Gagal membaca gelombang Kilat ${formSubmissionId} (status ${waveRes.status}).`);
+          return json({ error: 'Could not read Kilat wave' }, 502);
+        }
+        const waveRows = await waveRes.json();
+        const row = Array.isArray(waveRows) ? waveRows[0] : null;
+        wave = { startDate: row?.start_date ?? null, kilatHour: row?.kilat_slot_hour ?? null };
+      }
+      const verdict = kilatPaymentGate(wave);
+      if (!verdict.ok) {
+        console.warn(`[create-payment] Kilat ${formSubmissionId} ditolak: ${verdict.code}.`);
+        return json({ error: verdict.error, [verdict.code]: true }, 409);
+      }
+      kilatDeadlineMs = verdict.deadlineMs;
     }
 
     // ── TAGIHAN YANG SUDAH ADA — dibaca SEKALI, dipakai dua kali ──────────
@@ -973,7 +1189,10 @@ export async function onRequest(context) {
       }
     }
 
-    const dueDate = Number(paymentDueDate) > 0 ? Math.round(Number(paymentDueDate)) : 60;
+    const requestedDue = Number(paymentDueDate) > 0 ? Math.round(Number(paymentDueDate)) : 60;
+    // Kilat: link tidak boleh hidup melewati gelombang − 60 menit, berapa pun
+    // umur yang diminta browser (yang tidak dipercaya).
+    const dueDate = kilatDeadlineMs !== null ? kilatDueMinutes(requestedDue, kilatDeadlineMs) : requestedDue;
 
     // ── Jendela yang DITAGIHKAN — dibaca dari `ad_schedules`, BUKAN dari
     //    `form_submissions`.
@@ -1078,7 +1297,11 @@ export async function onRequest(context) {
           r.invoice_url &&
           Number(r.amount) === amount &&
           sameInstant(r.billed_start_date, billedStartDate) &&
-          r.expires_at && new Date(r.expires_at).getTime() > Date.now()
+          r.expires_at && new Date(r.expires_at).getTime() > Date.now() &&
+          // Kilat: link yang hidup MELEWATI batas bayar (terbit sebelum R6)
+          // tidak dipakai ulang — ia ikut dicabut di bawah dan diganti link
+          // berumur benar. Toleransi 60 detik = lantai `kilatDueMinutes`.
+          (kilatDeadlineMs === null || new Date(r.expires_at).getTime() <= kilatDeadlineMs + 60_000)
         );
         // ⚠️ JANGAN PERNAH PAKAI ULANG LINK TAGIHAN GABUNGAN.
         //

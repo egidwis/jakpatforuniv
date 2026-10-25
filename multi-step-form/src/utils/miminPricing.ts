@@ -1,5 +1,5 @@
-import { AD_RATE_SCHEDULE, AD_TIER_LABELS, KILAT_ADDON_COST, PPN_PERCENT } from '@/utils/constants';
-import { adRateEntryAt } from '@/utils/cost-calculator';
+import { AD_RATE_SCHEDULE, AD_TIER_LABELS, KILAT_ADDON_COST, KILAT_RATE_SCHEDULE, KILAT_TARIFF_FROM, PPN_PERCENT, type AdRateEntry } from '@/utils/constants';
+import { adRateEntryAt, isKilatTariffActive } from '@/utils/cost-calculator';
 import { formatYmdId, toWibYmd } from '@/utils/airing-window';
 import { formatRupiah } from '@/utils/currency';
 
@@ -21,14 +21,39 @@ export const MIMIN_PRICING_HEADING = '=== TARIF IKLAN (OTOMATIS DARI SISTEM) ===
 const rp = (n: number) => `Rp${formatRupiah(n)}`;
 
 /** Rentang tanggal WIB sebuah entri: "1 Okt 2026 – 30 Nov 2026", "sebelum …", "mulai …". */
-function periodLabel(index: number): string {
-  const entry = AD_RATE_SCHEDULE[index];
-  const next = AD_RATE_SCHEDULE[index + 1];
-  const startYmd = entry.from ? toWibYmd(new Date(entry.from)) : null;
+function periodLabel(index: number, schedule: readonly AdRateEntry[] = AD_RATE_SCHEDULE, floor: string | null = null): string {
+  const entry = schedule[index];
+  const next = schedule[index + 1];
+  // `floor` = awal berlakunya tabel (KILAT_TARIFF_FROM) bila lebih akhir dari `from`.
+  const from = floor && (!entry.from || Date.parse(floor) > Date.parse(entry.from)) ? floor : entry.from;
+  const startYmd = from ? toWibYmd(new Date(from)) : null;
   const endYmd = next?.from ? toWibYmd(new Date(Date.parse(next.from) - 1)) : null;
   if (!startYmd && endYmd) return `s/d ${formatYmdId(endYmd)}`;
   if (startYmd && !endYmd) return `mulai ${formatYmdId(startYmd)}`;
   return `${formatYmdId(startYmd ?? '')} – ${formatYmdId(endYmd ?? '')}`;
+}
+
+/**
+ * Baris cara menghitung JFU Kilat. Sebelum KILAT_TARIFF_FROM: rumus lama
+ * (tarif 1 hari + add-on). Sesudahnya: tabel tarif per gelombang, disusun dari
+ * KILAT_RATE_SCHEDULE — entri yang sudah lewat sebelum tanggal mulai dibuang.
+ */
+function kilatPricingLines(nowMs: number): string {
+  if (!isKilatTariffActive(nowMs) || !KILAT_TARIFF_FROM) {
+    return `- JFU Kilat: tarif 1 hari + add-on Kilat ${rp(KILAT_ADDON_COST)}, ditambah hadiah responden, tanpa diskon voucher.`;
+  }
+  const start = Date.parse(KILAT_TARIFF_FROM);
+  const lines = KILAT_RATE_SCHEDULE.map((entry, i) => {
+    const next = KILAT_RATE_SCHEDULE[i + 1];
+    if (next?.from && Date.parse(next.from) <= start) return null;
+    const tiers = AD_TIER_LABELS.map((label, t) => {
+      const cut = entry.list[t] > entry.effective[t];
+      return `${label} soal ${rp(entry.effective[t])}${cut ? ` (normal ${rp(entry.list[t])})` : ''}`;
+    }).join(' | ');
+    return `  - Pesanan dibuat ${periodLabel(i, KILAT_RATE_SCHEDULE, KILAT_TARIFF_FROM)}: ${tiers}`;
+  }).filter((line): line is string => line !== null);
+  return `- JFU Kilat: tarif per GELOMBANG (satu kali siar push, bukan per hari), ditambah hadiah responden. Tidak ada pilihan durasi. Voucher yang berlaku untuk Kilat hanya kode ambassador (potongan 10% dari tarif Kilat, bukan dari hadiah).
+${lines.join('\n')}`;
 }
 
 export function buildMiminPricingSection(nowMs: number = Date.now()): string {
@@ -68,7 +93,7 @@ Tanggal mana yang menentukan tarif sebuah jadwal:
 
 Cara menghitung:
 - Iklan reguler: tarif per hari × jumlah hari tayang, ditambah hadiah responden (pemenang × hadiah per pemenang).
-- JFU Kilat: tarif 1 hari + add-on Kilat ${rp(KILAT_ADDON_COST)}, ditambah hadiah responden, tanpa diskon voucher.
+${kilatPricingLines(nowMs)}
 - PPN ${PPN_PERCENT}% dihitung di atas subtotal.
 - Untuk order yang sudah ada, angka di dashboard peneliti / halaman bayar yang berlaku; bila berbeda dengan hitunganmu, rujuk ke angka dashboard.
 

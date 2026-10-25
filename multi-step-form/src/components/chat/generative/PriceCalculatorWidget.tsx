@@ -1,8 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calculator, Sparkles, ArrowRight, Zap, Flame } from 'lucide-react';
-import { adRateAt } from '../../../utils/cost-calculator';
-import { KILAT_ADDON_COST } from '../../../utils/constants';
+import { adRateAt, kilatRateAt } from '../../../utils/cost-calculator';
 
 export const PriceCalculatorWidget: React.FC = () => {
   const navigate = useNavigate();
@@ -29,12 +28,14 @@ export const PriceCalculatorWidget: React.FC = () => {
         highlight: 'Cocok untuk riset akademik umum dengan budget hemat.'
       };
     }
-    // Kilat: tarif dasar 1× (durasi tidak berlaku) + add-on.
+    // Kilat: satu gelombang, durasi tidak berlaku. Rumus lama (tarif harian +
+    // add-on) atau tabel Kilat — `kilatRateAt` yang memilih.
+    const kilat = kilatRateAt(questionCount, Date.now());
     return {
-      dailyPrice: rate.effective,
-      listTotal: rate.list + KILAT_ADDON_COST,
-      total: rate.effective + KILAT_ADDON_COST,
-      introUntil: rate.introUntil,
+      dailyPrice: kilat.effective,
+      listTotal: kilat.list + kilat.addon,
+      total: kilat.effective + kilat.addon,
+      introUntil: kilat.introUntil,
       estSpeed: 'Kurang dari 24 jam',
       highlight: '⚡ Prioritas tayang kilat & slot terjamin untuk deadline mepet.'
     };

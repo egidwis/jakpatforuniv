@@ -28,6 +28,7 @@ function builderFor(table: string) {
     eq:     (...a: unknown[]) => { call.filters.push(['eq', ...a]);     return b; },
     neq:    (...a: unknown[]) => { call.filters.push(['neq', ...a]);    return b; },
     not:    (...a: unknown[]) => { call.filters.push(['not', ...a]);    return b; },
+    or:     (...a: unknown[]) => { call.filters.push(['or', ...a]);     return b; },
     in:     (...a: unknown[]) => { call.filters.push(['in', ...a]);     return b; },
     order:  () => b,
     limit:  () => b,
@@ -79,5 +80,48 @@ describe('rebookSlotForSubmission — penjaga slot_cancelled', () => {
     // jadwalnya dibatalkan admin akan membaca penyebab yang salah.
     rowsToReturn = [];
     await expect(rebookSlotForSubmission('sub-1', '2026-09-03', 1)).rejects.toThrow(/tim Jakpat/);
+  });
+});
+
+/*
+  Phase 5 §5.7 (R6): primitif yang SAMA memilih ulang gelombang Kilat. Bentuk
+  tulisnya = INSERT Kilat `submitOrder` ([tanggal, +1) DATE + jam gelombang +
+  durasi 1), dan produknya dijaga di KUERI: bentuk yang salah untuk jenis
+  order = nol baris = galat, bukan jadwal salah bentuk.
+*/
+describe('rebookSlotForSubmission — gelombang Kilat', () => {
+  beforeEach(() => { calls = []; rowsToReturn = [{ id: 'sub-1' }]; });
+  const patchOf = (c: Call) => c.filters.find((f) => f[0] === 'update')![1] as Record<string, unknown>;
+
+  it('Kilat: [tanggal, +1) sebagai DATE + kilat_slot_hour + durasi 1, hold peneliti', async () => {
+    await rebookSlotForSubmission('sub-1', '2026-10-23', 1, { kilatHour: 15 });
+    expect(patchOf(submissionCall())).toMatchObject({
+      start_date: '2026-10-23',
+      end_date: '2026-10-24',
+      kilat_slot_hour: 15,
+      duration: 1,
+      slot_booked_by: 'user',
+      submission_status: 'waiting_payment',
+      payment_status: 'pending',
+    });
+  });
+
+  it('Kilat hanya menyentuh baris Kilat', async () => {
+    await rebookSlotForSubmission('sub-1', '2026-10-23', 1, { kilatHour: 11 });
+    expect(hasFilter(submissionCall(), 'eq', 'distribution_type', 'kilat')).toBe(true);
+    expect(hasFilter(submissionCall(), 'neq', 'submission_status', 'slot_cancelled')).toBe(true);
+  });
+
+  it('bentuk Iklan tidak pernah menyentuh baris Kilat (NULL tetap dihitung Iklan)', async () => {
+    await rebookSlotForSubmission('sub-1', '2026-10-23', 2);
+    const c = submissionCall();
+    expect(hasFilter(c, 'or', 'distribution_type.is.null,distribution_type.neq.kilat')).toBe(true);
+    expect(patchOf(c)).not.toHaveProperty('kilat_slot_hour');
+    expect(patchOf(c).start_date).toBe('2026-10-23T08:00:00.000Z');
+  });
+
+  it('salah pasang (nol baris) dilempar', async () => {
+    rowsToReturn = [];
+    await expect(rebookSlotForSubmission('sub-1', '2026-10-23', 1, { kilatHour: 11 })).rejects.toThrow(/jenis ordernya/);
   });
 });

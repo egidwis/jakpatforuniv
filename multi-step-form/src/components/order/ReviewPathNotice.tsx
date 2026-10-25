@@ -14,9 +14,13 @@ import { useLanguage } from '../../i18n/LanguageContext';
  * apa, kenapa, berapa lama". Modal sukses menjawab "apa yang terjadi
  * sekarang" — jangan menyalin kalimat di sini ke sana.
  */
-export function ReviewPathNotice({ formData }: { formData: SurveyFormData }) {
+export function ReviewPathNotice({ formData, divertedAway = false }: {
+  formData: SurveyFormData;
+  /** Kilat jalur otomatis yang dialihkan ke manual karena mode libur (sql/122). */
+  divertedAway?: boolean;
+}) {
   const { t } = useLanguage();
-  const isAuto = isAutoApprovalPath(formData);
+  const isAuto = isAutoApprovalPath(formData) && !divertedAway;
   const sensitive = !isAuto && !!formData.hasPersonalDataQuestions;
   const keywords = sensitive ? formData.detectedKeywords ?? [] : [];
 
@@ -47,9 +51,11 @@ export function ReviewPathNotice({ formData }: { formData: SurveyFormData }) {
           <p className="mt-1 text-xs text-slate-600 leading-relaxed">
             {isAuto
               ? t('reviewPathAutoDesc')
-              : sensitive
+              : divertedAway
+                ? t('reviewPathKilatAwayDesc')
+                : sensitive
                 ? t('reviewPathManualSensitiveDesc')
-                : t('reviewPathManualDefaultDesc')}
+                  : t('reviewPathManualDefaultDesc')}
           </p>
           {sensitive && (
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">

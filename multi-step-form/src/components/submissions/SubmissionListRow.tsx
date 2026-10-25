@@ -16,6 +16,7 @@ import { getSubmissionActionDot } from './lifecycle';
 import { ClientStatusDot } from '../customers/ClientStatusIcon';
 import type { CustomerTier } from '../customers/types';
 import { missedPaymentWindow } from '@/utils/missedPaymentWindow';
+import { DivertedAwayChip } from './AdminAwayToggle';
 import { SelfBookingClosedChip } from './AdminSelfBookingToggle';
 
 interface SubmissionListRowProps {
@@ -60,6 +61,8 @@ export function SubmissionListRow({
     startDate: submission.start_date,
     submissionStatus: submission.submission_status || submission.status,
     paymentStatus: submission.payment_status,
+    distributionType: submission.distribution_type,
+    kilatHour: submission.kilat_slot_hour,
   });
 
   const handleCopyId = (e: React.MouseEvent) => {
@@ -171,6 +174,7 @@ export function SubmissionListRow({
           <span className="text-sm font-semibold text-gray-900 truncate" title={submission.formTitle}>
             {submission.formTitle}
           </span>
+          <DivertedAwayChip reason={submission.forced_manual_reason} paymentStatus={submission.payment_status} />
           <SelfBookingClosedChip cappedAt={submission.self_booking_closed_at} startDate={submission.start_date} />
           {submission.voucher_code && (
             <TooltipProvider>

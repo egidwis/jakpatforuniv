@@ -205,6 +205,17 @@ Harga per hari, ribuan rupiah. Kolom nilai = tarif **efektif** yang benar-benar 
 | **1 Des – 31 Des** | **−20%** | 160 | 280 | **400** | 520 | 640 | ≈ +33% |
 | **mulai 1 Jan 2027** | — | 200 | 350 | **500** | 650 | 800 | **+65%** |
 
+> ⚠️ **Koreksi 14 Okt 2026 — baris "1 Okt – 30 Nov" di atas BUKAN yang dideploy.** Yang
+> berjalan sejak 30 Sep adalah **harga lama** 150/200/300/400/500 sebagai harga efektif
+> (1 Okt = no-op rupiah), dengan list 200/350/500/650/800 dicoret. Sumber kebenaran:
+> `AD_RATE_SCHEDULE` di `constants.ts`.
+>
+> **JFU Kilat tidak dibahas dokumen ini.** Tarifnya diputuskan 14 Okt sebagai tabel per
+> gelombang = **2,5 × tarif harian Iklan efektif** pada tanggal yang sama (s/d 30 Nov
+> 375/500/750/1.000/1.250rb, Des 400/700/1.000/1.300/1.600rb, mulai 1 Jan 2027
+> 500/875/1.250/1.625/2.000rb), berlaku sejak pintu Kilat swalayan dibuka — lihat
+> [Phase 5 Kilat swalayan](2026-10-14-phase-5-kilat-swalayan.md), Task 5.1.
+
 Harga list yang dicoret sepanjang Okt–Des adalah **200/350/500/650/800** — angka yang
 memang diberlakukan 1 Januari, bukan angka karangan. Itu yang membedakannya dari harga
 coret palsu, yang selain melanggar **UU 8/1999 pasal 9–10** dan **Permendag 50/2020**

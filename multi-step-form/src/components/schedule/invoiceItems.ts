@@ -1,6 +1,6 @@
 import {
-  adRateAt, calculateAdCostPerDay, calculateDiscount, calculateIncentiveCost, getKilatAddonCost,
-  rateInstantOf, tierIndexOf,
+  adRateAt, calculateAdCostPerDay, calculateDiscount, calculateIncentiveCost, calculateKilatDiscount,
+  getKilatAddonCost, isKilatTariffActive, KILAT_VOUCHER_CODES, kilatRateAt, rateInstantOf, tierIndexOf,
 } from '@/utils/cost-calculator';
 import { AD_TIER_LABELS } from '@/utils/constants';
 import { formatYmdId, toWibYmd } from '@/utils/airing-window';
@@ -80,6 +80,8 @@ export function buildOrderInvoiceItems(
   const winnerCount = input.winnerCount || 0;
   const prizePerWinner = input.prizePerWinner || 0;
 
+  // JFUTGRX berlaku juga untuk Kilat rumus lama (opsi A, 16 Okt) — satu baris
+  // biaya uji, sama dengan `buildNoteItems` di create-payment.js.
   if (input.voucherCode?.toUpperCase() === 'JFUTGRX') {
     return {
       items: [{
@@ -101,8 +103,13 @@ export function buildOrderInvoiceItems(
   // yang tidak cocok. Sebelum cabang ini ada, invoice Kilat dari dashboard
   // admin memakai rumus regular — add-on Rp 200.000 tidak pernah tertagih
   // dan base rate justru dikali durasi yang tidak berarti.
+  //
+  // Sejak KILAT_TARIFF_FROM: satu baris tarif gelombang Kilat, diskon voucher
+  // Kilat (ambassador 10%) dilebur ke harganya — bentuk yang sama dengan
+  // `buildNoteItems` di create-payment.js.
   if (input.isKilat) {
-    const kilatItems: InvoiceItem[] = [{
+    const kilatRate = kilatRateAt(questionCount, input.rateInstantMs);
+    const kilatItems: InvoiceItem[] = kilatRate.legacy ? [{
       id: nextId(),
       name: 'Jakpat for Universities (ads)',
       qty: 1,
@@ -114,6 +121,14 @@ export function buildOrderInvoiceItems(
       qty: 1,
       price: getKilatAddonCost(input.voucherCode || undefined),
       category: 'Lainnya',
+    }] : [{
+      id: nextId(),
+      name: 'JFU Kilat (1 gelombang)',
+      qty: 1,
+      price: Math.max(0, kilatRate.effective - calculateKilatDiscount(
+        input.voucherCode, kilatRate.effective, winnerCount * prizePerWinner, input.rateInstantMs,
+      )),
+      category: 'Jakpat for Universities (ads)',
     }];
     if (prizePerWinner > 0 && winnerCount > 0) {
       kilatItems.push({
@@ -206,12 +221,48 @@ export function buildExtensionInvoiceItems(
     voucherCode?: string | null;
     /** Lihat `OrderPricingInput.voucherInstantMs`. */
     voucherInstantMs?: number;
+    /**
+     * Gelombang Kilat (Phase 5 §5.10). Bawaan: jenis distribusi baris jadwal,
+     * sama dengan cabang jadwal pertama di `BulkInvoiceDialog`.
+     */
+    isKilat?: boolean;
   }
 ): InvoiceItem[] {
   const items: InvoiceItem[] = [];
   // Instan tarif perpanjangan = saat ia dipesan (atau dipesan ulang) — sql/103.
-  const costPerDay = calculateAdCostPerDay(opts.questionCount || 0, rateInstantOf(entry.rateLockedAt));
+  const rateInstantMs = rateInstantOf(entry.rateLockedAt);
+  const isKilat = opts.isKilat ?? entry.distributionType === 'kilat';
+  const costPerDay = isKilat ? 0 : calculateAdCostPerDay(opts.questionCount || 0, rateInstantMs);
   const duration = entry.duration || 0;
+
+  /*
+    Gelombang Kilat tambahan — satu gelombang, bukan tarif harian × durasi.
+    CERMIN `buildNoteItems` (create-payment.js) baris demi baris: dulu prefill
+    ini menghitung tarif Iklan × durasi sementara server menagih tarif Kilat,
+    jadi invoice admin dan kuitansi peneliti berselisih (audit invoice 15 Okt).
+    Hadiah hanya untuk batch baru, sama dengan Iklan (`pricingRowForSchedule`).
+  */
+  if (isKilat) {
+    const q = opts.questionCount || 0;
+    const code = opts.voucherCode || undefined;
+    const rate = kilatRateAt(q, rateInstantMs);
+    const incentive = entry.isNewPeriod ? calculateIncentiveCost(entry.winnerCount, entry.prizePerWinner) : 0;
+    if (code?.toUpperCase() === 'JFUTGRX' && rate.effective + rate.addon + incentive > 1000) {
+      return [{ id: nextId(), name: 'System Testing Fee (JFUTGRX)', qty: 1, price: 1000, category: 'Lainnya' }];
+    }
+    if (rate.legacy) {
+      items.push({ id: nextId(), name: 'Jakpat for Universities (ads)', qty: 1, price: rate.effective, category: 'Jakpat for Universities (ads)' });
+      items.push({ id: nextId(), name: 'Add-on JFU Kilat', qty: 1, price: getKilatAddonCost(code), category: 'Lainnya' });
+    } else if (rate.effective > 0) {
+      items.push({
+        id: nextId(),
+        name: 'JFU Kilat (1 gelombang)',
+        qty: 1,
+        price: Math.max(0, rate.effective - calculateKilatDiscount(code, rate.effective, incentive, rateInstantMs)),
+        category: 'Jakpat for Universities (ads)',
+      });
+    }
+  }
 
   if (costPerDay > 0 && duration > 0) {
     const adCost = costPerDay * duration;
@@ -281,10 +332,29 @@ export function newBlankItem(): InvoiceItem {
  */
 export function describeVoucher(
   voucherCode: string | null | undefined,
-  input: { adCost: number; incentiveCost: number; duration: number }
+  input: { adCost: number; incentiveCost: number; duration: number },
+  /**
+   * Order Kilat (jadwal pertama): tarif gelombangnya + instan tarif. Voucher
+   * Kilat punya aturan sendiri (`calculateKilatDiscount`) — tanpa ini label
+   * memakai aturan Iklan dan menjanjikan potongan yang tidak pernah diterapkan
+   * ke item.
+   */
+  kilat?: { adCost: number; rateInstantMs: number },
 ): { discount: number; label: string } | null {
   const code = (voucherCode || '').trim();
   if (!code) return null;
+  if (kilat) {
+    if (code.toUpperCase() === 'JFUTGRX') {
+      return { discount: 0, label: 'Voucher uji sistem — tagihan dipatok Rp 1.000' };
+    }
+    if (!isKilatTariffActive(kilat.rateInstantMs) || !KILAT_VOUCHER_CODES.includes(code.toUpperCase())) return null;
+    const discount = calculateKilatDiscount(code, kilat.adCost, input.incentiveCost, kilat.rateInstantMs);
+    if (discount <= 0) return null;
+    return {
+      discount,
+      label: `Potongan Rp ${discount.toLocaleString('id-ID')} (10% tarif Kilat) diterapkan ke baris JFU Kilat`,
+    };
+  }
   if (code.toUpperCase() === 'JFUTGRX') {
     return { discount: 0, label: 'Voucher uji sistem — tagihan dipatok Rp 1.000' };
   }
@@ -318,16 +388,19 @@ export function rateContextOf(input: {
   if (!questionCount) return null;
   const nowMs = input.nowMs ?? Date.now();
   const atMs = rateInstantOf(input.rateLockedAt, nowMs);
-  const { list, effective, introUntil } = adRateAt(questionCount, atMs);
+  const kilatRate = input.isKilat ? kilatRateAt(questionCount, atMs) : null;
+  const kilatTariff = kilatRate != null && !kilatRate.legacy;
+  const { list, effective, introUntil } = kilatTariff ? kilatRate : adRateAt(questionCount, atMs);
   const isLocked = !Number.isNaN(Date.parse(input.rateLockedAt ?? ''));
   const lock = isLocked
     ? `dikunci ${formatYmdId(toWibYmd(new Date(atMs)))}`
     : 'belum dikunci — memakai tarif hari ini';
-  let text = `Tarif ${AD_TIER_LABELS[tierIndexOf(questionCount)]} soal, ${lock}: ${formatIDR(effective)}/hari`;
+  const unit = kilatTariff ? '/gelombang (tarif Kilat)' : '/hari';
+  let text = `Tarif ${AD_TIER_LABELS[tierIndexOf(questionCount)]} soal, ${lock}: ${formatIDR(effective)}${unit}`;
   if (introUntil) {
     text += ` · normal ${formatIDR(list)} · harga perkenalan s/d ${formatYmdId(introUntil)}`;
   }
-  if (input.isKilat) text += ' · Kilat: tarif 1× + add-on';
+  if (input.isKilat && !kilatTariff) text += ' · Kilat: tarif 1× + add-on';
   return text;
 }
 

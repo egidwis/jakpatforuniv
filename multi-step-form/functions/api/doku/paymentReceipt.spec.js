@@ -5,7 +5,31 @@ import {
   sendPaymentReceipt,
   formatChannelLabel,
   terbilangCapitalized,
+  receiptScheduleLabel,
 } from './_payment-receipt.js';
+
+describe('receiptScheduleLabel — Kilat tanpa durasi (Phase 5 §5.8)', () => {
+  it('Kilat: tanggal · gelombang, tanpa "(1 Hari)"', () => {
+    const label = receiptScheduleLabel({
+      start: '2026-10-20T04:00:00Z', end: '2026-10-21T04:00:00Z', duration: 1,
+      distributionType: 'kilat', kilatSlotHour: 11,
+    });
+    expect(label).toBe('20 Okt 2026 · Gelombang 11.00 WIB');
+    expect(label).not.toMatch(/Hari/);
+  });
+
+  it('Kilat tanpa gelombang / tanpa tanggal tetap tanpa durasi', () => {
+    expect(receiptScheduleLabel({ start: '2026-10-20', distributionType: 'kilat', kilatSlotHour: null }))
+      .toBe('20 Okt 2026 · JFU Kilat');
+    expect(receiptScheduleLabel({ start: null, distributionType: 'kilat' })).toBe('Belum dijadwalkan (JFU Kilat)');
+  });
+
+  it('Iklan tidak berubah', () => {
+    expect(receiptScheduleLabel({
+      start: '2026-10-20T08:00:00Z', end: '2026-10-22T08:00:00Z', duration: 2, distributionType: 'regular',
+    })).toBe('20 Okt 2026 — 22 Okt 2026 (2 Hari)');
+  });
+});
 
 describe('formatChannelLabel & terbilangCapitalized', () => {
   it('memformat kode channel DOKU ke teks ramah pengguna', () => {

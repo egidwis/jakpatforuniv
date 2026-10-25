@@ -7,7 +7,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { calculateAdCostPerDay, calculateIncentiveCost, rateInstantOf, voucherInstantOf } from '@/utils/cost-calculator';
+import { calculateAdCostPerDay, calculateIncentiveCost, kilatRateAt, rateInstantOf, voucherInstantOf } from '@/utils/cost-calculator';
 import { createManualInvoice } from '@/utils/payment';
 import { payLinkUrl } from '@/utils/payLink';
 import { toWibYmd } from '@/utils/airing-window';
@@ -337,7 +337,11 @@ export function InvoiceForm({
     const incentiveCost = entry.isExtension
       ? (entry.isNewPeriod ? calculateIncentiveCost(entry.winnerCount, entry.prizePerWinner) : 0)
       : calculateIncentiveCost(submission.winnerCount || 0, submission.prize_per_winner || 0);
-    return describeVoucher(appliedVoucher, { adCost, incentiveCost, duration });
+    const rateAtMs = rateInstantOf(entry.rateLockedAt);
+    const kilat = isKilatOrder
+      ? { adCost: kilatRateAt(submission.questionCount || 0, rateAtMs).effective, rateInstantMs: rateAtMs }
+      : undefined;
+    return describeVoucher(appliedVoucher, { adCost, incentiveCost, duration }, kilat);
   })();
 
   const removeItem = (id: string) => {
@@ -845,7 +849,9 @@ export function InvoiceForm({
           ) : appliedVoucher.trim() ? (
             <p className="flex items-start gap-1.5 text-[11px] text-amber-700">
               <Tag className="w-3 h-3 mt-0.5 shrink-0" />
-              Kode tidak mengubah harga — periksa ejaannya atau masa berlakunya.
+              {isKilatOrder
+                ? 'Kode tidak mengubah harga JFU Kilat — hanya kode ambassador dan JFUTGRX yang berlaku, dan order Kilat bertarif lama tidak menerima voucher.'
+                : 'Kode tidak mengubah harga — periksa ejaannya atau masa berlakunya.'}
             </p>
           ) : null}
           <p className="text-[10px] text-gray-400">

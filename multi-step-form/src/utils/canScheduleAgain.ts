@@ -1,5 +1,6 @@
 import type { AdScheduleEntry, FormSubmission } from './supabase';
 import { occupiesSlot } from '@/pages/dashboard/schedule/scheduleModel';
+import { kilatWaveInstant } from './airing-window';
 
 /**
  * Boleh menawarkan tombol "Jadwalkan Iklan Lagi"?
@@ -31,6 +32,17 @@ export type ScheduleAgainBlock = 'kilat' | 'order_inactive' | 'quota_held' | nul
 
 type OrderShape = Pick<FormSubmission, 'distribution_type' | 'submission_status'>;
 
+export interface ScheduleAgainOpts {
+  /**
+   * Pintu Kilat swalayan terbuka untuk akun ini (`canUseKilatSelfServe`).
+   *
+   * ⚠️ "Pesan gelombang lagi" (Phase 5 §5.10) ikut pintu yang SAMA dengan
+   * kartu Kilat, bukan dibuka sendiri: selama `KILAT_TARIFF_FROM` masih
+   * `null`, gelombang tambahan dihargai rumus lama. Default tertutup.
+   */
+  kilatOpen?: boolean;
+}
+
 /**
  * Status order yang TIDAK boleh menambah jadwal.
  *
@@ -44,10 +56,12 @@ export function scheduleAgainBlock(
   submission: OrderShape,
   entries: AdScheduleEntry[],
   now: number = Date.now(),
+  opts: ScheduleAgainOpts = {},
 ): ScheduleAgainBlock {
-  // Kilat menang atas sebab lain: gelombangnya (8/11/14/17 WIB) ditugaskan
-  // admin, dan nol perpanjangan Kilat pernah terjadi.
-  if (submission.distribution_type === 'kilat') return 'kilat';
+  // Kilat menang atas sebab lain selama pintunya tertutup untuk akun ini.
+  // Sesudah terbuka, Kilat ikut aturan Iklan persis (keputusan 14 Okt): boleh
+  // begitu tidak ada gelombang belum-lunas yang menahan kuota.
+  if (submission.distribution_type === 'kilat' && !opts.kilatOpen) return 'kilat';
 
   if (INACTIVE_STATUSES.includes(submission.submission_status || '')) return 'order_inactive';
 
@@ -63,6 +77,30 @@ export function canScheduleAgain(
   submission: OrderShape,
   entries: AdScheduleEntry[],
   now: number = Date.now(),
+  opts: ScheduleAgainOpts = {},
 ): boolean {
-  return scheduleAgainBlock(submission, entries, now) === null;
+  return scheduleAgainBlock(submission, entries, now, opts) === null;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Gelombang pilihan beririsan dengan jendela 24 jam gelombang lain order ini?
+ *
+ * Teguran DINI saja — penegaknya `assert_schedule_window_free` di
+ * `create_ad_schedule` (sql/119), yang membaca induk Kilat di jam
+ * gelombangnya. Bersentuhan (tepat 24 jam) bukan irisan, sama dengan server.
+ * Jadwal yang tidak menahan slot (batal, hold basi, selesai) tidak dihitung.
+ */
+export function kilatWaveClashesOwn(
+  pick: { ymd: string; hour: number },
+  entries: AdScheduleEntry[],
+  now: number = Date.now(),
+): boolean {
+  const start = kilatWaveInstant(pick.ymd, pick.hour).getTime();
+  const end = start + DAY_MS;
+  return entries.some((e) => {
+    if (!occupiesSlot(e, now) || !e.startDate || !e.endDate) return false;
+    return start < Date.parse(e.endDate) && Date.parse(e.startDate) < end;
+  });
 }

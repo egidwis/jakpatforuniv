@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { shouldAutoMint, canRepickInPlace, billExpiryFor, type AutoMintInput } from './jadwalBayarGates';
+import { isPayDeadlinePassed } from './airing-window';
 
 const base: AutoMintInput = {
   screen: 'awaiting_payment',
@@ -113,5 +114,54 @@ describe('billExpiryFor — umur link DOKU', () => {
     const week = new Date(now + 7 * 24 * 3600 * 1000).toISOString();
     expect(billExpiryFor({ slotBookedBy: 'admin', slotReservedAt: null, lockedYmd: '2026-10-09' }, now).toISOString()).toBe(week);
     expect(billExpiryFor({ slotBookedBy: null, slotReservedAt: null, lockedYmd: null }, now).toISOString()).toBe(week);
+  });
+});
+
+/*
+  Kilat (Phase 5 §5.7, R6). Gerbangnya sama untuk kedua produk; yang berbeda
+  hanya MASUKANNYA — `tooLate` dari `isPayDeadlinePassed` (gelombang − 60
+  menit) dan `kilatHour` di `billExpiryFor`. Sampai 5.10 order Kilat selalu
+  berjadwal tunggal.
+*/
+describe('Kilat — gelombang 11.00 WIB Senin 19 Okt 2026 (batas bayar 10.00)', () => {
+  const YMD = '2026-10-19';
+  const at = (iso: string) => new Date(iso);
+
+  it('shouldAutoMint: terbit sampai 10.00 tepat, berhenti 10.00.01 — bukan 14.00', () => {
+    const tooLateAt = (iso: string) => isPayDeadlinePassed(YMD, 11, at(iso));
+    expect(shouldAutoMint({ ...base, tooLate: tooLateAt('2026-10-19T03:00:00Z') })).toBe(true);
+    expect(shouldAutoMint({ ...base, tooLate: tooLateAt('2026-10-19T03:00:01Z') })).toBe(false);
+    // Aturan Iklan untuk tanggal yang sama masih membuka sampai 14.00.
+    expect(isPayDeadlinePassed(YMD, null, at('2026-10-19T03:00:01Z'))).toBe(false);
+  });
+
+  it('canRepickInPlace: order Kilat swalayan berjadwal tunggal → boleh pilih gelombang lain', () => {
+    expect(canRepickInPlace({ ordinal: 1, siblingCount: 1, submissionStatus: 'waiting_payment', scheduleStatus: 'requested', autoReviewed: true })).toBe(true);
+  });
+
+  it('canRepickInPlace: Kilat jalur manual (gelombang ditugaskan admin) → TIDAK', () => {
+    expect(canRepickInPlace({ ordinal: 1, siblingCount: 1, submissionStatus: 'slot_reserved', scheduleStatus: 'requested', autoReviewed: false })).toBe(false);
+  });
+
+  it('canRepickInPlace: gelombang dibatalkan admin → TIDAK', () => {
+    expect(canRepickInPlace({ ordinal: 1, siblingCount: 1, submissionStatus: 'slot_cancelled', scheduleStatus: 'cancelled', autoReviewed: true })).toBe(false);
+  });
+
+  it('billExpiryFor: reservasi mandiri → hold (selalu ≤ batas gelombang)', () => {
+    // Dikunci 08.30 WIB → hold sampai 09.30, batas bayar 10.00.
+    expect(billExpiryFor({ slotBookedBy: 'user', slotReservedAt: '2026-10-19T01:30:00Z', lockedYmd: YMD, kilatHour: 11 }, Date.parse('2026-10-19T01:31:00Z')).toISOString())
+      .toBe('2026-10-19T02:30:00.000Z');
+  });
+
+  it('billExpiryFor: hold yang (seandainya) lebih panjang dipangkas ke batas gelombang', () => {
+    expect(billExpiryFor({ slotBookedBy: 'user', slotReservedAt: '2026-10-19T02:30:00Z', lockedYmd: YMD, kilatHour: 11 }, Date.parse('2026-10-19T02:31:00Z')).toISOString())
+      .toBe('2026-10-19T03:00:00.000Z');
+  });
+
+  it('billExpiryFor: gelombang admin → batas gelombang, bukan 14.00, dan TIDAK jatuh ke +7 hari sesudahnya', () => {
+    expect(billExpiryFor({ slotBookedBy: 'admin', slotReservedAt: null, lockedYmd: YMD, kilatHour: 15 }, Date.parse('2026-10-18T03:00:00Z')).toISOString())
+      .toBe('2026-10-19T07:00:00.000Z');
+    expect(billExpiryFor({ slotBookedBy: 'admin', slotReservedAt: null, lockedYmd: YMD, kilatHour: 11 }, Date.parse('2026-10-19T05:00:00Z')).toISOString())
+      .toBe('2026-10-19T03:00:00.000Z');
   });
 });

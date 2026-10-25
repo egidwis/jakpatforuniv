@@ -1,5 +1,5 @@
 import { slotReleaseDeadline } from './slotHold';
-import { paymentCutoffInstant } from './airing-window';
+import { payDeadlineFor } from './airing-window';
 import type { PageScreen } from './schedulePageState';
 
 /**
@@ -17,7 +17,7 @@ export interface AutoMintInput {
   billingLoaded: boolean;
   hasOpenBill: boolean;
   owedOnCredit: boolean;
-  /** Batas bayar 14.00 WIB hari tayang sudah lewat. */
+  /** Batas bayar hari tayang sudah lewat (Iklan 14.00 WIB, Kilat gelombang − 60 menit). */
   tooLate: boolean;
   /** Countdown hold 1 jam sudah menyentuh nol. */
   holdExpired: boolean;
@@ -96,11 +96,28 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
  * sama dengan tagihan manual admin. Dulu jalur admin mengirim "Invalid Date".
  */
 export function billExpiryFor(
-  slot: { slotBookedBy: string | null | undefined; slotReservedAt: string | null | undefined; lockedYmd: string | null },
+  slot: {
+    slotBookedBy: string | null | undefined;
+    slotReservedAt: string | null | undefined;
+    lockedYmd: string | null;
+    /** Jam gelombang — HANYA untuk jadwal Kilat (lihat `payDeadlineFor`). */
+    kilatHour?: number | null;
+  },
   nowMs: number = Date.now(),
 ): Date {
   const releaseAt = slotReleaseDeadline({ slotBookedBy: slot.slotBookedBy ?? null, slotReservedAt: slot.slotReservedAt ?? null });
+  const cutoff = slot.lockedYmd ? payDeadlineFor(slot.lockedYmd, slot.kilatHour).getTime() : null;
+  /*
+    ⚠️ KILAT: link tidak boleh hidup melewati gelombang − 60 menit (R6), apa pun
+    sisa hold-nya. Hari ini hold selalu tiba lebih dulu (pesan ≤ H-2 jam + hold
+    1 jam = H-1 jam), tapi itu kebetulan dua angka — `min` membuatnya aturan.
+    Kilat yang batasnya sudah lewat tidak jatuh ke "+7 hari" seperti Iklan:
+    server menolaknya (`kilatPaymentGate`), jadi umur link diberi batas itu
+    sendiri dan penolakannya datang dari sana dengan pesan yang benar.
+  */
+  if (slot.kilatHour != null && cutoff !== null) {
+    return new Date(releaseAt !== null ? Math.min(releaseAt, cutoff) : cutoff);
+  }
   if (releaseAt !== null) return new Date(releaseAt);
-  const cutoff = slot.lockedYmd ? paymentCutoffInstant(slot.lockedYmd).getTime() : null;
   return new Date(cutoff !== null && cutoff > nowMs ? cutoff : nowMs + WEEK_MS);
 }

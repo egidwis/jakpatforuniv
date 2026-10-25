@@ -133,6 +133,17 @@ export function KilatScheduleBoard({ onOpenSubmission, embedded = false }: Kilat
         return map;
     }, [entries]);
 
+    /*
+      Baris gelombang = jam yang dijual SEKARANG (11/15) + jam lama yang
+      memang terisi di minggu ini. Order Agu–Sep 2026 tercatat di 08/14/17;
+      tanpa ini mereka hilang dari papan begitu jamnya dipensiunkan (sql/117).
+    */
+    const visibleHours = useMemo(() => {
+        const hours = new Set<number>(KILAT_SLOT_HOURS);
+        entries.forEach((e) => { if (e.hour !== null) hours.add(e.hour); });
+        return [...hours].sort((a, b) => a - b);
+    }, [entries]);
+
     const unassignedByYmd = useMemo(() => {
         const map = new Map<string, KilatScheduleEntry[]>();
         entries.forEach((e) => {
@@ -249,7 +260,7 @@ export function KilatScheduleBoard({ onOpenSubmission, embedded = false }: Kilat
                                 </div>
 
                                 {/* Baris per gelombang */}
-                                {KILAT_SLOT_HOURS.map((hour) => (
+                                {visibleHours.map((hour) => (
                                     <div key={hour} className="[display:grid] grid-cols-[92px_repeat(5,minmax(0,1fr))] gap-2 mb-2">
                                         <div className="flex items-center justify-center text-center text-[11px] font-bold text-amber-800 bg-amber-50 rounded-lg border border-amber-200 px-1">
                                             {formatHour(hour)} WIB
@@ -279,10 +290,10 @@ export function KilatScheduleBoard({ onOpenSubmission, embedded = false }: Kilat
                                                             const meta = statusMeta(entry);
                                                             return (
                                                                 <button
-                                                                    key={entry.id}
+                                                                    key={`${entry.id}${entry.isExtension ? '-ext' : ''}`}
                                                                     type="button"
                                                                     onClick={() => onOpenSubmission({ id: entry.id, createdAt: entry.createdAt })}
-                                                                    title={`${entry.title} — ${entry.researcherName} (${meta.label})`}
+                                                                    title={`${entry.title} — ${entry.researcherName} (${meta.label}${entry.isExtension ? ', gelombang tambahan' : ''})`}
                                                                     className="flex w-full min-w-0 items-center gap-1 px-1.5 py-1 rounded-md bg-slate-50 hover:bg-amber-50 border border-slate-200 hover:border-amber-300 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1"
                                                                 >
                                                                     <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${meta.dotClass}`} title={meta.label} />
@@ -292,6 +303,9 @@ export function KilatScheduleBoard({ onOpenSubmission, embedded = false }: Kilat
                                                                     <span className="min-w-0 flex-1 text-[10px] font-medium text-slate-700 truncate">
                                                                         {entry.title}
                                                                     </span>
+                                                                    {entry.isExtension && (
+                                                                        <span className="shrink-0 rounded bg-amber-100 px-1 text-[9px] font-semibold text-amber-800">+Gel.</span>
+                                                                    )}
                                                                 </button>
                                                             );
                                                         })}

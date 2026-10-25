@@ -119,7 +119,7 @@ export function ReviewSubmissionModal({
                     </span>
                     <span className={`pt-0.5 text-xs leading-relaxed ${i === 0 ? 'text-slate-900 font-medium' : 'text-slate-600'}`}>
                       {text}
-                      {/* Mode libur (sql/120): langkah yang menjanjikan waktu kerja tim. */}
+                      {/* Mode libur (sql/122): langkah yang menjanjikan waktu kerja tim. */}
                       {i === awayStep && (
                         <AdminAwayInlineNote className="mt-1" textKey={adminSchedule ? 'adminAwayInlineNote' : 'reviewModalAwayNote'} />
                       )}

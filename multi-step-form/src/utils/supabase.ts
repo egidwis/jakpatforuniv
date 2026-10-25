@@ -1,21 +1,22 @@
 import { createClient } from '@supabase/supabase-js';
 import type { ReviewHistoryEntry } from '../components/submissions/types';
-import { addDaysToYmd, occupancyDayYmd, toAiringEndIso, toAiringStartIso, toWibYmd } from './airing-window';
+import { addDaysToYmd, kilatWaveInstant, occupancyDayYmd, toAiringEndIso, toAiringStartIso, toWibYmd } from './airing-window';
 import { isPlaceholderBannerUrl } from './page-banner';
 import { isLiveInvoice } from './billingCompare';
 import { compareLeadOrder } from './payLink';
 import { BOOKING_ID_RE, SHORT_ID_RE, UUID_RE } from './idPatterns';
 import {
-  calculateAdCostPerDay,
   calculateTotalAdCost,
   calculateIncentiveCost,
   calculateDiscount,
   calculatePpn,
-  getKilatAddonCost,
+  kilatSubtotalAt,
   voucherInstantOf,
   rateInstantOf,
 } from './cost-calculator';
 import { compactedSkillSortOrders, orderedAISkills, skillSortHasGaps } from './aiSkillOrder';
+import { doorError } from './dailyQuotaError';
+import { ADMIN_EMAIL } from './kilatAccess';
 
 // Supabase URL dan anon key akan diambil dari environment variables
 // Anda perlu menambahkan variabel ini di file .env.local
@@ -475,6 +476,11 @@ export interface FormSubmission {
   dismissed_at?: string | null;
   review_history?: ReviewHistoryEntry[];
   detected_keywords?: string[];
+  /**
+   * sql/122: 'admin_away' = Kilat jalur otomatis yang dikirim selama mode
+   * libur → jalur MANUAL (`isAutoReviewed` false). NULL = aturan biasa.
+   */
+  forced_manual_reason?: 'admin_away' | null;
   custom_form_id?: string | null;
   admin_notes?: string;
   slot_booked_by?: string;
@@ -483,6 +489,8 @@ export interface FormSubmission {
   created_at?: string;
   updated_at?: string;
   distribution_type?: 'regular' | 'kilat';
+  /** Gelombang Kilat (jam WIB). NULL = belum ditugaskan / bukan Kilat. */
+  kilat_slot_hour?: number | null;
   /**
    * sql/125: cap "jadwal oleh tim" — order jalur otomatis yang lahir selama
    * reservasi mandiri ditutup. Ditulis trigger, permanen: peneliti tidak
@@ -2451,6 +2459,82 @@ async function postSchedule(
   return postAdminEndpoint('/api/admin/schedule', body, direct, 'Gagal menyimpan jadwal');
 }
 
+/**
+ * Satu pintu tulisan JADWAL (sql/123, rencana 21 Okt 2026). Browser tidak lagi
+ * menulis kolom jadwal sendiri — sql/124 menutup jalannya.
+ *
+ *   peneliti → `/api/schedules/lock` (aksi lock/extend/release/cancel). Kilat,
+ *              perpanjangan, lepas, dan batal berjalan di fungsi `door_*` yang
+ *              memakai klaim peneliti, jadi trigger menilai persis seperti PATCH
+ *              browser dulu;
+ *   admin    → `/api/admin/schedule` (release-slot/cancel-schedule).
+ *
+ * Galatnya `doorError`: `hint` trigger ikut, jadi peta galat gelombang & kuota
+ * tidak berubah.
+ */
+async function postScheduleDoor(
+  path: '/api/schedules/lock' | '/api/admin/schedule',
+  body: Record<string, unknown>,
+  failLabel: string,
+): Promise<any> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error('Sesi tidak ada. Masuk lagi lalu ulangi.');
+
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const raw = await res.text();
+  let parsed: any = null;
+  try { parsed = raw ? JSON.parse(raw) : null; } catch { /* badan bukan JSON */ }
+  if (!res.ok) throw doorError(parsed, `${failLabel} (HTTP ${res.status})`);
+  return parsed?.data ?? null;
+}
+
+/** Lepas/batal oleh admin melewati syarat pemilik — pintunya beda. */
+async function isAdminSession(): Promise<boolean> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return (session?.user?.email || '').toLowerCase() === ADMIN_EMAIL;
+}
+
+/**
+ * Jadwal lanjutan PENELITI ("Jadwalkan lagi" Iklan, "Pesan gelombang lagi"
+ * Kilat). door_create_extension → create_ad_schedule dengan klaim peneliti,
+ * jadi seluruh aturan peneliti di RPC & trigger berlaku. Memulangkan
+ * `source_id` (bukan `ad_schedules.id`), sama dengan RPC-nya.
+ */
+export async function createResearcherExtension(fields: {
+  submissionId: string;
+  startDate: string;
+  endDate: string;
+  duration: number;
+  prizePerWinner: number;
+  winnerCount: number;
+  isNewPeriod: boolean;
+}): Promise<string> {
+  if (import.meta.env.VITEST) {
+    const { data, error } = await supabase.rpc('create_ad_schedule', {
+      p_submission_id: fields.submissionId,
+      p_start_date: fields.startDate,
+      p_end_date: fields.endDate,
+      p_duration: fields.duration,
+      p_prize_per_winner: fields.prizePerWinner,
+      p_winner_count: fields.winnerCount,
+      p_additional_prize_per_winner: 0,
+      p_is_new_period: fields.isNewPeriod,
+    });
+    if (error) throw error;
+    return String(data ?? '');
+  }
+  const done = await postScheduleDoor('/api/schedules/lock', { action: 'extend', ...fields }, 'Gagal membuat jadwal');
+  return String(done?.id ?? '');
+}
+
 export async function setSubmissionCriteria(submissionId: string, criteria: string): Promise<void> {
   const { error } = await postOrder(
     { action: 'criteria', submissionId, criteria },
@@ -3036,9 +3120,7 @@ export const recomputeOrderPrice = async (
   let subtotal: number;
   if (sub.distribution_type === 'kilat') {
     subtotal =
-      calculateAdCostPerDay(questionCount, rateAt) +
-      getKilatAddonCost(sub.voucher_code) +
-      incentiveCost;
+      kilatSubtotalAt(questionCount, rateAt, sub.voucher_code, incentiveCost);
   } else {
     const adCost = calculateTotalAdCost(questionCount, duration, rateAt);
     const discount = calculateDiscount(
@@ -3097,7 +3179,7 @@ export const previewOrderPrice = async (
   const rateAt = await firstScheduleRateInstant(submissionId, sub.created_at ?? null);
   let subtotal: number;
   if (sub.distribution_type === 'kilat') {
-    subtotal = calculateAdCostPerDay(questionCount, rateAt) + getKilatAddonCost(sub.voucher_code) + incentiveCost;
+    subtotal = kilatSubtotalAt(questionCount, rateAt, sub.voucher_code, incentiveCost);
   } else {
     const adCost = calculateTotalAdCost(questionCount, duration, rateAt);
     const discount = calculateDiscount(
@@ -3148,9 +3230,16 @@ export const getFormSubmissionsPaginated = async (
    *
    * Alasannya sejajar dengan pengecualian pencarian ID di bawah.
    */
-  statusIn?: string[]
+  statusIn?: string[],
+  /**
+   * Antrean "Perlu Ditangani" (badge tab Iklan/Kilat, `adminQueue.ts`): daftar
+   * id yang menunggu admin, berapa pun umurnya — jadi filter bulan dilewati,
+   * dengan alasan yang sama dengan `statusIn`. Array kosong = antrean kosong.
+   */
+  idIn?: string[]
 ) => {
   try {
+    if (idIn && idIn.length === 0) return { data: [], count: 0 };
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
@@ -3217,7 +3306,12 @@ export const getFormSubmissionsPaginated = async (
       query = query.in('submission_status', statusIn!);
     }
 
-    if (startDate && endDate && !isIdSearch && !isStatusQueue) {
+    const isIdQueue = !!idIn;
+    if (isIdQueue) {
+      query = query.in('id', idIn!);
+    }
+
+    if (startDate && endDate && !isIdSearch && !isStatusQueue && !isIdQueue) {
       query = query.gte('created_at', startDate).lte('created_at', endDate);
     }
 
@@ -4323,8 +4417,27 @@ export const fetchSlotAvailability = async (
 // ─────────────────────────────────────────────────────────────
 
 
+/**
+ * Okupansi gelombang Kilat tanpa identitas (sql/117 `get_kilat_wave_occupancy`,
+ * hibah `authenticated`). Dipakai pemilih peneliti DAN cek terakhir
+ * `submitOrder` — satu sumber, supaya keduanya tidak berbeda pendapat.
+ */
+export const fetchKilatWaveOccupancy = async (
+  fromYmd: string,
+  toYmd: string,
+  excludeSubmissionId?: string,
+) => {
+  const { data, error } = await supabase.rpc('get_kilat_wave_occupancy', {
+    p_from: fromYmd,
+    p_to: toYmd,
+    p_exclude_submission_id: excludeSubmissionId ?? null,
+  });
+  if (error) throw error;
+  return data as unknown;
+};
+
 export interface KilatDayAvailability {
-  /** jam WIB (8|11|14|17) -> berapa order sudah mengisi gelombang itu */
+  /** jam WIB (11|15; riwayat juga 8|14|17) -> berapa order sudah mengisi gelombang itu */
   byHour: Record<number, number>;
   /** order Kilat di tanggal ini yang slotnya belum ditugaskan admin */
   unassigned: number;
@@ -4431,6 +4544,9 @@ export const updateKilatSchedule = async (
       async () => ({ data: null, error: null }),
     );
     if (error) throw new Error(error.message);
+    // Jendela halaman TETAP ikut gelombang baru (R4) — /api/admin/schedule
+    // hanya menulis form_submissions.
+    await syncKilatPageWindow(submissionId, ymd, hour);
     return true;
   }
   const { error } = await supabase
@@ -4459,8 +4575,54 @@ export const updateKilatSchedule = async (
     await updateFormStatus(submissionId, 'slot_reserved');
   }
 
+  await syncKilatPageWindow(submissionId, ymd, hour);
+
   return true;
 };
+
+/**
+ * Jendela halaman Kilat ikut gelombang yang baru (Phase 5 §5.4, rilis R4).
+ *
+ * Halaman hanya lahir saat lunas, jadi order belum lunas tidak punya apa pun
+ * untuk disinkronkan. Kolom siaran di `ad_schedules` sudah di-NULL-kan trigger
+ * sql/118 begitu tanggalnya berubah, jadi jendela kembali ke jendela sementara
+ * [gelombang, +24 jam) sampai toggle dinyalakan lagi.
+ *
+ * ⚠️ Halaman Kilat LAMA (`publish_end_date` NULL, 17 baris, keputusan 7 Okt)
+ * hanya digeser awalnya — tautannya sudah tertanam di survei Jakpat dan tidak
+ * boleh diberi tanggal mati. Halaman yang ditutup sistem (`auto_closed_at`,
+ * sql/99) tidak disentuh.
+ */
+async function syncKilatPageWindow(submissionId: string, ymd: string, hour: number) {
+  const { data: pages, error } = await supabase
+    .from('survey_pages')
+    .select('id, publish_end_date')
+    .eq('submission_id', submissionId)
+    .is('auto_closed_at', null);
+  if (error) throw error;
+
+  const startIso = kilatWaveInstant(ymd, hour).toISOString();
+  const endIso = kilatWaveInstant(addDaysToYmd(ymd, 1), hour).toISOString();
+  for (const page of pages ?? []) {
+    const patch: Record<string, string> = page.publish_end_date == null
+      ? { publish_start_date: startIso, updated_at: new Date().toISOString() }
+      : { publish_start_date: startIso, publish_end_date: endIso, updated_at: new Date().toISOString() };
+    const { error: writeError } = await adminContent(
+      {
+        action: 'patch-pages',
+        patch,
+        filters: [
+          { col: 'id', op: 'eq', val: page.id },
+          { col: 'auto_closed_at', op: 'is', val: null },
+        ],
+      },
+      () => supabase.from('survey_pages').update(patch).eq('id', page.id).is('auto_closed_at', null).select(),
+    );
+    if (writeError) {
+      throw new Error(`Gelombang tersimpan, tapi jendela halaman gagal digeser: ${writeError.message}`);
+    }
+  }
+}
 
 /**
  * Pindahkan sebuah order antara jalur iklan regular dan JFU Kilat.
@@ -4598,9 +4760,7 @@ export const convertDistributionType = async (
   let subtotal: number;
   if (target === 'kilat') {
     subtotal =
-      calculateAdCostPerDay(questionCount, rateAt) +
-      getKilatAddonCost(sub.voucher_code) +
-      incentiveCost;
+      kilatSubtotalAt(questionCount, rateAt, sub.voucher_code, incentiveCost);
   } else {
     const adCost = calculateTotalAdCost(questionCount, duration, rateAt);
     // Voucher dinilai pada tanggal order lahir: memindahkan jalur distribusi
@@ -4657,6 +4817,11 @@ export interface KilatScheduleEntry {
   submissionStatus: string;
   paymentStatus: string | null;
   createdAt: string;
+  /**
+   * Gelombang tambahan (baris perpanjangan, Phase 5 §5.10). `id` tetap id
+   * ORDER — pemanggil membuka drawer order dengannya.
+   */
+  isExtension?: boolean;
 }
 
 /**
@@ -4684,7 +4849,59 @@ export const fetchKilatSchedule = async (
 
   if (error) throw error;
 
-  return (data || [])
+  /*
+    Kaki kedua: gelombang tambahan (Phase 5 §5.10). Tanpa ini papan admin
+    menampilkan kursi gelombang yang sudah terisi perpanjangan sebagai kosong
+    — trigger kuota sql/117 menghitung KEDUA kaki, papan harus juga.
+    Rentang WIB [from 00.00, to+1 00.00); jam dari `kilat_slot_hour` (sql/119).
+  */
+  const { data: extRows, error: extError } = await supabase
+    .from('ad_schedules')
+    .select('submission_id, start_date, kilat_slot_hour, status, payment_status, slot_booked_by, slot_reserved_at, created_at')
+    .eq('distribution_type', 'kilat')
+    .eq('source_table', EXTENSION_SOURCE_TABLE)
+    .in('status', ['waiting_payment', 'paid', 'scheduled', 'live', 'completed'])
+    .gte('start_date', kilatWaveInstant(fromYmd, 0).toISOString())
+    .lt('start_date', kilatWaveInstant(addDaysToYmd(toYmd, 1), 0).toISOString());
+  if (extError) throw extError;
+
+  const extIds = [...new Set((extRows || []).map((r: any) => r.submission_id as string))];
+  const parents = new Map<string, { title: string | null; full_name: string | null }>();
+  if (extIds.length > 0) {
+    const { data: parentRows, error: parentError } = await supabase
+      .from('form_submissions')
+      .select('id, title, full_name')
+      .in('id', extIds);
+    if (parentError) throw parentError;
+    for (const p of parentRows || []) parents.set(p.id, p);
+  }
+
+  const extensions: KilatScheduleEntry[] = (extRows || [])
+    .filter((row: any) => holdsSlot({
+      id: row.submission_id,
+      submissionId: row.submission_id,
+      title: '',
+      startDate: row.start_date,
+      endDate: row.start_date,
+      status: row.status,
+      paymentStatus: row.payment_status,
+      slotBookedBy: row.slot_booked_by,
+      slotReservedAt: row.slot_reserved_at,
+      isExtraAd: false,
+    }))
+    .map((row: any) => ({
+      id: row.submission_id,
+      title: parents.get(row.submission_id)?.title || 'Untitled Ad',
+      researcherName: parents.get(row.submission_id)?.full_name || 'Unknown',
+      hour: row.kilat_slot_hour == null ? null : Number(row.kilat_slot_hour),
+      ymd: toWibYmd(new Date(row.start_date)),
+      submissionStatus: row.status,
+      paymentStatus: row.payment_status,
+      createdAt: row.created_at,
+      isExtension: true,
+    }));
+
+  const firsts: KilatScheduleEntry[] = (data || [])
     .filter((row: any) => holdsSlot({
       id: row.id,
       submissionId: row.id,
@@ -4709,6 +4926,8 @@ export const fetchKilatSchedule = async (
       paymentStatus: row.payment_status,
       createdAt: row.created_at,
     }));
+
+  return [...firsts, ...extensions];
 };
 
 /**
@@ -4777,21 +4996,34 @@ export const releaseExpiredSlot = async (submissionId: string) => {
       return true;
     }
 
-    // 1. Clear slot data and mark payment as expired in form_submissions
-    const { error: subError } = await supabase
-      .from('form_submissions')
-      .update({
-        start_date: null,
-        end_date: null,
-        slot_booked_by: null,
-        slot_reserved_at: null,
-        submission_status: 'slot_reserved',
-        payment_status: 'expired',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', submissionId);
+    // 1. Lepas slotnya — lewat pintu jadwal (sql/123), bukan PATCH browser.
+    //    Peneliti: hanya hold mandiri ('user') miliknya. Nol baris = sudah
+    //    lepas / sudah lunas / hold admin → BERHENTI, tagihan tidak disentuh
+    //    (tagihan hold admin milik admin).
+    if (!import.meta.env.VITEST) {
+      const admin = await isAdminSession();
+      const released = await postScheduleDoor(
+        admin ? '/api/admin/schedule' : '/api/schedules/lock',
+        { action: admin ? 'release-slot' : 'release', submissionId },
+        'Gagal melepas slot',
+      );
+      if (!released?.id) return true;
+    } else {
+      const { error: subError } = await supabase
+        .from('form_submissions')
+        .update({
+          start_date: null,
+          end_date: null,
+          slot_booked_by: null,
+          slot_reserved_at: null,
+          submission_status: 'slot_reserved',
+          payment_status: 'expired',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', submissionId);
 
-    if (subError) throw subError;
+      if (subError) throw subError;
+    }
 
     // 2. Mark all pending transactions as expired
     const { data: pendingTxs } = await supabase
@@ -5020,25 +5252,52 @@ export const cancelSchedule = async (entry: {
   // mematikan tagihan siapa pun. Pola yang sama dipakai `rebookSlotForSubmission`.
   const unpaidOnly = '("paid","completed")';
 
+  /*
+    Tulisan JADWAL lewat pintu (sql/123): peneliti → door_cancel_schedule
+    (syarat = policy lama, dinilai dengan klaim peneliti), admin →
+    /api/admin/schedule. Bentuknya sama dengan dua cabang VITEST di bawah.
+    Nol baris pulang sebagai `id: null` dan dijelaskan seperti dulu.
+  */
+  const viaDoor = async (): Promise<boolean> => {
+    const admin = await isAdminSession();
+    const done = await postScheduleDoor(
+      admin ? '/api/admin/schedule' : '/api/schedules/lock',
+      {
+        action: admin ? 'cancel-schedule' : 'cancel',
+        submissionId: entry.submissionId,
+        sourceId: entry.sourceId,
+        isExtension: entry.isExtension,
+      },
+      'Gagal membatalkan jadwal',
+    );
+    return !!done?.id;
+  };
+
   if (entry.isExtension) {
     // `ad_schedules.status` MEMANG kosakata sumbu tayang, jadi 'cancelled'
     // langsung tepat — dulu ini ditulis lewat view sebagai `submission_status`,
     // dan mirror-nya meneruskannya apa adanya ke kolom yang sama ini.
-    const { data, error } = await supabase
-      .from('ad_schedules')
-      .update({
-        status: 'cancelled',
-        // Tanggal TETAP. Yang dilepas adalah tahanannya, bukan riwayatnya.
-        slot_booked_by: null,
-        slot_reserved_at: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('source_table', EXTENSION_SOURCE_TABLE)
-      .eq('source_id', entry.sourceId)
-      .not('payment_status', 'in', unpaidOnly)
-      .select('id');
-    if (error) throw error;
-    if (!data || data.length === 0) {
+    let hit: boolean;
+    if (!import.meta.env.VITEST) {
+      hit = await viaDoor();
+    } else {
+      const { data, error } = await supabase
+        .from('ad_schedules')
+        .update({
+          status: 'cancelled',
+          // Tanggal TETAP. Yang dilepas adalah tahanannya, bukan riwayatnya.
+          slot_booked_by: null,
+          slot_reserved_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('source_table', EXTENSION_SOURCE_TABLE)
+        .eq('source_id', entry.sourceId)
+        .not('payment_status', 'in', unpaidOnly)
+        .select('id');
+      if (error) throw error;
+      hit = !!data && data.length > 0;
+    }
+    if (!hit) {
       throw new Error(await explainNoRowsCancelling(
         'ad_schedules',
         (q) => q.eq('source_table', EXTENSION_SOURCE_TABLE).eq('source_id', entry.sourceId),
@@ -5053,6 +5312,14 @@ export const cancelSchedule = async (entry: {
     // gagal, baris tempo masih `pending` dan `/bayar/` memperbaruinya — utang
     // selamat, iklannya tidak tayang gratis.
     await stopCreditOrThrow(entry.id, 'cancel_before_air');
+  } else if (!import.meta.env.VITEST) {
+    if (!(await viaDoor())) {
+      throw new Error(await explainNoRowsCancelling(
+        'form_submissions',
+        (q) => q.eq('id', entry.submissionId),
+        'Order ini',
+      ));
+    }
   } else {
     const { data, error } = await supabase
       .from('form_submissions')
@@ -5291,42 +5558,53 @@ export const cancelSchedule = async (entry: {
 export const rebookSlotForSubmission = async (
   submissionId: string,
   startYmd: string,
-  durationDays: number
+  durationDays: number,
+  /**
+   * Phase 5 §5.7 (R6): jam gelombang untuk order KILAT. Bentuk tulisnya sama
+   * dengan INSERT `submitOrder` Kilat — [tanggal, +1) DATE + `kilat_slot_hour`
+   * + durasi 1 — bukan 15.00 × durasi. Trigger `validate_kilat_wave_claim`
+   * (sql/117) menegakkan sisanya (jam 11/15, hari kerja, H-2 jam, kuota).
+   */
+  opts: { kilatHour?: number } = {},
 ) => {
+  const isKilat = opts.kilatHour != null;
+  /*
+    SATU pintu untuk keduanya: /api/schedules/lock (sql/123).
+      Iklan → PATCH service role egidwis (bentuk 15.00 × durasi, cutoff 13.00
+              di lockGate).
+      Kilat → door_lock_kilat_wave dengan klaim peneliti, jadi
+              `validate_kilat_wave_claim` tetap menegakkan jam 11/15, hari
+              kerja, libur, 3 hari kerja, H-2 jam, dan kuota gelombang.
+    Endpoint menolak bentuk yang tidak cocok dengan produknya (Kilat tanpa
+    `kilatHour`, Iklan dengan `kilatHour`) sebelum menulis apa pun.
+  */
   if (!import.meta.env.VITEST) {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-    if (!token) throw new Error('Sesi tidak ada. Masuk lagi lalu ulangi.');
-    const res = await fetch('/api/schedules/lock', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        submissionId,
-        startYmd,
-        duration: Math.max(durationDays || 1, 1),
-      }),
-    });
-    const raw = await res.text();
-    let parsed: any = null;
-    try { parsed = raw ? JSON.parse(raw) : null; } catch { /* badan bukan JSON */ }
-    if (!res.ok) {
-      // `code` ikut diteruskan: 'self_booking_closed' (409, sql/125) dikenali
-      // halaman lewat `isSelfBookingClosedError`, bukan dari teks pesannya.
-      throw Object.assign(new Error(parsed?.error || `Gagal mengunci tanggal (HTTP ${res.status})`), {
-        code: parsed?.code,
-      });
-    }
+    await postScheduleDoor('/api/schedules/lock', {
+      action: 'lock',
+      submissionId,
+      startYmd,
+      duration: isKilat ? 1 : Math.max(durationDays || 1, 1),
+      ...(isKilat ? { kilatHour: opts.kilatHour } : {}),
+    }, 'Gagal mengunci tanggal');
     return true;
   }
 
-  const { data, error } = await supabase
+  // VITEST saja — rantai mock tes lama. Sejak sql/124 browser tak bisa lagi
+  // menulis ini; produksi selalu lewat pintu di atas.
+  let query = supabase
     .from('form_submissions')
     .update({
-      start_date: toAiringStartIso(startYmd),
-      end_date: toAiringEndIso(startYmd, Math.max(durationDays, 1)),
+      ...(isKilat
+        ? {
+            start_date: startYmd,
+            end_date: addDaysToYmd(startYmd, 1),
+            kilat_slot_hour: opts.kilatHour,
+            duration: 1,
+          }
+        : {
+            start_date: toAiringStartIso(startYmd),
+            end_date: toAiringEndIso(startYmd, Math.max(durationDays, 1)),
+          }),
       slot_booked_by: 'user',
       slot_reserved_at: new Date().toISOString(),
       submission_status: 'waiting_payment',
@@ -5343,8 +5621,21 @@ export const rebookSlotForSubmission = async (
     // menangkapnya — 'expired' bukan 'paid'/'completed' — jadi sampai sekarang
     // tombol "Jadwalkan Ulang" di dashboard peneliti membatalkan keputusan
     // admin tanpa satu pun peringatan ke siapa pun.
-    .neq('submission_status', 'slot_cancelled')
-    .select('id');
+    .neq('submission_status', 'slot_cancelled');
+
+  /*
+    ⚠️ BENTUK TULIS HARUS COCOK DENGAN PRODUKNYA — dijaga di kueri, tanpa
+    pembacaan tambahan. Bentuk Iklan (15.00 × durasi) pada baris Kilat akan
+    meninggalkan `kilat_slot_hour` lama dan jendela 15.00; bentuk Kilat pada
+    baris Iklan menulis gelombang ke order yang tidak punya gelombang. Salah
+    pasang = nol baris = galat di bawah, bukan jadwal yang salah bentuk.
+    `distribution_type` NULL dihitung Iklan (0 baris di produksi, 16 Okt).
+  */
+  query = isKilat
+    ? query.eq('distribution_type', 'kilat')
+    : query.or('distribution_type.is.null,distribution_type.neq.kilat');
+
+  const { data, error } = await query.select('id');
 
   if (error) throw error;
   if (!data || data.length === 0) {
@@ -5352,7 +5643,7 @@ export const rebookSlotForSubmission = async (
     // palsu" lahir. Dilempar supaya UI tidak bisa menampilkan sukses semu.
     throw new Error(
       `Slot untuk ${submissionId} tidak bisa dikunci ulang — kemungkinan sudah lunas, ` +
-      'jadwalnya dibatalkan tim Jakpat, atau ditolak RLS.'
+      'jadwalnya dibatalkan tim Jakpat, jenis ordernya tidak cocok, atau ditolak RLS.'
     );
   }
   return true;
@@ -5515,6 +5806,15 @@ export interface AdScheduleEntry {
   distributionType: string | null;
   /** Gelombang push Kilat (8/11/14/17 WIB). NULL = regular ATAU Kilat belum ditugaskan. */
   kilatSlotHour: number | null;
+  /**
+   * Toggle siaran Kilat (sql/118 U6/U7). Opsional karena hanya
+   * `fetchAdSchedules` yang membacanya. NULL/absen = belum disiarkan; 'backfill'
+   * di `broadcastBy` = 17 gelombang lama yang diisi migrasi.
+   */
+  broadcastAt?: string | null;
+  broadcastBy?: string | null;
+  broadcastEndedAt?: string | null;
+  broadcastEndedBy?: string | null;
   /** Yang BENAR-BENAR ditagih untuk jadwal ini. 981 dari 983 baris terisi. */
   totalCost: number;
   /**
@@ -5695,6 +5995,7 @@ export const fetchAdSchedules = async (
         prize_per_winner, winner_count, additional_prize_per_winner, is_new_period, period_batch,
         slot_booked_by, slot_reserved_at, created_at, rate_locked_at,
         air_on_credit_at, air_on_credit_note,
+        broadcast_at, broadcast_by, broadcast_ended_at, broadcast_ended_by,
         form_submissions!ad_schedules_submission_id_fkey ( title, full_name, university, created_at )
       `, { count: 'exact' });
 
@@ -5812,6 +6113,10 @@ export const fetchAdSchedules = async (
         : (page?.placeholderBanner ?? false),
       airOnCreditAt: row.air_on_credit_at ?? null,
       airOnCreditNote: row.air_on_credit_note ?? null,
+      broadcastAt: row.broadcast_at ?? null,
+      broadcastBy: row.broadcast_by ?? null,
+      broadcastEndedAt: row.broadcast_ended_at ?? null,
+      broadcastEndedBy: row.broadcast_ended_by ?? null,
     };
   });
 };

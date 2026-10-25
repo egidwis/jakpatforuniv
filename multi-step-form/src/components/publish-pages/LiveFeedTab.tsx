@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { supabase } from '@/utils/supabase';
+import { adminContent, supabase } from '@/utils/supabase';
 import { Button } from '@/components/ui/button';
 import { AlertPill } from '@/components/ui/alert-pill';
 import { cn } from '@/lib/utils';
@@ -137,8 +137,13 @@ export function LiveFeedTab({
         setSavingOrder(true);
         try {
             const orderedIds = orderedLive.map(p => p.id);
-            const { error } = await supabase.rpc('set_survey_pages_order', { ordered_ids: orderedIds });
-            if (error) throw error;
+            // Lewat service role: sejak sql/116 RPC INVOKER dari browser
+            // mengubah nol baris tanpa galat. Endpoint membaca ulang urutannya.
+            const { error } = await adminContent(
+                { action: 'reorder-pages', orderedIds },
+                () => supabase.rpc('set_survey_pages_order', { ordered_ids: orderedIds }),
+            );
+            if (error) throw new Error(error.message);
             toast.success('Urutan iklan live berhasil disimpan');
             await onOrderSaved();
         } catch (e) {

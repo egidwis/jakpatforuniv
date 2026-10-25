@@ -1,4 +1,4 @@
-import { isPaymentTooLateForDate, toWibYmd } from './airing-window';
+import { isPayDeadlinePassed, toWibYmd } from './airing-window';
 
 /**
  * Order yang MELEWATKAN jendela bayarnya — tanggal tayangnya sudah tidak bisa
@@ -12,7 +12,8 @@ import { isPaymentTooLateForDate, toWibYmd } from './airing-window';
  * tanggal satu per satu. Menjanjikan aksi tim tanpa ada yang memicunya adalah
  * bentuk lain dari "jangan tampilkan data yang belum ada".
  *
- * ⚠️ PREDIKATNYA `isPaymentTooLateForDate`, BUKAN DEFINISI BARU. Itu fungsi yang
+ * ⚠️ PREDIKATNYA `isPayDeadlinePassed` (Iklan = `isPaymentTooLateForDate`
+ * persis; Kilat = gelombang − 60 menit sejak R6), BUKAN DEFINISI BARU. Itu fungsi yang
  * sama yang dipakai sisi peneliti untuk state `too_late_today` dan yang jadi
  * pemenang tie-break `isLate` di kartu admin. Tiga permukaan, satu sumber —
  * kalau batas 14.00 WIB bergeser, ia bergeser sekali.
@@ -22,6 +23,9 @@ export function missedPaymentWindow(
     startDate?: string | Date | null;
     submissionStatus?: string | null;
     paymentStatus?: string | null;
+    /** `distribution_type` order — hanya 'kilat' yang memakai `kilatHour`. */
+    distributionType?: string | null;
+    kilatHour?: number | null;
   },
   now: Date = new Date()
 ): boolean {
@@ -43,7 +47,8 @@ export function missedPaymentWindow(
   // punya tanggal yang mengikat, jadi "terlambat" tidak berlaku untuk mereka.
   if (!['waiting_payment', 'slot_reserved'].includes(sub)) return false;
 
-  return isPaymentTooLateForDate(ymd, now);
+  const kilatHour = input.distributionType === 'kilat' ? input.kilatHour ?? null : null;
+  return isPayDeadlinePassed(ymd, kilatHour, now);
 }
 
 /**

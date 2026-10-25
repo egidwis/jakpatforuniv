@@ -29,6 +29,8 @@ import {
 } from '@/components/status/airingPeriods';
 import { scheduleEnd, scheduleStart } from '@/components/status/scheduleAxes';
 import { toast } from 'sonner';
+import { KilatBroadcastToggle } from './KilatBroadcastToggle';
+import { broadcastStateOf } from '@/utils/kilatBroadcast';
 
 // ─────────────────────────────────────────────────────────────
 // Tab: Page — kembaran Fase ③ Penayangan di dashboard peneliti.
@@ -44,6 +46,10 @@ import { toast } from 'sonner';
 //
 // Kalau nanti terbukti mengganggu, mengembalikan tombolnya satu baris JSX; yang
 // mahal bukan tombolnya, melainkan kembali menyalakan sinyal yang salah alamat.
+//
+// SATU PENGECUALIAN, diputuskan pemilik produk 14 Okt (Phase 5 §5.4b): toggle
+// siaran Kilat. Di sinilah admin menyalin tautan untuk push, jadi di sini pula
+// ia menandai push itu terkirim — dua langkah dari satu pekerjaan.
 // ─────────────────────────────────────────────────────────────
 
 /** Kosakata yang SAMA PERSIS dengan chip Fase ③ (`extStatus*`, blok `id`).
@@ -155,8 +161,11 @@ export function PageTab({
    * gandanya tidak pernah terjadi. Yang justru terjadi kalau diangkat: setiap
    * drawer yang dibuka ikut menarik jadwal walau admin cuma melihat tab Info.
    */
+  // Kilat ikut memuat jadwal sejak R4: toggle siaran hidup per gelombang
+  // (`ad_schedules.broadcast_*`), termasuk gelombang perpanjangan nanti.
+  const [reloadKey, setReloadKey] = useState(0);
   useEffect(() => {
-    if (!submissionId || isKilatOrder) return;
+    if (!submissionId) return;
     let cancelled = false;
     (async () => {
       try {
@@ -167,7 +176,7 @@ export function PageTab({
       }
     })();
     return () => { cancelled = true; };
-  }, [submissionId, isKilatOrder]);
+  }, [submissionId, reloadKey]);
 
   const fullPublicUrl = existingPage ? publicPageUrl(existingPage.slug) : '';
 
@@ -192,6 +201,9 @@ export function PageTab({
   //   C. lunas TANPA halaman  → anomali, harus berteriak (kanari
   //                             countKilatOrdersWithoutPage dalam bentuk per-order)
   if (isKilatOrder) {
+    const waves = schedules.filter((s) => s.kilatSlotHour != null && s.startDate);
+    const firstWave = waves[0];
+    const firstState = firstWave ? broadcastStateOf(firstWave) : null;
     return (
       <div className="space-y-4">
         <DetailSheetSection title="Distribusi JFU Kilat">
@@ -274,18 +286,38 @@ export function PageTab({
               <div>
                 <span className="text-amber-700/80 block text-[11px]">Status Siaran</span>
                 <span className="font-semibold text-amber-950">
-                  {lifecycle.isPaid ? 'Siap Disiarkan' : 'Menunggu Pembayaran'}
+                  {!lifecycle.isPaid
+                    ? 'Menunggu Pembayaran'
+                    : firstState?.phase === 'live'
+                      ? 'Sedang Disiarkan'
+                      : firstState?.phase === 'finished'
+                        ? 'Selesai Disiarkan'
+                        : 'Belum Disiarkan'}
                 </span>
               </div>
             </div>
 
-            {/* Menjelaskan publish_end_date = NULL di tempat admin bekerja, supaya
-                tidak ada yang mengira itu kelalaian lalu "memperbaikinya". Tautan
-                yang sudah tertanam di survei Jakpat tidak bisa ditarik dari sisi
-                kita, jadi ia tidak boleh punya tanggal mati. */}
-            {existingPage && (
+            {/* Toggle siaran per gelombang (sql/118). Halaman Kilat sejak R4
+                berjendela: [gelombang, +24 jam) sampai dinyalakan, lalu
+                [nyala, +24 jam). Hanya 17 halaman lama yang tetap tanpa tanggal
+                akhir — keputusan 7 Okt, jangan "diperbaiki". */}
+            {existingPage && waves.map((w) => (
+              <div key={w.id} className="space-y-1">
+                {waves.length > 1 && (
+                  <span className="block text-[11px] font-bold text-amber-700/90">
+                    Gelombang {w.ordinal} · {String(w.kilatSlotHour).padStart(2, '0')}.00 WIB
+                  </span>
+                )}
+                <KilatBroadcastToggle
+                  entry={w}
+                  pageId={existingPage.id}
+                  onChanged={() => setReloadKey((k) => k + 1)}
+                />
+              </div>
+            ))}
+            {existingPage && !existingPage.publish_end_date && (
               <p className="text-[11px] text-amber-700/90 leading-relaxed">
-                Tautan tidak memiliki tanggal kedaluwarsa.
+                Halaman Kilat lama: tautan tidak memiliki tanggal kedaluwarsa.
               </p>
             )}
           </div>

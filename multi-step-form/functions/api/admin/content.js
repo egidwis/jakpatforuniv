@@ -1,4 +1,4 @@
-import { pageFilterQuery, validateAdminContent } from './contentGate.js';
+import { BROADCAST_RPC, broadcastRpcArgs, pageFilterQuery, reorderMismatch, validateAdminContent } from './contentGate.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -104,7 +104,40 @@ export async function onRequest(context) {
   const invalid = validateAdminContent(body);
   if (invalid) return json(400, { error: invalid });
 
+  if (BROADCAST_RPC[body.action]) {
+    // Galat RPC dibawa utuh beserta HINT-nya (broadcast_too_early, _finished,
+    // _has_respondents, …) supaya tab Page bisa menyebut alasannya.
+    const res = await fetch(`${url}/rest/v1/rpc/${BROADCAST_RPC[body.action]}`, {
+      method: 'POST',
+      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(broadcastRpcArgs(body.action, body.scheduleId, email)),
+    });
+    const raw = await res.text();
+    let data = null;
+    try { data = raw ? JSON.parse(raw) : null; } catch { data = null; }
+    if (!res.ok) {
+      const message = data?.message || data?.error || `PostgREST HTTP ${res.status}`;
+      console.error('[admin-content]', body.action, message);
+      return json(400, { error: message, hint: data?.hint ?? null });
+    }
+    return json(200, { data });
+  }
+
   try {
+    if (body.action === 'reorder-pages') {
+      await rest(env, 'rpc/set_survey_pages_order', {
+        method: 'POST',
+        body: JSON.stringify({ ordered_ids: body.orderedIds }),
+      });
+      // Dibaca ulang: nol baris tanpa galat adalah cara bug ini lahir.
+      const rows = await rest(env, `survey_pages?id=in.(${body.orderedIds.join(',')})&select=id,display_order`, { method: 'GET' });
+      const missed = reorderMismatch(body.orderedIds, rows);
+      if (missed.length > 0) {
+        return json(400, { error: `Urutan ${missed.length} halaman tidak tersimpan. Muat ulang lalu ulangi.` });
+      }
+      return json(200, { data: { count: body.orderedIds.length } });
+    }
+
     if (body.action === 'clear-proof') {
       const query = body.respondentId
         ? `id=eq.${body.respondentId}&select=id,proof_url`

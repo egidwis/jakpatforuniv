@@ -5,6 +5,7 @@ import type { TranslationKey } from '../../i18n/translations';
 import { toAiringStartIso, toAiringLastDayIso } from '../../utils/airing-window';
 import { formatIDR } from '../../utils/currency';
 import type { DeadlineRow } from '../../utils/reservationTicket';
+import { formatWaveHour } from '../../utils/kilatWaves';
 
 /**
  * Potongan bersama tiket reservasi. Dulu countdown dan kartu "Jadwal Tayang
@@ -140,6 +141,7 @@ export function TicketStub({
   startYmd,
   days,
   showStartTime = true,
+  kilatWaveHour,
   extraRows = [],
   deadline,
 }: {
@@ -153,6 +155,12 @@ export function TicketStub({
   days: number;
   /** Kilat tidak tayang 15.00 — jangan menjanjikannya. */
   showStartTime?: boolean;
+  /**
+   * Jadwal JFU Kilat: baris tanggal menyebut GELOMBANG, bukan lama tayang
+   * (keputusan 7 Okt: durasi Kilat tidak pernah tampil ke peneliti).
+   * `undefined` = bukan Kilat; `null` = Kilat yang gelombangnya belum dipilih.
+   */
+  kilatWaveHour?: number | null;
   extraRows?: TicketRow[];
   deadline?: DeadlineRow | null;
 }) {
@@ -180,7 +188,13 @@ export function TicketStub({
         <TicketRowView
           label={t('summaryDateLabel')}
           value={range ?? <span className="font-normal text-slate-400">{t('summaryDateNotPicked')}</span>}
-          sub={showStartTime ? `${daysLabel} · ${t('airingStartsAt')}` : daysLabel}
+          sub={
+            kilatWaveHour !== undefined
+              ? kilatWaveHour === null
+                ? t('kilatWaveNotPicked')
+                : t('kilatWaveLabel', { hour: formatWaveHour(kilatWaveHour) })
+              : showStartTime ? `${daysLabel} · ${t('airingStartsAt')}` : daysLabel
+          }
         />
         {extraRows.map((row) => <TicketRowView key={row.label} {...row} />)}
         {deadline && <DeadlineRowView row={deadline} />}
@@ -198,13 +212,20 @@ export function LockedScheduleCard({
   startYmd,
   days,
   outsideCalendar = false,
+  kilatWaveHour,
 }: {
   startYmd: string;
   days: number;
   outsideCalendar?: boolean;
+  /**
+   * Jadwal Kilat terkunci (Phase 5 R6): tanggal + gelombang, tanpa lama tayang
+   * dan tanpa "mulai 15.00" — aturan copy §5.8, sama dengan `TicketStub`.
+   */
+  kilatWaveHour?: number | null;
 }) {
   const { t } = useLanguage();
   const range = useAiringRange(startYmd, days);
+  const isKilat = kilatWaveHour != null;
 
   return (
     <div className="space-y-2">
@@ -213,14 +234,18 @@ export function LockedScheduleCard({
           {t('lockedScheduleTitle')}
         </span>
         <span className="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-lg bg-blue-50 border border-blue-100 text-jfu-primary">
-          {dayCountLabel(days, t)}
+          {kilatWaveHour != null ? t('kilatWaveLabel', { hour: formatWaveHour(kilatWaveHour) }) : dayCountLabel(days, t)}
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-800">
         <CalendarCheck className="w-4 h-4 text-jfu-primary shrink-0" aria-hidden="true" />
         <span>{range}</span>
-        <span className="text-slate-300" aria-hidden="true">•</span>
-        <span className="text-xs font-normal text-slate-500">{t('airingStartsAt')}</span>
+        {!isKilat && (
+          <>
+            <span className="text-slate-300" aria-hidden="true">•</span>
+            <span className="text-xs font-normal text-slate-500">{t('airingStartsAt')}</span>
+          </>
+        )}
       </div>
       {outsideCalendar && (
         <p className="text-xs text-slate-500">{t('lockedOutsideCalendarNote')}</p>

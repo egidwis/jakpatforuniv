@@ -6,10 +6,12 @@ import { formatRupiah } from '../utils/currency';
 import { getOwnProfile } from '../utils/supabase';
 import { useIlkomunyBlocked } from '../hooks/useIlkomunyBlocked';
 import { checkoutPath, isAutoApprovalPath } from '../utils/review-path';
+import { useAdminAway } from '../utils/operationalHolidays';
 import { useSelfBookingClosure } from '../utils/selfBookingClosure';
 import { awayGuard } from './status/AdminAwayModal';
 import { checkoutBlocker } from '../utils/orderReadiness';
 import { orderSubmitErrorKeyForCode } from '../utils/submitOrder';
+import { formatWaveHour } from '../utils/kilatWaves';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { SectionLabel, FieldRow } from './SurveyFieldRow';
@@ -45,13 +47,15 @@ interface StepCheckoutProps {
   /** Lanjut ke langkah Jadwal — hanya jalur otomatis yang memakainya. */
   nextStep: () => void;
   /**
-   * Menulis order (jalur manual, dan jalur Kilat yang jadwalnya sudah dipilih).
+   * Menulis order (jalur manual; jalur otomatis menulis di langkah Jadwal).
+   * `forceManual` = Kilat jalur otomatis yang dialihkan karena mode libur.
    * `selfBookingClosed` = "Kirim Pesanan" saat reservasi mandiri ditutup (sql/125).
    */
-  onSubmitOrder: (overrides?: Partial<SurveyFormData>, opts?: { selfBookingClosed?: boolean }) => Promise<boolean>;
+  onSubmitOrder: (
+    overrides?: Partial<SurveyFormData>,
+    opts?: { forceManual?: boolean; selfBookingClosed?: boolean },
+  ) => Promise<boolean>;
   onBack: () => void;
-  onUpgradeKilat?: () => void;
-  onUndoKilat?: () => void;
   onCancelOrder?: () => void;
 }
 
@@ -60,7 +64,8 @@ interface StepCheckoutProps {
  * sesudah Jadwal; sekarang ia mendahului Jadwal dan menjadi SATU-SATUNYA titik
  * percabangan otomatis vs manual. Layar ini murni klien: tidak ada baris
  * database yang lahir di sini kecuali pada jalur yang memang berakhir di sini
- * (manual, dan Kilat yang jadwalnya sudah terpilih di langkah tersendiri).
+ * (manual). Kilat menempuh urutan yang SAMA (Phase 5 §5.6): jalur otomatis
+ * lanjut ke Step 3 — pemilih gelombang — lalu mengunci & membayar di sana.
  */
 export function StepCheckout({
   formData,
@@ -68,8 +73,6 @@ export function StepCheckout({
   nextStep,
   onSubmitOrder,
   onBack,
-  onUpgradeKilat,
-  onUndoKilat,
   onCancelOrder,
 }: StepCheckoutProps) {
   const { t } = useLanguage();
@@ -84,7 +87,8 @@ export function StepCheckout({
     totalCost: 0
   });
 
-  const [voucherInfo, setVoucherInfo] = useState<{ isValid: boolean; message?: string; discount?: number; isError?: boolean; isKilatEligible?: boolean }>({ isValid: false });
+  const [voucherInfo, setVoucherInfo] = useState<{ isValid: boolean; message?: string; discount?: number; isError?: boolean }>({ isValid: false });
+  const isKilat = !!formData.isKilatUpgrade;
   // ILKOMUNY sudah pernah dipakai akun ini (redemption lunas ATAU submission aktif)
   // → voucher tak berlaku (diskon tak diterapkan, pesan ditampilkan).
   const ilkomunyBlocked = useIlkomunyBlocked(formData.voucherCode);
@@ -111,20 +115,20 @@ export function StepCheckout({
 
   /*
    * Yang menentukan tujuan tombol bukan jenis produknya, melainkan apakah
-   * tanggalnya SUDAH ADA.
-   *
-   * Kilat memilih tanggal di langkah tersendiri, jadi biasanya ia sampai ke
-   * sini sudah bertanggal dan langsung mengunci. Tapi tanggal juga bisa hilang
-   * belakangan — draft yang dibuka lagi keesokan harinya kehilangan tanggal
-   * yang sudah lewat batas. Kalau syaratnya ditulis sebagai "bukan Kilat",
-   * order Kilat tanpa tanggal akan menekan tombol bayar dan selalu ditolak,
-   * tanpa jalan kembali ke pemilih Kilat.
+   * tanggalnya SUDAH ADA — sama untuk Iklan dan Kilat. Tanggal di Ringkasan
+   * hanya mungkin dari draft; draft yang dibuka lagi keesokan harinya
+   * kehilangan tanggal yang sudah lewat batas.
    */
   const hasSchedule = !!formData.startDate;
-  // Reservasi mandiri ditutup (sql/125) membelokkan HANYA jalur otomatis — lihat checkoutPath.
+  // Mode libur (sql/122) membelokkan HANYA Kilat jalur otomatis; reservasi
+  // mandiri ditutup (sql/125) membelokkan jalur otomatis — lihat checkoutPath.
+  const away = useAdminAway();
   const selfBookingClosure = useSelfBookingClosure();
-  const path = checkoutPath({ isAutoApproval, hasSchedule, selfBookingClosed: !!selfBookingClosure });
+  const path = checkoutPath({
+    isAutoApproval, isKilat, hasSchedule, away: !!away, selfBookingClosed: !!selfBookingClosure,
+  });
   const needsSchedule = path === 'schedule';
+  const divertedAway = path === 'kilat_away';
   const adminSchedule = path === 'admin_schedule';
 
   // Email invoice berbeda dari email login → invoice terkirim ke email custom
@@ -191,9 +195,11 @@ export function StepCheckout({
     if (ilkomunyBlocked) {
       setVoucherInfo({ isValid: false, isError: true, message: t('voucherUsedOncePerAccount') });
     } else {
-      setVoucherInfo(getVoucherInfo(formData.voucherCode, formData.duration));
+      // Sadar produk (Phase 5 §5.1): di form Kilat kode yang tidak berlaku
+      // ditolak dengan pesannya sendiri — dan tidak disimpan (`submitOrder`).
+      setVoucherInfo(getVoucherInfo(formData.voucherCode, formData.duration, Date.now(), isKilat ? 'kilat' : 'regular'));
     }
-  }, [formData.questionCount, formData.duration, formData.winnerCount, formData.prizePerWinner, formData.voucherCode, ilkomunyBlocked]);
+  }, [formData.questionCount, formData.duration, formData.winnerCount, formData.prizePerWinner, formData.voucherCode, ilkomunyBlocked, isKilat]);
 
   // Fungsi untuk handle perubahan kode voucher
   const handleVoucherChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -228,19 +234,16 @@ export function StepCheckout({
     // Kotak 🔒 di Ringkasan dan modal sesudah kirim sudah memuat catatan libur.
     if (path === 'admin_schedule') { void proceed(); return; }
     // Mode libur: modal dulu (sekali per masa libur), baru langkah aslinya.
-    // `main` tidak punya Kilat swalayan, jadi selalu produk Iklan (modal A/B).
-    awayGuard({ kind: 'submit', product: 'ads', path }, () => { void proceed(); });
+    awayGuard({ kind: 'submit', product: isKilat ? 'kilat' : 'ads', path }, () => { void proceed(); });
   };
 
   const proceed = async () => {
     if (isSubmittingRef.current) return;
     // Jalur otomatis tanpa tanggal: belum ada apa pun yang ditulis — lanjut
-    // memilih jadwal, dan order baru lahir saat slot dikunci di sana. Kilat
-    // dikembalikan ke pemilihnya sendiri, bukan ke kalender reguler, karena
-    // kuota keduanya terpisah.
+    // memilih jadwal (Iklan: kalender, Kilat: gelombang), dan order baru lahir
+    // saat slot dikunci di sana.
     if (needsSchedule) {
-      if (formData.isKilatUpgrade) onUpgradeKilat?.();
-      else nextStep();
+      nextStep();
       return;
     }
 
@@ -249,9 +252,18 @@ export function StepCheckout({
     // ⚠️ Diteruskan eksplisit: `updateFormData` di atas baru mendarat di render
     // berikutnya, sedangkan `submitOrderAndRoute` membaca `formData` render
     // INI — tanpa override, `submitOrder()` menolak dengan kode 'terms'.
-    const ok = adminSchedule
+    const ok = divertedAway
+      // Gelombang dari draft dibuang: tidak ada reservasi mandiri selama libur.
+      ? await onSubmitOrder(
+          { termsAccepted: true, startDate: '', endDate: '', startTime: '', kilatSlotHour: null },
+          { forceManual: true },
+        )
+      : adminSchedule
       // Tanggal dari draft dibuang: tidak ada reservasi mandiri selama ditutup.
-      ? await onSubmitOrder({ termsAccepted: true, startDate: '', endDate: '', startTime: '' }, { selfBookingClosed: true })
+      ? await onSubmitOrder(
+          { termsAccepted: true, startDate: '', endDate: '', startTime: '', kilatSlotHour: null },
+          { selfBookingClosed: true },
+        )
       : await onSubmitOrder({ termsAccepted: true });
     if (!ok) {
       isSubmittingRef.current = false;
@@ -265,7 +277,8 @@ export function StepCheckout({
         {/* KOLOM KIRI: Survey Overview & Invoice Details (~58-60% / 7 cols) */}
         <div className="lg:col-span-7 space-y-4">
           {/* Warning Banner for manual-verification vouchers (JFUFEB / ILKOMUNY) */}
-          {isManualVerificationVoucher(formData.voucherCode) && (
+          {/* Kilat: kodenya ditolak di kolom voucher, bukan dibelokkan ke review. */}
+          {!isKilat && isManualVerificationVoucher(formData.voucherCode) && (
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
               <div className="flex gap-4">
                 <div className="flex-shrink-0 mt-0.5">
@@ -358,15 +371,22 @@ export function StepCheckout({
                       {formData.isKilatUpgrade ? <Zap size={13} className="fill-amber-600" /> : <Clock size={13} />}
                     </div>
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                      {t('surveyDurationLabel') || 'Durasi Tayang'}
+                      {isKilat ? t('kilatSummaryLabel') : t('surveyDurationLabel') || 'Durasi Tayang'}
                     </span>
                   </div>
+                  {/* Kilat tanpa durasi (keputusan 7 Okt): satu pesanan = satu gelombang. */}
                   <div>
                     <div className="text-sm sm:text-base font-bold text-slate-900 leading-tight">
-                      {formData.isKilatUpgrade ? t('kilatDuration') : `${formData.duration} ${t('days')}`}
+                      {isKilat ? t('kilatSummaryValue') : `${formData.duration} ${t('days')}`}
                     </div>
                     <div className="text-[11px] text-slate-500 mt-1 font-medium truncate">
-                      {formData.isKilatUpgrade ? t('kilatInstant24h') : t('regularStandardAiring')}
+                      {!isKilat
+                        ? t('regularStandardAiring')
+                        : divertedAway
+                          ? t('kilatSummaryAssignedAfterAway')
+                          : formData.kilatSlotHour != null
+                          ? t('kilatWaveLabel', { hour: formatWaveHour(formData.kilatSlotHour) })
+                          : isAutoApproval ? t('kilatSummaryPickNext') : t('kilatSummaryAssigned')}
                     </div>
                   </div>
                 </div>
@@ -397,7 +417,7 @@ export function StepCheckout({
               </div>
 
               {/* Release Schedule (If Auto Approval) */}
-              {isAutoApproval && !adminSchedule && formData.startDate && (
+              {isAutoApproval && !divertedAway && !adminSchedule && formData.startDate && (
                 <div className="bg-white/95 p-3.5 rounded-xl border border-blue-100/90 shadow-2xs flex items-center gap-3">
                   <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                     <CalendarCheck size={15} />
@@ -407,6 +427,11 @@ export function StepCheckout({
                       {t('releaseSchedule') || 'Jadwal Tayang'}
                     </span>
                     <span className="text-xs font-bold text-blue-900 mt-0.5 block">
+                      {isKilat ? (
+                        `${new Date(`${String(formData.startDate).slice(0, 10)}T12:00:00+07:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', timeZone: 'Asia/Jakarta' })} · ${
+                          formData.kilatSlotHour != null ? t('kilatWaveLabel', { hour: formatWaveHour(formData.kilatSlotHour) }) : t('kilatWaveNotPicked')
+                        }`
+                      ) : <>
                       {new Date(formData.startDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} – {
                         (() => {
                           const ed = new Date(formData.startDate);
@@ -414,6 +439,7 @@ export function StepCheckout({
                           return ed.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
                         })()
                       } (15:00 WIB)
+                      </>}
                     </span>
                   </div>
                 </div>
@@ -441,30 +467,8 @@ export function StepCheckout({
                   amber PII di sini, blok di kolom kanan, dan tips Kepastian Slot. */}
               {adminSchedule
                 ? <SelfBookingNotice variant="checkout" closure={selfBookingClosure} />
-                : <ReviewPathNotice formData={formData} />}
+                : <ReviewPathNotice formData={formData} divertedAway={divertedAway} />}
 
-              {/* Mode JFU Kilat Active Banner */}
-              {formData.isKilatUpgrade && (
-                <div className="border-t border-dashed border-blue-200/60 pt-3 mt-2 w-full flex flex-col gap-1">
-                  <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center gap-2 text-xs text-amber-800 font-bold">
-                      <Zap size={14} className="fill-amber-500 text-amber-500 shrink-0" />
-                      <span>{t('kilatModeActive')}</span>
-                    </div>
-                    {onUndoKilat && (
-                      <button
-                        onClick={onUndoKilat}
-                        className="text-xs font-semibold text-gray-400 hover:text-gray-600 hover:underline transition-all whitespace-nowrap"
-                      >
-                        {t('kilatUndoButton')}
-                      </button>
-                    )}
-                  </div>
-                  <div className="pl-[22px] text-[11px] text-amber-600 leading-relaxed">
-                    {t('kilatBenefitFast')} &bull; {t('kilatBenefitNoPage')}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
@@ -627,28 +631,6 @@ export function StepCheckout({
                 </div>
               </FieldRow>
 
-              {/* Upgrade CTA jika voucher eligible Kilat */}
-              {voucherInfo.isValid && voucherInfo.isKilatEligible && !formData.isKilatUpgrade && onUpgradeKilat && (
-                <div className="mt-2.5 p-3 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200 shadow-sm animate-in fade-in slide-in-from-bottom-2">
-                  <div className="flex items-start gap-2.5">
-                    <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 mt-0.5">
-                      <Zap size={14} className="fill-amber-600" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="text-xs font-bold text-amber-900">{t('kilatUpgradeTitle')}</h4>
-                      <p className="text-[11px] text-amber-800 mt-0.5">{t('kilatUpgradeTagline')}</p>
-                      <button
-                        type="button"
-                        onClick={onUpgradeKilat}
-                        className="mt-2 w-full px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <Zap size={12} className="fill-white" />
-                        {t('kilatUpgradeButton')}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -683,6 +665,11 @@ export function StepCheckout({
                 <>
                   <Send size={15} />
                   {t('summaryCtaReview')}
+                </>
+              ) : divertedAway ? (
+                <>
+                  <Send size={15} />
+                  {t('summaryCtaKilatAway')}
                 </>
               ) : adminSchedule ? (
                 <>

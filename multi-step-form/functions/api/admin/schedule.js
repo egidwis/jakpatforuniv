@@ -1,4 +1,4 @@
-import { submissionDatePatch, validateScheduleWrite } from './scheduleGate.js';
+import { UNCOMMITTED_ORDER, cancelScheduleWrite, releaseSlotPatch, submissionDatePatch, validateScheduleWrite } from './scheduleGate.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -174,6 +174,22 @@ export async function onRequest(context) {
         body: JSON.stringify(patch),
       });
       return json(200, { data: { ok: true } });
+    }
+
+    // Nol baris = sudah lunas / sudah dilepas; klien yang menjelaskan sebabnya.
+    if (body.action === 'release-slot') {
+      const rows = await rest(
+        env,
+        `form_submissions?id=eq.${body.submissionId}&${UNCOMMITTED_ORDER}`,
+        { method: 'PATCH', body: JSON.stringify(releaseSlotPatch()) },
+      );
+      return json(200, { data: { id: Array.isArray(rows) && rows[0] ? rows[0].id : null } });
+    }
+
+    if (body.action === 'cancel-schedule') {
+      const write = cancelScheduleWrite(body);
+      const rows = await rest(env, write.path, { method: 'PATCH', body: JSON.stringify(write.patch) });
+      return json(200, { data: { id: Array.isArray(rows) && rows[0] ? rows[0].id : null } });
     }
 
     if (body.action === 'extra-ad') {

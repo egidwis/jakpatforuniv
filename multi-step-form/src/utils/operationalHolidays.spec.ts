@@ -10,12 +10,16 @@ const {
   createAdminAwayStore,
   isAwayAcked,
 } = await import('./operationalHolidays');
+const { checkoutPath } = await import('./review-path');
+const { kilatWaveErrorKind } = await import('./dailyQuotaError');
+const { kilatWaveErrorMessageKey } = await import('./kilatWaves');
+const { isAutoReviewed } = await import('../components/status/deriveOrderUiState');
 const { awayDayCount } = await import('../components/submissions/AdminAwayToggle');
 
 /*
   Mode libur (sql/122, keputusan 21 Okt 2026). Penutupan Kilat di server
   dibuktikan dengan DIJALANKAN di harness PGlite berkas sql/122; di sini aturan
-  klien: tulisan toggle, store bersama, dan ack modal.
+  klien: tulisan toggle, store bersama, ack modal, dan percabangan Ringkasan.
 */
 
 const row = (date: string, isActive = true, label = '', labelEn = '') => ({ date, label, labelEn, isActive });
@@ -101,6 +105,45 @@ describe('store bersama', () => {
     await store.refresh();
     expect(listener).toHaveBeenCalledTimes(1);
     off();
+  });
+});
+
+describe('checkoutPath (Ringkasan)', () => {
+  const base = { isAutoApproval: true, isKilat: false, hasSchedule: false, away: false, selfBookingClosed: false };
+
+  test('tanpa libur: perilaku lama', () => {
+    expect(checkoutPath(base)).toBe('schedule');
+    expect(checkoutPath({ ...base, hasSchedule: true })).toBe('pay');
+    expect(checkoutPath({ ...base, isAutoApproval: false })).toBe('review');
+    expect(checkoutPath({ ...base, isKilat: true })).toBe('schedule');
+  });
+
+  test('libur: HANYA Kilat jalur otomatis yang dialihkan — termasuk yang sudah membawa gelombang', () => {
+    expect(checkoutPath({ ...base, isKilat: true, away: true })).toBe('kilat_away');
+    expect(checkoutPath({ ...base, isKilat: true, away: true, hasSchedule: true })).toBe('kilat_away');
+    expect(checkoutPath({ ...base, away: true })).toBe('schedule');
+    expect(checkoutPath({ ...base, away: true, isAutoApproval: false, isKilat: true })).toBe('review');
+  });
+});
+
+describe('penanda jalur manual karena libur', () => {
+  const auto = {
+    submission_method: 'google_import',
+    survey_url: 'https://docs.google.com/forms/d/x',
+    detected_keywords: [],
+    voucher_code: '',
+  } as any;
+
+  test('isAutoReviewed: forced_manual_reason membuat order Google Form tetap manual', () => {
+    expect(isAutoReviewed(auto)).toBe(true);
+    expect(isAutoReviewed({ ...auto, forced_manual_reason: 'admin_away' })).toBe(false);
+  });
+
+  test('HINT kilat_admin_away → teguran libur', () => {
+    expect(kilatWaveErrorKind({ hint: 'kilat_admin_away' })).toBe('away');
+    expect(kilatWaveErrorMessageKey('away')).toBe('kilatErrorWaveHoliday');
+    expect(kilatWaveErrorMessageKey('full')).toBe('errorSlotFullKilat');
+    expect(kilatWaveErrorMessageKey('closed')).toBe('kilatErrorWaveClosed');
   });
 });
 

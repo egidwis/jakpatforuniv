@@ -6,26 +6,94 @@ import {
   Clock,
   ShieldCheck,
   ArrowRight,
+  Zap,
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import type { TranslationKey } from '../i18n/translations';
 import { RateNoticeBlock } from './RateNotice';
-
-/**
- * Tiga hal yang paling sering ditanyakan peneliti ke admin. Sengaja setara
- * (tanpa kartu yang disorot): ketiganya sama pentingnya, jadi yang dijaga
- * adalah keterbacaan, bukan hierarki.
- */
-const AWARENESS_POINTS = [
-  { key: 'adsAwarenessPoint1', icon: Users },
-  { key: 'adsAwarenessPoint2', icon: Clock },
-  { key: 'adsAwarenessPoint3', icon: ShieldCheck },
-] as const;
+import { KilatRateBlock } from './KilatRateTable';
 
 export interface AdsEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
   onContinue: () => void;
+  /**
+   * Produk yang sedang dibuka pintunya. Kilat memakai cangkang yang sama
+   * (Phase 5 §5.6) — yang berbeda hanya tiga poin mekanisme, tabel tarif, dan
+   * kalimat persetujuannya.
+   */
+  product?: 'ads' | 'kilat';
 }
+
+/**
+ * Warna produk, selaras kartu produk di dashboard (Iklan biru, Kilat amber).
+ * Hanya modal ini yang berwarna per produk — formulir order di belakangnya
+ * tetap biru; penanda khas Kilat di dalamnya (pemilih gelombang, kartu
+ * Gelombang di Ringkasan) sudah amber sendiri.
+ */
+type Tone = {
+  headerTile: string;
+  pointTile: string;
+  checkbox: string;
+  cta: string;
+};
+
+const TONE: Record<'ads' | 'kilat', Tone> = {
+  ads: {
+    headerTile: 'bg-jfu-primary text-white shadow-md shadow-jfu-primary/25',
+    pointTile: 'bg-jfu-primary/10 text-jfu-primary',
+    checkbox: 'text-jfu-primary accent-jfu-primary focus-visible:ring-jfu-primary',
+    cta: 'bg-jfu-primary hover:bg-jfu-dark focus-visible:ring-jfu-primary',
+  },
+  kilat: {
+    headerTile: 'bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-md shadow-orange-500/25',
+    pointTile: 'bg-amber-50 text-amber-600',
+    checkbox: 'text-amber-600 accent-amber-600 focus-visible:ring-amber-600',
+    cta: 'bg-amber-600 hover:bg-amber-700 focus-visible:ring-amber-600',
+  },
+};
+
+type Copy = {
+  icon: typeof Radio;
+  title: TranslationKey;
+  subtitle: TranslationKey;
+  points: Array<{ icon: typeof Users; title: TranslationKey; desc: TranslationKey }>;
+  checkbox: TranslationKey;
+  cta: TranslationKey;
+};
+
+/**
+ * Tiga poin per produk = hal yang paling sering ditanyakan peneliti ke admin.
+ * Sengaja setara (tanpa kartu yang disorot): ketiganya sama pentingnya, jadi
+ * yang dijaga adalah keterbacaan, bukan hierarki.
+ */
+const COPY: Record<'ads' | 'kilat', Copy> = {
+  ads: {
+    icon: Radio,
+    title: 'adsAwarenessModalTitle',
+    subtitle: 'adsAwarenessModalSubtitle',
+    points: [
+      { icon: Users, title: 'adsAwarenessPoint1Title', desc: 'adsAwarenessPoint1Desc' },
+      { icon: Clock, title: 'adsAwarenessPoint2Title', desc: 'adsAwarenessPoint2Desc' },
+      { icon: ShieldCheck, title: 'adsAwarenessPoint3Title', desc: 'adsAwarenessPoint3Desc' },
+    ],
+    checkbox: 'adsAwarenessCheckboxLabel',
+    cta: 'adsAwarenessContinueBtn',
+  },
+  kilat: {
+    icon: Zap,
+    title: 'kilatEntryModalTitle',
+    subtitle: 'kilatEntryModalSubtitle',
+    points: [
+      // Sama dengan Iklan: tiga hal yang paling sering ditanyakan, konteksnya push.
+      { icon: Users, title: 'kilatEntryPoint1Title', desc: 'kilatEntryPoint1Desc' },
+      { icon: Clock, title: 'kilatEntryPoint2Title', desc: 'kilatEntryPoint2Desc' },
+      { icon: ShieldCheck, title: 'kilatEntryPoint3Title', desc: 'kilatEntryPoint3Desc' },
+    ],
+    checkbox: 'kilatEntryCheckboxLabel',
+    cta: 'kilatEntryContinueBtn',
+  },
+};
 
 /**
  * Pintu masuk iklan survei: hanya penjelasan mekanisme tayang, tarif, dan
@@ -35,8 +103,12 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
   isOpen,
   onClose,
   onContinue,
+  product = 'ads',
 }) => {
   const { t } = useLanguage();
+  const copy = COPY[product];
+  const tone = TONE[product];
+  const HeaderIcon = copy.icon;
   const [hasAcknowledged, setHasAcknowledged] = useState(false);
 
   useEffect(() => {
@@ -76,15 +148,15 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
 
         <div className="px-5 sm:px-7 py-4 sm:py-4.5 border-b border-gray-100 bg-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-jfu-primary text-white flex items-center justify-center shadow-md shadow-jfu-primary/25 shrink-0">
-              <Radio className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
+            <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center shrink-0 ${tone.headerTile}`}>
+              <HeaderIcon className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
             </div>
             <div className="min-w-0">
               <h2 className="text-sm sm:text-base font-extrabold text-gray-900 leading-tight truncate">
-                {t('adsAwarenessModalTitle')}
+                {t(copy.title)}
               </h2>
               <p className="text-[11px] sm:text-xs text-gray-500 truncate mt-0.5">
-                {t('adsAwarenessModalSubtitle')}
+                {t(copy.subtitle)}
               </p>
             </div>
           </div>
@@ -100,26 +172,26 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
 
         <div className="overflow-y-auto px-5 sm:px-7 py-5 sm:py-6 flex-1 min-h-0 overscroll-contain">
           <ul className="flex [flex-direction:column] gap-3 sm:[display:grid] sm:[grid-template-columns:repeat(3,minmax(0,1fr))]">
-            {AWARENESS_POINTS.map(({ key, icon: Icon }) => (
+            {copy.points.map(({ icon: Icon, title, desc }) => (
               <li
-                key={key}
+                key={title}
                 className="flex items-start gap-3.5 sm:[flex-direction:column] sm:gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
               >
                 <span
-                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-jfu-primary/10 text-jfu-primary"
+                  className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${tone.pointTile}`}
                   aria-hidden
                 >
                   <Icon className="size-5" />
                 </span>
                 <div className="min-w-0">
-                  <h3 className="text-[15px] font-bold leading-snug tracking-tight text-slate-900">{t(`${key}Title`)}</h3>
-                  <p className="mt-1 text-[13px] leading-relaxed text-slate-600">{t(`${key}Desc`)}</p>
+                  <h3 className="text-[15px] font-bold leading-snug tracking-tight text-slate-900">{t(title)}</h3>
+                  <p className="mt-1 text-[13px] leading-relaxed text-slate-600">{t(desc)}</p>
                 </div>
               </li>
             ))}
           </ul>
           <div className="mt-6">
-            <RateNoticeBlock />
+            {product === 'kilat' ? <KilatRateBlock /> : <RateNoticeBlock />}
           </div>
         </div>
 
@@ -129,10 +201,10 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
               type="checkbox"
               checked={hasAcknowledged}
               onChange={(e) => setHasAcknowledged(e.target.checked)}
-              className="mt-0.5 size-4 shrink-0 rounded border-slate-300 text-jfu-primary focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 cursor-pointer accent-jfu-primary"
+              className={`mt-0.5 size-4 shrink-0 rounded border-slate-300 focus-visible:ring-2 focus-visible:ring-offset-2 cursor-pointer ${tone.checkbox}`}
             />
             <span className="text-sm leading-relaxed text-slate-700">
-              {t('adsAwarenessCheckboxLabel')}
+              {t(copy.checkbox)}
             </span>
           </label>
 
@@ -140,13 +212,13 @@ export const AdsEntryModal: React.FC<AdsEntryModalProps> = ({
             type="button"
             disabled={!hasAcknowledged}
             onClick={onContinue}
-            className={`w-full py-3.5 px-4 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 ${
+            className={`w-full py-3.5 px-4 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
               hasAcknowledged
-                ? 'bg-jfu-primary hover:bg-jfu-dark text-white cursor-pointer'
+                ? `${tone.cta} text-white cursor-pointer`
                 : 'bg-slate-100 text-slate-600 cursor-not-allowed'
             }`}
           >
-            <span>{t('adsAwarenessContinueBtn')}</span>
+            <span>{t(copy.cta)}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>

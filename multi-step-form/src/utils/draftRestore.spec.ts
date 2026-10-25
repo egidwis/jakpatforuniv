@@ -8,7 +8,8 @@ import { SURVEY_DRAFT_KEY, LEGACY_SURVEY_DRAFT_KEY } from './constants';
  *
  *   v1  (`survey_form_draft`)     1 Survei, 2 Biodata, 3 Jadwal, 4 Review, 5 Kilat
  *   v2 lama (s/d 2026-08-10)      1 Survei, 2 Jadwal,  3 Review, 4 Kilat
- *   v2 sekarang (e7584b4)         1 Survei, 2 Ringkasan, 3 Jadwal, 4 Kilat
+ *   v2 (e7584b4 s/d Phase 5 R5)   1 Survei, 2 Ringkasan, 3 Jadwal, 4 Kilat
+ *   v2 sekarang                   1 Survei, 2 Ringkasan, 3 Jadwal (Iklan & Kilat)
  *
  * Kotak centang S&K hanya ada di layar Ringkasan, sementara layar Jadwal yang
  * MENEGAKKAN gerbangnya (`submitOrder` melempar 'terms' saat slot dikunci).
@@ -90,9 +91,9 @@ describe('restoreDraft — migrasi draft v1 ke penomoran sekarang', () => {
     expect(restoreDraft(storage).currentStep).toBe(1);
   });
 
-  it('v1 step 5 (Kilat) → 4', () => {
+  it('v1 step 5 (Kilat) → 3 (pemilih gelombang kini di Step 3)', () => {
     const storage = makeStorage(v1({ formData: readyFormData, currentStep: 5 }));
-    expect(restoreDraft(storage).currentStep).toBe(4);
+    expect(restoreDraft(storage).currentStep).toBe(3);
   });
 
   it('draft v1 dipindahkan ke kunci v2 dan kunci lamanya dibuang', () => {
@@ -126,10 +127,15 @@ describe('restoreDraft — masukan yang tidak wajar', () => {
     expect(restoreDraft(storage).currentStep).toBe(1);
   });
 
-  it('step di luar jangkauan dijepit ke 1..4', () => {
-    expect(restoreDraft(makeStorage(v2({ formData: readyFormData, currentStep: 99 }))).currentStep).toBe(4);
+  it('step di luar jangkauan dijepit ke 1..3', () => {
+    expect(restoreDraft(makeStorage(v2({ formData: readyFormData, currentStep: 99 }))).currentStep).toBe(3);
     expect(restoreDraft(makeStorage(v2({ formData: readyFormData, currentStep: 0 }))).currentStep).toBe(1);
     expect(restoreDraft(makeStorage(v2({ formData: readyFormData, currentStep: '3' }))).currentStep).toBe(1);
+  });
+
+  it('draft v2 di step 4 lama (Jadwal Kilat) → 3, layar gelombang yang sama', () => {
+    const storage = makeStorage(v2({ formData: { ...readyFormData, isKilatUpgrade: true }, currentStep: 4 }));
+    expect(restoreDraft(storage).currentStep).toBe(3);
   });
 
   it('formData dikembalikan apa adanya untuk digabung pemanggil', () => {

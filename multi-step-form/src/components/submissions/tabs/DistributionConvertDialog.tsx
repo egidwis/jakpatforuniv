@@ -6,9 +6,8 @@ import {
   calculateTotalAdCost,
   calculateIncentiveCost,
   calculateDiscount,
-  calculateAdCostPerDay,
   calculatePpn,
-  getKilatAddonCost,
+  kilatSubtotalAt,
   voucherInstantOf,
 } from '../../../utils/cost-calculator';
 import { firstScheduleRateInstant } from '../../../utils/supabase';
@@ -63,9 +62,7 @@ export function DistributionConvertDialog({
     submission.prize_per_winner || 0
   );
   const previewKilatSubtotal =
-    calculateAdCostPerDay(submission.questionCount || 0, previewAt) +
-    getKilatAddonCost(submission.voucher_code) +
-    previewIncentive;
+    kilatSubtotalAt(submission.questionCount || 0, previewAt, submission.voucher_code, previewIncentive);
   const previewRegularAdCost = calculateTotalAdCost(
     submission.questionCount || 0,
     submission.duration || 0,

@@ -598,6 +598,28 @@ export function ScheduleForm({
       ? createPortal(actionNode, actionsSlot)
       : null;
 
+  /*
+    ⚠️ GELOMBANG TAMBAHAN KILAT TIDAK BISA DIPINDAH DARI SINI (Phase 5 §5.10).
+    `KilatScheduleStep` menyimpan lewat `updateKilatSchedule`, yang menulis ke
+    `form_submissions` — itu GELOMBANG PERTAMA order. Membiarkan baris
+    perpanjangan lewat jalur ini memindahkan gelombang yang salah tanpa error.
+    Sampai ada penyimpan khusus baris perpanjangan, jalurnya: batalkan
+    gelombang tambahan itu, lalu buat yang baru.
+  */
+  if (isKilat && entry?.isExtension) {
+    return (
+      <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <p>
+          Gelombang tambahan JFU Kilat belum bisa dipindah dari sini. Batalkan gelombang ini,
+          lalu buat gelombang baru untuk order yang sama.
+        </p>
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={onCancel}>Tutup</Button>
+        </div>
+      </div>
+    );
+  }
+
   if (isKilat && entry) {
     return (
       <KilatScheduleStep
@@ -605,6 +627,7 @@ export function ScheduleForm({
         initialYmd={entry.startDate ? toWibYmd(new Date(entry.startDate)) : null}
         initialHour={entry.kilatSlotHour}
         isRescheduling
+        isPaid={entry.paymentStatus === 'paid' || entry.paymentStatus === 'completed'}
         onCancel={onCancel}
         onScheduled={onDone}
         /* Jalur Kilat memakai penyimpannya sendiri (`updateKilatSchedule`), jadi
@@ -774,6 +797,13 @@ export function ScheduleForm({
             yang dibaca setiap kotak tanggal di bawahnya — dipisahkan jauh, admin
             akan mengira kalendernya salah hitung. Kilat tidak menampilkannya
             sama sekali: ia tidak punya kolam kedua. */}
+        {isKilatOrder && isCreate && (
+          /* sql/119: RPC memaksa gelombang Kilat — jam dari jam mulai (15.00
+             di form ini), akhir +24 jam, durasi 1. Pilihan durasi diabaikan. */
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            JFU Kilat: jadwal baru selalu satu gelombang 15.00 WIB selama 24 jam. Durasi diabaikan.
+          </p>
+        )}
         {!isKilatOrder && (
           <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
             <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">

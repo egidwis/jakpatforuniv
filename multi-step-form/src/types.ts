@@ -39,11 +39,15 @@ export interface SurveyFormData {
   termsAccepted?: boolean;
 
   // JFU Kilat
-  isKilatUpgrade?: boolean;           // true jika user memilih upgrade Kilat
-  kilatStartDate?: string;            // jadwal distribusi Kilat (YYYY-MM-DD)
-  kilatStartTime?: string;            // jam mulai Kilat (HH:MM)
-  regularStartDateBackup?: string;    // backup jadwal regular untuk un-upgrade
-  regularStartTimeBackup?: string;    // backup jam regular untuk un-upgrade
+  /**
+   * Order ini JFU Kilat. Ditetapkan oleh PINTU yang dipakai (`?product=kilat`,
+   * Phase 5 §5.6) — tidak ada lagi tombol upgrade/un-upgrade di Ringkasan.
+   * Nama kolomnya warisan jalur upgrade lama dan sengaja dipertahankan: draft
+   * localStorage dan semua penghitung harga membacanya.
+   */
+  isKilatUpgrade?: boolean;
+  /** Gelombang Kilat terpilih (jam WIB, 11|15). Ditulis saat jadwal dikunci. */
+  kilatSlotHour?: number | null;
 
   // Reschedule metadata
   isReschedule?: boolean; // Flag untuk menandai ini adalah jadwal ulang
@@ -58,7 +62,12 @@ export interface CostCalculation {
   ppn: number;         // PPN 11% dari subtotal (rupiah bulat)
   totalCost: number;   // subtotal + ppn — ini yang ditagih DOKU
   discount: number;
-  kilatAddonCost?: number; // JFU Kilat add-on
+  kilatAddonCost?: number; // JFU Kilat add-on — hanya rumus lama (sebelum KILAT_TARIFF_FROM)
+  /**
+   * Order Kilat dihargai dengan tabel tarif Kilat (KILAT_RATE_SCHEDULE): `adCost`
+   * = tarif satu gelombang, tanpa add-on. Label baris memakai "JFU Kilat".
+   */
+  kilatTariff?: boolean;
   /**
    * Biaya iklan pada harga KATALOG (AD_RATE_SCHEDULE.list). `adCost` tetap
    * harga efektif — semua pemanggil lama tidak berubah arti. Selisihnya

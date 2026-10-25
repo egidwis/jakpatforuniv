@@ -124,4 +124,50 @@ describe('notify-ad-live & notify-ad-completed', () => {
     expect(callBody.htmlContent).toContain('Periode penayangan iklan perpanjangan survei <strong>Survei Transportasi</strong> (Kode: <code>DSTSA4E2</code>)');
     expect(callBody.htmlContent).toContain('responden tambahan Jakpat telah terkumpul');
   });
+
+  describe('JFU Kilat — satu gelombang, tanpa durasi (Phase 5 §5.8)', () => {
+    const kilatEnv = { ...env, VITE_SUPABASE_URL: 'https://db.test', VITE_SUPABASE_SERVICE_ROLE_KEY: 'svc' };
+    const kilatRow = (hour) => ({ ok: true, status: 200, json: async () => [{ distribution_type: 'kilat', kilat_slot_hour: hour }] });
+    const mailBody = () => JSON.parse(fetchMock.mock.calls.find((c) => !String(c[0]).startsWith('https://db.test'))[1].body);
+
+    it('mulai: subjek & isi menyebut gelombang, tanpa rentang tanggal', async () => {
+      fetchMock.mockResolvedValueOnce(kilatRow(11));
+      const req = new Request('https://submit.jakpatforuniv.com/api/notify-ad-live?k=secret-123', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: 'peneliti@ui.ac.id', title: 'Survei Kilat', ordinal: 1, schedule_id: 'sch-1',
+          start_date: '2026-10-20T04:00:00.000Z', end_date: '2026-10-21T04:00:00.000Z',
+        }),
+      });
+      expect((await handleLive({ request: req, env: kilatEnv })).status).toBe(200);
+      expect(String(fetchMock.mock.calls[0][0])).toContain('/rest/v1/ad_schedules?id=eq.sch-1');
+      const body = mailBody();
+      expect(body.subject).toBe('[Jakpat for Univ] Gelombang JFU Kilat surveimu dimulai hari ini ⚡');
+      expect(body.htmlContent).toContain('Gelombang 11.00 WIB');
+      expect(body.htmlContent).not.toContain('sampai <strong>');
+    });
+
+    it('selesai: subjek Kilat, bukan "periode penayangan"', async () => {
+      fetchMock.mockResolvedValueOnce(kilatRow(15));
+      const req = new Request('https://submit.jakpatforuniv.com/api/notify-ad-completed?k=secret-123', {
+        method: 'POST',
+        body: JSON.stringify({ email: 'peneliti@ui.ac.id', title: 'Survei Kilat', ordinal: 1, schedule_id: 'sch-2' }),
+      });
+      expect((await handleCompleted({ request: req, env: kilatEnv })).status).toBe(200);
+      const body = mailBody();
+      expect(body.subject).toBe('[Jakpat for Univ] Gelombang JFU Kilat Selesai! Waktunya Olah Data di JFU AI Analyzer 📊');
+      expect(body.htmlContent).not.toContain('Periode penayangan');
+    });
+
+    it('jenis jadwal gagal dibaca → email tetap terkirim dengan copy Iklan', async () => {
+      fetchMock.mockRejectedValueOnce(new Error('network'));
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const req = new Request('https://submit.jakpatforuniv.com/api/notify-ad-completed?k=secret-123', {
+        method: 'POST',
+        body: JSON.stringify({ email: 'peneliti@ui.ac.id', title: 'Survei', ordinal: 1, schedule_id: 'sch-3' }),
+      });
+      expect((await handleCompleted({ request: req, env: kilatEnv })).status).toBe(200);
+      expect(mailBody().subject).toBe('[Jakpat for Univ] Survei Selesai! Waktunya Olah Data di JFU AI Analyzer 📊');
+    });
+  });
 });
