@@ -56,13 +56,18 @@ export function broadcastStateOf(s: BroadcastFields, now: Date = new Date()): Br
  * Gelombang Kilat lunas/tempo yang menunggu admin menyalakan siaran — angka
  * tambahan di badge tab Kilat. Hanya yang toggle-nya SUDAH bisa dinyalakan
  * (gelombang − 60 menit): gelombang minggu depan bukan pekerjaan hari ini.
+ *
+ * ⚠️ Jendela gelombang yang SUDAH HABIS tidak dihitung lagi. Tanpa batas ini
+ * gelombang yang tak pernah ditandai (mis. #a4582981, tayang 15 Okt di celah
+ * antara backfill sql/118 dan rilis toggle) menetap di badge selamanya.
+ * Nyala terlambat tetap tersedia di laci order (KilatBroadcastToggle).
  */
 export function awaitsBroadcast(s: BroadcastFields & Pick<AdScheduleEntry, 'paymentStatus' | 'airOnCreditAt' | 'kilatSlotHour'>, now: Date = new Date()): boolean {
   if (s.kilatSlotHour == null || !s.startDate) return false;
   const paid = ['paid', 'completed'].includes((s.paymentStatus || '').toLowerCase()) || !!s.airOnCreditAt;
   if (!paid) return false;
   const st = broadcastStateOf(s, now);
-  return st.phase === 'pending' && st.canStart;
+  return st.phase === 'pending' && st.canStart && !st.isLate;
 }
 
 export type BroadcastAction = 'broadcast-start' | 'broadcast-end' | 'broadcast-undo';

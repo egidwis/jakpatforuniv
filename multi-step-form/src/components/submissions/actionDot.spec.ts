@@ -34,100 +34,65 @@ const lifecycleOf = (over: Partial<LifecycleInfo> = {}): LifecycleInfo => ({
     ...over,
 });
 
-describe('getSubmissionActionDot', () => {
-    it('order yang menunggu review tetap merah', () => {
-        expect(getSubmissionActionDot(lifecycleOf({ displayStatus: 'in_review' }))?.type).toBe('red');
+/*
+  26 Okt 2026 — titik MERAH = order yang dihitung badge tab Iklan/Kilat
+  (`fetchAdminQueue`), tidak lebih. `queueReason` adalah satu-satunya
+  pemicunya; di luar antrean titik paling banter ABU (bolanya di peneliti).
+*/
+describe('getSubmissionActionDot — merah hanya dari antrean admin', () => {
+    it.each([
+        ['review', 'Perlu tindakan di tab Review'],
+        ['schedule', 'Perlu tindakan: Tetapkan jadwal'],
+        ['invoice', 'Perlu tindakan: Reservasi tanpa tagihan hidup'],
+        ['broadcast', 'Perlu tindakan: Nyalakan siaran Kilat'],
+    ] as const)('alasan %s → MERAH berlabel', (reason, label) => {
+        expect(getSubmissionActionDot(lifecycleOf({ stage: 'paid', isPaid: true }), reason)).toEqual({ type: 'red', label });
     });
 
-    it('order yang menunggu jadwal / perlu tagihan tetap merah', () => {
-        expect(getSubmissionActionDot(lifecycleOf())?.type).toBe('red');
+    it('tanpa alasan antrean, tidak ada keadaan yang memberi MERAH', () => {
+        const states: Partial<LifecycleInfo>[] = [
+            { displayStatus: 'in_review' },
+            { displayStatus: 'rejected' },
+            {},
+            { isActuallyExpired: true },
+            { stage: 'reserved_expired' },
+            { stage: 'paid', isPaid: true, needsScheduleFollowUp: true },
+        ];
+        for (const over of states) {
+            expect(getSubmissionActionDot(lifecycleOf(over))?.type).not.toBe('red');
+        }
     });
 
-    it('order yang menunggu pembayaran peneliti memberi ABU, bukan merah', () => {
-        // Tagihan sudah terbit, admin tidak perlu aksi apa-apa -> indikator abu-abu
+    it('order DITOLAK → ABU "Menunggu perbaikan peneliti"', () => {
+        expect(getSubmissionActionDot(lifecycleOf({ displayStatus: 'rejected' })))
+            .toEqual({ type: 'gray', label: 'Menunggu perbaikan peneliti' });
+    });
+
+    it('in_review di luar antrean (artefak bertanggal pra-review) → tanpa titik', () => {
+        expect(getSubmissionActionDot(lifecycleOf({ displayStatus: 'in_review' }))).toBeNull();
+    });
+
+    it('order yang menunggu pembayaran peneliti memberi ABU', () => {
         const dot = getSubmissionActionDot(lifecycleOf({ stage: 'awaiting_payment', isPending: true, isActuallyExpired: false }));
         expect(dot).toEqual({ type: 'gray', label: 'Menunggu pembayaran peneliti' });
     });
 
-    it('slot kedaluwarsa memberi MERAH, bukan abu-abu', () => {
-        // Slot kedaluwarsa memerlukan tindakan admin (ganti tanggal / batalkan / buat tagihan baru) -> merah
-        const dot = getSubmissionActionDot(lifecycleOf({ isActuallyExpired: true }));
-        expect(dot).toEqual({ type: 'red', label: 'Perlu tindakan: Slot kedaluwarsa' });
+    it('slot kedaluwarsa di luar antrean → ABU', () => {
+        expect(getSubmissionActionDot(lifecycleOf({ isActuallyExpired: true })))
+            .toEqual({ type: 'gray', label: 'Slot kedaluwarsa' });
     });
 
-    it('order lunas yang halamannya masih draft TIDAK memberi titik', () => {
-        // Dulu: merah "Perlu tindakan: Publikasikan Halaman".
-        const dot = getSubmissionActionDot(lifecycleOf({
+    it('order lunas — halaman draft atau banner bawaan — TIDAK memberi titik (P5)', () => {
+        expect(getSubmissionActionDot(lifecycleOf({
             stage: 'paid', isPaid: true, canBuildPage: true, pageStatus: 'drafted',
-        }));
-        expect(dot).toBeNull();
-    });
-
-    it('order tayang yang bannernya masih bawaan TIDAK memberi titik', () => {
-        // Dulu: merah "Perlu tindakan: Upload Banner Iklan" — 2 order di
-        // produksi, keduanya sudah dihitung pil papan Jadwal.
-        const dot = getSubmissionActionDot(lifecycleOf({
+        }))).toBeNull();
+        expect(getSubmissionActionDot(lifecycleOf({
             stage: 'live', isPaid: true, canBuildPage: true, pageStatus: 'live',
-        }));
-        expect(dot).toBeNull();
+        }))).toBeNull();
     });
 
     it('order spam / dibatalkan tetap senyap', () => {
         expect(getSubmissionActionDot(lifecycleOf({ displayStatus: 'spam' }))).toBeNull();
         expect(getSubmissionActionDot(lifecycleOf({ stage: 'cancelled' }))).toBeNull();
-    });
-});
-
-describe('getSubmissionActionDot — reservasi menahan kuota, tagihan mati', () => {
-    /*
-      Bug yang dilaporkan: tagihan dibatalkan sementara reservasi masih
-      menahan slot, dan daftar admin tidak memberi tanda apa pun.
-
-      Sebabnya STRUKTURAL: deriveLifecycle hanya menerima kolom
-      form_submissions, jadi fungsi ini tidak pernah melihat ad_schedules.
-      Input yang hilang, bukan cabang yang hilang.
-    */
-    it('reservasi menahan kuota tanpa tagihan hidup → MERAH', () => {
-        const dot = getSubmissionActionDot(lifecycleOf({
-            stage: 'paid', isPaid: true, needsScheduleFollowUp: true,
-        }));
-        expect(dot).toEqual({ type: 'red', label: 'Perlu tindakan: Reservasi tanpa tagihan hidup' });
-    });
-
-    /*
-      ⚠️ TES YANG MENGUNCI KOREKSI 2026-09-12.
-
-      Diukur ke produksi: 24 jadwal bertanggal depan ber-slot_booked_by, dan
-      SEMUANYA payment_status='paid'. Syarat dot versi pertama spec (tanpa
-      klausa "belum lunas") akan menyalakan 24 titik merah yang seluruhnya
-      tidak punya pekerjaan — persis kegagalan yang dikutip lifecycle.ts:233
-      sebagai pelajaran ("menagih admin yang salah").
-
-      Klausa "belum lunas" ditegakkan di sisi PERAKIT sinyal (InternalDashboard);
-      di sini yang dijaga adalah kontraknya: sinyal false = diam.
-    */
-    it('tanpa sinyal → tidak ada titik tambahan (order lunas tetap diam)', () => {
-        const dot = getSubmissionActionDot(lifecycleOf({
-            stage: 'paid', isPaid: true, needsScheduleFollowUp: false,
-        }));
-        expect(dot).toBeNull();
-    });
-
-    it('sinyal TIDAK menang atas pekerjaan review', () => {
-        // Review tetap presedens tertinggi — dot-nya sudah merah, dan
-        // labelnya tidak boleh tertukar.
-        const dot = getSubmissionActionDot(lifecycleOf({
-            displayStatus: 'in_review', needsScheduleFollowUp: true,
-        }));
-        expect(dot?.label).toBe('Perlu tindakan di tab Review');
-    });
-
-    it('order spam/dibatalkan tetap senyap meski sinyalnya menyala', () => {
-        expect(getSubmissionActionDot(lifecycleOf({
-            displayStatus: 'spam', needsScheduleFollowUp: true,
-        }))).toBeNull();
-        expect(getSubmissionActionDot(lifecycleOf({
-            stage: 'cancelled', needsScheduleFollowUp: true,
-        }))).toBeNull();
     });
 });

@@ -43,6 +43,7 @@ import {
 import { cn } from '@/lib/utils';
 import type { SurveySubmission, PaymentState, ExistingPage, FormAuditResult } from './types';
 import { deriveLifecycle, getSubmissionActionDot, isReviewDecisionLocked } from './lifecycle';
+import type { QueueReason } from '../../utils/adminQueue';
 import { resetPageWarningOf, RESET_PAGE_STATE_LABEL, RESET_PAGE_STATE_NOTE } from './resetPageWarning';
 import { ReviewStatusChip } from './ReviewStatusChip';
 import { DivertedAwayChip } from './AdminAwayToggle';
@@ -110,6 +111,8 @@ type SubView =
 
 interface SubmissionDetailSheetProps {
   submission: SurveySubmission | null;
+  /** Alasan order ini di antrean admin — sumber titik merah tab, sama dengan badge. */
+  queueReason?: QueueReason | null;
   paymentData: PaymentState;
   existingPage?: ExistingPage;
   isScheduled: boolean;
@@ -167,6 +170,7 @@ export function SubmissionDetailSheet({
   onExtendCreated,
   variant = 'sheet',
   clientTier,
+  queueReason = null,
 }: SubmissionDetailSheetProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>('info');
   const [reviewNote, setReviewNote] = useState('');
@@ -329,8 +333,15 @@ export function SubmissionDetailSheet({
     lifecycle.stage !== 'completed' &&
     lifecycle.stage !== 'page_scheduled';
 
-  const actionDot = getSubmissionActionDot(lifecycle);
-  const scheduleDot = !isReviewActive && isScheduleActive ? actionDot : null;
+  // Titik tab mengikuti antrean admin (badge): merah hanya bila order ini
+  // dihitung. Review → tab Review; jadwal/tagihan/siaran → tab Jadwal & Bayar.
+  const actionDot = getSubmissionActionDot(lifecycle, queueReason);
+  const reviewDotType: 'red' | 'gray' | null = queueReason === 'review'
+    ? 'red'
+    : !queueReason && isRejected ? 'gray' : null;
+  const scheduleDot = queueReason
+    ? (queueReason !== 'review' ? actionDot : null)
+    : !isReviewActive && isScheduleActive ? actionDot : null;
   const scheduleDotType: 'red' | 'gray' | null = scheduleDot?.type ?? null;
 
   // Tab Page TIDAK punya titik notifikasi. Pekerjaan halaman dikerjakan admin
@@ -358,10 +369,15 @@ export function SubmissionDetailSheet({
           >
             <Icon className="w-3.5 h-3.5" />
             {tab.label}
-            {isReviewTab && isReviewActive && (
-              <span className="relative flex h-2 w-2 ml-0.5" title="Review aktif / perlu tindakan">
+            {isReviewTab && reviewDotType === 'red' && (
+              <span className="relative flex h-2 w-2 ml-0.5" title="Review perlu tindakan">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+              </span>
+            )}
+            {isReviewTab && reviewDotType === 'gray' && (
+              <span className="relative flex h-2 w-2 ml-0.5" title="Menunggu perbaikan peneliti">
+                <span className="inline-flex rounded-full h-2 w-2 bg-slate-400"></span>
               </span>
             )}
             {isScheduleTab && scheduleDotType === 'red' && (

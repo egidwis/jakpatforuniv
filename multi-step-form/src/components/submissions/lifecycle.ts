@@ -2,6 +2,7 @@ import type { LifecycleStage } from '../../lib/status-tokens';
 import type { SurveySubmission, PaymentState, ExistingPage } from './types';
 import { toWibYmd, isPaymentTooLateForDate } from '../../utils/airing-window';
 import { isSlotHoldReleased } from '../../utils/slotHold';
+import type { QueueReason } from '../../utils/adminQueue';
 
 // ─────────────────────────────────────────────────────────────
 // Single source of truth for submission lifecycle derivation.
@@ -261,96 +262,58 @@ export interface ActionDot {
   label: string;
 }
 
+/** Label titik MERAH per alasan antrean (`adminQueue.ts`). */
+export const QUEUE_DOT_LABEL: Record<QueueReason, string> = {
+  review: 'Perlu tindakan di tab Review',
+  schedule: 'Perlu tindakan: Tetapkan jadwal',
+  invoice: 'Perlu tindakan: Reservasi tanpa tagihan hidup',
+  broadcast: 'Perlu tindakan: Nyalakan siaran Kilat',
+};
+
 /**
- * Titik notifikasi di baris daftar Submissions.
+ * Titik notifikasi di baris daftar Submissions (dan tab laci order).
  *
- * DUA sumbu, bukan tiga: Review dan Jadwal/Pembayaran. Sumbu HALAMAN sengaja
- * tidak ikut — pekerjaannya milik admin lain dan rumahnya papan Jadwal. Lihat
- * catatan panjang di badan fungsi ini.
+ * ⚠️ MERAH = ADA DI ANTREAN ADMIN, TIDAK LEBIH. `queueReason` datang dari
+ * `fetchAdminQueue` — sumber yang SAMA dengan angka di tab Iklan/Kilat. Dulu
+ * titik dan badge punya aturan sendiri-sendiri, jadi keduanya menyimpang ke dua
+ * arah (26 Okt 2026): gelombang Kilat menunggu siaran & order menunggu jadwal
+ * admin dihitung badge tanpa titik, sedangkan order DITOLAK, slot kedaluwarsa,
+ * dan `in_review` bertanggal (artefak pra-review) bertitik merah tanpa dihitung.
  *
- * Sesudah sumbu halaman dicabut, `lifecycle` sendirian sudah memuat segalanya —
- * parameter `submission` dan `existingPage` yang dulu ada tidak lagi dibaca.
+ * Di luar antrean, titik paling banter ABU: bolanya di peneliti.
+ *
+ * Sumbu HALAMAN sengaja tidak ikut — pekerjaannya milik admin lain dan
+ * rumahnya papan Jadwal (P5).
  */
-export function getSubmissionActionDot(lifecycle: LifecycleInfo): ActionDot | null {
+export function getSubmissionActionDot(
+  lifecycle: LifecycleInfo,
+  queueReason: QueueReason | null = null,
+): ActionDot | null {
+  if (queueReason) return { type: 'red', label: QUEUE_DOT_LABEL[queueReason] };
+
   const { displayStatus } = lifecycle;
-  const isNeedReview = !displayStatus || displayStatus === 'in_review' || displayStatus === 'pending';
-  const isRejected = displayStatus === 'rejected';
-  const isReviewActive = isNeedReview || isRejected;
+  if (displayStatus === 'rejected') return { type: 'gray', label: 'Menunggu perbaikan peneliti' };
 
-  if (isReviewActive) {
-    return {
-      type: 'red',
-      label: isRejected ? 'Menunggu perbaikan peneliti' : 'Perlu tindakan di tab Review',
-    };
-  }
+  // Keadaan akhir — diukur lewat `stage` supaya `slot_cancelled` (sumbu
+  // review-nya tetap 'approved') ikut tertangkap.
+  if (displayStatus === 'spam' || lifecycle.stage === 'cancelled') return null;
 
-  // Keadaan akhir — tidak ada yang perlu ditindak. Diukur lewat `stage`, bukan
-  // `displayStatus`, supaya `slot_cancelled` (yang sumbu review-nya tetap
-  // 'approved') ikut tertangkap; kalau tidak, ia lolos ke cabang jadwal di
-  // bawah dan berteriak "Menunggu Pembayaran" untuk slot yang sudah dilepas.
-  if (displayStatus === 'spam' || lifecycle.stage === 'cancelled') {
-    return null;
-  }
+  // Masih "review" tapi tidak di antrean: `in_review` bertanggal (artefak era
+  // sebelum review, adminQueue.ts) atau disingkirkan peneliti. Bukan pekerjaan.
+  if (!displayStatus || displayStatus === 'in_review' || displayStatus === 'pending') return null;
 
-  /*
-    Reservasi menahan kuota harian, tapi tidak ada tagihan hidup yang akan
-    membayarnya. Slotnya terkunci untuk peneliti lain tanpa ada yang bergerak,
-    dan hanya admin yang bisa melepaskannya (jadwal admin tidak pernah lepas
-    sendiri — slotHold.ts).
-
-    ⚠️ LETAKNYA MENENTUKAN. Sesudah cabang review & keadaan akhir: order yang
-    masih perlu di-review sudah merah karena alasan yang lebih mendesak, dan
-    order spam/batal tidak perlu ditindak sama sekali. Memindahkannya ke atas
-    akan menukar label yang dibaca admin.
-
-    ⚠️ Ketiga klausanya (menahan kuota, tanggal belum lewat, BELUM LUNAS)
-    ditegakkan perakit sinyal di InternalDashboard, bukan di sini. Fungsi ini
-    hanya menyalakan apa yang sudah diputuskan — lihat `ScheduleSignals`.
-  */
-  if (lifecycle.needsScheduleFollowUp) {
-    return { type: 'red', label: 'Perlu tindakan: Reservasi tanpa tagihan hidup' };
-  }
-
-  // Dot status untuk tab Jadwal & Bayar:
   const isScheduleActive =
-    !isReviewActive &&
-    displayStatus !== 'spam' &&
     !lifecycle.isPaid &&
     lifecycle.stage !== 'live' &&
     lifecycle.stage !== 'completed' &&
     lifecycle.stage !== 'page_scheduled';
+  if (!isScheduleActive) return null;
 
-  // ⚠️ SUMBU HALAMAN SENGAJA TIDAK DIHITUNG DI SINI — lihat P5.
-  //
-  // Dulu ada cabang ketiga: banner masih bawaan atau halaman masih draft →
-  // titik MERAH. Ia dicabut karena menagih admin yang salah: yang melayani
-  // reservasi bukan orang yang membuat halaman, dan daftar ini rumahnya.
-  // Pekerjaan halaman punya rumah yang lebih baik di papan Jadwal — pil
-  // berhitung yang bisa disaring, plus editor banner & tombol terbit di
-  // drawernya (`paidPageNotReachable`, `needsBannerSwap`).
-  //
-  // Diukur sebelum dicabut: cabang itu menyala untuk 2 order, keduanya
-  // pekerjaan banner yang SUDAH dihitung papan. Yang cabang publikasi tangkap:
-  // NOL — sql/40 menerbitkan halaman otomatis saat lunas, jadi halaman milik
-  // order survei tidak pernah lahir sebagai draft.
-  //
-  // Efek samping yang ikut sembuh: cabang itu dulu duduk DI ANTARA dua cabang
-  // `isScheduleActive`, jadi order yang slotnya kedaluwarsa tapi bannernya
-  // bawaan mendapat titik MERAH halaman — menutupi titik ABU "slot kedaluwarsa"
-  // yang seharusnya muncul. Cabang abu di bawah kini benar-benar terjangkau.
-  if (isScheduleActive) {
-    // Menunggu pembayaran peneliti: invoice sudah terbit & menunggu dibayar.
-    // Admin tidak perlu melakukan tindakan apa-apa -> titik ABU-ABU.
-    if (lifecycle.stage === 'awaiting_payment' || (lifecycle.isPending && !lifecycle.isActuallyExpired)) {
-      return { type: 'gray', label: 'Menunggu pembayaran peneliti' };
-    }
-    // Slot kedaluwarsa: batas waktu pemesanan / pembayaran lewat.
-    // Admin PERLU melakukan tindakan (ganti tanggal / tagih baru) -> titik MERAH.
-    if (lifecycle.isActuallyExpired || lifecycle.stage === 'reserved_expired') {
-      return { type: 'red', label: 'Perlu tindakan: Slot kedaluwarsa' };
-    }
-    return { type: 'red', label: 'Perlu tindakan: Jadwal / Tagihan belum selesai' };
+  if (lifecycle.stage === 'awaiting_payment' || (lifecycle.isPending && !lifecycle.isActuallyExpired)) {
+    return { type: 'gray', label: 'Menunggu pembayaran peneliti' };
   }
-
-  return null;
+  if (lifecycle.isActuallyExpired || lifecycle.stage === 'reserved_expired') {
+    return { type: 'gray', label: 'Slot kedaluwarsa' };
+  }
+  return { type: 'gray', label: 'Menunggu peneliti menyelesaikan jadwal' };
 }
