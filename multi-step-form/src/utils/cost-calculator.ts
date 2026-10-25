@@ -495,13 +495,13 @@ export function getVoucherInfo(
     if (KILAT_VOUCHER_CODES.includes(upperCode)) {
       // Kode ambassador baru memotong sejak tarif Kilat baru (opsi A, 16 Okt).
       return isKilatTariffActive(atMs)
-        ? { isValid: true, message: 'Diskon 10% dari tarif JFU Kilat (kode ambassador)', discount: 10 }
-        : { isValid: false, message: 'Kode ambassador belum memotong harga JFU Kilat saat ini.', isError: false };
+        ? { isValid: true, message: 'Diskon 10% dari tarif Kilat Survei (kode ambassador)', discount: 10 }
+        : { isValid: false, message: 'Kode ambassador belum memotong harga Kilat Survei saat ini.', isError: false };
     }
     if (OFFICIAL_VOUCHER_CODES.includes(upperCode)) {
       return {
         isValid: false,
-        message: 'Kode ini tidak berlaku untuk JFU Kilat. Kilat hanya menerima kode ambassador.',
+        message: 'Kode ini tidak berlaku untuk Kilat Survei. Kilat Survei hanya menerima kode ambassador.',
         discount: 0,
         isError: true,
       };

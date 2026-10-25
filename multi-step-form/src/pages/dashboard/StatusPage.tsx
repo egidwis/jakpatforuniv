@@ -1071,7 +1071,7 @@ export function StatusPage() {
                                                         />
                                                     </Phase>
 
-                                                    <Phase number={2} title={t('airingPeriodLabel')} active={reachedPhase >= 2} lineActive={reachedPhase >= 3}>
+                                                    <Phase number={2} title={t(submission.distribution_type === 'kilat' ? 'airingPeriodLabelKilat' : 'airingPeriodLabel')} active={reachedPhase >= 2} lineActive={reachedPhase >= 3}>
                                                         <SchedulePhase
                                                             submission={submission}
                                                             kilatOpen={kilatOpen}

@@ -40,7 +40,7 @@ export function orderMoneyLines(
   // gelombang", tanpa add-on. Rumus lama tetap "Iklan" + baris add-on di bawah.
   if (ctx.isKilat && calc.kilatTariff) {
     lines.push({
-      label: 'JFU Kilat',
+      label: 'Kilat Survei',
       labelKey: 'costLineKilat',
       hint: `${ctx.questionCount} Qs · 1 gelombang`,
       hintKey: 'costHintQsOneWave',

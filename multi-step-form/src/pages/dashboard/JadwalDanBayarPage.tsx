@@ -1281,7 +1281,9 @@ export function JadwalDanBayarPage() {
             <DialogDescription className="pt-1 leading-relaxed">
               <strong className="font-semibold text-gray-900">{entry.title || t('untitledSurvey')}</strong>
               {' — '}
-              {entry.isExtension ? t('cancelExtensionConfirmBody') : t('cancelOrderConfirmBody')}
+              {entry.isExtension
+                ? t(entry.distributionType === 'kilat' ? 'cancelExtensionConfirmBodyKilat' : 'cancelExtensionConfirmBody')
+                : t('cancelOrderConfirmBody')}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">

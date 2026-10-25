@@ -309,7 +309,7 @@ export function deriveScheduleMoney(
           ? (isKilat ? rate.list : rate.list * duration)
           : grossAdCost;
         lines.push(kilatTariff ? {
-          label: 'JFU Kilat',
+          label: 'Kilat Survei',
           labelKey: 'costLineKilat',
           hint: '1 gelombang',
           hintKey: 'costHintOneWave',
@@ -410,7 +410,7 @@ export function deriveScheduleMoney(
 
   const lines: MoneyLine[] = [
     kilatTariff ? {
-      label: 'JFU Kilat',
+      label: 'Kilat Survei',
       labelKey: 'costLineKilat',
       hint: `${questionCount} Qs · 1 gelombang`,
       hintKey: 'costHintQsOneWave',

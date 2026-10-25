@@ -38,14 +38,37 @@ export async function fetchAdminAway(env, fetchImpl = fetch) {
     }
 }
 
+/**
+ * Kosakata per produk. Kilat Survei bukan iklan yang tayang per hari — ia satu
+ * gelombang push, dan gelombangnya ditugaskan tim untuk order jalur manual.
+ * `product` dikirim wizard; nilai tak dikenal = Iklan (perilaku lama).
+ */
+export function productCopy(product) {
+    return product === 'kilat'
+        ? {
+            orderName: 'Kilat Survei',
+            readyFor: 'siap dikirim lewat push Kilat Survei',
+            teamAssigns: 'menugaskan gelombang push',
+            subjectAssigns: 'tim kami menugaskan gelombang',
+            awayAfter: 'Gelombang Kilat Survei kami tugaskan setelah tim kembali.',
+        }
+        : {
+            orderName: 'Iklan',
+            readyFor: 'siap untuk diiklankan',
+            teamAssigns: 'menetapkan tanggal tayang',
+            subjectAssigns: 'tim kami menjadwalkan',
+            awayAfter: 'Iklan yang sudah terjadwal tetap tayang otomatis.',
+        };
+}
+
 /** Kotak pemberitahuan libur — pesan admin di-escape (teks bebas dari admin). */
-export function awayNoticeHtml(away) {
+export function awayNoticeHtml(away, product) {
     if (!away) return '';
     const quoted = away.label ? `: "${escapeHtml(away.label)}"` : '';
     return `
             <div style="border:1px solid #fcd34d; background:#fffbeb; border-radius:8px; padding:12px 14px; margin:12px 0; color:#78350f;">
               Saat ini tim admin sedang libur${quoted}. Review akan kami kerjakan setelah tim kembali,
-              jadi balasan kami sedikit lebih lama dari biasanya. Iklan yang sudah terjadwal tetap tayang otomatis.
+              jadi balasan kami sedikit lebih lama dari biasanya. ${productCopy(product).awayAfter}
             </div>`;
 }
 
@@ -54,7 +77,8 @@ export function awayNoticeHtml(away) {
  * saat saklar ditutup. Review-nya SUDAH lolos — yang menunggu tim hanya
  * tanggal tayang & tagihan, jadi kalimat "akan kami review" salah di sini.
  */
-function adminScheduleMail(name, away) {
+function adminScheduleMail(name, away, product) {
+    const copy = productCopy(product);
     const awayBox = away
         ? `
             <div style="border:1px solid #fcd34d; background:#fffbeb; border-radius:8px; padding:12px 14px; margin:12px 0; color:#78350f;">
@@ -62,12 +86,12 @@ function adminScheduleMail(name, away) {
             </div>`
         : '';
     return {
-        subject: 'Pesanan Iklan diterima — tim kami menjadwalkan 🗓️',
+        subject: `Pesanan ${copy.orderName} diterima — ${copy.subjectAssigns} 🗓️`,
         html: `
           <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
             <p>Halo Kak <strong>${escapeHtml(name)}</strong>,</p>
-            <p>Terima kasih, pesanan Iklan Kakak di Jakpat for Universities sudah kami terima dan kuesionernya lolos review otomatis 🙏</p>${awayBox}
-            <p>Saat ini reservasi mandiri sedang ditutup sementara, jadi tim kami yang menetapkan tanggal tayang dan menyiapkan tagihannya — ${away
+            <p>Terima kasih, pesanan ${copy.orderName} Kakak di Jakpat for Universities sudah kami terima dan kuesionernya lolos review otomatis 🙏</p>${awayBox}
+            <p>Saat ini reservasi mandiri sedang ditutup sementara, jadi tim kami yang ${copy.teamAssigns} dan menyiapkan tagihannya — ${away
                 ? 'setelah tim kembali.'
                 : 'maksimal 1 hari kerja.'}</p>
             <p>Kakak tidak perlu memilih jadwal sendiri. Tagihannya akan muncul di halaman Order Saya dan kami kabari lewat e-mail.</p>
@@ -83,7 +107,8 @@ function adminScheduleMail(name, away) {
 export async function onRequestPost(context) {
     try {
         const { request, env } = context;
-        const { name, email, kind } = await request.json();
+        const { name, email, kind, product } = await request.json();
+        const copy = productCopy(product);
 
 
         if (!email || !name) {
@@ -92,14 +117,14 @@ export async function onRequestPost(context) {
 
         const away = await fetchAdminAway(env);
 
-        const result = await sendMail(env, kind === 'admin_schedule' ? { to: email, ...adminScheduleMail(name, away) } : {
+        const result = await sendMail(env, kind === 'admin_schedule' ? { to: email, ...adminScheduleMail(name, away, product) } : {
             to: email,
-            subject: 'Terima kasih telah submit Form Order Iklan di Jakpat for Universities 🙏',
+            subject: `Terima kasih telah submit Form Order ${copy.orderName} di Jakpat for Universities 🙏`,
             html: `
           <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
             <p>Halo Kak <strong>${escapeHtml(name)}</strong>,</p>
-            <p>Terima kasih telah submit Form Order Iklan di Jakpat for Universities 🙏</p>${awayNoticeHtml(away)}
-            <p>Survei yang Kakak kirimkan akan kami review terlebih dahulu untuk memastikan sudah sesuai dengan ketentuan dan siap untuk diiklankan.</p>
+            <p>Terima kasih telah submit Form Order ${copy.orderName} di Jakpat for Universities 🙏</p>${awayNoticeHtml(away, product)}
+            <p>Survei yang Kakak kirimkan akan kami review terlebih dahulu untuk memastikan sudah sesuai dengan ketentuan dan ${copy.readyFor}.</p>
             <p>Mohon kesediaannya untuk menunggu ya. ${away
                 ? 'Kami akan menghubungi Kakak kembali melalui e-mail setelah tim kembali dan proses review selesai.'
                 : 'Kami akan segera menghubungi Kakak kembali melalui e-mail setelah proses review selesai.'}</p>

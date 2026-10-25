@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendMail } from './_mail.js';
+import { waveLabel } from './_kilatScheduleInfo.js';
 
 /**
  * Mengabari peneliti kalau JADWAL TAYANGNYA berubah — dibatalkan tim, atau
@@ -136,7 +137,7 @@ export async function onRequestPost(context) {
         // bisa menceritakan keadaan yang tidak ada di layar mana pun.
         const { data: sched, error: schedErr } = await supabase
             .from('ad_schedules')
-            .select('id, submission_id, ordinal, booking_id, start_date, end_date, status, review_status, payment_status, slot_booked_by')
+            .select('id, submission_id, ordinal, booking_id, start_date, end_date, status, review_status, payment_status, slot_booked_by, distribution_type, kilat_slot_hour')
             .eq('id', scheduleId)
             .single();
 
@@ -145,6 +146,9 @@ export async function onRequestPost(context) {
         }
 
         const airing = (sched.status || '').toLowerCase();
+        // Kilat Survei = satu gelombang push (Phase 5 §5.8), bukan jadwal tayang.
+        const isKilat = sched.distribution_type === 'kilat';
+        const wave = isKilat ? ` · ${waveLabel(sched.kilat_slot_hour ?? null)}` : '';
         const isPaid = schedulePaid(sched);
 
         const gate = shouldSend(sched, event);
@@ -201,11 +205,13 @@ export async function onRequestPost(context) {
                 ? ''
                 : `<p style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;">Kalau tagihan untuk tanggal ini sudah terlanjur Kakak terima, <strong>tagihan itu tidak berlaku lagi</strong> — <strong>jangan bayar link yang lama</strong>. Link pembayaran lama bisa saja masih terbuka, tapi uang yang masuk ke sana tidak otomatis menghidupkan jadwal yang sudah dibatalkan.</p>`;
 
-            subject = 'Jadwal tayang iklanmu dibatalkan — Jakpat for Universities';
+            subject = isKilat
+                ? 'Gelombang Kilat Survei-mu dibatalkan — Jakpat for Universities'
+                : 'Jadwal tayang surveimu dibatalkan — Jakpat for Universities';
             bodyHtml = `
                 <p>Halo Kak <strong>${name}</strong>,</p>
-                <p>Kami mengabari bahwa <strong>tim Jakpat membatalkan jadwal tayang</strong>${surveyLine}${when ? ` yang dijadwalkan <strong>${when}</strong>` : ''}.</p>
-                <p>Kuota tanggal itu sudah kami bebaskan. <strong>Kuesionermu tetap lolos review</strong> — yang batal hanya tanggalnya, bukan pesanannya, dan Kakak tidak perlu mengajukan ulang apa pun.</p>
+                <p>Kami mengabari bahwa <strong>tim Jakpat membatalkan ${isKilat ? 'gelombang push Kilat Survei' : 'jadwal tayang'}</strong>${surveyLine}${when ? ` yang dijadwalkan <strong>${when}${wave}</strong>` : ''}.</p>
+                <p>${isKilat ? 'Kursi gelombang itu' : 'Kuota tanggal itu'} sudah kami bebaskan. <strong>Kuesionermu tetap lolos review</strong> — yang batal hanya tanggalnya, bukan pesanannya, dan Kakak tidak perlu mengajukan ulang apa pun.</p>
                 ${unpaidNote}
                 <p>Tim kami akan menghubungi Kakak untuk menetapkan tanggal penggantinya. Kalau butuh penjelasan lebih dulu, balas email ini atau chat Mimin lewat dashboard.</p>
                 ${bookingLine}
@@ -225,16 +231,18 @@ export async function onRequestPost(context) {
                 : `<p>Kalau tagihan untuk tanggal lama sudah terlanjur Kakak terima, <strong>tagihan itu tidak berlaku lagi</strong>. Tunggu tagihan pengganti dari kami — jangan bayar link yang lama.</p>`;
 
             const liveNote = airing === 'live'
-                ? `<p style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;"><strong>Catatan:</strong> iklan ini sedang tayang saat jadwalnya kami ubah, jadi periode tayangnya ikut menyesuaikan.</p>`
+                ? `<p style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;"><strong>Catatan:</strong> survei ini sedang tayang saat jadwalnya kami ubah, jadi periode tayangnya ikut menyesuaikan.</p>`
                 : '';
 
-            subject = 'Jadwal tayang iklanmu berubah — Jakpat for Universities';
+            subject = isKilat
+                ? 'Gelombang Kilat Survei-mu dipindah — Jakpat for Universities'
+                : 'Jadwal tayang surveimu berubah — Jakpat for Universities';
             bodyHtml = `
                 <p>Halo Kak <strong>${name}</strong>,</p>
-                <p>Jadwal tayang iklan${surveyLine} baru saja <strong>kami ubah</strong>.</p>
+                <p>${isKilat ? 'Gelombang push Kilat Survei' : 'Jadwal tayang'}${surveyLine} baru saja <strong>kami ubah</strong>.</p>
                 ${from
-                    ? `<p>Dari <strong>${from}</strong> menjadi <strong>${to}</strong>.</p>`
-                    : `<p>Tanggal tayangnya sekarang <strong>${to}</strong>.</p>`}
+                    ? `<p>Dari <strong>${from}</strong> menjadi <strong>${to}${wave}</strong>.</p>`
+                    : `<p>${isKilat ? 'Gelombangnya' : 'Tanggal tayangnya'} sekarang <strong>${to}${wave}</strong>.</p>`}
                 ${liveNote}
                 ${paidNote}
                 ${bookingLine}

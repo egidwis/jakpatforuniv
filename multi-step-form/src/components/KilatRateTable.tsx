@@ -46,13 +46,12 @@ export function kilatRatePhase(nowMs: number): 'intro' | 'intro2' | 'full' {
  * `create-payment.js` memegang salinan literal yang dikunci tes paritas.
  */
 export function KilatRateBlock() {
-  const { t, language } = useLanguage();
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const tableId = useId();
   const now = Date.now();
   const tariffActive = isKilatTariffActive(now);
 
-  const columns = tariffActive ? kilatRateColumns(now) : null;
   const phase = tariffActive ? kilatRatePhase(now) : null;
 
   const title = phase === 'full' || phase === null ? t('kilatRateTitle') : t('kilatRateNoticeTitle');
@@ -60,10 +59,6 @@ export function KilatRateBlock() {
     : phase === 'intro2' ? t('kilatRateNoticeIntro2Body')
       : phase === 'full' ? t('kilatRateNoticeFullBody')
         : null;
-
-  const header = (e: AdRateEntry) => (e.introUntil
-    ? t('rateTableUntil', localizeDateVars({ date: e.introUntil }, language))
-    : t('rateTableFrom', localizeDateVars({ date: (e.from ?? '').slice(0, 10) }, language)));
 
   return (
     <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3.5">
@@ -81,59 +76,7 @@ export function KilatRateBlock() {
       </button>
 
       <div id={tableId} hidden={!open} className="mt-3 space-y-2">
-        <div className="overflow-x-auto rounded-xl border border-amber-100 bg-white">
-          <table className="w-full text-xs tabular-nums border-collapse">
-            <caption className="sr-only">{t('kilatRateTitle')}</caption>
-            <thead>
-              <tr className="text-left text-slate-600">
-                <th scope="col" className="py-2 px-2 font-semibold align-bottom">{t('rateTableQuestions')}</th>
-                {columns ? columns.map(({ entry, active }) => (
-                  <th
-                    key={entry.from ?? 'base'}
-                    scope="col"
-                    className={`py-2 px-2 font-semibold text-right align-bottom ${active ? 'text-amber-800 bg-amber-50' : ''}`}
-                  >
-                    {header(entry)}
-                  </th>
-                )) : (
-                  <th scope="col" className="py-2 px-2 font-semibold text-right align-bottom">{t('kilatRatePerWave')}</th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {AD_TIER_LABELS.map((label, tier) => (
-                <tr key={label} className="border-t border-slate-100">
-                  <th scope="row" className="py-1.5 px-2 text-left font-normal text-slate-700 whitespace-nowrap">{label}</th>
-                  {columns ? columns.map(({ entry, active }) => (
-                    <td
-                      key={entry.from ?? 'base'}
-                      className={`py-1.5 px-2 text-right ${active ? 'font-semibold text-amber-900 bg-amber-50' : 'text-slate-800'}`}
-                    >
-                      {entry.list[tier] > entry.effective[tier] && (
-                        <span className={`block text-[10px] leading-tight font-normal line-through ${active ? 'text-amber-700' : 'text-slate-500'}`}>
-                          {rb(entry.list[tier])}
-                        </span>
-                      )}
-                      {rb(entry.effective[tier])}
-                    </td>
-                  )) : (() => {
-                    const rate = kilatRateAt(TIER_SAMPLE_QUESTIONS[tier], now);
-                    const charged = rate.effective + rate.addon;
-                    const listed = rate.list + rate.addon;
-                    return (
-                      <td className="py-1.5 px-2 text-right font-semibold text-slate-900">
-                        {listed > charged && (
-                          <span className="block text-[10px] leading-tight font-normal text-slate-500 line-through">{rb(listed)}</span>
-                        )}
-                        {rb(charged)}
-                      </td>
-                    );
-                  })()}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <KilatRateTable />
 
         <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-amber-900/90 leading-relaxed">
           {tariffActive && <li>{t('rateTableSubtitle')}</li>}
@@ -141,6 +84,92 @@ export function KilatRateBlock() {
           <li>{t('rateTableNoteExcl')}</li>
         </ul>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Tabel tarif Kilat saja — dipakai `KilatRateBlock` dan tooltip tarif di kartu
+ * ringkasan order (padanan `RateTable` milik Iklan). Kolomnya mengikuti
+ * `isKilatTariffActive`: rumus lama satu kolom, atau tabel Kilat — sama
+ * dengan yang ditagih.
+ *
+ * `highlightTier` (0–4) menebalkan baris kategori soal milik peneliti.
+ */
+export function KilatRateTable({ highlightTier = -1 }: { highlightTier?: number } = {}) {
+  const { t, language } = useLanguage();
+  const now = Date.now();
+  const columns = isKilatTariffActive(now) ? kilatRateColumns(now) : null;
+  const header = (e: AdRateEntry) => (e.introUntil
+    ? t('rateTableUntil', localizeDateVars({ date: e.introUntil }, language))
+    : t('rateTableFrom', localizeDateVars({ date: (e.from ?? '').slice(0, 10) }, language)));
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-amber-100 bg-white">
+      <table className="w-full text-xs tabular-nums border-collapse">
+        <caption className="sr-only">{t('kilatRateTitle')}</caption>
+        <thead>
+          <tr className="text-left text-slate-600">
+            <th scope="col" className="py-2 px-2 font-semibold align-bottom">{t('rateTableQuestions')}</th>
+            {columns ? columns.map(({ entry, active }) => (
+              <th
+                key={entry.from ?? 'base'}
+                scope="col"
+                className={`py-2 px-2 font-semibold text-right align-bottom ${active ? 'text-amber-800 bg-amber-50' : ''}`}
+              >
+                {header(entry)}
+              </th>
+            )) : (
+              <th scope="col" className="py-2 px-2 font-semibold text-right align-bottom">{t('kilatRatePerWave')}</th>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {AD_TIER_LABELS.map((label, tier) => (
+            <tr
+              key={label}
+              aria-current={tier === highlightTier ? 'true' : undefined}
+              className="border-t border-slate-100"
+            >
+              <th
+                scope="row"
+                className={`py-1.5 px-2 text-left whitespace-nowrap ${
+                  tier === highlightTier
+                    ? 'font-bold text-slate-900 shadow-[inset_3px_0_0_theme(colors.amber.600)]'
+                    : 'font-normal text-slate-700'
+                }`}
+              >
+                {label}
+              </th>
+              {columns ? columns.map(({ entry, active }) => (
+                <td
+                  key={entry.from ?? 'base'}
+                  className={`py-1.5 px-2 text-right ${active ? 'font-semibold text-amber-900 bg-amber-50' : 'text-slate-800'}`}
+                >
+                  {entry.list[tier] > entry.effective[tier] && (
+                    <span className={`block text-[10px] leading-tight font-normal line-through ${active ? 'text-amber-700' : 'text-slate-500'}`}>
+                      {rb(entry.list[tier])}
+                    </span>
+                  )}
+                  {rb(entry.effective[tier])}
+                </td>
+              )) : (() => {
+                const rate = kilatRateAt(TIER_SAMPLE_QUESTIONS[tier], now);
+                const charged = rate.effective + rate.addon;
+                const listed = rate.list + rate.addon;
+                return (
+                  <td className="py-1.5 px-2 text-right font-semibold text-slate-900">
+                    {listed > charged && (
+                      <span className="block text-[10px] leading-tight font-normal text-slate-500 line-through">{rb(listed)}</span>
+                    )}
+                    {rb(charged)}
+                  </td>
+                );
+              })()}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

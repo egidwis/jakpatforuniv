@@ -67,7 +67,7 @@ describe('gelombang Kilat tambahan — admin = server', () => {
   test('bulan sama: satu baris tarif gelombang, tanpa hadiah', () => {
     const { admin, srv, subtotal } = both(entryOf(RILIS), null);
     expect(shape(admin)).toEqual([
-      { name: 'JFU Kilat (1 gelombang)', qty: 1, price: 750_000, category: 'Jakpat for Universities (ads)' },
+      { name: 'Kilat Survei (1 gelombang)', qty: 1, price: 750_000, category: 'Jakpat for Universities (ads)' },
     ]);
     expect(shape(admin)).toEqual(shape(srv));
     expect(sum(admin)).toBe(subtotal);

@@ -7,6 +7,7 @@ import { pickSuccessBill, type SuccessBillEvent } from '../utils/paymentSuccessB
 import { ErrorPage } from './ErrorPage';
 import { airingDayCount } from '../pages/dashboard/schedule/scheduleModel';
 import { useLanguage } from '../i18n/LanguageContext';
+import { formatWaveHour } from '../utils/kilatWaves';
 
 interface PaymentSuccessProps {
   formId?: string;
@@ -85,7 +86,7 @@ export function PaymentSuccess({ formId, scheduleId }: PaymentSuccessProps) {
    * lama tidak membawa `?schedule=`, dan bentuk lamanya wajib bertahan.
    */
   const [paidSchedule, setPaidSchedule] = useState<
-    { startDate: string | null; endDate: string | null; ordinal: number | null } | null
+    { startDate: string | null; endDate: string | null; ordinal: number | null; kilatSlotHour: number | null } | null
   >(null);
   /**
    * Status lunas TAGIHAN yang dibayar. `null` = tidak diketahui → pakai
@@ -252,6 +253,7 @@ export function PaymentSuccess({ formId, scheduleId }: PaymentSuccessProps) {
         startDate: match.startDate ?? null,
         endDate: match.endDate ?? null,
         ordinal: match.ordinal ?? null,
+        kilatSlotHour: match.kilatSlotHour ?? null,
       });
     } catch (e) {
       console.warn('Jendela jadwal yang dibayar tidak terbaca; memakai jendela order:', e);
@@ -367,6 +369,13 @@ export function PaymentSuccess({ formId, scheduleId }: PaymentSuccessProps) {
   const airingDays = airingDayCount(airingStart, airingEnd)
     ?? (paidSchedule ? null : formData.duration ?? null);
   const startText = fmtDate(airingStart);
+  // Kilat = satu gelombang push (11.00/15.00), bukan tayang 15.00 × N hari.
+  // Jam gelombangnya ikut jadwal yang dibayar, sama seperti jendela di atas.
+  const isKilat = formData.distribution_type === 'kilat';
+  const waveHour = paidSchedule ? paidSchedule.kilatSlotHour : formData.kilat_slot_hour ?? null;
+  const waveLabel = isKilat && startText && waveHour != null
+    ? t('kilatWaveLabel', { hour: formatWaveHour(waveHour) })
+    : null;
   const endText = fmtDate(airingEnd);
   /** Penanda "Jadwal ke-N" — hanya untuk ordinal >=2, sama seperti kuitansi. */
   const scheduleLabel = paidSchedule?.ordinal != null && paidSchedule.ordinal > 1
@@ -394,7 +403,13 @@ export function PaymentSuccess({ formId, scheduleId }: PaymentSuccessProps) {
           {isPaid ? (
             <>
               <p className="text-gray-600 leading-relaxed">
-                {startText && airingDays
+                {waveLabel
+                  ? t('successPaidBodyKilat', {
+                      title: formData.title || '—',
+                      start: startText ?? '—',
+                      hour: formatWaveHour(waveHour ?? 0),
+                    })
+                  : !isKilat && startText && airingDays
                   ? t('successPaidBody', {
                       title: formData.title || '—',
                       start: startText,
@@ -437,7 +452,9 @@ export function PaymentSuccess({ formId, scheduleId }: PaymentSuccessProps) {
                 )}
               </dt>
               <dd className="font-semibold text-gray-900 text-right">
-                {startText && airingDays
+                {waveLabel
+                  ? `${startText} · ${waveLabel}`
+                  : !isKilat && startText && airingDays
                   ? `${startText}, 15.00 WIB · ${airingDays} ${t('days')}`
                   : t('successNoScheduleYet')}
               </dd>

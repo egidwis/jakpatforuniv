@@ -98,3 +98,34 @@ describe('/api/send-submission-email — varian tutup reservasi mandiri (sql/125
     expect(sent[0].html).toContain('akan kami review');
   });
 });
+
+describe('/api/send-submission-email — produk Kilat Survei', () => {
+  it('review manual: nama produk Kilat Survei, tanpa kosakata iklan', async () => {
+    network(() => new Response('[]', { status: 200 }));
+    await call({ name: 'Sintya', email: 'p@x.id', product: 'kilat' });
+    expect(sent[0].subject).toContain('Form Order Kilat Survei');
+    expect(sent[0].html).toContain('push Kilat Survei');
+    expect(sent[0].html.toLowerCase()).not.toContain('iklan');
+  });
+
+  it('admin_schedule: tim menugaskan gelombang, bukan tanggal tayang', async () => {
+    network(() => new Response('[]', { status: 200 }));
+    await call({ name: 'Sintya', email: 'p@x.id', kind: 'admin_schedule', product: 'kilat' });
+    expect(sent[0].subject).toBe('Pesanan Kilat Survei diterima — tim kami menugaskan gelombang 🗓️');
+    expect(sent[0].html).toContain('menugaskan gelombang push');
+    expect(sent[0].html.toLowerCase()).not.toContain('iklan');
+  });
+
+  it('libur: kotak libur menyebut gelombang Kilat, bukan iklan terjadwal', async () => {
+    network(() => new Response(JSON.stringify([{ holiday_date: '2026-12-24', label: 'Libur' }]), { status: 200 }));
+    await call({ name: 'Sintya', email: 'p@x.id', product: 'kilat' });
+    expect(sent[0].html).toContain('Gelombang Kilat Survei kami tugaskan setelah tim kembali');
+    expect(sent[0].html.toLowerCase()).not.toContain('iklan');
+  });
+
+  it('tanpa product: email Iklan seperti dulu', async () => {
+    network(() => new Response('[]', { status: 200 }));
+    await call({ name: 'Sintya', email: 'p@x.id' });
+    expect(sent[0].subject).toContain('Form Order Iklan');
+  });
+});

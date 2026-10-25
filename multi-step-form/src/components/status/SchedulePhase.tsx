@@ -710,8 +710,8 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
             <Banner
                 tone="amber"
                 icon={<CalendarClock className={bannerIcon} />}
-                title={t('bannerTitleChooseSchedule')}
-                lines={[t('bannerSubChooseSchedule')]}
+                title={t(card.info?.isKilat ? 'bannerTitleChooseWave' : 'bannerTitleChooseSchedule')}
+                lines={[t(card.info?.isKilat ? 'bannerSubChooseWave' : 'bannerSubChooseSchedule')]}
                 cta={actionCta}
             />
         );
@@ -774,7 +774,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
             : deadlineTime && b.deadlineCause === 'slot'
             ? t('bannerSubWaitingPaymentSlot', { time: deadlineTime })
             : deadlineTime && b.deadlineCause === 'cutoff'
-                ? t('bannerSubWaitingPaymentCutoff', { time: deadlineTime })
+                ? t(card.info?.isKilat ? 'bannerSubWaitingPaymentCutoffKilat' : 'bannerSubWaitingPaymentCutoff', { time: deadlineTime })
                 : deadlineTime && b.deadlineCause === 'bill'
                     ? t('bannerSubWaitingPaymentBill', {
                         time: deadlineTime,
@@ -782,7 +782,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                             day: 'numeric', month: 'short', timeZone: WIB,
                         }),
                     })
-                    : t('bannerSubWaitingPaymentSlotsLimited');
+                    : t(card.info?.isKilat ? 'bannerSubWaitingPaymentSlotsLimitedKilat' : 'bannerSubWaitingPaymentSlotsLimited');
 
         /*
           Sebagian sudah dibayar (24 jadwal di produksi). State-nya SENGAJA

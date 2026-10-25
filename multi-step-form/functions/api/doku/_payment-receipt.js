@@ -123,9 +123,9 @@ function formatDateIndo(dateInput) {
  */
 export function receiptScheduleLabel({ start, end, duration, distributionType, kilatSlotHour }) {
   if (distributionType === 'kilat') {
-    if (!start) return 'Belum dijadwalkan (JFU Kilat)';
+    if (!start) return 'Belum dijadwalkan (Kilat Survei)';
     const wave = kilatSlotHour == null
-      ? 'JFU Kilat'
+      ? 'Kilat Survei'
       : `Gelombang ${String(kilatSlotHour).padStart(2, '0')}.00 WIB`;
     return `${formatDateIndo(start)} · ${wave}`;
   }
@@ -462,7 +462,7 @@ export function buildReceiptEmailHtml({
       </div>
 
       <p style="font-size: 13px; color: #64748b; margin: 0; line-height: 1.6;">
-        Jika Anda memiliki pertanyaan seputar jadwal penayangan iklan survei atau bantuan teknis, silakan balas email ini atau hubungi Customer Support kami.
+        Jika Anda memiliki pertanyaan seputar jadwal penayangan survei atau bantuan teknis, silakan balas email ini atau hubungi Customer Support kami.
       </p>
     </div>
 

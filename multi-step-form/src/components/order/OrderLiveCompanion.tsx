@@ -13,6 +13,7 @@ import { formatIDR } from '../../utils/currency';
 import { orderMoneyLines } from '../../utils/orderMoneyLines';
 import { CostBreakdown } from '../CostBreakdown';
 import { RateTable } from '../RateNotice';
+import { KilatRateTable } from '../KilatRateTable';
 import { isAutoApprovalPath } from '../../utils/review-path';
 import { useLanguage } from '../../i18n/LanguageContext';
 import {
@@ -64,6 +65,8 @@ export const OrderLiveCompanion: React.FC<OrderLiveCompanionProps> = ({
   const defaultCost = calculateTotalCost(quotedForm, Date.now());
   const cost = costCalculation || defaultCost;
   const activeTierIndex = getTierIndex(formData.questionCount);
+  // Kilat punya tabel tarif per gelombang sendiri — bukan tarif Iklan per hari.
+  const isKilat = !!formData.isKilatUpgrade;
 
   const getTierLabel = (count: number) => {
     const qSuffix = t('questionUnit') || 'Soal';
@@ -163,7 +166,7 @@ export const OrderLiveCompanion: React.FC<OrderLiveCompanionProps> = ({
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
                     <span>
-                      <strong className="font-semibold text-slate-800">{t('tipGeneralAudienceTitle')}</strong> {t('tipGeneralAudienceDesc')}
+                      <strong className="font-semibold text-slate-800">{t('tipGeneralAudienceTitle')}</strong> {t(isKilat ? 'tipGeneralAudienceDescKilat' : 'tipGeneralAudienceDesc')}
                     </span>
                   </li>
                 </ul>
@@ -218,11 +221,11 @@ export const OrderLiveCompanion: React.FC<OrderLiveCompanionProps> = ({
                   >
                     <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                       <div>
-                        <h6 className="text-xs font-bold text-slate-900">{t('rateTableTooltipTitle')}</h6>
+                        <h6 className="text-xs font-bold text-slate-900">{t(isKilat ? 'kilatRateTooltipTitle' : 'rateTableTooltipTitle')}</h6>
                         <p className="text-[10px] text-slate-500">{t('rateTableTooltipSubtitle')}</p>
                       </div>
                       <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
-                        {t('rateTablePerDay')}
+                        {t(isKilat ? 'kilatRatePerWave' : 'rateTablePerDay')}
                       </span>
                     </div>
 
@@ -231,10 +234,12 @@ export const OrderLiveCompanion: React.FC<OrderLiveCompanionProps> = ({
                         1 Jan 2027, harga normal dicoret. Dulu tooltip ini hanya
                         menampilkan tarif saat ini, jadi sampai 30 Nov peneliti
                         tidak pernah melihat harga baru. */}
-                    <RateTable highlightTier={activeTierIndex} showNotes={false} />
+                    {isKilat
+                      ? <KilatRateTable highlightTier={activeTierIndex} />
+                      : <RateTable highlightTier={activeTierIndex} showNotes={false} />}
 
                     <p className="text-[10px] text-slate-500 leading-relaxed">
-                      {t('rateTableTooltipNote')}
+                      {t(isKilat ? 'kilatRateTooltipNote' : 'rateTableTooltipNote')}
                     </p>
                   </TooltipContent>
                 </Tooltip>

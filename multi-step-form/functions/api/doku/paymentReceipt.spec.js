@@ -20,8 +20,8 @@ describe('receiptScheduleLabel — Kilat tanpa durasi (Phase 5 §5.8)', () => {
 
   it('Kilat tanpa gelombang / tanpa tanggal tetap tanpa durasi', () => {
     expect(receiptScheduleLabel({ start: '2026-10-20', distributionType: 'kilat', kilatSlotHour: null }))
-      .toBe('20 Okt 2026 · JFU Kilat');
-    expect(receiptScheduleLabel({ start: null, distributionType: 'kilat' })).toBe('Belum dijadwalkan (JFU Kilat)');
+      .toBe('20 Okt 2026 · Kilat Survei');
+    expect(receiptScheduleLabel({ start: null, distributionType: 'kilat' })).toBe('Belum dijadwalkan (Kilat Survei)');
   });
 
   it('Iklan tidak berubah', () => {

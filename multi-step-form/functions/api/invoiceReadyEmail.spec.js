@@ -76,7 +76,7 @@ describe('email tagihan siap — varian order (jadwal pertama yang dibantu reser
 describe('email tagihan siap — varian extension', () => {
     it('judulnya menyebut JADWAL BARU, bukan pesanan disetujui', async () => {
         await post({ ...base, variant: 'extension' });
-        expect(sent[0].subject).toContain('Tagihan jadwal iklan barumu');
+        expect(sent[0].subject).toContain('Tagihan jadwal barumu');
         expect(sent[0].subject).not.toContain('Pesananmu disetujui');
         expect(sent[0].html).toContain('abaikan email ini');
     });
@@ -117,7 +117,7 @@ describe('email tagihan siap — varian bulk', () => {
             ],
         });
         expect(res.status).toBe(200);
-        expect(sent[0].subject).toContain('Tagihan gabungan jadwal iklanmu siap dibayar');
+        expect(sent[0].subject).toContain('Tagihan gabungan jadwal surveimu siap dibayar');
         expect(sent[0].html).toContain('Survei A');
         expect(sent[0].html).toContain('Survei B');
         expect(sent[0].html).toContain('#SRV001');

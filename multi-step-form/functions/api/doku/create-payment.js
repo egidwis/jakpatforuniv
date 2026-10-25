@@ -604,7 +604,7 @@ export function buildNoteItems(sub, pricingSub, kilatTariffFrom = KILAT_TARIFF_F
       const discount = calculateKilatDiscount(noteVoucherCode, rate.effective, noteIncentive, false);
       if (rate.effective > 0) {
         noteItems.push({
-          name: 'JFU Kilat (1 gelombang)',
+          name: 'Kilat Survei (1 gelombang)',
           qty: 1,
           price: Math.max(0, rate.effective - discount),
           category: 'Jakpat for Universities (ads)',
