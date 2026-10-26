@@ -1,4 +1,4 @@
-import { reviewPatch, validateReviewWrite } from './reviewGate.js';
+import { ENDING_REVIEW, paidBlockReason, paidCheckPaths, reviewPatch, validateReviewWrite } from './reviewGate.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -11,6 +11,15 @@ function json(status, body) {
     status,
     headers: { 'Content-Type': 'application/json', ...CORS },
   });
+}
+
+async function readRows(supabaseUrl, serviceKey, path) {
+  const res = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+    headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+  });
+  if (!res.ok) throw new Error(`PostgREST HTTP ${res.status}`);
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
 }
 
 async function callerEmail(env, token) {
@@ -47,6 +56,27 @@ export async function onRequest(context) {
   try { body = await request.json(); } catch { return json(400, { error: 'Body bukan JSON' }); }
   const invalid = validateReviewWrite(body);
   if (invalid) return json(400, { error: invalid });
+
+  if (ENDING_REVIEW.has(body.status)) {
+    const paths = paidCheckPaths(body.submissionId);
+    let money;
+    try {
+      const [order, tx, inv, sched] = await Promise.all([
+        readRows(supabaseUrl, serviceKey, paths.order),
+        readRows(supabaseUrl, serviceKey, paths.tx),
+        readRows(supabaseUrl, serviceKey, paths.inv),
+        readRows(supabaseUrl, serviceKey, paths.sched),
+      ]);
+      money = { order: order[0], tx, inv, sched };
+    } catch (err) {
+      // Gagal tertutup: tanpa bukti "belum lunas", order tidak diakhiri.
+      console.error('[review] cek pembayaran', err);
+      return json(400, { error: 'Gagal memeriksa pembayaran order — coba lagi.' });
+    }
+    if (!money.order) return json(400, { error: 'Order tidak ditemukan' });
+    const blocked = paidBlockReason(money);
+    if (blocked) return json(409, { error: blocked });
+  }
 
   const res = await fetch(`${supabaseUrl}/rest/v1/form_submissions?id=eq.${body.submissionId}`, {
     method: 'PATCH',

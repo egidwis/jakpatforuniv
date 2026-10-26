@@ -51,3 +51,40 @@ export function reviewPatch(body) {
   }
   return patch;
 }
+
+/*
+  Keputusan yang MENGAKHIRI order. Order yang sudah punya uang lunas tidak
+  boleh diakhiri: membatalkannya berarti refund, dan fitur refund belum ada.
+  UI admin sudah mengunci tombolnya (isReviewDecisionLocked), tapi endpoint
+  ini menulis dengan service_role — tidak ada trigger form_submissions yang
+  menolak — jadi syaratnya ditegakkan DI SINI. Status lunas sama dengan
+  door_cancel_order (sql/128); 6 order lunas-tapi-batal di prod lahir dari
+  triase sql/69 (25 Agu 2026), bukan dari endpoint ini.
+*/
+export const ENDING_REVIEW = new Set(['cancelled', 'spam', 'rejected']);
+
+const PAID_MONEY = 'paid,completed,settled';
+const COMMITTED_LIFECYCLE = new Set(['paid', 'scheduled', 'live', 'completed']);
+
+export function paidCheckPaths(id) {
+  return {
+    order: `form_submissions?id=eq.${id}&select=payment_status,submission_status`,
+    tx: `transactions?form_submission_id=eq.${id}&status=in.(${PAID_MONEY})&select=id&limit=1`,
+    inv: `invoices?form_submission_id=eq.${id}&status=in.(${PAID_MONEY})&select=id&limit=1`,
+    // Semua jadwal order ini, termasuk perpanjangan / gelombang tambahan.
+    sched: `ad_schedules?submission_id=eq.${id}&payment_status=in.(paid,completed)&select=id&limit=1`,
+  };
+}
+
+/** `null` = boleh diakhiri; selain itu pesan penolakan untuk admin. */
+export function paidBlockReason({ order, tx, inv, sched }) {
+  const payment = String(order?.payment_status || '').toLowerCase();
+  const lifecycle = String(order?.submission_status || '').toLowerCase();
+  if (['paid', 'completed'].includes(payment) || tx.length > 0 || inv.length > 0 || sched.length > 0) {
+    return 'Order ini sudah punya pembayaran lunas — tidak bisa dibatalkan (belum ada refund).';
+  }
+  if (COMMITTED_LIFECYCLE.has(lifecycle)) {
+    return 'Order ini sudah dijadwalkan tayang — hentikan lewat tab Jadwal & Bayar, bukan keputusan review.';
+  }
+  return null;
+}
