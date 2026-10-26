@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { adminCancelLine, cancelNoteKey } from './cancelCause';
+import { adminCancelLine, cancelNoteKey, deadNextStep } from './cancelCause';
 import { translations } from '@/i18n/translations';
 
 /*
@@ -50,5 +50,35 @@ describe('adminCancelLine (baris "Peneliti melihat")', () => {
     for (const cause of ['researcher', 'expired', null] as const) {
       expect(adminCancelLine(cause)).not.toMatch(/tim Jakpat/);
     }
+  });
+});
+
+/*
+  Jadwal batal harus berakhir pada SATU langkah milik peneliti, bukan pada
+  "Tanya Chat Mimin". Langkahnya mengikuti apa yang server benar-benar izinkan:
+  order yang sudah mati (slot_cancelled / cancelled / rejected / spam) menolak
+  jadwal baru (sql/88, sql/123), jadi satu-satunya jalan adalah order baru.
+*/
+describe('deadNextStep', () => {
+  it('order sudah mati atau Kilat tertutup → order baru', () => {
+    expect(deadNextStep('order_inactive')).toBe('new_order');
+    expect(deadNextStep('kilat')).toBe('new_order');
+  });
+
+  it('order masih hidup dan boleh menjadwalkan lagi → pilih tanggal baru lewat tombol yang sudah ada', () => {
+    expect(deadNextStep(null)).toBe('pick_again');
+  });
+
+  it('jadwal lain sedang menahan kuota → tidak ada langkah baru (bayar yang itu dulu)', () => {
+    expect(deadNextStep('quota_held')).toBeNull();
+  });
+
+  it('kunci terjemahan langkahnya ada di ID & EN', () => {
+    for (const key of ['deadNextNewOrder', 'deadNextPickAgain'] as const) {
+      expect(translations.id[key]).toBeTruthy();
+      expect(translations.en[key]).toBeTruthy();
+    }
+    expect(translations.id.deadNextPickAgain).toContain('{action}');
+    expect(translations.en.deadNextPickAgain).toContain('{action}');
   });
 });

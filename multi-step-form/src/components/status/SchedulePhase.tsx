@@ -41,7 +41,7 @@ import { SelfBookingNotice } from '@/components/order/SelfBookingNotice';
 import { RowGrid, valueTone, type RowDef } from './RowGrid';
 import { StatusPill } from './StatusPill';
 import { OrderActionButton } from './OrderActionButton';
-import { cancelNoteKey } from './cancelCause';
+import { cancelNoteKey, deadNextStep, type DeadNext } from './cancelCause';
 import { primaryActionOf } from './orderAction';
 import { nowWib, toWibYmd } from '@/utils/airing-window';
 import { formatWaveHour } from '@/utils/kilatWaves';
@@ -572,28 +572,56 @@ function GroupBillBlock({ group, portion, t }: {
 
 const bannerIcon = 'w-4 h-4';
 
+/** Langkah peneliti sesudah jadwalnya batal — dihitung SATU kali di `SchedulePhase`
+ *  (`deadNextStep`) dan dioper ke setiap kartu mati. */
+export interface DeadStep {
+    kind: DeadNext;
+    /** Tujuan tombol "Buat Order Baru" (`new_order`). */
+    newOrderTo: string;
+    /** Nama tombol jadwal-lagi di bawah kartu (`pick_again`). */
+    againLabel: string;
+}
+
 /** Keadaan jadwal yang sudah mati (dibatalkan). Sengaja BUKAN `Banner`: judul
  *  "apa yang terjadi" sudah jadi headline tiket dan chip di stub, jadi di sini
- *  tinggal satu kalimat + satu jalan keluar — tanpa kartu di dalam kartu. */
-function DeadNote({ text }: { text: string }) {
+ *  tinggal satu kalimat + satu jalan keluar — tanpa kartu di dalam kartu.
+ *
+ *  ⚠️ JALAN KELUARNYA LANGKAH PENELITI, BUKAN "Tanya Chat Mimin". Dulu kartu
+ *  berhenti di "apa yang terjadi" lalu menyuruh bertanya, padahal tidak ada
+ *  yang perlu ditanyakan: order yang mati tidak bisa dijadwalkan ulang oleh
+ *  siapa pun selain tim, jadi jalannya order baru; jadwal perpanjangan yang
+ *  batal tinggal memakai tombol jadwal-lagi di bawah kartu. */
+export function DeadNote({ text, step }: { text: string; step: DeadStep }) {
     const { t } = useLanguage();
     return (
-        <div className="space-y-1.5 px-0.5">
+        <div className="space-y-2 px-0.5">
             <p className="text-sm text-slate-600 leading-relaxed">{text}</p>
-            <Link
-                to="/dashboard/chat"
-                className="inline-flex items-center gap-1 text-sm font-semibold text-jfu-primary hover:text-jfu-dark hover:underline"
-            >
-                {t('chatMiminCta')}
-                <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
+            {step.kind === 'new_order' && (
+                <>
+                    <p className="text-sm font-medium text-slate-800 leading-relaxed">{t('deadNextNewOrder')}</p>
+                    <Link
+                        to={step.newOrderTo}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-jfu-primary px-3 py-1.5 text-xs font-semibold text-white shadow-2xs hover:bg-jfu-dark transition-colors"
+                    >
+                        {t('createNewOrder')}
+                        <ArrowRight className="w-3.5 h-3.5" />
+                    </Link>
+                </>
+            )}
+            {step.kind === 'pick_again' && (
+                <p className="text-sm font-medium text-slate-800 leading-relaxed">
+                    {t('deadNextPickAgain', { action: step.againLabel })}
+                </p>
+            )}
         </div>
     );
 }
 
-function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
+function ScheduleBanner({ card, onReschedule, canSelfReschedule, deadStep }: {
     card: ScheduleCard;
     onReschedule: () => void;
+    /** Langkah peneliti untuk jadwal yang batal — lihat `DeadNote`. */
+    deadStep: DeadStep;
     /**
      * Apakah peneliti ini BERHAK menentukan tanggalnya sendiri.
      *
@@ -852,9 +880,10 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
            slotnya "dilepas OTOMATIS" padahal seorang admin menekannya, lalu
            diberi tombol "Jadwalkan Ulang" yang MENGHIDUPKAN KEMBALI jadwal yang
            baru saja dibatalkan (penjaganya sekarang di `rebookSlotForSubmission`).
-           Nol CTA di sini bukan kelalaian: tidak ada langkah milik peneliti.
+           Maka tombol jadwal-ulang TETAP tak ada di sini; langkah peneliti adalah
+           order baru (`DeadNote`).
            Kalimatnya menurut PELAKU (sql/129) — tim, peneliti, atau hold habis. */
-        return <DeadNote text={t(cancelNoteKey('slot_cancelled', b.cancelledBy))} />;
+        return <DeadNote text={t(cancelNoteKey('slot_cancelled', b.cancelledBy))} step={deadStep} />;
     }
 
     if (b.state === 'expired') {
@@ -902,7 +931,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
     }
 
     if (b.state === 'cancelled') {
-        return <DeadNote text={t(cancelNoteKey('cancelled', b.cancelledBy))} />;
+        return <DeadNote text={t(cancelNoteKey('cancelled', b.cancelledBy))} step={deadStep} />;
     }
 
     /* `paid` sengaja tanpa banner: order lunas tidak menunggu apa pun, dan Fase
@@ -954,6 +983,15 @@ export function SchedulePhase({ submission, kilatOpen = false, cards, entries, o
         : scheduleAgainBlock(submission, entries, Date.now(), { kilatOpen });
     const showScheduleAgain = againBlock === null;
     // Mode libur (sql/122): "Pesan gelombang lagi" = pemilih gelombang → modal F, tetap di dashboard.
+    /* Langkah sesudah jadwal batal — diturunkan dari gerbang yang SAMA dengan
+       tombol di atas, jadi kalimat "pilih tanggal lewat tombol di bawah" tidak
+       pernah menunjuk tombol yang tidak ada. Pintu Kilat hanya dipakai bila
+       akunnya boleh; selain itu wizard membukanya sebagai Iklan. */
+    const deadStep: DeadStep = {
+        kind: deadNextStep(againBlock),
+        newOrderTo: isKilatOrder && kilatOpen ? '/dashboard/submit-iklan?product=kilat' : '/dashboard/submit-iklan',
+        againLabel: t(isKilatOrder ? 'kilatExtendCardBtn' : 'scheduleExtendCardBtn'),
+    };
     const goScheduleAgain = () => {
         if (isKilatOrder && awayBlocksKilatPick({ leave: false })) return;
         navigate(`/dashboard/jadwal/baru/${submission.id}`);
@@ -1107,7 +1145,7 @@ export function SchedulePhase({ submission, kilatOpen = false, cards, entries, o
                                 </AccordionPrimitive.Header>
 
                                 <AccordionContent className={`pb-4 pt-3 px-3.5 sm:px-4 space-y-3.5 border-t ${isDead ? 'bg-transparent border-slate-200/70' : 'bg-white border-slate-100'}`}>
-                                    <ScheduleBanner card={card} onReschedule={onReschedule} canSelfReschedule={selfReschedule} />
+                                    <ScheduleBanner card={card} onReschedule={onReschedule} canSelfReschedule={selfReschedule} deadStep={deadStep} />
 
                                     {card.booking.group && card.booking.state === 'paid' && (
                                         <p className="flex items-center gap-1.5 text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">

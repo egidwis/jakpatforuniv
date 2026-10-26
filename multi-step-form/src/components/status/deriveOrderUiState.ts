@@ -406,7 +406,7 @@ export function describeOrderForChat(submission: FormSubmission, ui: OrderUiStat
         // ⚠️ JANGAN samakan kalimatnya dengan `expired`. Mimin mengulangi teks ini
         // ke user; menyebut "kedaluwarsa" untuk pembatalan oleh tim akan membuat
         // user mencari kesalahannya sendiri atas keputusan yang bukan miliknya.
-        slot_cancelled: 'tanggal tayangnya DIBATALKAN oleh tim Jakpat — bukan kedaluwarsa, dan bukan karena user terlambat. Kuesionernya tetap lolos review, jadi tidak perlu diajukan ulang; tim Jakpat yang akan menjadwalkan ulang. Kalau user butuh penjelasan kenapa dibatalkan, eskalasikan ke tim',
+        slot_cancelled: 'tanggal tayangnya DIBATALKAN (oleh tim Jakpat, oleh user sendiri, atau dilepas otomatis karena batas bayarnya habis — kartu di Order Saya menyebut pelakunya) — bukan kedaluwarsa biasa, dan bukan karena user terlambat. Kuesionernya tetap lolos review. Pesanan ini TIDAK bisa dijadwalkan ulang dari dashboard; kalau user ingin tayang di tanggal lain, arahkan ia membuat order baru lewat tombol "Buat Order Baru" di kartu jadwalnya. Kalau user butuh penjelasan kenapa dibatalkan, eskalasikan ke tim',
         // Kilat (R6): batasnya gelombang − 60 menit, bukan 14.00 — Mimin mengulangi teks ini.
         too_late_today: submission.distribution_type === 'kilat'
             ? 'batas pembayaran gelombang Kilat ini (1 jam sebelum gelombang) sudah lewat sehingga push tidak bisa dikirim di gelombang itu; user perlu memilih gelombang lain dari halaman Order Saya (tidak perlu submit ulang)'
@@ -426,7 +426,7 @@ export function describeOrderForChat(submission: FormSubmission, ui: OrderUiStat
       ⚠️ DUA KALIMAT DI ATAS BERBOHONG UNTUK JADWAL KREDIT (sql/102), dan Mimin
       mengulanginya ke peneliti:
         ready_to_launch → "pembayaran diterima" — padahal belum.
-        slot_cancelled  → "tim akan menjadwalkan ulang" — padahal iklannya
+        slot_cancelled  → "buat order baru untuk tanggal lain" — padahal iklannya
                           DIHENTIKAN sesudah tayang dan utangnya tetap penuh (K6).
     */
     const status = ui.firstCreditStopped
