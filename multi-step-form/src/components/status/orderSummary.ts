@@ -79,7 +79,8 @@ export function orderSummaryOf(
                 : 'bannerTitleAiringOnCredit';
             break;
         case 'slot_cancelled':
-            titleKey = 'bannerTitleSlotCancelled'; break;
+            // Jadwal pertama batal = pesanan berakhir; ceritanya di Fase ①.
+            titleKey = 'reviewTitleCancelled'; break;
         case 'expired':
             tone = 'amber'; titleKey = 'bannerTitleExpired'; break;
         case 'too_late_today':

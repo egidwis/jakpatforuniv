@@ -34,9 +34,13 @@ describe('cancelNoteKey', () => {
     expect(translations.id[cancelNoteKey('cancelled', 'expired')]).toMatch(/otomatis.*batas waktu pembayaran/);
   });
 
-  it('jadwal pertama tetap menjamin review lolos, apa pun penyebabnya', () => {
+  // Jadwal pertama batal = pesanan berakhir; order baru direview ULANG, jadi
+  // kartu tidak boleh menjanjikan review yang "tetap lolos" (26 Okt 2026).
+  it('jadwal pertama batal menyebut pesanan berakhir, tanpa janji review, apa pun penyebabnya', () => {
     for (const cause of CAUSES) {
-      expect(translations.id[cancelNoteKey('slot_cancelled', cause)]).toMatch(/tetap lolos review/);
+      expect(translations.id[cancelNoteKey('slot_cancelled', cause)]).toMatch(/pesanannya berakhir/);
+      expect(translations.id[cancelNoteKey('slot_cancelled', cause)]).not.toMatch(/lolos review/);
+      expect(translations.en[cancelNoteKey('slot_cancelled', cause)]).toMatch(/order has ended/);
     }
   });
 });

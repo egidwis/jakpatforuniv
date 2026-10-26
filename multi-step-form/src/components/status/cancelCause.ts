@@ -14,7 +14,8 @@ import type { ScheduleAgainBlock } from '@/utils/canScheduleAgain';
  * `null` = batal sebelum sql/129 (pelakunya tidak tercatat): kalimat netral,
  * tidak menuduh siapa pun.
  *
- *   slot_cancelled  jadwal PERTAMA dilepas, pesanan & review tetap hidup
+ *   slot_cancelled  jadwal PERTAMA dilepas → pesanan berakhir bagi peneliti
+ *                   (kalimatnya tampil di Fase ①; jalannya order baru)
  *   cancelled       jadwal lanjutan (perpanjangan / gelombang tambahan)
  */
 const SLOT_CANCELLED: Record<ScheduleCancelCause | 'unknown', TranslationKey> = {

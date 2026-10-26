@@ -27,7 +27,8 @@ import { type SchedulePaymentMap } from '@/components/status/scheduleAxes';
 import { payLinkForBill, payLinkPath } from '@/utils/payLink';
 import { Phase } from '@/components/status/PhaseRail';
 import { ReviewPhase } from '@/components/status/ReviewPhase';
-import { SchedulePhase } from '@/components/status/SchedulePhase';
+import { SchedulePhase, scheduleAgainOf } from '@/components/status/SchedulePhase';
+import { cancelNoteKey } from '@/components/status/cancelCause';
 import { OrderSummaryBar } from '@/components/status/OrderSummaryBar';
 import { orderSummaryOf } from '@/components/status/orderSummary';
 import { PublicationPhase } from '@/components/status/PublicationPhase';
@@ -1004,7 +1005,13 @@ export function StatusPage() {
                                          * satu-satunya fase yang benar-benar pernah dilalui.
                                          */
                                         const isCancelled = ui.callout === 'cancelled';
-                                        const reachedPhase = isCancelled ? 1 : (activePhase ?? 3);
+                                        /* Jadwal PERTAMA batal = pesanannya berakhir bagi peneliti
+                                           (server menolak penjadwalan ulang) — ikut berhenti di Fase ①,
+                                           sama dengan pesanan batal. Utang kredit (sql/102) TIDAK:
+                                           tagihannya masih harus dibayar di Fase ②. */
+                                        const isSlotCancelledOrder = ui.callout === 'slot_cancelled' && !ui.owesOnCredit;
+                                        const isEnded = isCancelled || isSlotCancelledOrder;
+                                        const reachedPhase = isEnded ? 1 : (activePhase ?? 3);
                                         const isDead = isCancelled || ui.callout === 'revision';
                                         const orderId = submission.id!;
                                         const isExpanded = expandedOrders.has(orderId);
@@ -1049,8 +1056,12 @@ export function StatusPage() {
                                                             submission={submission}
                                                             first={ui.first}
                                                             onDataUpdated={fetchSubmissions}
-                                                            active={isCancelled || activePhase === 1}
+                                                            active={isEnded || activePhase === 1}
                                                             hadBilledInvoice={!!ui.finalPaymentLink}
+                                                            slotCancelled={isSlotCancelledOrder ? {
+                                                                text: t(cancelNoteKey('slot_cancelled', ui.first.cancelledBy)),
+                                                                step: scheduleAgainOf(submission, cards, [ui.first, ...ui.later], kilatOpen, t).deadStep,
+                                                            } : null}
                                                         />
                                                     </Phase>
 
@@ -1064,12 +1075,12 @@ export function StatusPage() {
                                                             onDataUpdated={fetchSubmissions}
                                                             // Kredit (sql/102) ada di fase ③ menurut sumbu tayang,
                                                             // tapi tombol bayarnya di sini — buka kartunya.
-                                                            active={activePhase === 2 || ui.owesOnCredit}
+                                                            active={(activePhase === 2 && !isSlotCancelledOrder) || ui.owesOnCredit}
                                                         />
                                                     </Phase>
 
                                                     <Phase number={3} title={t('sectionPublication')} active={reachedPhase >= 3} isLast>
-                                                        <PublicationPhase cards={cards} pageInfo={pageInfo} isCancelled={isCancelled} />
+                                                        <PublicationPhase cards={cards} pageInfo={pageInfo} isCancelled={isEnded} />
                                                     </Phase>
 
                                                     {/* F. Footer — hanya tautan TERSIER.

@@ -166,14 +166,15 @@ export function scheduleFromSubmission(submission: FormSubmission): AdScheduleEn
         endDate: asInstant(submission.end_date),
         duration: submission.duration ?? null,
         // Terjemahan harfiah airing_status_of() (sql/46).
-        status: ['rejected', 'spam'].includes(status)
+        status: ['rejected', 'spam', 'slot_cancelled'].includes(status)
             ? 'cancelled'
             : ['waiting_payment', 'paid', 'scheduled', 'live', 'completed', 'slot_reserved'].includes(status)
                 ? status
                 : hasDates ? 'requested' : 'unscheduled',
         // Terjemahan harfiah review_status_of() (sql/46).
+        // `slot_cancelled` → review 'approved' (kontrak `isSlotCancelledSchedule`).
         reviewStatus: [
-            'approved', 'slot_reserved', 'waiting_payment', 'paid', 'scheduled', 'live', 'completed',
+            'approved', 'slot_reserved', 'waiting_payment', 'paid', 'scheduled', 'live', 'completed', 'slot_cancelled',
         ].includes(status) ? 'approved' : status,
         paymentStatus: submission.payment_status || null,
         distributionType: submission.distribution_type || null,
