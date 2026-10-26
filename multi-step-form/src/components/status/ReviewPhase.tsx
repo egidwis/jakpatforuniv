@@ -41,6 +41,7 @@ import type { ReviewHistoryEntry } from '@/components/submissions/types';
 import { isAutoReviewed } from './deriveOrderUiState';
 import { RowGrid } from './RowGrid';
 import { StatusPill } from './StatusPill';
+import { DeadNote, type DeadStep } from './SchedulePhase';
 import { AdminAwayInlineNote } from './AdminHolidayBanner';
 import { toast } from 'sonner';
 
@@ -83,6 +84,16 @@ interface ReviewPhaseProps {
      * — kartu default terbuka. Kalau tidak (sudah lewat/belum sampai), default
      * tertutup; user tetap bisa expand manual. */
     active: boolean;
+    /**
+     * Jadwal PERTAMA batal (`slot_cancelled`) — pesanannya berakhir bagi
+     * peneliti: server menolak penjadwalan ulang, jalannya order baru yang
+     * direview ULANG. Ditampilkan di sini, seperti pesanan yang dibatalkan
+     * utuh, bukan di Fase ② — dan chip review ikut "Dibatalkan", karena
+     * "Disetujui" di atas tombol "Buat Order Baru" terbaca seolah review-nya
+     * terbawa. `text` = kalimat penyebab (`cancelNoteKey`), `step` dari
+     * `scheduleAgainOf` — gerbang yang sama dengan Fase ②.
+     */
+    slotCancelled?: { text: string; step: DeadStep } | null;
 }
 
 /** Chip status review — dipasang di trigger accordion Fase ① (lihat
@@ -90,8 +101,8 @@ interface ReviewPhaseProps {
  * `useLanguage()` di dalam fungsi ini) karena fungsi ini bukan komponen
  * React — pemanggil (StatusPage) yang sudah berada dalam render komponen
  * menyediakan `t`. */
-export function getReviewChip(first: AdScheduleEntry, t: (key: TranslationKey) => string) {
-    const state = reviewStateOf(first);
+export function getReviewChip(first: AdScheduleEntry, t: (key: TranslationKey) => string, orderEnded = false) {
+    const state = orderEnded ? 'cancelled' : reviewStateOf(first);
     if (state === 'cancelled') {
         // Abu, bukan merah, dan tanpa denyut: ini KEPUTUSAN, bukan kegagalan,
         // dan tidak ada yang perlu ditindak.
@@ -148,7 +159,7 @@ function ReviewMethodChip({ auto }: { auto: boolean }) {
  * link/ringkasan survei + chip status review (dulu ada di header Fase),
  * expand untuk detail lengkap + banner status.
  */
-export function ReviewPhase({ submission, first, onDataUpdated, active, hadBilledInvoice = false }: ReviewPhaseProps) {
+export function ReviewPhase({ submission, first, onDataUpdated, active, hadBilledInvoice = false, slotCancelled = null }: ReviewPhaseProps) {
     const { t } = useLanguage();
     const state = reviewStateOf(first);
     const rejected = state === 'rejected';
@@ -246,7 +257,7 @@ export function ReviewPhase({ submission, first, onDataUpdated, active, hadBille
                                 <ReviewMethodChip auto={showsAutoMethod} />
                             </span>
                             <span className="flex-1 min-w-2" />
-                            {getReviewChip(first, t)}
+                            {getReviewChip(first, t, !!slotCancelled)}
                         </AccordionPrimitive.Trigger>
                         <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200" />
                     </AccordionPrimitive.Header>
@@ -393,6 +404,29 @@ export function ReviewPhase({ submission, first, onDataUpdated, active, hadBille
                                         <p className="text-xs text-slate-600 font-normal">
                                             {t('cancelledNextStep')}
                                         </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Jadwal pertama batal = pesanan berakhir — slot banner yang sama
+                            dengan pesanan batal di atas, abu karena ini keadaan, bukan
+                            kegagalan. Penyebab + langkahnya lewat `DeadNote`, komponen
+                            yang sama dengan jadwal perpanjangan yang batal di Fase ②. */}
+                        {slotCancelled && !cancelled && (
+                            <div className="rounded-xl border p-4 border-slate-200 bg-slate-50 shadow-xs space-y-3">
+                                <div className="flex items-start gap-2.5">
+                                    <Ban className="w-4 h-4 shrink-0 mt-0.5 text-slate-400" />
+                                    <div className="flex-1 min-w-0 space-y-3">
+                                        <p className="text-sm font-semibold text-slate-900 leading-snug">
+                                            {t('reviewTitleCancelled')}
+                                        </p>
+                                        {hadBilledInvoice && (
+                                            <div className="rounded-lg bg-amber-50 border border-amber-200/80 px-3 py-2 text-xs text-amber-800 font-medium">
+                                                {t('cancelledStaleInvoiceWarning')}
+                                            </div>
+                                        )}
+                                        <DeadNote text={slotCancelled.text} step={slotCancelled.step} />
                                     </div>
                                 </div>
                             </div>

@@ -880,10 +880,11 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule, deadStep }: {
            slotnya "dilepas OTOMATIS" padahal seorang admin menekannya, lalu
            diberi tombol "Jadwalkan Ulang" yang MENGHIDUPKAN KEMBALI jadwal yang
            baru saja dibatalkan (penjaganya sekarang di `rebookSlotForSubmission`).
-           Maka tombol jadwal-ulang TETAP tak ada di sini; langkah peneliti adalah
-           order baru (`DeadNote`).
-           Kalimatnya menurut PELAKU (sql/129) — tim, peneliti, atau hold habis. */
-        return <DeadNote text={t(cancelNoteKey('slot_cancelled', b.cancelledBy))} step={deadStep} />;
+           Maka tombol jadwal-ulang TETAP tak ada di sini.
+           Jadwal PERTAMA batal = pesanannya berakhir (server menolak penjadwalan
+           ulang), jadi penyebab + "Buat Order Baru" tinggal di Fase ①, seperti
+           pesanan yang dibatalkan utuh. Di sini tinggal penunjuknya. */
+        return <p className="px-0.5 text-sm text-slate-600 leading-relaxed">{t('slotCancelledSeeReview')}</p>;
     }
 
     if (b.state === 'expired') {
@@ -940,6 +941,43 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule, deadStep }: {
 }
 
 /**
+ * Gerbang "jadwal lagi" tingkat ORDER + langkah peneliti sesudah jadwal batal.
+ * Satu sumber untuk Fase ② (tombol jadwal-lagi & `DeadNote`) dan Fase ①
+ * (pesanan yang berakhir karena jadwal pertamanya batal) — kalimat "buat order
+ * baru" tidak boleh menyimpang dari tombol yang benar-benar ada.
+ *
+ * ⚠️ Kilat ditandai di DUA tempat, dan sebagian baris lama hanya punya yang
+ * kedua — aturan yang sama dipakai `isKilatSchedule` (airingPeriods.ts) dan
+ * `deriveScheduleMoney`. Phase 5 §5.10: order yang Kilat menurut KOLOM ORDER
+ * boleh "Pesan gelombang lagi"; yang hanya bertanda Kilat di kartunya tetap
+ * terkunci (halaman akan membukanya sebagai Iklan).
+ *
+ * ⚠️ Sebelum gerbang ini tombolnya hanya `!isKilatOrder`, sehingga muncul untuk
+ * 397 order in_review, 17 rejected, dan 110 spam — semuanya ditolak RPC,
+ * SESUDAH penelitinya mengisi panel hadiah (spec 2026-09-12).
+ */
+export function scheduleAgainOf(
+    submission: FormSubmission,
+    cards: ScheduleCard[],
+    entries: AdScheduleEntry[],
+    kilatOpen: boolean,
+    t: (key: TranslationKey) => string,
+): { againBlock: ReturnType<typeof scheduleAgainBlock>; deadStep: DeadStep } {
+    const isKilatOrder = submission.distribution_type === 'kilat';
+    const kilatOnlyOnCards = !isKilatOrder && cards.some((c) => !!c.info?.isKilat);
+    const againBlock = kilatOnlyOnCards
+        ? 'kilat'
+        : scheduleAgainBlock(submission, entries, Date.now(), { kilatOpen });
+    // Pintu Kilat hanya dipakai bila akunnya boleh; selain itu wizard membukanya sebagai Iklan.
+    const deadStep: DeadStep = {
+        kind: deadNextStep(againBlock),
+        newOrderTo: isKilatOrder && kilatOpen ? '/dashboard/submit-iklan?product=kilat' : '/dashboard/submit-iklan',
+        againLabel: t(isKilatOrder ? 'kilatExtendCardBtn' : 'scheduleExtendCardBtn'),
+    };
+    return { againBlock, deadStep };
+}
+
+/**
  * Fase ② — Jadwal Iklan: list kartu setara (asli + tiap perpanjangan), tiap
  * kartu membawa dua blok sendiri (Info Booking, Detail Pembayaran).
  */
@@ -952,46 +990,10 @@ export function SchedulePhase({ submission, kilatOpen = false, cards, entries, o
 
     const navigate = useNavigate();
 
-    /*
-      ⚠️ Kilat ditandai di DUA tempat, dan sebagian baris lama hanya punya yang
-      kedua — aturan yang sama dipakai `isKilatSchedule` (airingPeriods.ts) dan
-      `deriveScheduleMoney`. Di sini pertanyaannya tingkat ORDER ("boleh
-      menjadwalkan lagi?").
-
-      Phase 5 §5.10: order yang Kilat menurut KOLOM ORDER boleh "Pesan
-      gelombang lagi" — `JadwalBaruPage` dan `create_ad_schedule` sama-sama
-      memilih mode dari kolom itu. Order yang hanya bertanda Kilat di kartunya
-      tetap terkunci: halaman akan membukanya sebagai Iklan.
-    */
     const isKilatOrder = submission.distribution_type === 'kilat';
-    const kilatOnlyOnCards = !isKilatOrder && cards.some((c) => !!c.info?.isKilat);
-
-    /*
-      Gerbang tombol "Jadwalkan Iklan Lagi" — satu helper murni, diuji
-      terpisah (`utils/canScheduleAgain.spec.ts`).
-
-      ⚠️ Sebelum ini gerbangnya hanya `!isKilatOrder`, sehingga tombol muncul
-      untuk 397 order in_review, 17 rejected, dan 110 spam — semuanya ditolak
-      RPC, SESUDAH penelitinya mengisi panel hadiah. Itu kasus yang melahirkan
-      spec 2026-09-12.
-
-      ⚠️ Kilat dibaca dari DUA tempat (lihat `kilatOnlyOnCards` di atas):
-      helper hanya melihat kolom order, jadi tanda di kartu dioper di sini.
-    */
-    const againBlock = kilatOnlyOnCards
-        ? 'kilat'
-        : scheduleAgainBlock(submission, entries, Date.now(), { kilatOpen });
+    const { againBlock, deadStep } = scheduleAgainOf(submission, cards, entries, kilatOpen, t);
     const showScheduleAgain = againBlock === null;
     // Mode libur (sql/122): "Pesan gelombang lagi" = pemilih gelombang → modal F, tetap di dashboard.
-    /* Langkah sesudah jadwal batal — diturunkan dari gerbang yang SAMA dengan
-       tombol di atas, jadi kalimat "pilih tanggal lewat tombol di bawah" tidak
-       pernah menunjuk tombol yang tidak ada. Pintu Kilat hanya dipakai bila
-       akunnya boleh; selain itu wizard membukanya sebagai Iklan. */
-    const deadStep: DeadStep = {
-        kind: deadNextStep(againBlock),
-        newOrderTo: isKilatOrder && kilatOpen ? '/dashboard/submit-iklan?product=kilat' : '/dashboard/submit-iklan',
-        againLabel: t(isKilatOrder ? 'kilatExtendCardBtn' : 'scheduleExtendCardBtn'),
-    };
     const goScheduleAgain = () => {
         if (isKilatOrder && awayBlocksKilatPick({ leave: false })) return;
         navigate(`/dashboard/jadwal/baru/${submission.id}`);

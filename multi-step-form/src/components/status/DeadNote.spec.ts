@@ -32,7 +32,7 @@ describe('DeadNote — langkah peneliti sesudah jadwal batal', () => {
   it('order mati → kalimat langkah + tombol Buat Order Baru; TANPA Chat Mimin', () => {
     const html = render({ kind: 'new_order' });
     expect(html).toContain('Tim Jakpat membatalkan');
-    expect(html).toContain('Untuk tayang di tanggal lain, buat order baru.');
+    expect(html).toContain('Untuk tayang di tanggal lain, buat order baru — kuesionermu akan direview ulang.');
     expect(html).toContain('href="/dashboard/submit-iklan"');
     expect(html).toContain('Buat Order Baru');
     expect(html).not.toContain('/dashboard/chat');

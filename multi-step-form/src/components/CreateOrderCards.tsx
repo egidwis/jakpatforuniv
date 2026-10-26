@@ -21,7 +21,8 @@ interface Product {
     to?: string;
     isActionModal?: boolean;
     comingSoon?: boolean;
-    /** Chip "Baru" untuk produk yang baru dibuka (mis. hari pintu Kilat dibuka). */
+    /** Chip kanan "Baru" menggantikan "Tersedia" — produk yang baru dibuka.
+     * Tanpa tanggal berakhir: dicabut manual (keputusan product owner 26 Okt 2026). */
     isNew?: boolean;
     hidden?: boolean;
 }
@@ -34,7 +35,7 @@ const PRODUCTS: Product[] = [
     { id: 'ads', icon: BarChart3, accent: 'blue', titleKey: 'productAdsTitle', hookKey: 'productAdsHook', descKey: 'productAdsDesc', ctaKey: 'createAdOrderBtn', isActionModal: true },
     // `comingSoon` dicabut per akun oleh pemanggil (`onOpenKilatModal`), bukan
     // di sini: pintu Kilat dibuka bertahap — admin & akun uji dulu (Phase 5 §5.6).
-    { id: 'kilat', icon: Zap, accent: 'amber', titleKey: 'productKilatTitle', hookKey: 'productKilatHook', descKey: 'productKilatDesc', ctaKey: 'createKilatOrderBtn', isActionModal: true, comingSoon: true },
+    { id: 'kilat', icon: Zap, accent: 'amber', titleKey: 'productKilatTitle', hookKey: 'productKilatHook', descKey: 'productKilatDesc', ctaKey: 'createKilatOrderBtn', isActionModal: true, comingSoon: true, isNew: true },
 ];
 
 /**
@@ -101,21 +102,19 @@ export function ProductCardGrid({ onOpenAdsModal, onOpenKilatModal, onSelect }: 
                             <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${tone.tile}`}>
                                 <Icon className="w-4 h-4" />
                             </span>
-                            <div className="flex items-center gap-1.5 min-w-0">
-                                <span className={`text-sm font-bold text-slate-900 transition-colors truncate ${tone.title}`}>
-                                    {t(product.titleKey)}
-                                </span>
-                                {product.isNew && (
-                                    <span className="rounded-full border border-amber-200/80 bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 shrink-0">
-                                        {t('newBadge')}
-                                    </span>
-                                )}
-                            </div>
+                            <span className={`text-sm font-bold text-slate-900 transition-colors truncate ${tone.title}`}>
+                                {t(product.titleKey)}
+                            </span>
                         </div>
 
-                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${tone.chip}`}>
-                            {t('productAvailable')}
-                        </span>
+                        {/* Produk yang bisa dipesan tidak berchip ("Tersedia" dihapus 26 Okt 2026:
+                            kartu berwarna & tombolnya sudah mengatakannya); hanya produk baru
+                            yang memakai slot ini untuk "Baru". */}
+                        {product.isNew && (
+                            <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${tone.chip}`}>
+                                {t('newBadge')}
+                            </span>
+                        )}
                     </div>
 
                     <p className="text-xs leading-relaxed text-slate-600 line-clamp-2">
@@ -183,9 +182,11 @@ export function ProductCardGrid({ onOpenAdsModal, onOpenKilatModal, onSelect }: 
                             {t(product.titleKey)}
                         </span>
                     </div>
-                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${tone.chip}`}>
-                        {t('productAvailable')}
-                    </span>
+                    {product.isNew && (
+                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${tone.chip}`}>
+                            {t('newBadge')}
+                        </span>
+                    )}
                 </div>
 
                 <p className="text-xs leading-relaxed text-slate-600 line-clamp-2">

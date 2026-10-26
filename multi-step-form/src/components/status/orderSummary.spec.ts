@@ -65,9 +65,9 @@ describe('orderSummaryOf — ringkasan kartu ponsel', () => {
         expect(s.detail?.kind).toBe('dateRange');
     });
 
-    it('jadwal batal oleh tim: abu, nol tombol (bukan jadwal ulang)', () => {
+    it('jadwal pertama batal = pesanan berakhir: judul Fase ① "Pesanan Dibatalkan", nol tombol', () => {
         const s = orderSummaryOf('slot_cancelled', [card('slot_cancelled', {}, { start: null })], self)!;
-        expect(s).toMatchObject({ tone: 'slate', titleKey: 'bannerTitleSlotCancelled', action: null, detail: null });
+        expect(s).toMatchObject({ tone: 'slate', titleKey: 'reviewTitleCancelled', action: null, detail: null });
     });
 
     it('kedaluwarsa: amber; jalur mandiri dapat tombol, jalur manual tidak', () => {

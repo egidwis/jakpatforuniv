@@ -336,7 +336,9 @@ export function deriveOrderUiState(
 
     // `awaiting_admin_schedule` sengaja TIDAK masuk `needsAction`: bolanya di
     // admin, jadi ordernya duduk di "Berjalan", bukan berteriak di "Butuh Aksi".
-    const group: OrderGroup = callout === 'cancelled'
+    // Jadwal PERTAMA batal = pesanan berakhir bagi peneliti (server menolak
+    // penjadwalan ulang; jalannya order baru). Utang kredit tetap "Butuh Aksi".
+    const group: OrderGroup = callout === 'cancelled' || (callout === 'slot_cancelled' && !needsAction)
         ? 'selesai'
         : needsAction
             ? 'butuh-aksi'
@@ -406,7 +408,7 @@ export function describeOrderForChat(submission: FormSubmission, ui: OrderUiStat
         // ⚠️ JANGAN samakan kalimatnya dengan `expired`. Mimin mengulangi teks ini
         // ke user; menyebut "kedaluwarsa" untuk pembatalan oleh tim akan membuat
         // user mencari kesalahannya sendiri atas keputusan yang bukan miliknya.
-        slot_cancelled: 'tanggal tayangnya DIBATALKAN (oleh tim Jakpat, oleh user sendiri, atau dilepas otomatis karena batas bayarnya habis — kartu di Order Saya menyebut pelakunya) — bukan kedaluwarsa biasa, dan bukan karena user terlambat. Kuesionernya tetap lolos review. Pesanan ini TIDAK bisa dijadwalkan ulang dari dashboard; kalau user ingin tayang di tanggal lain, arahkan ia membuat order baru lewat tombol "Buat Order Baru" di kartu jadwalnya. Kalau user butuh penjelasan kenapa dibatalkan, eskalasikan ke tim',
+        slot_cancelled: 'tanggal tayangnya DIBATALKAN (oleh tim Jakpat, oleh user sendiri, atau dilepas otomatis karena batas bayarnya habis — kartu di Order Saya menyebut pelakunya) — bukan kedaluwarsa biasa, dan bukan karena user terlambat. Pesanan ini sudah BERAKHIR dan TIDAK bisa dijadwalkan ulang dari dashboard; kalau user ingin tayang di tanggal lain, arahkan ia membuat order baru lewat tombol "Buat Order Baru" di langkah Review kartunya — order baru itu direview ulang (otomatis untuk Google Forms), hasil review pesanan ini tidak terbawa. Kalau user butuh penjelasan kenapa dibatalkan, eskalasikan ke tim',
         // Kilat (R6): batasnya gelombang − 60 menit, bukan 14.00 — Mimin mengulangi teks ini.
         too_late_today: submission.distribution_type === 'kilat'
             ? 'batas pembayaran gelombang Kilat ini (1 jam sebelum gelombang) sudah lewat sehingga push tidak bisa dikirim di gelombang itu; user perlu memilih gelombang lain dari halaman Order Saya (tidak perlu submit ulang)'

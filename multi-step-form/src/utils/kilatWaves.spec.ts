@@ -4,6 +4,7 @@ import {
   KILAT_WAVE_WORKDAYS,
   kilatLockGate,
   kilatPickStatus,
+  kilatPreviewDayYmd,
   kilatWaveDays,
   kilatWaveStatus,
   kilatWaveWindow,
@@ -103,6 +104,23 @@ describe('kilatWaveDays', () => {
     const rows: KilatWaveRow[] = [];
     for (let i = 0; i < 20; i++) rows.push(row(addDaysToYmd('2026-10-19', i), 11));
     expect(kilatWaveDays(rows, NOW)).toHaveLength(KILAT_WAVE_WORKDAYS);
+  });
+});
+
+describe('kilatPreviewDayYmd', () => {
+  it('hari kerja ke-4 = pratinjau "belum tersedia"', () => {
+    // Senin 26 Okt → jendela Sen–Rab, pratinjau Kamis 29 Okt.
+    expect(kilatPreviewDayYmd(new Date('2026-10-26T02:00:00Z'))).toBe('2026-10-29');
+  });
+
+  it('melompati akhir pekan', () => {
+    // Jumat 23 Okt → jendela Jum, Sen, Sel; pratinjau Rabu 28 Okt.
+    expect(kilatPreviewDayYmd(new Date('2026-10-23T02:00:00Z'))).toBe('2026-10-28');
+  });
+
+  it('akhir pekan: dihitung dari Senin', () => {
+    // Sabtu 24 Okt → jendela Sen–Rab, pratinjau Kamis 29 Okt.
+    expect(kilatPreviewDayYmd(new Date('2026-10-24T02:00:00Z'))).toBe('2026-10-29');
   });
 });
 
