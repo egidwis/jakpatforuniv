@@ -18,7 +18,7 @@
 | 4 | **R4 — Undian & siaran** | 5.3, 5.4b (toggle), sinkron halaman 5.4 | `sql/118` ✅ live 15 Okt | ✅ Kode (`4213f8b` SQL, `c42362a`) | Linimasa toggle pada **order uji**; sisa kecil: status siaran ringkas di `KilatScheduleBoard` |
 | 5 | **R5 — Pintu tersembunyi** | 5.5, 5.6, 5.8 | — | ✅ Kode (`59c7913`, commit 5.8 menyusul) | Kartu Kilat → modal → `?product=kilat` (admin; `KILAT_PILOT_EMAILS` kosong) → Step 3 pemilih gelombang → Jadwal & Bayar. Batas bayar gelombang ikut R6 — uji lokal tanpa bayar |
 | 6 | **R6 — Jalur bayar Kilat** | 5.7 | — | ✅ Kode (16 Okt) | Cermin helper waktu di `create-payment.js`; cabut peringatan "pakai 15.00" di picker admin; **pilih ulang gelombang di badan tiket Jadwal & Bayar** (`KilatWavePicker` + `handleLock`, dipindah dari 5.5 karena butuh `rebookSlotForSubmission` sadar gelombang); tagihan terbit sekali lalu dibatalkan (DOKU sandbox) |
-| 7 | **R7 — Uji nyata & buka pintu (disiapkan)** | 5.9 | — | ⬜ | Dua commit kecil yang **tidak ikut Push A**: pilot akun uji (`KILAT_PILOT_EMAILS`) = Push Uji, lalu buka pintu = Push B |
+| 7 | **R7 — Uji nyata & buka pintu (disiapkan)** | 5.9 | — | 🟡 Push Uji disiapkan 26 Okt (`KILAT_PILOT_EMAILS = ['tegarerputra@gmail.com']`); Push B ⬜ | Dua commit kecil yang **tidak ikut Push A**: pilot akun uji (`KILAT_PILOT_EMAILS`) = Push Uji, lalu buka pintu = Push B |
 | 8 | **R8 — Extend Kilat** | 5.10 | `sql/119_extend_kilat.sql` (✅ diterapkan 19 Okt) | ✅ Kode (16 Okt) | Kode ikut Push A terkunci; **dibuka untuk akun uji di Push Uji** (prasyarat 5.10 dipenuhi di sana), untuk semua di Push B |
 
 ### Selama pengerjaan (sampai Push A)
