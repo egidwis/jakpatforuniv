@@ -5,6 +5,7 @@ import type { KilatWaveAvailability } from '../hooks/useKilatWaveAvailability';
 import { formatWibTime } from '../utils/airing-window';
 import {
   formatWaveHour,
+  kilatPreviewDayYmd,
   kilatWaveDays,
   KILAT_WAVE_WORKDAYS,
   type KilatWaveCell,
@@ -44,13 +45,14 @@ export function KilatWavePicker({
   const { t, language } = useLanguage();
   const locale = language === 'en' ? 'en-US' : 'id-ID';
   const days = useMemo(() => kilatWaveDays(availability.rows), [availability.rows]);
+  const previewYmd = kilatPreviewDayYmd();
   const fmt = (ymd: string, opts: Intl.DateTimeFormatOptions) =>
     new Date(`${ymd}T12:00:00+07:00`).toLocaleDateString(locale, { ...opts, timeZone: 'Asia/Jakarta' });
 
   if (!availability.isReady) {
     return (
-      <div className="grid grid-cols-3 gap-2.5" aria-busy="true">
-        {Array.from({ length: KILAT_WAVE_WORKDAYS }).map((_, i) => (
+      <div className="grid grid-cols-4 gap-2" aria-busy="true">
+        {Array.from({ length: KILAT_WAVE_WORKDAYS + 1 }).map((_, i) => (
           <div key={i} className="h-[84px] rounded-2xl border border-slate-200 bg-white animate-pulse" />
         ))}
       </div>
@@ -89,8 +91,8 @@ export function KilatWavePicker({
     <div className="space-y-5">
       <fieldset className="space-y-2">
         <legend className="text-sm font-semibold text-slate-800 mb-2">{t('kilatWavePickDay')}</legend>
-        {/* Tiga hari kerja (sql/122 K3) — satu baris, juga di ponsel. */}
-        <div className="grid grid-cols-3 gap-2.5">
+        {/* Tiga hari kerja (sql/122 K3) + hari ke-4 terkunci — satu baris, juga di ponsel. */}
+        <div className="grid grid-cols-4 gap-2">
           {days.map((day) => {
             const isSelected = value?.ymd === day.ymd;
             const disabled = !day.hasOpenWave;
@@ -130,6 +132,22 @@ export function KilatWavePicker({
               </button>
             );
           })}
+          {/* Bukan tombol: tidak ada yang bisa dipilih di sini, hanya batas jendelanya. */}
+          <div
+            role="note"
+            aria-label={[fmt(previewYmd, { weekday: 'long', day: 'numeric', month: 'long' }), t('kilatWaveDayNotYet')].join(' — ')}
+            className="flex min-h-[84px] cursor-not-allowed flex-col items-center justify-between rounded-2xl border border-dashed border-slate-300 bg-slate-50/90 p-2.5 text-center"
+          >
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              {fmt(previewYmd, { weekday: 'short' })}
+            </span>
+            <span className="text-sm sm:text-base font-bold leading-tight text-slate-500">
+              {fmt(previewYmd, { day: 'numeric', month: 'short' })}
+            </span>
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium leading-tight ${DAY_PILL_CLOSED}`}>
+              {t('kilatWaveDayNotYet')}
+            </span>
+          </div>
         </div>
       </fieldset>
 

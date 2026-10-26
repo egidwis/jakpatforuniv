@@ -1,5 +1,5 @@
 import { KILAT_QUOTA_PER_SLOT } from './constants';
-import { addDaysToYmd, isKilatWaveBookable, kilatLastBookableYmd, KILAT_SELF_SERVE_WORKDAYS, toWibYmd } from './airing-window';
+import { addDaysToYmd, isKilatWaveBookable, kilatLastBookableYmd, KILAT_SELF_SERVE_WORKDAYS, nextWibWorkdays, toWibYmd } from './airing-window';
 import type { TranslationKey } from '../i18n/translations';
 import type { KilatWaveErrorKind } from './dailyQuotaError';
 
@@ -45,6 +45,15 @@ export interface KilatWaveDay {
 export const KILAT_WAVE_WINDOW_DAYS = 7;
 /** Berapa hari kerja yang ditawarkan ke peneliti (sql/122 K3). Dulu 10 = dua minggu. */
 export const KILAT_WAVE_WORKDAYS = KILAT_SELF_SERVE_WORKDAYS;
+
+/**
+ * Hari kerja SESUDAH jendela pesan — dirender terkunci "Belum tersedia" supaya
+ * peneliti melihat batas 3 hari kerja, bukan menyangka tanggal sisanya penuh.
+ * Murni tampilan: tidak pernah bisa dipilih dan tidak masuk `kilatWaveDays`.
+ */
+export function kilatPreviewDayYmd(now: Date = new Date()): string {
+  return nextWibWorkdays(KILAT_WAVE_WORKDAYS + 1, now)[KILAT_WAVE_WORKDAYS];
+}
 
 export function kilatWaveWindow(now: Date = new Date()): { from: string; to: string } {
   const from = toWibYmd(now);
