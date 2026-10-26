@@ -120,6 +120,38 @@ export function submissionDatePatch(body) {
   return patch;
 }
 
+const PAID_PAYMENTS = ['paid', 'completed'];
+const COMMITTED_LIFECYCLES = ['paid', 'scheduled', 'live', 'completed'];
+
+/*
+  Jadwal Kilat oleh admin — aturan reset yang sama dengan `submission-hold`
+  (rescheduleReset.ts, cacat #MM36J2EW). Tanpa `payment_status` → 'pending',
+  order Kilat yang jadwalnya pernah dibatalkan/lepas tetap `expired` sesudah
+  dijadwalkan ulang, dan kartunya terbaca «kedaluwarsa» + "Ganti Tanggal"
+  alih-alih "Buat Tagihan" (#e0e7ae16, 26 Okt 2026).
+
+  `row` = baris form_submissions yang dibaca ULANG dari server — webhook DOKU
+  boleh mendarat di sela, dan pembayaran yang baru sah tidak boleh dibalik.
+*/
+export function kilatSchedulePatch(row, body, now = new Date()) {
+  const payment = String(row?.payment_status || '').toLowerCase();
+  const lifecycle = String(row?.submission_status || '').toLowerCase();
+  const patch = {
+    start_date: body.ymd,
+    end_date: body.endYmd,
+    kilat_slot_hour: body.hour,
+    slot_booked_by: 'admin',
+    slot_reserved_at: now.toISOString(),
+    updated_at: now.toISOString(),
+  };
+  // Lunas atau sudah berjalan (termasuk tempo `scheduled`): koreksi jadwal,
+  // bukan penjadwalan ulang slot yang gugur — status tidak disentuh.
+  if (PAID_PAYMENTS.includes(payment) || COMMITTED_LIFECYCLES.includes(lifecycle)) return patch;
+  patch.submission_status = 'slot_reserved';
+  if (payment === 'expired') patch.payment_status = 'pending';
+  return patch;
+}
+
 /*
   Bagian JADWAL dari releaseExpiredSlot / cancelSchedule versi admin — tulisan
   yang sama dengan door_release_slot / door_cancel_schedule (sql/123), tanpa
