@@ -16,7 +16,8 @@ vi.mock('@/utils/operationalHolidays', () => ({
   useAdminAway: () => away,
 }));
 
-const { awayBlocksKilatPick, awayGuard, awayGuardWouldOpen, awayModalVariant } = await import('./AdminAwayModal');
+const { awayBlocksKilatPick, awayGuard, awayGuardWouldOpen, awayModalVariant, copyOf } = await import('./AdminAwayModal');
+const { translations } = await import('@/i18n/translations');
 
 beforeEach(() => {
   away = null;
@@ -80,5 +81,65 @@ describe('awayBlocksKilatPick (modal F, pemblokir)', () => {
     away = { since: '2026-12-24', message: '', messageEn: '' };
     acked.add('2026-12-24');
     expect(awayBlocksKilatPick({ leave: true })).toBe(true);
+  });
+});
+
+/*
+  26 Okt 2026 — tiap varian modal libur memuat SATU pesan utuh. Dulu pesannya
+  dipecah (sorotan + catatan + "Ada kendala? Laporkan saja…") dan terbaca
+  seperti tiga info terpisah. Yang dijaga: tidak ada lagi baris kontak/catatan,
+  dan tiap pesan menjawab apa yang berjalan dan apa yang menunggu.
+*/
+describe('copyOf — satu pesan utuh per varian', () => {
+  const tFor = (lang: 'id' | 'en') => (key: string, vars: Record<string, string> = {}) =>
+    Object.entries(vars).reduce(
+      (text, [k, v]) => text.split(`{${k}}`).join(v),
+      (translations[lang] as Record<string, string>)[key],
+    );
+  const ctxs = [
+    { kind: 'submit', product: 'ads', path: 'schedule' },
+    { kind: 'submit', product: 'ads', path: 'review' },
+    { kind: 'submit', product: 'kilat', path: 'review' },
+    { kind: 'submit', product: 'kilat', path: 'kilat_away' },
+    { kind: 'pay', product: 'ads', schedule: 'Sen 28 Des' },
+    { kind: 'pay', product: 'kilat', wave: 'Sen 28 Des · 11.00 WIB' },
+    { kind: 'kilat_pick', leave: false },
+  ] as const;
+
+  test.each(ctxs)('%o: pesan terisi penuh, tanpa baris kontak terpisah', (ctx) => {
+    for (const lang of ['id', 'en'] as const) {
+      const copy = copyOf(ctx as any, tFor(lang) as any);
+      expect(copy.highlight, lang).toBeTruthy();
+      expect(copy.highlight, lang).not.toMatch(/\{\w+\}/);        // tak ada variabel tersisa
+      expect(copy, lang).not.toHaveProperty('contact');
+      expect(copy, lang).not.toHaveProperty('notes');
+    }
+  });
+
+  test('iklan tetap tayang: menenangkan & tanpa menunggu admin (A, D)', () => {
+    const a = copyOf({ kind: 'submit', product: 'ads', path: 'schedule' }, tFor('id') as any);
+    const d = copyOf({ kind: 'pay', product: 'ads', schedule: 'Sen 28 Des' }, tFor('id') as any);
+    for (const copy of [a, d]) {
+      expect(copy.tone).toBe('go');
+      expect(copy.highlight).toMatch(/^Tenang/);
+      expect(copy.highlight).toContain('tanpa menunggu admin masuk');
+      expect(copy.highlight).not.toMatch(/kendala|laporkan/i);
+    }
+    expect(d.highlight).toContain('Sen 28 Des');
+  });
+
+  test('review manual: Iklan menyebut jadwal, Kilat menyebut gelombang', () => {
+    const ads = copyOf({ kind: 'submit', product: 'ads', path: 'review' }, tFor('id') as any);
+    const kilat = copyOf({ kind: 'submit', product: 'kilat', path: 'review' }, tFor('id') as any);
+    expect(ads.highlight).toContain('menjadwalkan iklanmu');
+    expect(kilat.highlight).toContain('gelombang push');
+    expect(kilat.highlight).not.toMatch(/iklan/i);
+  });
+
+  test('Kilat dialihkan & pemilih diblokir: ordernya aman, belum ada pembayaran / tidak ada yang berubah', () => {
+    const c = copyOf({ kind: 'submit', product: 'kilat', path: 'kilat_away' }, tFor('id') as any);
+    const f = copyOf({ kind: 'kilat_pick', leave: false }, tFor('id') as any);
+    expect(c.highlight).toContain('belum ada pembayaran');
+    expect(f.highlight).toContain('ordermu aman');
   });
 });

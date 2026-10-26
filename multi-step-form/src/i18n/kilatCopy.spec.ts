@@ -61,3 +61,17 @@ describe('nama produk di rincian pembayaran', () => {
     expect(translations.id.kilatRateTitle).toContain('Kilat Survei');
   });
 });
+
+describe('modal "Pesanan Diterima" saat tim libur', () => {
+  it('langkah yang menjanjikan waktu kerja tim punya versi libur, tanpa catatan terpisah', () => {
+    for (const lang of ['id', 'en'] as const) {
+      expect(translations[lang].reviewModalStep1Away, lang).toBeTruthy();
+      expect(translations[lang].adminScheduleModalStep2Away, lang).toBeTruthy();
+    }
+    expect(translations.id.reviewModalStep1Away).toMatch(/kembali dari libur/);
+    expect(translations.id.adminScheduleModalStep2Away).toMatch(/kembali dari libur/);
+    // Versi libur tidak lagi menjanjikan "maks N hari kerja" yang bertabrakan dengan libur.
+    expect(translations.id.reviewModalStep1Away).not.toMatch(/maks/);
+    expect(translations.id.adminScheduleModalStep2Away).not.toMatch(/maks/);
+  });
+});
