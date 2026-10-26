@@ -646,3 +646,22 @@ describe('buildScheduleCards — ordinal 1 tanpa tagihan hidup', () => {
         expect(card.booking.payUrl).toBe('/dashboard/jadwal/sched-1');
     });
 });
+
+describe('buildScheduleCards — penyebab batal sampai ke kartu (sql/129)', () => {
+    it('ordinal 1 `slot_cancelled` dan perpanjangan `cancelled` membawa `cancelledBy`-nya masing-masing', () => {
+        const first = scheduleOf({ status: 'cancelled', paymentStatus: 'expired', cancelledBy: 'expired' });
+        const ext = scheduleOf({
+            id: 'sched-2', ordinal: 2, isExtension: true, sourceId: 'ext-1',
+            status: 'cancelled', cancelledBy: 'researcher',
+        });
+        const [o, e] = buildScheduleCards({ ...uiOf(first, [ext]), isSlotCancelled: true }, {}, null, t, submissionOf());
+        expect(o.booking).toMatchObject({ state: 'slot_cancelled', cancelledBy: 'expired' });
+        expect(e.booking).toMatchObject({ state: 'cancelled', cancelledBy: 'researcher' });
+    });
+
+    it('baris lama tanpa kolom → null (kalimat netral), bukan undefined yang lolos ke kalimat tim', () => {
+        const ext = scheduleOf({ id: 'sched-2', ordinal: 2, isExtension: true, sourceId: 'ext-1', status: 'cancelled' });
+        const [, e] = buildScheduleCards(uiOf(scheduleOf(), [ext]), {}, null, t, submissionOf());
+        expect(e.booking.cancelledBy).toBeNull();
+    });
+});

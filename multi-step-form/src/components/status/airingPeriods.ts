@@ -1,4 +1,4 @@
-import type { AdScheduleEntry, FormSubmission } from '@/utils/supabase';
+import type { AdScheduleEntry, FormSubmission, ScheduleCancelCause } from '@/utils/supabase';
 import type { TranslationKey } from '@/i18n/translations';
 import { deriveScheduleMoney, type ScheduleMoney } from '@/utils/scheduleMoney';
 import {
@@ -68,12 +68,12 @@ export type BookingState =
     | 'awaiting_invoice'
     | 'waiting_payment'
     | 'expired'
-    /** Tim Jakpat membatalkan tanggal tayangnya. Dipisah dari `expired` karena
-     * PELAKUNYA berbeda — dan itu satu-satunya hal yang penting bagi peneliti:
-     * `expired` adalah tenggat yang terlewat (bisa ia perbaiki sendiri),
-     * `slot_cancelled` adalah keputusan tim (tidak bisa, dan tidak boleh, ia
-     * batalkan sendiri dengan tombol jadwal-ulang). Lihat
-     * `isSlotCancelledSchedule` untuk cara membedakannya di data. */
+    /** Tanggal tayang jadwal pertama DIBATALKAN (bukan sekadar kedaluwarsa):
+     * slotnya dilepas, pesanan & review tetap hidup. Dipisah dari `expired`
+     * karena `expired` adalah tenggat yang bisa ia perbaiki sendiri, sedangkan
+     * ini tidak bisa (dan tidak boleh) dihidupkan dengan tombol jadwal-ulang.
+     * PELAKUNYA bisa tim, peneliti, atau hold yang habis — `booking.cancelledBy`
+     * (sql/129) yang memilih kalimatnya. Lihat `isSlotCancelledSchedule`. */
     | 'slot_cancelled'
     /** Jadwalnya hari ini tapi batas bayar 14.00 WIB sudah lewat. Sengaja
      * dipisah dari `expired` — sebabnya beda (slot tidak dilepas, yang habis
@@ -181,6 +181,9 @@ export interface ScheduleCard {
         /** Hanya untuk `airing_on_credit`: terjadwal / tayang / selesai /
          * dihentikan. Menentukan chip & judul banner — lihat `creditPhaseOf`. */
         creditPhase?: CreditPhase | null;
+        /** Penyebab batal (sql/129) — memilih kalimat `slot_cancelled` /
+         * `cancelled` lewat `cancelNoteKey`. NULL = tidak tercatat. */
+        cancelledBy?: ScheduleCancelCause | null;
         isPaidForLabel: boolean; // menentukan label "Invoice" vs "Kwitansi"
         /**
          * Tanggal tayang yang ditagihkan tagihan BASI terakhir — atau null.
@@ -481,6 +484,7 @@ export function buildScheduleCards(
                 // Invoice walau ada baris nyasar di tabel transactions.
                 invoicePaymentId: bookingState === 'in_review' ? null : invoiceId,
                 creditPhase: bookingState === 'airing_on_credit' ? creditPhaseOf(first, now) : null,
+                cancelledBy: first.cancelledBy ?? null,
                 // ⚠️ `ui.isPaid` MENYALA UNTUK KREDIT: `isSchedulePaid` membaca
                 // `scheduled`/`live` sebagai sudah-bayar. Tanpa pengecualian ini
                 // kartunya berlabel "Kwitansi" untuk uang yang belum masuk.
@@ -593,6 +597,7 @@ export function buildScheduleCards(
                 })(),
                 invoicePaymentId: pay?.paymentId || null,
                 creditPhase: bookingState === 'airing_on_credit' ? creditPhaseOf(s, now) : null,
+                cancelledBy: s.cancelledBy ?? null,
                 isPaidForLabel: bookingState === 'paid',
                 staleBilledFor: staleDateOf(pay),
                 paid: pay?.paid ?? 0,

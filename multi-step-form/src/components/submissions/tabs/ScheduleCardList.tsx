@@ -10,8 +10,9 @@ import {
 } from '../../ui/dropdown-menu';
 import { Skeleton } from '../../ui/skeleton';
 import { cn } from '@/lib/utils';
-import type { AdScheduleEntry, InvoiceGroup, ScheduleBilling, ScheduleInvoice } from '@/utils/supabase';
+import type { AdScheduleEntry, InvoiceGroup, ScheduleBilling, ScheduleCancelCause, ScheduleInvoice } from '@/utils/supabase';
 import { isTempoBillLocked } from '@/utils/supabase';
+import { adminCancelLine } from '@/components/status/cancelCause';
 import { InvoiceGroupPanel } from './InvoiceGroupPanel';
 import { formatIDR } from '@/utils/currency';
 import { copyToClipboard } from '../types';
@@ -727,9 +728,11 @@ function BillingSection({
  * diam-diam dan justru memberi admin keyakinan palsu.
  */
 function ResearcherSeesLine({
-  state, isLate, billing, byOrder, lapse,
+  state, isLate, billing, byOrder, lapse, cancelledBy,
 }: {
   state: CardState;
+  /** Penyebab batal (sql/129) — kalimat peneliti berbeda per pelaku. */
+  cancelledBy?: ScheduleCancelCause | null;
   isLate: boolean;
   /** Sebab gugur — peneliti melihat DUA layar berbeda untuknya. */
   lapse: LapseKind | null;
@@ -751,7 +754,7 @@ function ResearcherSeesLine({
     // mencetak «Batas bayar terlewat — perlu tanggal tayang baru» tepat di
     // bawah panel "Jadwal dibatalkan". Peneliti justru melihat banner abu
     // TANPA tombol apa pun (SchedulePhase: `slot_cancelled` / `cancelled`).
-    text = byOrder ? null : 'Jadwal tayang dibatalkan tim Jakpat — tidak ada langkah untuk peneliti.';
+    text = byOrder ? null : adminCancelLine(cancelledBy);
   } else if (state === 'awaiting_review') {
     text = 'Menunggu hasil review — tanggal tayang ditentukan setelah kuesionernya lolos review.';
   } else if (state === 'choose_schedule') {
@@ -1126,7 +1129,7 @@ function ScheduleCard({
       <BillingSection entry={entry} billing={billing} state={state} actions={actions} groups={groups} />
 
       {/* Baris "Peneliti melihat" — lihat `ResearcherSeesLine`. */}
-      <ResearcherSeesLine state={state} isLate={isLate} billing={billing} byOrder={isCancelledByOrder(entry)} lapse={lapse} />
+      <ResearcherSeesLine state={state} isLate={isLate} billing={billing} byOrder={isCancelledByOrder(entry)} lapse={lapse} cancelledBy={entry.cancelledBy} />
 
       <CardActionBar plan={plan} entry={entry} actions={actions} />
     </div>

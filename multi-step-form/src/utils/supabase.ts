@@ -5825,6 +5825,13 @@ export interface AdScheduleEntry {
   broadcastBy?: string | null;
   broadcastEndedAt?: string | null;
   broadcastEndedBy?: string | null;
+  /**
+   * Penyebab `status = 'cancelled'` (sql/129, ditulis trigger
+   * `trg_zz_cancelled_by`). NULL = belum batal, ATAU batal sebelum sql/129 —
+   * pelakunya tidak diketahui, jadi kartu memakai kalimat netral. Opsional
+   * karena hanya `fetchAdSchedules` yang membacanya.
+   */
+  cancelledBy?: ScheduleCancelCause | null;
   /** Yang BENAR-BENAR ditagih untuk jadwal ini. 981 dari 983 baris terisi. */
   totalCost: number;
   /**
@@ -5910,6 +5917,9 @@ export interface AdScheduleEntry {
   airOnCreditAt: string | null;
   airOnCreditNote: string | null;
 }
+
+/** Siapa/apa yang membatalkan sebuah jadwal — `ad_schedules.cancelled_by` (sql/129). */
+export type ScheduleCancelCause = 'admin' | 'researcher' | 'expired';
 
 /** Jadwal ini tayang sebelum lunas DAN uangnya belum masuk. */
 export const isOnCredit = (entry: Pick<AdScheduleEntry, 'airOnCreditAt' | 'paymentStatus'>): boolean =>
@@ -6006,6 +6016,7 @@ export const fetchAdSchedules = async (
         slot_booked_by, slot_reserved_at, created_at, rate_locked_at,
         air_on_credit_at, air_on_credit_note,
         broadcast_at, broadcast_by, broadcast_ended_at, broadcast_ended_by,
+        cancelled_by,
         form_submissions!ad_schedules_submission_id_fkey ( title, full_name, university, created_at )
       `, { count: 'exact' });
 
@@ -6127,6 +6138,7 @@ export const fetchAdSchedules = async (
       broadcastBy: row.broadcast_by ?? null,
       broadcastEndedAt: row.broadcast_ended_at ?? null,
       broadcastEndedBy: row.broadcast_ended_by ?? null,
+      cancelledBy: row.cancelled_by ?? null,
     };
   });
 };

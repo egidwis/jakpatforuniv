@@ -1168,6 +1168,9 @@ export const translations = {
     costIsEstimateNote: "Estimate at the rate locked for this schedule — the invoice is issued by our team.",
     incentiveNoAdditionNote: "No addition — current incentive still applies",
     calloutCancelledSchedule: "Our team cancelled this schedule.",
+    calloutCancelledScheduleResearcher: "You cancelled this schedule.",
+    calloutCancelledScheduleExpired: "This schedule was released automatically because its payment window ran out.",
+    calloutCancelledScheduleUnknown: "This schedule was cancelled.",
     // Manual-review orders never pick their own airing date — the wizard skips
     // the schedule step for them. This replaces the reschedule button so the
     // card still says who is holding the next step.
@@ -1193,6 +1196,9 @@ export const translations = {
     bannerSubAiringOnCreditNoBill: "Your survey airs on schedule. The invoice will be sent to you shortly.",
     bannerTitleSlotCancelled: "Airing date cancelled",
     bannerSubSlotCancelled: "The Jakpat team cancelled this order's airing date. Your questionnaire is still approved.",
+    bannerSubSlotCancelledResearcher: "You cancelled this airing date. Your questionnaire is still approved.",
+    bannerSubSlotCancelledExpired: "This airing date was released automatically because its payment window ran out. Your questionnaire is still approved.",
+    bannerSubSlotCancelledUnknown: "This order's airing date was cancelled. Your questionnaire is still approved.",
     chatMiminCta: "Ask Chat Mimin",
     scheduleEmptyRejected: "No schedule for this order yet.",
     publicationEmptyState: "Airing info will appear once a schedule is paid.",
@@ -2520,6 +2526,9 @@ export const translations = {
     costIsEstimateNote: "Estimasi dengan tarif yang terkunci untuk jadwal ini — tagihan resmi diterbitkan tim kami.",
     incentiveNoAdditionNote: "Tanpa tambahan — insentif berjalan tetap berlaku",
     calloutCancelledSchedule: "Jadwal ini dibatalkan tim kami.",
+    calloutCancelledScheduleResearcher: "Kamu membatalkan jadwal ini.",
+    calloutCancelledScheduleExpired: "Jadwal ini dilepas otomatis karena batas waktu pembayarannya habis.",
+    calloutCancelledScheduleUnknown: "Jadwal ini dibatalkan.",
     rescheduleHandledByTeam: "Tim kami yang akan menjadwalkan ulang surveimu. Butuh penjelasan? Buka Chat Mimin di Dashboard.",
     bookingStatusSlotCancelled: "Dibatalkan",
     // sql/102 — tayang sebelum lunas dengan tagihan tempo. TANPA tenggat: link
@@ -2539,6 +2548,9 @@ export const translations = {
     bannerSubAiringOnCreditNoBill: "Surveimu tayang sesuai jadwal. Tagihannya akan segera kami kirimkan.",
     bannerTitleSlotCancelled: "Jadwal tayang dibatalkan",
     bannerSubSlotCancelled: "Tim Jakpat membatalkan tanggal tayang pesanan ini. Kuesionermu tetap lolos review.",
+    bannerSubSlotCancelledResearcher: "Kamu membatalkan tanggal tayang ini. Kuesionermu tetap lolos review.",
+    bannerSubSlotCancelledExpired: "Tanggal tayang ini dilepas otomatis karena batas waktu pembayarannya habis. Kuesionermu tetap lolos review.",
+    bannerSubSlotCancelledUnknown: "Tanggal tayang pesanan ini dibatalkan. Kuesionermu tetap lolos review.",
     chatMiminCta: "Tanya Chat Mimin",
     scheduleEmptyRejected: "Belum ada jadwal untuk pesanan ini.",
     publicationEmptyState: "Info penayangan akan muncul setelah ada jadwal yang lunas.",
