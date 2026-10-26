@@ -7,6 +7,7 @@ import {
   fetchScheduleSiblings,
   fetchScheduleBilling,
   cancelSchedule,
+  cancelOrder,
   releaseExpiredSlot,
   rebookSlotForSubmission,
   getFormSubmissionById,
@@ -604,20 +605,35 @@ export function JadwalDanBayarPage() {
   const handleCancel = async () => {
     if (!entry) return;
     setIsWorking(true);
+    /*
+      Jadwal PERTAMA = pesanan itu sendiri, jadi yang dibatalkan SELURUH
+      pesanan (sql/128): `cancelled` + riwayat `actor: researcher` + tagihan
+      ditutup — persis tombol di kartu dashboard dan janji dialog
+      `cancelOrderConfirmBody`. Dulu `cancelSchedule` → `slot_cancelled` tanpa
+      pelaku, dibaca kartu sebagai "Tim Jakpat membatalkan tanggal tayang".
+      Perpanjangan & jadwal kredit tetap `cancelSchedule` seperti dulu: yang
+      pertama memang cuma satu jadwal; yang kedua berstatus `scheduled`, yang
+      ditolak `door_cancel_order`.
+    */
+    const wholeOrder = !entry.isExtension && !entry.airOnCreditAt;
     try {
-      await cancelSchedule({
-        submissionId: entry.submissionId,
-        sourceId: entry.sourceId,
-        isExtension: entry.isExtension,
-        paymentStatus: entry.paymentStatus,
-        id: entry.id,
-      });
+      if (wholeOrder) {
+        await cancelOrder(entry.submissionId);
+      } else {
+        await cancelSchedule({
+          submissionId: entry.submissionId,
+          sourceId: entry.sourceId,
+          isExtension: entry.isExtension,
+          paymentStatus: entry.paymentStatus,
+          id: entry.id,
+        });
+      }
       /*
         ⚠️ PULANG KE DASHBOARD, BUKAN MEMUAT ULANG DI TEMPAT (perbaikan
         2026-09-18). Pembatalan bukan "waktu habis": `canRepickInPlace` menolak
         `slot_cancelled`, dan pesanan berikutnya lahir lewat `JadwalBaruPage`.
       */
-      toast.success(entry.isExtension ? t('cancelExtensionSuccess') : t('cancelScheduleSuccess'));
+      toast.success(t(entry.isExtension ? 'cancelExtensionSuccess' : wholeOrder ? 'cancelOrderSuccess' : 'cancelScheduleSuccess'));
       navigate('/dashboard', { replace: true });
     } catch (e: any) {
       toast.error(e?.message || t('rebookError'));

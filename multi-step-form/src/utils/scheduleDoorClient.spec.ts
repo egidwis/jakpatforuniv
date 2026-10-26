@@ -11,6 +11,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 type Call = { table: string; ops: [string, ...unknown[]][] };
 let calls: Call[] = [];
 let sessionEmail = 'peneliti@example.com';
+/** Baris yang dipulangkan SELECT per tabel (default kosong). */
+let tableRows: Record<string, unknown[]> = {};
 
 function builderFor(table: string) {
   const call: Call = { table, ops: [] };
@@ -22,7 +24,7 @@ function builderFor(table: string) {
   b.select = (...a: unknown[]) => { call.ops.push(['select', ...a]); return b; };
   b.single = () => Promise.resolve({ data: { payment_status: 'pending' }, error: null });
   b.maybeSingle = b.single;
-  b.then = (res: any, rej: any) => Promise.resolve({ data: [], error: null }).then(res, rej);
+  b.then = (res: any, rej: any) => Promise.resolve({ data: tableRows[table] ?? [], error: null }).then(res, rej);
   return b;
 }
 
@@ -37,7 +39,7 @@ vi.mock('@supabase/supabase-js', () => ({
   }),
 }));
 
-const { rebookSlotForSubmission, releaseExpiredSlot, cancelSchedule, createResearcherExtension } = await import('./supabase');
+const { rebookSlotForSubmission, releaseExpiredSlot, cancelSchedule, cancelOrder, createResearcherExtension } = await import('./supabase');
 const { kilatWaveErrorKind } = await import('./dailyQuotaError');
 
 let posts: { url: string; body: any }[] = [];
@@ -49,6 +51,7 @@ const directWrites = () => calls.filter((c) =>
 beforeEach(() => {
   calls = [];
   posts = [];
+  tableRows = {};
   sessionEmail = 'peneliti@example.com';
   reply = { status: 200, body: { data: { id: 'sub-1' } } };
   vi.stubEnv('VITEST', '');
@@ -133,5 +136,36 @@ describe('cancelSchedule', () => {
   it('pintu nol baris → galat yang menjelaskan, bukan sukses palsu', async () => {
     reply = { status: 200, body: { data: { id: null } } };
     await expect(cancelSchedule({ ...entry, sourceId: 'sub-1', isExtension: false })).rejects.toThrow(/Order ini/);
+  });
+});
+
+describe('cancelOrder (sql/128 — satu pembatalan pesanan peneliti)', () => {
+  it('lewat pintu `cancel-order`; nol tulisan langsung ke tabel jadwal & riwayat', async () => {
+    tableRows = { ad_schedules: [{ id: 'sch-1', source_table: 'form_submissions', status: 'waiting_payment' }] };
+    await cancelOrder('sub-1');
+    expect(posts).toEqual([{ url: '/api/schedules/lock', body: { action: 'cancel-order', submissionId: 'sub-1' } }]);
+    expect(directWrites()).toHaveLength(0);
+  });
+
+  it('DOKU dulu: tagihan pending jadwal order dicari SEBELUM pintu dipanggil', async () => {
+    tableRows = { ad_schedules: [{ id: 'sch-1', source_table: 'form_submissions', status: 'waiting_payment' }] };
+    await cancelOrder('sub-1');
+    const inv = calls.find((c) => c.table === 'invoices');
+    expect(inv?.ops).toContainEqual(['eq', 'schedule_id', 'sch-1']);
+  });
+
+  it('pintu nol baris → galat, bukan sukses diam', async () => {
+    reply = { status: 200, body: { data: { id: null } } };
+    await expect(cancelOrder('sub-1')).rejects.toThrow(/tidak bisa dibatalkan/);
+  });
+
+  it('perpanjangan masih hidup → ditolak SEBELUM link DOKU mana pun dimatikan', async () => {
+    tableRows = { ad_schedules: [
+      { id: 'sch-1', source_table: 'form_submissions', status: 'scheduled' },
+      { id: 'sch-2', source_table: 'form_submissions_extend', status: 'waiting_payment' },
+    ] };
+    await expect(cancelOrder('sub-1')).rejects.toThrow(/jadwal lain/);
+    expect(posts).toHaveLength(0);
+    expect(calls.some((c) => c.table === 'invoices')).toBe(false);
   });
 });

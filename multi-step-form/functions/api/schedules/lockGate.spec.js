@@ -92,6 +92,15 @@ describe('validateAction (satu pintu jadwal, sql/123)', () => {
     expect(validateAction({ action: 'release', submissionId: id, paymentStatus: 'paid' })).toMatch(/pembayaran/);
     expect(validateAction({ action: 'mark-paid', submissionId: id })).toMatch(/Tindakan/);
   });
+
+  it('cancel-order: cukup submissionId; status tidak boleh dikirim (sql/128)', async () => {
+    const { validateAction, doorCall } = await import('./lockGate.js');
+    expect(validateAction({ action: 'cancel-order', submissionId: id })).toBeNull();
+    expect(validateAction({ action: 'cancel-order', submissionId: 'x' })).toMatch(/Order/);
+    expect(validateAction({ action: 'cancel-order', submissionId: id, submissionStatus: 'cancelled' })).toMatch(/pembayaran/);
+    expect(doorCall('cancel-order', { id: 'u', email: 'e@x.test' }, { submissionId: id, sourceId: id, isExtension: true }))
+      .toEqual({ fn: 'door_cancel_order', args: { p_actor: 'u', p_email: 'e@x.test', p_submission_id: id } });
+  });
 });
 
 describe('lockRoute', () => {
