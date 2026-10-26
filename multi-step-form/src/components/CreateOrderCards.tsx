@@ -107,11 +107,14 @@ export function ProductCardGrid({ onOpenAdsModal, onOpenKilatModal, onSelect }: 
                             </span>
                         </div>
 
-                        {/* "Tersedia" hanya lawan dari "Segera Hadir" — kartu berwarna & tombolnya
-                            sudah mengatakannya. Produk baru memakai slot yang sama untuk "Baru". */}
-                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${tone.chip}`}>
-                            {t(product.isNew ? 'newBadge' : 'productAvailable')}
-                        </span>
+                        {/* Produk yang bisa dipesan tidak berchip ("Tersedia" dihapus 26 Okt 2026:
+                            kartu berwarna & tombolnya sudah mengatakannya); hanya produk baru
+                            yang memakai slot ini untuk "Baru". */}
+                        {product.isNew && (
+                            <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${tone.chip}`}>
+                                {t('newBadge')}
+                            </span>
+                        )}
                     </div>
 
                     <p className="text-xs leading-relaxed text-slate-600 line-clamp-2">
@@ -179,9 +182,11 @@ export function ProductCardGrid({ onOpenAdsModal, onOpenKilatModal, onSelect }: 
                             {t(product.titleKey)}
                         </span>
                     </div>
-                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${tone.chip}`}>
-                        {t('productAvailable')}
-                    </span>
+                    {product.isNew && (
+                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${tone.chip}`}>
+                            {t('newBadge')}
+                        </span>
+                    )}
                 </div>
 
                 <p className="text-xs leading-relaxed text-slate-600 line-clamp-2">

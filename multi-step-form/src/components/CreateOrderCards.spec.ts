@@ -23,10 +23,10 @@ const render = (kilatOpen: boolean) =>
 const count = (html: string, text: string) => html.split(`>${text}<`).length - 1;
 
 describe('Buat Order Baru — chip status produk', () => {
-  it('akun yang boleh Kilat: Kilat "Baru", Iklan tetap "Tersedia"', () => {
+  it('akun yang boleh Kilat: Kilat "Baru", Iklan tanpa chip', () => {
     const html = render(true);
     expect(count(html, 'Baru')).toBe(1);
-    expect(count(html, 'Tersedia')).toBe(1);
+    expect(count(html, 'Tersedia')).toBe(0);
     expect(html).not.toContain('Segera Hadir');
   });
 
@@ -34,6 +34,6 @@ describe('Buat Order Baru — chip status produk', () => {
     const html = render(false);
     expect(count(html, 'Segera Hadir')).toBe(1);
     expect(count(html, 'Baru')).toBe(0);
-    expect(count(html, 'Tersedia')).toBe(1);
+    expect(count(html, 'Tersedia')).toBe(0);
   });
 });
