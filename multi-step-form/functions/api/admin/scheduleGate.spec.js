@@ -86,3 +86,47 @@ describe('release-slot & cancel-schedule (pintu admin, sql/123)', () => {
     expect(first.patch).not.toHaveProperty('start_date');
   });
 });
+
+describe('kilatSchedulePatch — jadwal ulang Kilat oleh admin (#e0e7ae16)', () => {
+  const body = { submissionId: id, ymd: '2026-11-02', endYmd: '2026-11-03', hour: 11 };
+  const now = new Date('2026-10-26T04:34:52.602Z');
+
+  it('jadwal batal (expired) dijadwalkan ulang → slot_reserved + payment_status pending', async () => {
+    const { kilatSchedulePatch } = await import('./scheduleGate.js');
+    expect(kilatSchedulePatch({ payment_status: 'expired', submission_status: 'slot_cancelled' }, body, now)).toEqual({
+      start_date: '2026-11-02',
+      end_date: '2026-11-03',
+      kilat_slot_hour: 11,
+      slot_booked_by: 'admin',
+      slot_reserved_at: now.toISOString(),
+      updated_at: now.toISOString(),
+      submission_status: 'slot_reserved',
+      payment_status: 'pending',
+    });
+  });
+
+  it('pending tetap pending; failed tidak diputihkan', async () => {
+    const { kilatSchedulePatch } = await import('./scheduleGate.js');
+    const pending = kilatSchedulePatch({ payment_status: 'pending', submission_status: 'waiting_payment' }, body, now);
+    expect(pending.submission_status).toBe('slot_reserved');
+    expect(pending).not.toHaveProperty('payment_status');
+    expect(kilatSchedulePatch({ payment_status: 'failed', submission_status: 'slot_reserved' }, body, now))
+      .not.toHaveProperty('payment_status');
+  });
+
+  it('lunas atau sudah berjalan: hanya tanggal & jam yang pindah', async () => {
+    const { kilatSchedulePatch } = await import('./scheduleGate.js');
+    for (const row of [
+      { payment_status: 'paid', submission_status: 'paid' },
+      { payment_status: 'completed', submission_status: 'completed' },
+      // Tempo: tayang sebelum lunas — `scheduled` dengan uang belum masuk.
+      { payment_status: 'pending', submission_status: 'scheduled' },
+      { payment_status: 'expired', submission_status: 'live' },
+    ]) {
+      const patch = kilatSchedulePatch(row, body, now);
+      expect(patch).not.toHaveProperty('submission_status');
+      expect(patch).not.toHaveProperty('payment_status');
+      expect(patch).toMatchObject({ start_date: '2026-11-02', kilat_slot_hour: 11 });
+    }
+  });
+});

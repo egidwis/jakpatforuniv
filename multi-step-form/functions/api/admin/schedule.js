@@ -1,4 +1,4 @@
-import { UNCOMMITTED_ORDER, cancelScheduleWrite, releaseSlotPatch, submissionDatePatch, validateScheduleWrite } from './scheduleGate.js';
+import { UNCOMMITTED_ORDER, cancelScheduleWrite, kilatSchedulePatch, releaseSlotPatch, submissionDatePatch, validateScheduleWrite } from './scheduleGate.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -154,24 +154,13 @@ export async function onRequest(context) {
     if (body.action === 'kilat') {
       const rows = await rest(
         env,
-        `form_submissions?id=eq.${body.submissionId}&select=payment_status`,
+        `form_submissions?id=eq.${body.submissionId}&select=payment_status,submission_status`,
       );
       const row = Array.isArray(rows) ? rows[0] : null;
       if (!row) return json(400, { error: 'Order tidak ditemukan' });
-      const patch = {
-        start_date: body.ymd,
-        end_date: body.endYmd,
-        kilat_slot_hour: body.hour,
-        slot_booked_by: 'admin',
-        slot_reserved_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      if (!PAID.has(String(row.payment_status || '').toLowerCase())) {
-        patch.submission_status = 'slot_reserved';
-      }
       await rest(env, `form_submissions?id=eq.${body.submissionId}`, {
         method: 'PATCH',
-        body: JSON.stringify(patch),
+        body: JSON.stringify(kilatSchedulePatch(row, body)),
       });
       return json(200, { data: { ok: true } });
     }
