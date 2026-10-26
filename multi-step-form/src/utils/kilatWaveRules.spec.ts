@@ -36,8 +36,8 @@ describe('konstanta = sql/117', () => {
     expect(sql117).toContain(`SELECT kilat_instant_of(d, h) - interval '${KILAT_BOOKING_LEAD_MIN} minutes'`);
   });
 
-  test('pintu swalayan masih tertutup sampai R7', () => {
-    expect(KILAT_SELF_SERVE_OPEN).toBe(false);
+  test('pintu swalayan terbuka untuk semua sejak Push B (26 Okt 2026)', () => {
+    expect(KILAT_SELF_SERVE_OPEN).toBe(true);
   });
 });
 

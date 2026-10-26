@@ -93,7 +93,7 @@ export const AD_RATE_SCHEDULE = [
 // KILAT_TARIFF_FROM + KILAT_RATE_SCHEDULE di src/utils/constants.ts — WAJIB
 // identik; rateSchedule.spec.ts membandingkan keduanya. `null` = tabel belum
 // berlaku: semua Kilat memakai rumus lama (tarif harian + add-on, tanpa voucher).
-export const KILAT_TARIFF_FROM = null;
+export const KILAT_TARIFF_FROM = '2026-10-26T16:00:00+07:00';
 
 export const KILAT_RATE_SCHEDULE = [
   {
