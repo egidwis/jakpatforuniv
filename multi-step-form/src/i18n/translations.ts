@@ -345,7 +345,6 @@ export const translations = {
     kilatExtendCardTitle: "Book Another Wave",
     kilatExtendCardDesc: "Push the same survey again in another JFU Kilat wave to reach more respondents.",
     kilatExtendCardBtn: "Book a wave",
-    kilatExtendCardSubtitle: "Pick a wave, lock it, then complete the payment.",
     kilatExtendTooClose: "Waves of the same survey must be at least 24 hours apart. Pick another wave.",
     kilatSummaryLabel: "Distribution",
     kilatSummaryValue: "1 push wave",
@@ -370,9 +369,6 @@ export const translations = {
     summaryPeriodLabel: "Period",
     summaryPreviousDateLabel: "Previous date",
     // Tiket reservasi — badan = pilih & kunci, sobekan = bayar (12 Okt 2026)
-    reservationPickSubtitle: "Pick an airing date, lock it, then complete the payment.",
-    /** Bayar ditekan sebelum tanggal dikunci. Beda dari `slotErrorNoDate`: tanggalnya mungkin SUDAH dipilih. */
-    payNeedsLockError: "Lock your airing date before paying.",
     ticketNotLocked: "Not locked yet",
     ticketDeadlineLabel: "Payment deadline",
     /** Slot pesanan peneliti dilepas 1 jam sesudah dikunci (`SLOT_HOLD_MS`) — bukan 14.00. */
@@ -1654,7 +1650,6 @@ export const translations = {
     kilatExtendCardTitle: "Pesan Gelombang Lagi",
     kilatExtendCardDesc: "Push survei yang sama sekali lagi di gelombang JFU Kilat lain untuk menjangkau lebih banyak responden.",
     kilatExtendCardBtn: "Pesan gelombang",
-    kilatExtendCardSubtitle: "Pilih gelombang, kunci, lalu selesaikan pembayaran.",
     kilatExtendTooClose: "Gelombang untuk survei yang sama harus berjarak minimal 24 jam. Pilih gelombang lain.",
     kilatSummaryLabel: "Distribusi",
     kilatSummaryValue: "1 gelombang push",
@@ -1679,8 +1674,6 @@ export const translations = {
     summaryPeriodLabel: "Periode",
     summaryPreviousDateLabel: "Tanggal lama",
     // Tiket reservasi — badan = pilih & kunci, sobekan = bayar (12 Okt 2026)
-    reservationPickSubtitle: "Pilih tanggal tayang, kunci, lalu selesaikan pembayaran.",
-    payNeedsLockError: "Kunci tanggal tayang dulu sebelum membayar.",
     ticketNotLocked: "Belum dikunci",
     ticketDeadlineLabel: "Batas bayar",
     ticketDeadlineHold: "1 jam setelah dikunci",

@@ -689,7 +689,6 @@ export function JadwalBaruPage() {
       isBusy={isSaving}
       title={t(seg.key, seg.vars)}
       cardTitle={isKilat ? t('kilatWavePickWave') : t('scheduleCardExtensionTitle')}
-      subtitle={isKilat ? t('kilatExtendCardSubtitle') : t('reservationPickSubtitle')}
       feedback={feedback}
       stub={
         <TicketStub

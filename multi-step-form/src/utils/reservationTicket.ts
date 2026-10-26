@@ -24,9 +24,6 @@ export interface LockFeedback {
   tone: LockFeedbackTone;
 }
 
-/** Bayar ditekan sebelum tanggal dikunci. */
-export const PAY_NEEDS_LOCK: LockFeedback = { key: 'payNeedsLockError', tone: 'warning' };
-
 /** Verdict gagal `scheduleLockGate` → teguran. Kuncinya milik gerbang. */
 export function lockGateFeedback(verdict: { reason: LockGateReason; messageKey: TranslationKey }): LockFeedback {
   return { key: verdict.messageKey, tone: verdict.reason === 'no_date' ? 'warning' : 'error' };

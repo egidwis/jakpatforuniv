@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { AlertCircle, ArrowLeft, CreditCard, Info, Lock, Pencil } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Info, Lock, Pencil } from 'lucide-react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { SectionLabel } from '../SurveyFieldRow';
-import { PAY_NEEDS_LOCK, barCtaSource } from '../../utils/reservationTicket';
+import { barCtaSource } from '../../utils/reservationTicket';
 import type { LockFeedbackState } from './useLockFeedback';
 
 /**
@@ -67,7 +67,7 @@ export type LockZone =
   | { kind: 'info'; node: ReactNode };
 
 export type PaySlot =
-  /** Belum dikunci: Bayar redup yang menegur. Desktop saja. */
+  /** Belum dikunci: tidak ada tombol Bayar (bar ponsel memakai ini lewat `barCtaSource`). */
   | { kind: 'needs_lock' }
   | { kind: 'ready'; cta: ReactNode }
   | { kind: 'note'; node: ReactNode }
@@ -299,16 +299,9 @@ export function ScheduleReservationLayout({
             {stub}
             {cost}
 
-            {pay.kind === 'needs_lock' && (
-              <button
-                type="button"
-                aria-disabled="true"
-                onClick={() => feedback.report(PAY_NEEDS_LOCK, { scroll: true, nudge: true })}
-                className="hidden lg:inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary/45 px-6 py-3 text-sm font-semibold text-white cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2"
-              >
-                <CreditCard size={16} aria-hidden="true" /> {t('payNow')}
-              </button>
-            )}
+            {/* `needs_lock`: sengaja TANPA tombol. Tombol Bayar redup yang menegur
+                dihapus (26 Okt 2026) — selama tanggal belum dikunci, satu-satunya
+                aksi di layar adalah "Kunci Tanggal Ini". */}
             {pay.kind === 'ready' && (
               // Disembunyikan di ponsel HANYA bila tombol yang sama sedang di bar —
               // "Tetap bayar" lewat 14.00 tetap terlihat di kartu.

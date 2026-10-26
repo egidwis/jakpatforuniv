@@ -167,7 +167,6 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
       embedded
       title={t(seg.key, seg.vars)}
       cardTitle={isKilat ? t('kilatWavePickWave') : t('scheduleCardPickTitle')}
-      subtitle={t('reservationPickSubtitle')}
       feedback={feedback}
       stub={
         <TicketStub

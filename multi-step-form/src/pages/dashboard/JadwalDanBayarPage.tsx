@@ -867,7 +867,6 @@ export function JadwalDanBayarPage() {
           backLabel={t('backToOrdersShort')}
           isBusy={isWorking}
           title={t('segmentReservation')}
-          subtitle={t('reservationPickSubtitle')}
           alertBanner={
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
               <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
@@ -963,7 +962,6 @@ export function JadwalDanBayarPage() {
         isBusy={isWorking}
         title={t(seg.key, seg.vars)}
         cardTitle={selfPick ? (mode === 'kilat' ? t('kilatWavePickWave') : t('scheduleCardPickTitle')) : t('scheduleCardLockedTitle')}
-        subtitle={selfPick ? t('reservationPickSubtitle') : undefined}
         feedback={feedback}
         stub={
           <TicketStub
@@ -1013,7 +1011,6 @@ export function JadwalDanBayarPage() {
           isBusy={isWorking}
           title={mode === 'kilat' ? t('kilatRebookPickTitle') : t('rebookPickTitle')}
           cardTitle={mode === 'kilat' ? t('kilatWavePickWave') : t('scheduleCardPickTitle')}
-          subtitle={t('reservationPickSubtitle')}
           feedback={feedback}
           stub={
             <TicketStub
