@@ -39,7 +39,7 @@ export const KILAT_SELF_SERVE_OPEN = false;
  * sql/117 dan create-payment.js melewati pemeriksaan untuk admin, jadi order
  * admin tidak menguji jalur peneliti. Dikosongkan lagi di Push B.
  */
-export const KILAT_PILOT_EMAILS: readonly string[] = [];
+export const KILAT_PILOT_EMAILS: readonly string[] = ['tegarerputra@gmail.com'];
 
 // Turunan, bukan angka lepas. Dipakai cek ketersediaan per-hari di jalur Kilat
 // lama (JFUSUHUD, sudah mati); pemilih gelombang R5 menghitung per gelombang.

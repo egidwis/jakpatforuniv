@@ -19,9 +19,16 @@ const base: SurveyFormData = {
 };
 
 describe('canUseKilatSelfServe — pintu tertutup sampai Push B', () => {
-  it('bendera masih tertutup dan daftar pilot kosong di Push A', () => {
+  // Push Uji: satu akun uji non-admin. Dikosongkan lagi di Push B.
+  it('bendera masih tertutup; daftar pilot = akun uji saja di Push Uji', () => {
     expect(KILAT_SELF_SERVE_OPEN).toBe(false);
-    expect(KILAT_PILOT_EMAILS).toEqual([]);
+    expect(KILAT_PILOT_EMAILS).toEqual(['tegarerputra@gmail.com']);
+  });
+
+  it('akun uji boleh; email admin TIDAK boleh ada di daftar pilot (trigger sql/117 melewatinya)', () => {
+    expect(canUseKilatSelfServe('tegarerputra@gmail.com')).toBe(true);
+    expect(canUseKilatSelfServe(' TegarErPutra@gmail.com ')).toBe(true);
+    expect(KILAT_PILOT_EMAILS).not.toContain('product@jakpat.net');
   });
 
   it('admin boleh (uji wizard), peneliti biasa tidak, email kosong tidak', () => {
