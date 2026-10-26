@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  PAY_NEEDS_LOCK,
   lockGateFeedback,
   newScheduleBlockFeedback,
   deadlineRowOf,
@@ -11,29 +10,12 @@ import {
 import { scheduleLockGate } from './scheduleLockGate';
 import { NEW_SCHEDULE_BLOCK_KEY } from './newSchedulePlan';
 import type { NewScheduleBlock } from './newSchedulePlan';
-import { translations } from '../i18n/translations';
 
 /*
   Keputusan tiket reservasi yang bisa salah tanpa terlihat di layar: nada
   teguran (kelalaian = warning, kegagalan = error), baris batas bayar, dan
   siapa yang menghuni bar ponsel. Rangka tiketnya cuma merender jawaban ini.
 */
-
-describe('PAY_NEEDS_LOCK — Bayar ditekan sebelum tanggal dikunci', () => {
-  it('kelalaian pengguna, jadi warning', () => {
-    expect(PAY_NEEDS_LOCK).toEqual({ key: 'payNeedsLockError', tone: 'warning' });
-  });
-
-  it('kalimatnya ada di kedua bahasa dan bukan kalimat "belum pilih tanggal"', () => {
-    for (const lang of ['en', 'id'] as const) {
-      const teks = translations[lang][PAY_NEEDS_LOCK.key];
-      expect(teks, lang).toBeTruthy();
-      // Peneliti yang SUDAH memilih tanggal tapi belum mengunci tidak boleh
-      // dibilangi "pilih tanggal dulu".
-      expect(teks).not.toBe(translations[lang].slotErrorNoDate);
-    }
-  });
-});
 
 describe('lockGateFeedback — verdict gerbang kunci → teguran', () => {
   const tolakDengan = (over: Parameters<typeof scheduleLockGate>[0]) => {

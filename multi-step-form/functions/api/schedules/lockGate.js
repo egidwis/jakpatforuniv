@@ -88,8 +88,13 @@ export function lockPatch(row, body, now = new Date()) {
   klien lama (sebelum Push A) tetap jalan. Aturan tanggal Kilat, perpanjangan,
   lepas, dan batal TIDAK ada di sini — fungsi door_* menilainya di DB dengan
   klaim peneliti. Gerbang ini hanya memeriksa bentuk.
+
+  `cancel` ≠ `cancel-order` (sql/128). `cancel` melepas SATU jadwal (hold
+  habis, rollback, perpanjangan) dan ordinal 1-nya jadi `slot_cancelled`;
+  `cancel-order` = peneliti membatalkan SELURUH pesanan → `cancelled` +
+  riwayat `actor: researcher` + tagihan ditutup, satu transaksi.
 */
-const ACTIONS = new Set(['lock', 'extend', 'release', 'cancel']);
+const ACTIONS = new Set(['lock', 'extend', 'release', 'cancel', 'cancel-order']);
 const KILAT_HOURS = new Set([11, 15]);
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
@@ -171,6 +176,7 @@ export function doorCall(action, user, body) {
     };
   }
   if (action === 'release') return { fn: 'door_release_slot', args: actor };
+  if (action === 'cancel-order') return { fn: 'door_cancel_order', args: actor };
   return {
     fn: 'door_cancel_schedule',
     args: { ...actor, p_source_id: body.sourceId, p_is_extension: body.isExtension },

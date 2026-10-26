@@ -71,11 +71,11 @@ export async function onRequestPost(context) {
         let detailsHtml = '';
 
         if (topUp) {
-            subject = 'Tagihan susulan iklanmu siap dibayar — Jakpat for Universities';
+            subject = 'Tagihan susulan surveimu siap dibayar — Jakpat for Universities';
             introHtml = `
                 <p>Halo Kak <strong>${name}</strong>,</p>
                 <p>Ada tagihan susulan${surveyLine}${amountText ? ` senilai <strong>${amountText}</strong>` : ''}, di luar pembayaran yang sudah Kakak selesaikan sebelumnya.</p>
-                <p>Jadwal tayang iklanmu tidak berubah karena tagihan ini.</p>
+                <p>Jadwal tayang surveimu tidak berubah karena tagihan ini.</p>
             `;
 
             detailsHtml = `
@@ -92,11 +92,11 @@ export async function onRequestPost(context) {
                 </div>
             `;
         } else if (isBulk) {
-            subject = 'Tagihan gabungan jadwal iklanmu siap dibayar — Jakpat for Universities';
+            subject = 'Tagihan gabungan jadwal surveimu siap dibayar — Jakpat for Universities';
             introHtml = `
                 <p>Halo Kak <strong>${name}</strong>,</p>
-                <p>Tagihan gabungan untuk beberapa jadwal iklan survei yang telah direservasikan oleh tim kami sudah siap dibayar.</p>
-                <p>Silakan selesaikan pembayaran untuk mengonfirmasi seluruh jadwal penayangan iklan surveimu.</p>
+                <p>Tagihan gabungan untuk beberapa jadwal survei yang telah direservasikan oleh tim kami sudah siap dibayar.</p>
+                <p>Silakan selesaikan pembayaran untuk mengonfirmasi seluruh jadwal penayangan surveimu.</p>
             `;
 
             const itemList = Array.isArray(items) ? items : [];
@@ -140,10 +140,10 @@ export async function onRequestPost(context) {
                 </div>
             `;
         } else if (isExtension) {
-            subject = 'Tagihan jadwal iklan barumu siap dibayar — Jakpat for Universities';
+            subject = 'Tagihan jadwal barumu siap dibayar — Jakpat for Universities';
             introHtml = `
                 <p>Halo Kak <strong>${name}</strong>,</p>
-                <p>Jadwal iklan tambahan${surveyLine}${airingStartText ? ` untuk tayang mulai <strong>${airingStartText}</strong>` : ''} sudah kami siapkan.</p>
+                <p>Jadwal tambahan${surveyLine}${airingStartText ? ` untuk tayang mulai <strong>${airingStartText}</strong>` : ''} sudah kami siapkan.</p>
                 <p>Tagihannya siap dibayar${amountText ? ` senilai <strong>${amountText}</strong>` : ''}.${tempo ? '' : ' Tanggal itu kami tahan untukmu sampai pembayarannya masuk — kalau lewat batas waktu, slotnya kembali terbuka untuk peneliti lain.'}</p>
             `;
 
@@ -166,7 +166,7 @@ export async function onRequestPost(context) {
             introHtml = `
                 <p>Halo Kak <strong>${name}</strong>,</p>
                 <p>Kabar baik! Pesananmu${surveyLine} sudah kami periksa dan <strong>disetujui</strong>.</p>
-                <p>Tim kami telah membantu mereservasikan jadwal tayang iklan surveimu. Tagihan sudah siap untuk diselesaikan agar penayangan dapat berjalan sesuai jadwal yang telah ditentukan.</p>
+                <p>Tim kami telah membantu mereservasikan jadwal tayang surveimu. Tagihan sudah siap untuk diselesaikan agar penayangan dapat berjalan sesuai jadwal yang telah ditentukan.</p>
             `;
 
             detailsHtml = `
@@ -189,7 +189,7 @@ export async function onRequestPost(context) {
             <div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 10px 14px; margin: 20px 0; font-size: 13px; color: #4c1d95; line-height: 1.5;">
               ${topUp
                 ? 'Tagihan susulan ini <strong>tidak punya batas waktu</strong> pembayaran.'
-                : 'Iklanmu <strong>tetap tayang sesuai jadwal</strong> — pembayarannya boleh menyusul, tanpa batas waktu.'} Tombol di bawah selalu bisa dipakai kapan pun Kakak siap membayar.
+                : 'Surveimu <strong>tetap tayang sesuai jadwal</strong> — pembayarannya boleh menyusul, tanpa batas waktu.'} Tombol di bawah selalu bisa dipakai kapan pun Kakak siap membayar.
             </div>
         ` : '';
 

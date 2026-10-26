@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarOff, CheckCircle2, Hourglass, MessageCircle } from 'lucide-react';
+import { CalendarOff, CheckCircle2, Hourglass } from 'lucide-react';
 import { useLanguage } from '@/i18n/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
@@ -92,39 +92,37 @@ export function awayBlocksKilatPick({ leave }: { leave: boolean }): boolean {
 
 type Tone = 'go' | 'wait';
 
+/**
+ * Satu pesan utuh per varian. Dulu modal ini memecahnya jadi sorotan + catatan
+ * + baris kontak ("Ada kendala? Laporkan saja…") yang terbaca seperti tiga
+ * info terpisah — sekarang pesan intinya sudah memuat apa yang tetap jalan,
+ * apa yang menunggu, dan bahwa tidak ada yang perlu dilakukan peneliti.
+ */
 interface VariantCopy {
   tone: Tone;
   highlight: string;
-  notes: string[];
-  contact: TranslationKey;
   cta: TranslationKey;
 }
 
-function copyOf(ctx: AwayModalCtx, t: (k: TranslationKey, v?: Record<string, string>) => string): VariantCopy {
+export function copyOf(ctx: AwayModalCtx, t: (k: TranslationKey, v?: Record<string, string>) => string): VariantCopy {
   const variant = awayModalVariant(ctx);
   switch (variant) {
     case 'A':
       return {
         tone: 'go',
         highlight: t('awayHighlightAds'),
-        notes: [],
-        contact: 'adminAwayContactIfIssue',
         cta: ctx.kind === 'submit' && ctx.path === 'schedule' ? 'awayCtaPickSchedule' : 'awayCtaContinue',
       };
     case 'B':
       return {
         tone: 'wait',
-        highlight: t('awayHighlightReview'),
-        notes: [t(ctx.kind === 'submit' && ctx.product === 'kilat' ? 'awayNoteReviewKilat' : 'awayNoteReviewAds')],
-        contact: 'adminAwayContactPromise',
+        highlight: t(ctx.kind === 'submit' && ctx.product === 'kilat' ? 'awayHighlightReviewKilat' : 'awayHighlightReview'),
         cta: 'awayCtaSubmit',
       };
     case 'C':
       return {
         tone: 'wait',
         highlight: t('awayHighlightKilatDiverted'),
-        notes: [t('awayNoteNoPayment')],
-        contact: 'adminAwayContactPromise',
         cta: 'awayCtaSendOrder',
       };
     case 'D': {
@@ -132,8 +130,6 @@ function copyOf(ctx: AwayModalCtx, t: (k: TranslationKey, v?: Record<string, str
       return {
         tone: 'go',
         highlight: schedule ? t('awayHighlightAdsScheduled', { schedule }) : t('awayHighlightAds'),
-        notes: [],
-        contact: 'adminAwayContactIfIssue',
         cta: 'awayCtaPay',
       };
     }
@@ -141,16 +137,12 @@ function copyOf(ctx: AwayModalCtx, t: (k: TranslationKey, v?: Record<string, str
       return {
         tone: 'wait',
         highlight: t('awayHighlightKilatPay', { wave: (ctx.kind === 'pay' && ctx.wave) || '—' }),
-        notes: [],
-        contact: 'adminAwayContactPromise',
         cta: 'awayCtaPay',
       };
     case 'F':
       return {
         tone: 'wait',
         highlight: t('awayHighlightKilatPick'),
-        notes: [t('awayNoteOrderSafe')],
-        contact: 'adminAwayContactPromise',
         cta: ctx.kind === 'kilat_pick' && ctx.leave ? 'awayCtaBackDashboard' : 'awayCtaGotIt',
       };
   }
@@ -200,15 +192,6 @@ export function AdminAwayModalHost() {
           <HighlightIcon className="size-4 mt-0.5 shrink-0" aria-hidden="true" />
           <p>{copy.highlight}</p>
         </div>
-
-        {copy.notes.map((n) => (
-          <p key={n} className="text-sm leading-relaxed text-slate-600">{n}</p>
-        ))}
-
-        <p className="flex items-start gap-2 text-sm leading-relaxed text-blue-800">
-          <MessageCircle className="size-4 mt-0.5 shrink-0" aria-hidden="true" />
-          <span>{t(copy.contact)}</span>
-        </p>
 
         <button
           type="button"

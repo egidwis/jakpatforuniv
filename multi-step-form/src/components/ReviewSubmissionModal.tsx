@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { CheckCircle2, ArrowRight, FileText } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
-import { AdminAwayInlineNote } from './status/AdminHolidayBanner';
+import { useAdminAway } from '../utils/operationalHolidays';
 
 interface ReviewSubmissionModalProps {
   isOpen: boolean;
@@ -44,6 +44,7 @@ export function ReviewSubmissionModal({
   variant = 'review',
 }: ReviewSubmissionModalProps) {
   const { t } = useLanguage();
+  const away = useAdminAway();
   const ctaRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -56,13 +57,18 @@ export function ReviewSubmissionModal({
   const bookingId = orderId ? orderId.slice(0, 8).toUpperCase() : '';
 
   const adminSchedule = variant === 'admin_schedule';
+  // Mode libur (sql/122): langkah yang menjanjikan waktu kerja tim DIGANTI
+  // kalimat yang sudah memuat "setelah tim kembali" — bukan diberi catatan
+  // amber terpisah di bawahnya, yang terbaca seperti dua janji yang bertabrakan.
   const steps = [
-    t(adminSchedule ? 'adminScheduleModalStep1' : 'reviewModalStep1'),
-    t(adminSchedule ? 'adminScheduleModalStep2' : 'reviewModalStep2'),
+    adminSchedule
+      ? t('adminScheduleModalStep1')
+      : t(away ? 'reviewModalStep1Away' : 'reviewModalStep1'),
+    adminSchedule
+      ? t(away ? 'adminScheduleModalStep2Away' : 'adminScheduleModalStep2')
+      : t('reviewModalStep2'),
     email ? t('reviewModalStep3Email', { email }) : t('reviewModalStep3'),
   ];
-  // Mode libur: catatan menempel di langkah yang menjanjikan waktu kerja tim.
-  const awayStep = adminSchedule ? 1 : 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -119,10 +125,6 @@ export function ReviewSubmissionModal({
                     </span>
                     <span className={`pt-0.5 text-xs leading-relaxed ${i === 0 ? 'text-slate-900 font-medium' : 'text-slate-600'}`}>
                       {text}
-                      {/* Mode libur (sql/122): langkah yang menjanjikan waktu kerja tim. */}
-                      {i === awayStep && (
-                        <AdminAwayInlineNote className="mt-1" textKey={adminSchedule ? 'adminAwayInlineNote' : 'reviewModalAwayNote'} />
-                      )}
                     </span>
                   </li>
                 );

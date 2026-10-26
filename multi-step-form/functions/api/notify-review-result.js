@@ -128,7 +128,7 @@ export async function onRequestPost(context) {
                 <p>Kami mengabari bahwa pesanan${surveyLine} telah <strong>dibatalkan</strong> dan tidak akan tayang.</p>
                 ${notesBlock}
                 <p>Tagihan yang mungkin sempat terbit untuk pesanan ini <strong>sudah tidak berlaku</strong> — mohon jangan membayar tautan pembayaran lama yang mungkin sudah Kakak terima.</p>
-                <p>Kalau Kakak masih ingin mengiklankan survei ini, silakan buat pesanan baru dari dashboard.</p>
+                <p>Kalau Kakak masih ingin menyebarkan survei ini, silakan buat pesanan baru dari dashboard.</p>
                 <p style="margin:24px 0;">
                   <a href="${dashboardUrl}" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;">Buka Dashboard</a>
                 </p>

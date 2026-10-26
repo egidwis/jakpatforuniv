@@ -123,7 +123,7 @@ export function buildOrderInvoiceItems(
       category: 'Lainnya',
     }] : [{
       id: nextId(),
-      name: 'JFU Kilat (1 gelombang)',
+      name: 'Kilat Survei (1 gelombang)',
       qty: 1,
       price: Math.max(0, kilatRate.effective - calculateKilatDiscount(
         input.voucherCode, kilatRate.effective, winnerCount * prizePerWinner, input.rateInstantMs,
@@ -256,7 +256,7 @@ export function buildExtensionInvoiceItems(
     } else if (rate.effective > 0) {
       items.push({
         id: nextId(),
-        name: 'JFU Kilat (1 gelombang)',
+        name: 'Kilat Survei (1 gelombang)',
         qty: 1,
         price: Math.max(0, rate.effective - calculateKilatDiscount(code, rate.effective, incentive, rateInstantMs)),
         category: 'Jakpat for Universities (ads)',
@@ -352,7 +352,7 @@ export function describeVoucher(
     if (discount <= 0) return null;
     return {
       discount,
-      label: `Potongan Rp ${discount.toLocaleString('id-ID')} (10% tarif Kilat) diterapkan ke baris JFU Kilat`,
+      label: `Potongan Rp ${discount.toLocaleString('id-ID')} (10% tarif Kilat) diterapkan ke baris Kilat Survei`,
     };
   }
   if (code.toUpperCase() === 'JFUTGRX') {

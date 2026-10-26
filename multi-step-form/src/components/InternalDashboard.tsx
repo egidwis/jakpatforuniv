@@ -118,7 +118,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
   /** Tutup reservasi mandiri (sql/125) — kendali bersama strip, pill, dan popup. */
   const selfBookingControl = useSelfBookingControl();
   /** Id order yang menunggu admin per jenis (badge tab + filter "Perlu Ditangani"). */
-  const [adminQueue, setAdminQueue] = useState<AdminQueueCounts>({ regular: [], kilat: [] });
+  const [adminQueue, setAdminQueue] = useState<AdminQueueCounts>({ regular: [], kilat: [], reasons: {} });
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
 
   // Derived schedule state: Set of submission IDs that have a slot reserved (start_date set)
@@ -242,7 +242,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
     try {
       const next = await fetchAdminQueue();
       setAdminQueue((prev) =>
-        prev.regular.join() === next.regular.join() && prev.kilat.join() === next.kilat.join() ? prev : next);
+        JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
     } catch (err) {
       console.error('Gagal menghitung antrean admin', err);
     }
@@ -668,6 +668,15 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
       setOpenSubmissionId(null);
     }
   }, [openSubmissionId, openSubmission, loading]);
+
+  /** Pindah tab Iklan/Kilat oleh admin: drawer order dari tab lain ditutup,
+   *  supaya laci tidak menggantung di atas daftar yang tidak memuat barisnya.
+   *  Deep-link (di bawah) sengaja memakai `setDistTab` langsung — ia membuka
+   *  drawer-nya sesudah pindah tab. */
+  const switchDistTab = (id: 'regular' | 'kilat') => {
+    if (id !== distTab) setOpenSubmissionId(null);
+    setDistTab(id);
+  };
 
   // Deep-link dari papan jadwal: arahkan filter ke order ini dulu...
   //
@@ -1229,6 +1238,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
 
   const detailProps = {
     submission: openSubmission,
+    queueReason: openSubmission ? adminQueue.reasons[openSubmission.id] ?? null : null,
     paymentData: openSubmission ? (paymentStates[openSubmission.id] || EMPTY_PAYMENT_STATE) : EMPTY_PAYMENT_STATE,
     existingPage: openSubmission ? existingPages[openSubmission.id] : undefined,
     isScheduled: openSubmission ? scheduledSubmissionIds.has(openSubmission.id) : false,
@@ -1295,7 +1305,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
 
         <AdminAwayStrip
           control={awayControl}
-          onOpenKilat={() => { setDistTab('kilat'); setStatusFilter('needs_admin'); setCurrentPage(1); }}
+          onOpenKilat={() => { switchDistTab('kilat'); setStatusFilter('needs_admin'); setCurrentPage(1); }}
         />
         <AdminAwayDialog control={awayControl} />
         <AdminSelfBookingStrip
@@ -1439,7 +1449,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
             return (
               <button
                 key={id}
-                onClick={() => setDistTab(id)}
+                onClick={() => switchDistTab(id)}
                 className={cn(
                   'flex items-center gap-1.5 px-4 py-2.5 -mb-px text-sm font-semibold border-b-2 transition-colors',
                   distTab === id
@@ -1457,7 +1467,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
                     title={`${waiting} order menunggu admin — klik untuk menyaring`}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setDistTab(id);
+                      switchDistTab(id);
                       setStatusFilter('needs_admin');
                       setCurrentPage(1);
                     }}
@@ -1465,7 +1475,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
                       if (e.key !== 'Enter' && e.key !== ' ') return;
                       e.preventDefault();
                       e.stopPropagation();
-                      setDistTab(id);
+                      switchDistTab(id);
                       setStatusFilter('needs_admin');
                       setCurrentPage(1);
                     }}
@@ -1730,6 +1740,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
                     onOpen={setOpenSubmissionId}
                     active={isXl && submission.id === openSubmissionId}
                     clientTier={clientTierMap.get(submission.id)}
+                    queueReason={adminQueue.reasons[submission.id] ?? null}
                   />
                 ))}
               </div>

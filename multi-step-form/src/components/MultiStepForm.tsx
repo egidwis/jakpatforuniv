@@ -421,6 +421,7 @@ export function MultiStepForm() {
           body: JSON.stringify({
             name: merged.fullName || 'Kak',
             email: merged.email,
+            product: merged.isKilatUpgrade ? 'kilat' : 'ads',
             ...(teamSchedules ? { kind: 'admin_schedule' } : {}),
           }),
         }).catch(err => console.error('Failed to send email:', err));

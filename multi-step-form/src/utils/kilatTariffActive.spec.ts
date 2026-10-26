@@ -10,7 +10,7 @@ import { describe, expect, test, vi } from 'vitest';
     • angka per tanggal (tier 31–50: 750rb / 1,0jt / 1,25jt);
     • voucher Kilat: ambassador −10% dari tarif saja, JFUTGRX = Rp1.000,
       JFUFEB/ILKOMUNY/TEGARGANTENG = 0 — klien = server;
-    • tampilan: satu baris "JFU Kilat", tanpa add-on; kwitansi & invoice admin
+    • tampilan: satu baris "Kilat Survei", tanpa add-on; kwitansi & invoice admin
       menjumlah ke subtotal.
 */
 
@@ -116,7 +116,7 @@ describe('kwitansi (transactions.note)', () => {
   test.each(['', 'JFUGITA', 'JFUFEB'])('satu baris tarif Kilat, menjumlah ke subtotal (voucher %s)', (v) => {
     for (const at of [RILIS, DES, JAN]) {
       const { priced, items } = serverPriced(at, { voucher_code: v || null });
-      expect(items[0].name).toBe('JFU Kilat (1 gelombang)');
+      expect(items[0].name).toBe('Kilat Survei (1 gelombang)');
       expect(items.some((i: { name: string }) => i.name === 'Add-on JFU Kilat')).toBe(false);
       expect(sum(items)).toBe(priced.subtotal);
     }
@@ -141,7 +141,7 @@ describe('label voucher di form invoice admin (order Kilat)', () => {
   const kilat = { adCost: 750_000, rateInstantMs: RILIS };
   test('ambassador: 10% dari tarif Kilat', () => {
     expect(describeVoucher('JFUGITA', input, kilat)).toMatchObject({ discount: 75_000 });
-    expect(describeVoucher('JFUGITA', input, kilat)?.label).toContain('JFU Kilat');
+    expect(describeVoucher('JFUGITA', input, kilat)?.label).toContain('Kilat Survei');
   });
   test('JFUTGRX: label biaya uji', () => {
     expect(describeVoucher('JFUTGRX', input, kilat)?.label).toContain('Rp 1.000');
@@ -161,7 +161,7 @@ describe('validasi voucher di form Kilat', () => {
     const info = getVoucherInfo(code, 0, RILIS, 'kilat');
     expect(info.isValid).toBe(false);
     expect(info.isError).toBe(true);
-    expect(info.message).toContain('tidak berlaku untuk JFU Kilat');
+    expect(info.message).toContain('tidak berlaku untuk Kilat Survei');
   });
 
   test('kode asing tetap "tidak dikenal"; produk regular tidak berubah', () => {
@@ -187,7 +187,7 @@ describe('tampilan', () => {
   const total = (lines: { amount: number; isSubtotal?: boolean }[] | null) =>
     (lines ?? []).filter((l) => !l.isSubtotal).reduce((a, l) => a + l.amount, 0);
 
-  test('estimasi kartu jadwal: satu baris JFU Kilat + perkenalan, tanpa add-on', () => {
+  test('estimasi kartu jadwal: satu baris Kilat Survei + perkenalan, tanpa add-on', () => {
     const m = deriveScheduleMoney(entryOf(), { question_count: 40, distribution_type: 'kilat', voucher_code: 'JFUGITA' });
     expect(m.total).toBe(804_750);
     expect(keyOf(m.lines, 'costLineKilat')).toBe(1_250_000);
@@ -209,7 +209,7 @@ describe('tampilan', () => {
     expect(total(m.lines)).toBe(804_750);
   });
 
-  test('Ringkasan: satu baris JFU Kilat, tanpa add-on', () => {
+  test('Ringkasan: satu baris Kilat Survei, tanpa add-on', () => {
     const calc = calculateTotalCost(formOf({ voucherCode: 'JFUGITA' }), RILIS);
     const lines = orderMoneyLines(calc, { questionCount: 40, duration: 1, isKilat: true, voucherCode: 'JFUGITA' });
     expect(lines[0].labelKey).toBe('costLineKilat');
@@ -223,7 +223,7 @@ describe('tampilan', () => {
       voucherCode: 'JFUGITA', isKilat: true, rateInstantMs: RILIS, voucherInstantMs: RILIS,
     });
     const { priced } = serverPriced(RILIS, { voucher_code: 'JFUGITA' });
-    expect(items[0]).toMatchObject({ name: 'JFU Kilat (1 gelombang)', price: 675_000 });
+    expect(items[0]).toMatchObject({ name: 'Kilat Survei (1 gelombang)', price: 675_000 });
     expect(sum(items)).toBe(priced.subtotal);
   });
 

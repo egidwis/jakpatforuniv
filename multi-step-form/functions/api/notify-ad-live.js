@@ -51,19 +51,19 @@ export async function onRequestPost(context) {
                 : '';
 
         const subject = kind.isKilat
-            ? '[Jakpat for Univ] Gelombang JFU Kilat surveimu dimulai hari ini ⚡'
+            ? '[Jakpat for Univ] Gelombang Kilat Survei-mu dimulai hari ini ⚡'
             : isExtension
                 ? '[Jakpat for Univ] Iklan perpanjangan surveimu mulai tayang hari ini 🚀'
                 : '[Jakpat for Univ] Iklan surveimu mulai tayang hari ini 🚀';
 
         const headline = kind.isKilat
-            ? 'Gelombang JFU Kilat Dimulai! ⚡'
+            ? 'Gelombang Kilat Survei Dimulai! ⚡'
             : isExtension
                 ? 'Iklan Perpanjangan Survei Mulai Ditayangkan! 🚀'
                 : 'Iklan Survei Mulai Ditayangkan! 🚀';
 
         const leadText = kind.isKilat
-            ? `Survei${surveyLine}${bookingTag} masuk <strong>gelombang push JFU Kilat</strong> hari ini. Tim kami mengirim push notification ke responden Jakpat pada gelombang ini.`
+            ? `Survei${surveyLine}${bookingTag} masuk <strong>gelombang push Kilat Survei</strong> hari ini. Tim kami mengirim push notification ke responden Jakpat pada gelombang ini.`
             : isExtension
                 ? `Jadwal perpanjangan survei${surveyLine}${bookingTag} sekarang sudah <strong>mulai aktif ditayangkan</strong> ke panel responden Jakpat.`
                 : `Kuesioner survei${surveyLine} sekarang sudah <strong>mulai aktif ditayangkan</strong> ke panel responden Jakpat.`;

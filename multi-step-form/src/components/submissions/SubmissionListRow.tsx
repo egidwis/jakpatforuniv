@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import type { SurveySubmission } from './types';
 import type { LifecycleInfo } from './lifecycle';
 import { getSubmissionActionDot } from './lifecycle';
+import type { QueueReason } from '../../utils/adminQueue';
 import { ClientStatusDot } from '../customers/ClientStatusIcon';
 import type { CustomerTier } from '../customers/types';
 import { missedPaymentWindow } from '@/utils/missedPaymentWindow';
@@ -28,6 +29,8 @@ interface SubmissionListRowProps {
   /** Row currently open in the detail pane */
   active?: boolean;
   clientTier?: CustomerTier;
+  /** Alasan order ini di antrean admin (`fetchAdminQueue`) — satu-satunya pemicu titik merah. */
+  queueReason?: QueueReason | null;
 }
 
 function getAutoPlatformTooltip(formUrl?: string): string {
@@ -52,9 +55,10 @@ export function SubmissionListRow({
   onOpen,
   active,
   clientTier,
+  queueReason = null,
 }: SubmissionListRowProps) {
   const [copiedId, setCopiedId] = useState(false);
-  const actionDot = getSubmissionActionDot(lifecycle);
+  const actionDot = getSubmissionActionDot(lifecycle, queueReason);
 
   // Track B5 — lihat `missedPaymentWindow` untuk kenapa permukaan ini ada.
   const missedPayment = missedPaymentWindow({

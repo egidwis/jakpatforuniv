@@ -100,7 +100,11 @@ describe('fetchAdminQueue', () => {
     ];
     tables.transactions = [{ form_submission_id: 'k2' }];
     const q = await fetchAdminQueue(new Date('2026-10-15T06:00:00Z'));
-    expect(q).toEqual({ regular: ['r1', 'r2'], kilat: ['k1'] });
+    expect(q).toEqual({
+      regular: ['r1', 'r2'], kilat: ['k1'],
+      // Alasan per order = sumber titik merah di daftar (sama dengan badge).
+      reasons: { r1: 'review', r2: 'schedule', k1: 'invoice' },
+    });
 
     const tx = calls.find((c) => c.table === 'transactions')!;
     expect(tx.filters).toContainEqual(['in', 'form_submission_id', ['k1', 'k2']]);
@@ -128,9 +132,12 @@ describe('fetchAdminQueue', () => {
       { submission_id: 'w1', start_date: '2026-10-15T07:00:00Z', end_date: '2026-10-16T07:00:00Z', kilat_slot_hour: 14, payment_status: 'paid', air_on_credit_at: null, broadcast_at: null },
       // belum lunas → tidak
       { submission_id: 'w2', start_date: '2026-10-15T07:00:00Z', end_date: '2026-10-16T07:00:00Z', kilat_slot_hour: 14, payment_status: 'pending', air_on_credit_at: null, broadcast_at: null },
+      // lunas, tak pernah ditandai, jendelanya SUDAH HABIS → tidak (kasus #a4582981)
+      { submission_id: 'w3', start_date: '2026-10-13T07:00:00Z', end_date: '2026-10-14T07:00:00Z', kilat_slot_hour: 14, payment_status: 'paid', air_on_credit_at: null, broadcast_at: null },
     ];
     const q = await fetchAdminQueue(new Date('2026-10-15T06:30:00Z'));
     expect(q.kilat).toEqual(['w1']);
+    expect(q.reasons).toEqual({ w1: 'broadcast' });
     const ad = calls.find((c) => c.table === 'ad_schedules')!;
     expect(ad.filters).toContainEqual(['is', 'broadcast_at', null]);
     expect(ad.filters).toContainEqual(['lte', 'start_date', '2026-10-15T07:30:00.000Z']);

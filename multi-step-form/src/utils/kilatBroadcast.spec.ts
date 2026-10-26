@@ -51,6 +51,11 @@ describe('awaitsBroadcast (badge Kilat)', () => {
     expect(awaitsBroadcast({ ...paid, paymentStatus: 'pending' }, T('2026-10-16T03:30:00Z'))).toBe(false);
     expect(awaitsBroadcast({ ...paid, paymentStatus: 'pending', airOnCreditAt: '2026-10-15T00:00:00Z' }, T('2026-10-16T03:30:00Z'))).toBe(true);
   });
+  test('jendela gelombang sudah habis tanpa pernah disiarkan → tidak dihitung lagi', () => {
+    expect(awaitsBroadcast(paid, T('2026-10-17T03:59:59Z'))).toBe(true);
+    expect(awaitsBroadcast(paid, T('2026-10-17T04:00:00Z'))).toBe(false);
+    expect(awaitsBroadcast(paid, T('2026-10-27T04:00:00Z'))).toBe(false);
+  });
   test('sudah nyala atau selesai tidak dihitung', () => {
     expect(awaitsBroadcast({ ...paid, broadcastAt: '2026-10-16T04:00:00Z' }, T('2026-10-16T05:00:00Z'))).toBe(false);
   });

@@ -284,7 +284,7 @@ export function StepOneFormFields({
 
   const criteriaTooltip = (
     <span className="leading-relaxed">
-      {t('respondentCriteriaHelp')
+      {t(formData.isKilatUpgrade ? 'respondentCriteriaHelpKilat' : 'respondentCriteriaHelp')
         .split('*')
         .map((part, index) =>
           index % 2 === 1 ? (
@@ -670,7 +670,7 @@ export function StepOneFormFields({
       {showConfig && (
       <div className="rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-xs p-5 md:p-6 shadow-[0_4px_20px_-2px_rgba(24,124,255,0.06),0_12px_32px_-4px_rgba(0,0,0,0.04)] overflow-hidden">
         {/* SEKSI 2 — KONFIGURASI IKLAN */}
-        <SectionLabel>{t('surveyConfiguration')}</SectionLabel>
+        <SectionLabel>{t(formData.isKilatUpgrade ? 'surveyConfigurationKilat' : 'surveyConfiguration')}</SectionLabel>
 
         <div className={fieldRowListClass}>
           {/* Pengecualian 1 alur Kilat (Phase 5 §5.6): tanpa pilihan durasi.

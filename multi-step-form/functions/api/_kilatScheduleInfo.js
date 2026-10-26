@@ -10,8 +10,11 @@
 /** @returns {Promise<{ isKilat: boolean, hour: number | null }>} */
 export async function scheduleKindOf(env, scheduleId) {
   const none = { isKilat: false, hour: null };
-  const url = env?.VITE_SUPABASE_URL;
-  const key = env?.VITE_SUPABASE_SERVICE_ROLE_KEY;
+  const url = env?.VITE_SUPABASE_URL || env?.SUPABASE_URL;
+  // Nama yang dipakai Pages Function lain = SUPABASE_SERVICE_ROLE_KEY; versi
+  // VITE_ hanya cadangan. Dulu cuma VITE_ — kalau tak ada, email Kilat diam-diam
+  // jatuh ke copy Iklan (lihat ⚠️ di atas).
+  const key = env?.SUPABASE_SERVICE_ROLE_KEY || env?.VITE_SUPABASE_SERVICE_ROLE_KEY;
   if (!scheduleId || !url || !key) return none;
   try {
     const res = await fetch(
@@ -29,4 +32,4 @@ export async function scheduleKindOf(env, scheduleId) {
 }
 
 export const waveLabel = (hour) =>
-  hour == null ? 'JFU Kilat' : `Gelombang ${String(hour).padStart(2, '0')}.00 WIB`;
+  hour == null ? 'Kilat Survei' : `Gelombang ${String(hour).padStart(2, '0')}.00 WIB`;

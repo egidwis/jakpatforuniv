@@ -78,9 +78,17 @@ export function adminActionOf(
   return null;
 }
 
+/** Alasan sebuah order ada di antrean — `broadcast` = gelombang Kilat menunggu toggle. */
+export type QueueReason = AdminAction | 'broadcast';
+
 export interface AdminQueueCounts {
   regular: string[];
   kilat: string[];
+  /**
+   * Alasan per order. SATU sumber untuk badge tab DAN titik merah di baris /
+   * laci Submissions: order bertitik merah = order yang dihitung badge.
+   */
+  reasons: Record<string, QueueReason>;
 }
 
 const QUEUE_COLUMNS =
@@ -113,10 +121,12 @@ export async function fetchAdminQueue(now: Date = new Date()): Promise<AdminQueu
     for (const t of tx ?? []) openBill.add((t as any).form_submission_id);
   }
 
-  const out: AdminQueueCounts = { regular: [], kilat: [] };
+  const out: AdminQueueCounts = { regular: [], kilat: [], reasons: {} };
   for (const r of rows) {
-    if (!adminActionOf(r, { hasOpenBill: openBill.has(r.id), todayYmd })) continue;
+    const action = adminActionOf(r, { hasOpenBill: openBill.has(r.id), todayYmd });
+    if (!action) continue;
     (r.distribution_type === 'kilat' ? out.kilat : out.regular).push(r.id);
+    out.reasons[r.id] = action;
   }
 
   // Gelombang Kilat (kedua kaki: ordinal 1 & perpanjangan) yang menunggu toggle.
@@ -136,7 +146,10 @@ export async function fetchAdminQueue(now: Date = new Date()): Promise<AdminQueu
       paymentStatus: w.payment_status, airOnCreditAt: w.air_on_credit_at,
       broadcastAt: w.broadcast_at, broadcastBy: w.broadcast_by, broadcastEndedAt: w.broadcast_ended_at,
     }, now);
-    if (ok && !out.kilat.includes(w.submission_id)) out.kilat.push(w.submission_id);
+    if (ok && !out.kilat.includes(w.submission_id)) {
+      out.kilat.push(w.submission_id);
+      out.reasons[w.submission_id] = 'broadcast';
+    }
   }
   return out;
 }

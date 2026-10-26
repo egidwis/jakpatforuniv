@@ -454,8 +454,8 @@ export function InvoicePage() {
         const endStr = endDate ? formatDate(endDate) : '';
 
         if (isKilat) {
-            const wave = kilatHour ? ` · Pukul ${kilatHour}:00 WIB` : '';
-            return `${startStr || endStr} (Kilat${wave})`;
+            const wave = kilatHour ? ` · Gelombang ${String(kilatHour).padStart(2, '0')}.00 WIB` : '';
+            return `${startStr || endStr} (Kilat Survei${wave})`;
         }
 
         const dur = duration || 1;
@@ -937,7 +937,7 @@ export function InvoicePage() {
                                             ? `${doc.bundles.filter((b) => b.isPaid).length} dari ${doc.bundles.length} pesanan pada tagihan ini sudah lunas. `
                                               + 'Sisa pembayarannya diurus tim kami — jangan membayar lewat link lama, karena link itu menagih total penuh.'
                                             : isTempo
-                                                ? 'Iklan pada tagihan ini ditayangkan sesuai jadwal lebih dulu, dan tagihannya tidak memiliki batas waktu. '
+                                                ? 'Survei pada tagihan ini ditayangkan sesuai jadwal lebih dulu, dan tagihannya tidak memiliki batas waktu. '
                                                   + 'Tautan pembayaran di bawah selalu membuka link pembayaran yang berlaku.'
                                             : isExpired
                                                 ? 'Batas waktu pembayaran tagihan ini sudah lewat, jadi tautan pembayarannya tidak lagi berlaku. '

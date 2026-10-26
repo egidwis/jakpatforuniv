@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchAdSchedules, getSurveyPagesBySubmissionIds, fetchScheduleBilling, fetchInvoiceGroups, dismissSubmission, cancelOrder, updateFormStatus, type AdScheduleEntry, type FormSubmission, type InvoiceGroup } from '@/utils/supabase';
-import type { ReviewHistoryEntry } from '@/components/submissions/types';
+import { getFormSubmissionsByUser, getInvoicesByFormSubmissionId, getTransactionsByFormSubmissionId, fetchAdSchedules, getSurveyPagesBySubmissionIds, fetchScheduleBilling, fetchInvoiceGroups, dismissSubmission, cancelOrder, type AdScheduleEntry, type FormSubmission, type InvoiceGroup } from '@/utils/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Chip } from '@/components/ui/chip';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -634,26 +633,10 @@ export function StatusPage() {
         if (!target?.id) return;
         setIsCancelling(true);
         try {
+            // Riwayat `actor: 'researcher'` (yang memilih kalimat pelaku di
+            // banner) dan penutupan tagihan ditulis pintu `door_cancel_order`
+            // dalam transaksi yang sama — tidak lagi terpisah dari browser.
             await cancelOrder(target.id);
-            const entry: ReviewHistoryEntry = {
-                action: 'cancelled',
-                actor: 'researcher',
-                notes: 'Peneliti membatalkan pesanannya sendiri dari dashboard.',
-                timestamp: new Date().toISOString(),
-            };
-            // Riwayat ditulis TERPISAH dan kegagalannya tidak membatalkan apa pun:
-            // pesanannya sudah batal di server, dan memutar balik keadaan itu
-            // gara-gara satu baris jejak jauh lebih buruk daripada jejak yang
-            // hilang. `actor` di sinilah yang nanti menentukan kalimat pelaku di
-            // banner — tanpanya banner jatuh ke "dibatalkan tim Jakpat".
-            try {
-                await updateFormStatus(target.id, 'cancelled', undefined, [
-                    ...(target.review_history || []),
-                    entry,
-                ]);
-            } catch (histErr) {
-                console.error('Order cancelled but review_history was not written:', histErr);
-            }
             setPendingCancel(null);
             toast.success(t('cancelOrderSuccess'));
             await fetchSubmissions();
@@ -1071,7 +1054,7 @@ export function StatusPage() {
                                                         />
                                                     </Phase>
 
-                                                    <Phase number={2} title={t('airingPeriodLabel')} active={reachedPhase >= 2} lineActive={reachedPhase >= 3}>
+                                                    <Phase number={2} title={t(submission.distribution_type === 'kilat' ? 'airingPeriodLabelKilat' : 'airingPeriodLabel')} active={reachedPhase >= 2} lineActive={reachedPhase >= 3}>
                                                         <SchedulePhase
                                                             submission={submission}
                                                             kilatOpen={kilatOpen}

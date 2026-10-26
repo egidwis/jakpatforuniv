@@ -2738,38 +2738,48 @@ export const dismissSubmission = async (id: string) => {
  * TETAP TERLIHAT peneliti (pindah ke tab "Selesai" bertanda Dibatalkan), dan
  * hanya hilang kalau ia juga menekan "Hapus dari Order Saya" (`dismissSubmission`).
  *
- * DUA LAPIS PENJAGA, dan lapis pertamanya bukan di sini:
+ * SATU PEMBATALAN untuk kedua tombol "Batalkan Pesanan" peneliti — kartu order
+ * dashboard DAN halaman Jadwal & Bayar (sql/128, 26 Okt 2026). Sebelumnya:
  *
- *   1. Trigger `guard_payment_columns()` (sql/33) di DATABASE. Ia denylist:
- *      memblokir transisi yang menyentuh paid|scheduled|live|completed untuk
- *      pemanggil non-admin. Jadi order lunas ditolak database — dipanggil paksa
- *      lewat konsol pun tetap gagal. Aturan "order lunas hanya lewat admin"
- *      sudah ditegakkan di sana, bukan sekadar disembunyikan di UI.
- *   2. `.in(...)` di bawah, sebagai jaring kedua yang eksplisit terbaca.
+ *   • kartu menulis `cancelled` dari browser lalu riwayat `actor` TERPISAH
+ *     (boleh gagal diam-diam → banner "dibatalkan tim"), tidak menutup
+ *     tagihan (#6d5c6775, #101abf8e tertinggal `pending`), dan tidak melepas
+ *     hold `slot_booked_by='user'` — cron sql/94 lalu MENGHIDUPKAN order itu
+ *     lagi jadi `slot_reserved`;
+ *   • Jadwal & Bayar memakai `cancelSchedule` → `slot_cancelled` tanpa pelaku,
+ *     yang kartu baca sebagai "Tim Jakpat membatalkan tanggal tayang".
  *
- * `.select('id')` wajib, alasannya sama dengan `dismissSubmission`.
+ * Sekarang `door_cancel_order` menulis status, hold, riwayat `researcher`, dan
+ * menutup transactions + invoices dalam SATU transaksi dengan klaim peneliti.
+ * Syaratnya (pemilik, belum lunas, status ∈ daftar lama, tanpa perpanjangan
+ * hidup) dinilai di DB — nol baris pulang `id: null`.
+ *
+ * ⚠️ DOKU DULU, DATABASE KEMUDIAN — kontrak `cancelSchedule`. Karena link
+ * dimatikan SEBELUM pintu menilai syaratnya, syarat "tanpa perpanjangan hidup"
+ * diulang di sini lebih dulu: tanpanya, pesanan yang ditolak pintu sudah
+ * kehilangan link bayar perpanjangannya.
  */
 export const cancelOrder = async (id: string) => {
   try {
-    const { data, error } = await supabase
-      .from('form_submissions')
-      .update({ submission_status: 'cancelled' })
-      .eq('id', id)
-      .in('submission_status', [
-        'in_review',
-        'pending',
-        'rejected',
-        'approved',
-        'slot_reserved',
-        'waiting_payment',
-      ])
-      .select('id');
+    const { data: schedules, error: schedErr } = await supabase
+      .from('ad_schedules')
+      .select('id, source_table, status')
+      .eq('submission_id', id);
+    if (schedErr) throw schedErr;
+    const rows = (schedules || []) as { id: string; source_table: string | null; status: string | null }[];
+    if (rows.some((r) => r.source_table === EXTENSION_SOURCE_TABLE && r.status !== 'cancelled')) {
+      throw new Error('Pesanan ini masih punya jadwal lain yang berjalan — batalkan jadwal itu dulu, atau hubungi tim lewat Chat Mimin.');
+    }
 
-    if (error) throw error;
-    if (!data || data.length === 0) {
-      throw new Error(
-        `Pesanan ${id} tidak bisa dibatalkan sendiri — kemungkinan sudah lunas atau sedang tayang.`
-      );
+    for (const r of rows) await killDokuLinksForSchedule(r.id);
+
+    const done = await postScheduleDoor(
+      '/api/schedules/lock',
+      { action: 'cancel-order', submissionId: id },
+      'Gagal membatalkan pesanan',
+    );
+    if (!done?.id) {
+      throw new Error('Pesanan ini tidak bisa dibatalkan sendiri — kemungkinan sudah lunas atau sedang tayang. Muat ulang dulu.');
     }
     return true;
   } catch (error: any) {
@@ -5815,6 +5825,13 @@ export interface AdScheduleEntry {
   broadcastBy?: string | null;
   broadcastEndedAt?: string | null;
   broadcastEndedBy?: string | null;
+  /**
+   * Penyebab `status = 'cancelled'` (sql/129, ditulis trigger
+   * `trg_zz_cancelled_by`). NULL = belum batal, ATAU batal sebelum sql/129 —
+   * pelakunya tidak diketahui, jadi kartu memakai kalimat netral. Opsional
+   * karena hanya `fetchAdSchedules` yang membacanya.
+   */
+  cancelledBy?: ScheduleCancelCause | null;
   /** Yang BENAR-BENAR ditagih untuk jadwal ini. 981 dari 983 baris terisi. */
   totalCost: number;
   /**
@@ -5900,6 +5917,9 @@ export interface AdScheduleEntry {
   airOnCreditAt: string | null;
   airOnCreditNote: string | null;
 }
+
+/** Siapa/apa yang membatalkan sebuah jadwal — `ad_schedules.cancelled_by` (sql/129). */
+export type ScheduleCancelCause = 'admin' | 'researcher' | 'expired';
 
 /** Jadwal ini tayang sebelum lunas DAN uangnya belum masuk. */
 export const isOnCredit = (entry: Pick<AdScheduleEntry, 'airOnCreditAt' | 'paymentStatus'>): boolean =>
@@ -5996,6 +6016,7 @@ export const fetchAdSchedules = async (
         slot_booked_by, slot_reserved_at, created_at, rate_locked_at,
         air_on_credit_at, air_on_credit_note,
         broadcast_at, broadcast_by, broadcast_ended_at, broadcast_ended_by,
+        cancelled_by,
         form_submissions!ad_schedules_submission_id_fkey ( title, full_name, university, created_at )
       `, { count: 'exact' });
 
@@ -6117,6 +6138,7 @@ export const fetchAdSchedules = async (
       broadcastBy: row.broadcast_by ?? null,
       broadcastEndedAt: row.broadcast_ended_at ?? null,
       broadcastEndedBy: row.broadcast_ended_by ?? null,
+      cancelledBy: row.cancelled_by ?? null,
     };
   });
 };

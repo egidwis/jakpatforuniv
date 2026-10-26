@@ -7,6 +7,7 @@ import {
   fetchScheduleSiblings,
   fetchScheduleBilling,
   cancelSchedule,
+  cancelOrder,
   releaseExpiredSlot,
   rebookSlotForSubmission,
   getFormSubmissionById,
@@ -604,20 +605,35 @@ export function JadwalDanBayarPage() {
   const handleCancel = async () => {
     if (!entry) return;
     setIsWorking(true);
+    /*
+      Jadwal PERTAMA = pesanan itu sendiri, jadi yang dibatalkan SELURUH
+      pesanan (sql/128): `cancelled` + riwayat `actor: researcher` + tagihan
+      ditutup — persis tombol di kartu dashboard dan janji dialog
+      `cancelOrderConfirmBody`. Dulu `cancelSchedule` → `slot_cancelled` tanpa
+      pelaku, dibaca kartu sebagai "Tim Jakpat membatalkan tanggal tayang".
+      Perpanjangan & jadwal kredit tetap `cancelSchedule` seperti dulu: yang
+      pertama memang cuma satu jadwal; yang kedua berstatus `scheduled`, yang
+      ditolak `door_cancel_order`.
+    */
+    const wholeOrder = !entry.isExtension && !entry.airOnCreditAt;
     try {
-      await cancelSchedule({
-        submissionId: entry.submissionId,
-        sourceId: entry.sourceId,
-        isExtension: entry.isExtension,
-        paymentStatus: entry.paymentStatus,
-        id: entry.id,
-      });
+      if (wholeOrder) {
+        await cancelOrder(entry.submissionId);
+      } else {
+        await cancelSchedule({
+          submissionId: entry.submissionId,
+          sourceId: entry.sourceId,
+          isExtension: entry.isExtension,
+          paymentStatus: entry.paymentStatus,
+          id: entry.id,
+        });
+      }
       /*
         ⚠️ PULANG KE DASHBOARD, BUKAN MEMUAT ULANG DI TEMPAT (perbaikan
         2026-09-18). Pembatalan bukan "waktu habis": `canRepickInPlace` menolak
         `slot_cancelled`, dan pesanan berikutnya lahir lewat `JadwalBaruPage`.
       */
-      toast.success(entry.isExtension ? t('cancelExtensionSuccess') : t('cancelScheduleSuccess'));
+      toast.success(t(entry.isExtension ? 'cancelExtensionSuccess' : wholeOrder ? 'cancelOrderSuccess' : 'cancelScheduleSuccess'));
       navigate('/dashboard', { replace: true });
     } catch (e: any) {
       toast.error(e?.message || t('rebookError'));
@@ -851,7 +867,6 @@ export function JadwalDanBayarPage() {
           backLabel={t('backToOrdersShort')}
           isBusy={isWorking}
           title={t('segmentReservation')}
-          subtitle={t('reservationPickSubtitle')}
           alertBanner={
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
               <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
@@ -947,7 +962,6 @@ export function JadwalDanBayarPage() {
         isBusy={isWorking}
         title={t(seg.key, seg.vars)}
         cardTitle={selfPick ? (mode === 'kilat' ? t('kilatWavePickWave') : t('scheduleCardPickTitle')) : t('scheduleCardLockedTitle')}
-        subtitle={selfPick ? t('reservationPickSubtitle') : undefined}
         feedback={feedback}
         stub={
           <TicketStub
@@ -997,7 +1011,6 @@ export function JadwalDanBayarPage() {
           isBusy={isWorking}
           title={mode === 'kilat' ? t('kilatRebookPickTitle') : t('rebookPickTitle')}
           cardTitle={mode === 'kilat' ? t('kilatWavePickWave') : t('scheduleCardPickTitle')}
-          subtitle={t('reservationPickSubtitle')}
           feedback={feedback}
           stub={
             <TicketStub
@@ -1281,7 +1294,9 @@ export function JadwalDanBayarPage() {
             <DialogDescription className="pt-1 leading-relaxed">
               <strong className="font-semibold text-gray-900">{entry.title || t('untitledSurvey')}</strong>
               {' — '}
-              {entry.isExtension ? t('cancelExtensionConfirmBody') : t('cancelOrderConfirmBody')}
+              {entry.isExtension
+                ? t(entry.distributionType === 'kilat' ? 'cancelExtensionConfirmBodyKilat' : 'cancelExtensionConfirmBody')
+                : t('cancelOrderConfirmBody')}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">

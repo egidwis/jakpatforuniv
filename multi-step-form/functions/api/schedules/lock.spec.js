@@ -135,4 +135,16 @@ describe('/api/schedules/lock', () => {
     expect(res.status).toBe(200);
     expect(writes[0]).toMatchObject({ fn: 'door_cancel_schedule', body: { p_source_id: SRC, p_is_extension: true } });
   });
+
+  it('cancel-order → door_cancel_order dengan identitas dari token, tanpa PATCH; tetap boleh saat reservasi ditutup', async () => {
+    const { writes } = network({ row: { self_booking_closed_at: '2026-10-22T03:00:00Z' } });
+    const res = await call({ action: 'cancel-order', submissionId: SUB });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.id).toBe(SUB);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({
+      kind: 'rpc', fn: 'door_cancel_order',
+      body: { p_actor: ME, p_email: 'peneliti@example.com', p_submission_id: SUB },
+    });
+  });
 });

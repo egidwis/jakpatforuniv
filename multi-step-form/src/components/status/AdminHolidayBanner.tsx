@@ -30,10 +30,7 @@ export function AdminHolidayNotice({ away, className = '' }: { away: AdminAway; 
  * Satu baris amber di bawah kalimat yang menjanjikan waktu admin ("maks 2 hari
  * kerja", "maks 1 hari kerja"). Tidak libur = tidak dirender sama sekali.
  */
-export function AdminAwayInlineNote({ className = '', textKey = 'adminAwayInlineNote' }: {
-  className?: string;
-  textKey?: 'adminAwayInlineNote' | 'reviewModalAwayNote';
-}) {
+export function AdminAwayInlineNote({ className = '' }: { className?: string }) {
   const { t } = useLanguage();
   const away = useAdminAway();
   if (!away) return null;
@@ -41,7 +38,7 @@ export function AdminAwayInlineNote({ className = '', textKey = 'adminAwayInline
     // <span>, bukan <p>: dipasang juga di dalam <span> langkah modal terima kasih.
     <span className={`flex items-start gap-1.5 text-xs font-medium leading-relaxed text-amber-800 ${className}`}>
       <PauseCircle className="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
-      <span>{t(textKey)}</span>
+      <span>{t('adminAwayInlineNote')}</span>
     </span>
   );
 }

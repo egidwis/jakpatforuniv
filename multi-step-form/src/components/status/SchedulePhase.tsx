@@ -41,6 +41,7 @@ import { SelfBookingNotice } from '@/components/order/SelfBookingNotice';
 import { RowGrid, valueTone, type RowDef } from './RowGrid';
 import { StatusPill } from './StatusPill';
 import { OrderActionButton } from './OrderActionButton';
+import { cancelNoteKey } from './cancelCause';
 import { primaryActionOf } from './orderAction';
 import { nowWib, toWibYmd } from '@/utils/airing-window';
 import { formatWaveHour } from '@/utils/kilatWaves';
@@ -571,7 +572,7 @@ function GroupBillBlock({ group, portion, t }: {
 
 const bannerIcon = 'w-4 h-4';
 
-/** Keadaan jadwal yang sudah mati (dibatalkan tim). Sengaja BUKAN `Banner`: judul
+/** Keadaan jadwal yang sudah mati (dibatalkan). Sengaja BUKAN `Banner`: judul
  *  "apa yang terjadi" sudah jadi headline tiket dan chip di stub, jadi di sini
  *  tinggal satu kalimat + satu jalan keluar — tanpa kartu di dalam kartu. */
 function DeadNote({ text }: { text: string }) {
@@ -710,8 +711,8 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
             <Banner
                 tone="amber"
                 icon={<CalendarClock className={bannerIcon} />}
-                title={t('bannerTitleChooseSchedule')}
-                lines={[t('bannerSubChooseSchedule')]}
+                title={t(card.info?.isKilat ? 'bannerTitleChooseWave' : 'bannerTitleChooseSchedule')}
+                lines={[t(card.info?.isKilat ? 'bannerSubChooseWave' : 'bannerSubChooseSchedule')]}
                 cta={actionCta}
             />
         );
@@ -774,7 +775,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
             : deadlineTime && b.deadlineCause === 'slot'
             ? t('bannerSubWaitingPaymentSlot', { time: deadlineTime })
             : deadlineTime && b.deadlineCause === 'cutoff'
-                ? t('bannerSubWaitingPaymentCutoff', { time: deadlineTime })
+                ? t(card.info?.isKilat ? 'bannerSubWaitingPaymentCutoffKilat' : 'bannerSubWaitingPaymentCutoff', { time: deadlineTime })
                 : deadlineTime && b.deadlineCause === 'bill'
                     ? t('bannerSubWaitingPaymentBill', {
                         time: deadlineTime,
@@ -782,7 +783,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
                             day: 'numeric', month: 'short', timeZone: WIB,
                         }),
                     })
-                    : t('bannerSubWaitingPaymentSlotsLimited');
+                    : t(card.info?.isKilat ? 'bannerSubWaitingPaymentSlotsLimitedKilat' : 'bannerSubWaitingPaymentSlotsLimited');
 
         /*
           Sebagian sudah dibayar (24 jadwal di produksi). State-nya SENGAJA
@@ -851,8 +852,9 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
            slotnya "dilepas OTOMATIS" padahal seorang admin menekannya, lalu
            diberi tombol "Jadwalkan Ulang" yang MENGHIDUPKAN KEMBALI jadwal yang
            baru saja dibatalkan (penjaganya sekarang di `rebookSlotForSubmission`).
-           Nol CTA di sini bukan kelalaian: tidak ada langkah milik peneliti. */
-        return <DeadNote text={t('bannerSubSlotCancelled')} />;
+           Nol CTA di sini bukan kelalaian: tidak ada langkah milik peneliti.
+           Kalimatnya menurut PELAKU (sql/129) — tim, peneliti, atau hold habis. */
+        return <DeadNote text={t(cancelNoteKey('slot_cancelled', b.cancelledBy))} />;
     }
 
     if (b.state === 'expired') {
@@ -900,7 +902,7 @@ function ScheduleBanner({ card, onReschedule, canSelfReschedule }: {
     }
 
     if (b.state === 'cancelled') {
-        return <DeadNote text={t('calloutCancelledSchedule')} />;
+        return <DeadNote text={t(cancelNoteKey('cancelled', b.cancelledBy))} />;
     }
 
     /* `paid` sengaja tanpa banner: order lunas tidak menunggu apa pun, dan Fase
