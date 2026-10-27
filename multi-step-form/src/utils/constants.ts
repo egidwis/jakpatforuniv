@@ -132,7 +132,7 @@ export const AD_RATE_SCHEDULE: readonly AdRateEntry[] = [
 //
 // DUPLICATED sebagai literal di functions/api/doku/create-payment.js — WAJIB
 // diubah bersamaan; rateSchedule.spec.ts membandingkan keduanya.
-export const KILAT_TARIFF_FROM: string | null = '2026-10-26T16:00:00+07:00';
+export const KILAT_TARIFF_FROM: string | null = '2026-10-27T10:00:00+07:00';
 
 export const KILAT_RATE_SCHEDULE: readonly AdRateEntry[] = [
   {

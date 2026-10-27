@@ -9,7 +9,7 @@ import * as server from '../../functions/api/doku/create-payment.js';
 /*
   Tarif JFU Kilat bertanggal (Phase 5 Task 5.1) — TIDAK BERLAKU SURUT.
 
-  `KILAT_TARIFF_FROM` diisi di Push B (26 Okt 2026 16.00 WIB). Yang dikunci di
+  `KILAT_TARIFF_FROM` diisi di Push B (27 Okt 2026 10.00 WIB). Yang dikunci di
   sini:
     • tanggal mulai klien = server, tabel klien = tabel server, kode voucher
       Kilat klien = server;
@@ -23,7 +23,7 @@ import * as server from '../../functions/api/doku/create-payment.js';
 */
 
 const T = (iso: string) => Date.parse(iso);
-const FROM = '2026-10-26T16:00:00+07:00';
+const FROM = '2026-10-27T10:00:00+07:00';
 // Semua instan SEBELUM tanggal mulai — order lama yang belum lunas.
 const INSTANTS = [
   T('2026-09-30T23:59:59+07:00'), T('2026-10-01T00:00:00+07:00'), T('2026-10-15T10:00:00+07:00'),
@@ -34,7 +34,7 @@ const QS = [1, 15, 16, 30, 31, 50, 51, 70, 71];
 const sumOf = (items: { qty: number; price: number }[]) => items.reduce((a, i) => a + i.qty * i.price, 0);
 
 describe('paritas klien ⇄ server', () => {
-  test('tanggal mulai klien = server = Push B (26 Okt 2026 16.00 WIB)', () => {
+  test('tanggal mulai klien = server = Push B (27 Okt 2026 10.00 WIB)', () => {
     expect(KILAT_TARIFF_FROM).toBe(FROM);
     expect(server.KILAT_TARIFF_FROM).toBe(FROM);
   });
