@@ -126,11 +126,6 @@ export function KilatBroadcastToggle({
                 ? 'Diisi migrasi (gelombang lama).'
                 : st.isSuperseded ? 'Diakhiri gelombang berikutnya. Terkunci.' : 'Terkunci — pemenang bisa dipilih.')}
             </div>
-            {entry.broadcastReopenedAt && (
-              <div className="text-[11px] text-amber-700/80">
-                Pernah dinyalakan lagi {at(entry.broadcastReopenedAt)}{entry.broadcastReopenedBy ? ` oleh ${entry.broadcastReopenedBy}` : ''}.
-              </div>
-            )}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
