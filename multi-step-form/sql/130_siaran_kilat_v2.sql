@@ -63,6 +63,9 @@
 --   Jalankan di SQL Editor Supabase. JANGAN lewat MCP.
 --
 --   Diuji di PGlite (badan fungsi prod 27 Okt): lihat ringkasan di commit.
+--   DITERAPKAN 27 Okt 2026 (percobaan kedua) & diverifikasi: 3a–3d sesuai,
+--   3e 0 dari 1.048 batch Iklan berubah, can_select_winners 28 batch Kilat
+--   tak berubah; satu halaman terbuka = order uji #3a432277 (langkah 2.10c).
 -- ============================================================================
 
 
@@ -948,7 +951,9 @@ COMMIT;
 -- SELECT 'beda' AS k, b.submission_id, b.period_batch
 -- FROM backup.r130_rewards_before b
 -- JOIN form_submissions fs ON fs.id = b.submission_id AND fs.distribution_type IS DISTINCT FROM 'kilat'
--- LEFT JOIN after x ON x.submission_id = b.submission_id AND x.period_batch = b.period_batch
+-- -- ⚠️ IS NOT DISTINCT FROM: 48 batch Iklan ber-period_batch NULL (order tanpa
+-- -- tanggal) — `=` membuatnya terbaca "beda" palsu (27 Okt).
+-- LEFT JOIN after x ON x.submission_id = b.submission_id AND x.period_batch IS NOT DISTINCT FROM b.period_batch
 -- WHERE x.submission_id IS NULL
 --    OR (x.prize_per_winner, x.winner_count, x.batch_status, x.can_select_winners, x.start_date, x.end_date)
 --       IS DISTINCT FROM
@@ -964,7 +969,7 @@ COMMIT;
 --        b.can_select_winners AS pilih_lama, x.can_select_winners AS pilih_baru
 -- FROM backup.r130_rewards_before b
 -- JOIN form_submissions fs ON fs.id = b.submission_id AND fs.distribution_type = 'kilat'
--- JOIN get_batch_rewards_bulk(ARRAY[b.submission_id]) x ON x.period_batch = b.period_batch
+-- JOIN get_batch_rewards_bulk(ARRAY[b.submission_id]) x ON x.period_batch IS NOT DISTINCT FROM b.period_batch
 -- ORDER BY 1, 2;
 
 
