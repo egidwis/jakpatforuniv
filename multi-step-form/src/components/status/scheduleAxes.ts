@@ -111,8 +111,27 @@ export function isSchedulePaid(s: AdScheduleEntry): boolean {
 export const scheduleStart = (s: AdScheduleEntry): Date | null =>
     s.startDate ? new Date(s.startDate) : null;
 
-export const scheduleEnd = (s: AdScheduleEntry): Date | null =>
-    s.endDate ? new Date(s.endDate) : null;
+/**
+ * Akhir terbuka gelombang Kilat yang sedang live (sql/130: live sampai admin
+ * mematikan). Instant terbesar yang bisa diwakili `Date` — semua perbandingan
+ * `end < now` / `end >= now` tetap benar tanpa cabang. ⚠️ Jangan diformat ke
+ * layar: periksa `isOpenAiringEnd` dulu.
+ */
+export const OPEN_AIRING_END = new Date(8.64e15);
+export const isOpenAiringEnd = (d: Date | null | undefined) => !!d && d.getTime() === OPEN_AIRING_END.getTime();
+
+/**
+ * Akhir tayang. Iklan: `endDate`. Kilat lunas/tempo (sql/130): saat siaran
+ * dimatikan, atau `OPEN_AIRING_END` selama masih live. `broadcastEndedAt`
+ * `undefined` = kolom siaran tidak dimuat → jatuh ke `endDate` (perilaku lama).
+ */
+export const scheduleEnd = (s: AdScheduleEntry): Date | null => {
+    const isKilatWave = s.distributionType === 'kilat' && s.kilatSlotHour != null && !!s.startDate;
+    if (isKilatWave && s.broadcastEndedAt !== undefined && (isSchedulePaid(s) || !!s.airOnCreditAt)) {
+        return s.broadcastEndedAt ? new Date(s.broadcastEndedAt) : OPEN_AIRING_END;
+    }
+    return s.endDate ? new Date(s.endDate) : null;
+};
 
 /** Jadwal pertama (ordinal 1) — sumbu review & administrasi order tinggal di sini. */
 export function firstScheduleOf(schedules: AdScheduleEntry[]): AdScheduleEntry | null {

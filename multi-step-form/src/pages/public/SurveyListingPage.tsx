@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Users, Trophy, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { publicPagePath } from '@/utils/page-url';
-import { isKilatPage } from '@/components/publish-pages/types';
+import { hiddenFromFeed, isKilatPage } from '@/components/publish-pages/types';
 
 /**
  * Normalize a schedule date string for accurate time comparison.
@@ -47,7 +47,7 @@ function normalizeScheduleDate(dateStr: string | null | undefined): Date {
  */
 // Implementasi tunggalnya ada di publish-pages/types.ts — diekspor ulang di
 // sini supaya pemakai lama (dan tesnya) tetap mengimpor dari berkas ini.
-export { isKilatPage };
+export { hiddenFromFeed, isKilatPage };
 
 export function SurveyListingPage() {
     const [pages, setPages] = useState<any[]>([]);
@@ -89,7 +89,7 @@ export function SurveyListingPage() {
                 //
                 // ⚠️ KEMBAR: functions/api/surveys.js punya filter yang sama.
                 // Ubah satu, ubah keduanya.
-                if (isKilatPage(page)) return false;
+                if (hiddenFromFeed(page)) return false;
 
                 const startDate = page.publish_start_date ? normalizeScheduleDate(page.publish_start_date) : null;
                 const endDate = page.publish_end_date ? normalizeScheduleDate(page.publish_end_date) : null;

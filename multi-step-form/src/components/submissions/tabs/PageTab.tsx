@@ -202,8 +202,15 @@ export function PageTab({
   //                             countKilatOrdersWithoutPage dalam bentuk per-order)
   if (isKilatOrder) {
     const waves = schedules.filter((s) => s.kilatSlotHour != null && s.startDate);
-    const firstWave = waves[0];
-    const firstState = firstWave ? broadcastStateOf(firstWave) : null;
+    // Gelombang yang sedang berlaku = yang terakhir sudah dibuka (sql/130:
+    // gelombang baru mengakhiri yang lama), selain itu gelombang pertama.
+    const nowMs = Date.now();
+    const opened = waves.filter((w) => {
+      const o = broadcastStateOf(w).opensAt;
+      return o != null && o.getTime() <= nowMs;
+    });
+    const currentWave = opened[opened.length - 1] ?? waves[0];
+    const currentState = currentWave ? broadcastStateOf(currentWave) : null;
     return (
       <div className="space-y-4">
         <DetailSheetSection title="Distribusi JFU Kilat">
@@ -288,19 +295,20 @@ export function PageTab({
                 <span className="font-semibold text-amber-950">
                   {!lifecycle.isPaid
                     ? 'Menunggu Pembayaran'
-                    : firstState?.phase === 'live'
-                      ? 'Sedang Disiarkan'
-                      : firstState?.phase === 'finished'
-                        ? 'Selesai Disiarkan'
-                        : 'Belum Disiarkan'}
+                    : currentState?.phase === 'live'
+                      ? 'Live'
+                      : currentState?.phase === 'grace'
+                        ? 'Dimatikan (tenggang)'
+                        : currentState?.phase === 'finished'
+                          ? 'Selesai Disiarkan'
+                          : 'Terjadwal'}
                 </span>
               </div>
             </div>
 
-            {/* Toggle siaran per gelombang (sql/118). Halaman Kilat sejak R4
-                berjendela: [gelombang, +24 jam) sampai dinyalakan, lalu
-                [nyala, +24 jam). Hanya 17 halaman lama yang tetap tanpa tanggal
-                akhir — keputusan 7 Okt, jangan "diperbaiki". */}
+            {/* Siaran per gelombang (sql/130): live otomatis gelombang − 60
+                menit, tanpa batas sampai dimatikan, tenggang 60 menit.
+                publish_end_date NULL = sedang live, bukan halaman lama. */}
             {existingPage && waves.map((w) => (
               <div key={w.id} className="space-y-1">
                 {waves.length > 1 && (
@@ -315,11 +323,6 @@ export function PageTab({
                 />
               </div>
             ))}
-            {existingPage && !existingPage.publish_end_date && (
-              <p className="text-[11px] text-amber-700/90 leading-relaxed">
-                Halaman Kilat lama: tautan tidak memiliki tanggal kedaluwarsa.
-              </p>
-            )}
           </div>
         </DetailSheetSection>
       </div>

@@ -267,7 +267,7 @@ export const QUEUE_DOT_LABEL: Record<QueueReason, string> = {
   review: 'Perlu tindakan di tab Review',
   schedule: 'Perlu tindakan: Tetapkan jadwal',
   invoice: 'Perlu tindakan: Reservasi tanpa tagihan hidup',
-  broadcast: 'Perlu tindakan: Nyalakan siaran Kilat',
+  broadcast: 'Perlu tindakan: Matikan siaran Kilat (live > 24 jam)',
 };
 
 /**
@@ -285,6 +285,18 @@ export const QUEUE_DOT_LABEL: Record<QueueReason, string> = {
  * Sumbu HALAMAN sengaja tidak ikut — pekerjaannya milik admin lain dan
  * rumahnya papan Jadwal (P5).
  */
+/**
+ * Tab laci order tempat aksi sebuah alasan antrean dikerjakan — titik merahnya
+ * dipasang di tab itu. `broadcast` = toggle siaran Kilat, yang tinggal di tab
+ * Page; dulu ikut tab Reservasi Jadwal, jadi admin diarahkan ke tab yang tidak
+ * punya tombol apa pun (26 Okt 2026).
+ */
+export function detailTabOfQueueReason(reason: QueueReason): 'review' | 'schedule-payment' | 'page' {
+  if (reason === 'review') return 'review';
+  if (reason === 'broadcast') return 'page';
+  return 'schedule-payment';
+}
+
 export function getSubmissionActionDot(
   lifecycle: LifecycleInfo,
   queueReason: QueueReason | null = null,

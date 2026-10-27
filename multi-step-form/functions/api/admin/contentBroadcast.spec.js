@@ -3,9 +3,9 @@ import { onRequest } from './content.js';
 import { validateAdminContent } from './contentGate.js';
 
 /*
-  Toggle siaran Kilat lewat /api/admin/content (Phase 5 R4). Handler SUNGGUHAN
-  dipanggil; jaringan dipalsukan per URL. Aturan siaran sendiri (satu arah,
-  boleh terlambat, batal tanpa responden) diuji di sql/118 Langkah 4.
+  Siaran Kilat lewat /api/admin/content (sql/130). Handler SUNGGUHAN
+  dipanggil; jaringan dipalsukan per URL. Aturan siaran sendiri (tenggang,
+  nyala lagi, gelombang berikutnya) diuji di PGlite untuk sql/130.
 */
 
 const ENV = {
@@ -41,39 +41,44 @@ const call = (body) => onRequest({
 
 afterEach(() => vi.restoreAllMocks());
 
-describe('broadcast-* → RPC sql/118', () => {
-  it('nyala: kilat_broadcast_start dengan email admin dari JWT, bukan dari body', async () => {
+describe('broadcast-* → RPC sql/130', () => {
+  it('matikan: kilat_broadcast_end dengan email admin dari JWT, bukan dari body', async () => {
     const { rpcs } = network();
-    const res = await call({ action: 'broadcast-start', scheduleId: SID, by: 'palsu' });
+    const res = await call({ action: 'broadcast-end', scheduleId: SID, by: 'palsu' });
     expect(res.status).toBe(200);
-    expect(rpcs).toEqual([{ fn: 'kilat_broadcast_start', body: { p_schedule_id: SID, p_by: 'product@jakpat.net' }, auth: 'Bearer service-role-key' }]);
+    expect(rpcs).toEqual([{ fn: 'kilat_broadcast_end', body: { p_schedule_id: SID, p_by: 'product@jakpat.net' }, auth: 'Bearer service-role-key' }]);
     expect((await res.json()).data.pages).toBe(1);
   });
 
-  it('mati & batal memanggil RPC-nya masing-masing', async () => {
+  it('nyala lagi memanggil kilat_broadcast_reopen dengan email admin', async () => {
     const { rpcs } = network();
-    await call({ action: 'broadcast-end', scheduleId: SID });
-    await call({ action: 'broadcast-undo', scheduleId: SID });
-    expect(rpcs.map((r) => r.fn)).toEqual(['kilat_broadcast_end', 'kilat_broadcast_undo']);
-    expect(rpcs[1].body).toEqual({ p_schedule_id: SID });
+    await call({ action: 'broadcast-reopen', scheduleId: SID });
+    expect(rpcs).toEqual([{ fn: 'kilat_broadcast_reopen', body: { p_schedule_id: SID, p_by: 'product@jakpat.net' }, auth: 'Bearer service-role-key' }]);
+  });
+
+  it('nyala manual & batal dicabut: 400, nol RPC', async () => {
+    const { rpcs } = network();
+    expect((await call({ action: 'broadcast-start', scheduleId: SID })).status).toBe(400);
+    expect((await call({ action: 'broadcast-undo', scheduleId: SID })).status).toBe(400);
+    expect(rpcs).toHaveLength(0);
   });
 
   it('galat RPC dibawa beserta HINT-nya', async () => {
-    network({ rpcStatus: 400, rpcBody: { message: 'Toggle siaran baru aktif 60 menit sebelum gelombang.', hint: 'broadcast_too_early' } });
-    const res = await call({ action: 'broadcast-start', scheduleId: SID });
+    network({ rpcStatus: 400, rpcBody: { message: 'Masa tenggang 60 menit sudah lewat; siaran gelombang ini terkunci.', hint: 'broadcast_finished' } });
+    const res = await call({ action: 'broadcast-reopen', scheduleId: SID });
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: 'Toggle siaran baru aktif 60 menit sebelum gelombang.', hint: 'broadcast_too_early' });
+    expect(await res.json()).toEqual({ error: 'Masa tenggang 60 menit sudah lewat; siaran gelombang ini terkunci.', hint: 'broadcast_finished' });
   });
 
   it('bukan admin: 401, nol RPC', async () => {
     const { rpcs } = network({ email: 'peneliti@kampus.ac.id' });
-    expect((await call({ action: 'broadcast-start', scheduleId: SID })).status).toBe(401);
+    expect((await call({ action: 'broadcast-end', scheduleId: SID })).status).toBe(401);
     expect(rpcs).toHaveLength(0);
   });
 
   it('gerbang menolak id yang bukan uuid', () => {
-    expect(validateAdminContent({ action: 'broadcast-start', scheduleId: 'semua' })).toMatch(/Jadwal/);
+    expect(validateAdminContent({ action: 'broadcast-reopen', scheduleId: 'semua' })).toMatch(/Jadwal/);
     expect(validateAdminContent({ action: 'broadcast-end', scheduleId: [SID] })).toMatch(/Jadwal/);
-    expect(validateAdminContent({ action: 'broadcast-undo', scheduleId: SID })).toBeNull();
+    expect(validateAdminContent({ action: 'broadcast-reopen', scheduleId: SID })).toBeNull();
   });
 });

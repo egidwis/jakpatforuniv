@@ -17,6 +17,7 @@ import {
 import { compactedSkillSortOrders, orderedAISkills, skillSortHasGaps } from './aiSkillOrder';
 import { doorError } from './dailyQuotaError';
 import { ADMIN_EMAIL } from './kilatAccess';
+import { KILAT_LEAD_MS } from './kilatWindow';
 
 // Supabase URL dan anon key akan diambil dari environment variables
 // Anda perlu menambahkan variabel ini di file .env.local
@@ -4591,17 +4592,14 @@ export const updateKilatSchedule = async (
 };
 
 /**
- * Jendela halaman Kilat ikut gelombang yang baru (Phase 5 §5.4, rilis R4).
+ * Jendela halaman Kilat ikut gelombang yang baru (sql/130 — cermin
+ * `kilat_page_window`): [gelombang − 60 menit, NULL) — live otomatis dan
+ * terbuka sampai admin mematikan siaran. Kolom siaran di `ad_schedules` sudah
+ * di-NULL-kan trigger `guard_broadcast_columns` begitu tanggalnya berubah.
  *
  * Halaman hanya lahir saat lunas, jadi order belum lunas tidak punya apa pun
- * untuk disinkronkan. Kolom siaran di `ad_schedules` sudah di-NULL-kan trigger
- * sql/118 begitu tanggalnya berubah, jadi jendela kembali ke jendela sementara
- * [gelombang, +24 jam) sampai toggle dinyalakan lagi.
- *
- * ⚠️ Halaman Kilat LAMA (`publish_end_date` NULL, 17 baris, keputusan 7 Okt)
- * hanya digeser awalnya — tautannya sudah tertanam di survei Jakpat dan tidak
- * boleh diberi tanggal mati. Halaman yang ditutup sistem (`auto_closed_at`,
- * sql/99) tidak disentuh.
+ * untuk disinkronkan. Halaman yang ditutup sistem (`auto_closed_at`, sql/99)
+ * tidak disentuh.
  */
 async function syncKilatPageWindow(submissionId: string, ymd: string, hour: number) {
   const { data: pages, error } = await supabase
@@ -4611,12 +4609,13 @@ async function syncKilatPageWindow(submissionId: string, ymd: string, hour: numb
     .is('auto_closed_at', null);
   if (error) throw error;
 
-  const startIso = kilatWaveInstant(ymd, hour).toISOString();
-  const endIso = kilatWaveInstant(addDaysToYmd(ymd, 1), hour).toISOString();
+  const startIso = new Date(kilatWaveInstant(ymd, hour).getTime() - KILAT_LEAD_MS).toISOString();
   for (const page of pages ?? []) {
-    const patch: Record<string, string> = page.publish_end_date == null
-      ? { publish_start_date: startIso, updated_at: new Date().toISOString() }
-      : { publish_start_date: startIso, publish_end_date: endIso, updated_at: new Date().toISOString() };
+    const patch: Record<string, string | null> = {
+      publish_start_date: startIso,
+      publish_end_date: null,
+      updated_at: new Date().toISOString(),
+    };
     const { error: writeError } = await adminContent(
       {
         action: 'patch-pages',

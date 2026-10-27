@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deriveLifecycle, isReviewDecisionLocked } from './lifecycle';
+import { deriveLifecycle, detailTabOfQueueReason, isReviewDecisionLocked } from './lifecycle';
 import type { ExistingPage, PaymentState, SurveySubmission } from './types';
 
 /*
@@ -101,5 +101,16 @@ describe('isReviewDecisionLocked — invarian', () => {
 
   it('order batal tidak terkunci (Reset tetap tersedia)', () => {
     expect(isReviewDecisionLocked({ stage: 'cancelled', displayStatus: 'slot_cancelled', isPaid: false })).toBe(false);
+  });
+});
+
+describe('detailTabOfQueueReason — titik merah di tab tempat aksinya', () => {
+  it('siaran Kilat → tab Page (toggle ada di sana), bukan Reservasi Jadwal', () => {
+    expect(detailTabOfQueueReason('broadcast')).toBe('page');
+  });
+  it('review → Review; jadwal & tagihan → Reservasi Jadwal', () => {
+    expect(detailTabOfQueueReason('review')).toBe('review');
+    expect(detailTabOfQueueReason('schedule')).toBe('schedule-payment');
+    expect(detailTabOfQueueReason('invoice')).toBe('schedule-payment');
   });
 });

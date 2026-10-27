@@ -105,8 +105,8 @@ export async function onRequest(context) {
   if (invalid) return json(400, { error: invalid });
 
   if (BROADCAST_RPC[body.action]) {
-    // Galat RPC dibawa utuh beserta HINT-nya (broadcast_too_early, _finished,
-    // _has_respondents, …) supaya tab Page bisa menyebut alasannya.
+    // Galat RPC dibawa utuh beserta HINT-nya (broadcast_not_started, _finished,
+    // _superseded, …) supaya tab Page bisa menyebut alasannya.
     const res = await fetch(`${url}/rest/v1/rpc/${BROADCAST_RPC[body.action]}`, {
       method: 'POST',
       headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },

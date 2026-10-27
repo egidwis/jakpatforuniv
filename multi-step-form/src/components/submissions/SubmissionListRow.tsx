@@ -17,7 +17,7 @@ import type { QueueReason } from '../../utils/adminQueue';
 import { ClientStatusDot } from '../customers/ClientStatusIcon';
 import type { CustomerTier } from '../customers/types';
 import { missedPaymentWindow } from '@/utils/missedPaymentWindow';
-import { DivertedAwayChip } from './AdminAwayToggle';
+import { DivertedAwayChip, KilatLiveChip } from './AdminAwayToggle';
 import { SelfBookingClosedChip } from './AdminSelfBookingToggle';
 
 interface SubmissionListRowProps {
@@ -31,6 +31,8 @@ interface SubmissionListRowProps {
   clientTier?: CustomerTier;
   /** Alasan order ini di antrean admin (`fetchAdminQueue`) — satu-satunya pemicu titik merah. */
   queueReason?: QueueReason | null;
+  /** Gelombang Kilat lunas order ini sedang live (`fetchAdminQueue().kilatLive`). */
+  kilatLive?: boolean;
 }
 
 function getAutoPlatformTooltip(formUrl?: string): string {
@@ -56,6 +58,7 @@ export function SubmissionListRow({
   active,
   clientTier,
   queueReason = null,
+  kilatLive = false,
 }: SubmissionListRowProps) {
   const [copiedId, setCopiedId] = useState(false);
   const actionDot = getSubmissionActionDot(lifecycle, queueReason);
@@ -179,6 +182,7 @@ export function SubmissionListRow({
             {submission.formTitle}
           </span>
           <DivertedAwayChip reason={submission.forced_manual_reason} paymentStatus={submission.payment_status} />
+          <KilatLiveChip live={kilatLive} />
           <SelfBookingClosedChip cappedAt={submission.self_booking_closed_at} startDate={submission.start_date} />
           {submission.voucher_code && (
             <TooltipProvider>

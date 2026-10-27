@@ -42,7 +42,7 @@ import {
 } from '../ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import type { SurveySubmission, PaymentState, ExistingPage, FormAuditResult } from './types';
-import { deriveLifecycle, getSubmissionActionDot, isReviewDecisionLocked } from './lifecycle';
+import { deriveLifecycle, detailTabOfQueueReason, getSubmissionActionDot, isReviewDecisionLocked } from './lifecycle';
 import type { QueueReason } from '../../utils/adminQueue';
 import { resetPageWarningOf, RESET_PAGE_STATE_LABEL, RESET_PAGE_STATE_NOTE } from './resetPageWarning';
 import { ReviewStatusChip } from './ReviewStatusChip';
@@ -334,20 +334,22 @@ export function SubmissionDetailSheet({
     lifecycle.stage !== 'page_scheduled';
 
   // Titik tab mengikuti antrean admin (badge): merah hanya bila order ini
-  // dihitung. Review → tab Review; jadwal/tagihan/siaran → tab Jadwal & Bayar.
+  // dihitung, di tab tempat aksinya (`detailTabOfQueueReason`): review → Review,
+  // siaran Kilat → Page, jadwal/tagihan → Jadwal & Bayar.
   const actionDot = getSubmissionActionDot(lifecycle, queueReason);
-  const reviewDotType: 'red' | 'gray' | null = queueReason === 'review'
+  const queueTab = queueReason ? detailTabOfQueueReason(queueReason) : null;
+  const reviewDotType: 'red' | 'gray' | null = queueTab === 'review'
     ? 'red'
     : !queueReason && isRejected ? 'gray' : null;
   const scheduleDot = queueReason
-    ? (queueReason !== 'review' ? actionDot : null)
+    ? (queueTab === 'schedule-payment' ? actionDot : null)
     : !isReviewActive && isScheduleActive ? actionDot : null;
   const scheduleDotType: 'red' | 'gray' | null = scheduleDot?.type ?? null;
 
-  // Tab Page TIDAK punya titik notifikasi. Pekerjaan halaman dikerjakan admin
-  // lain, dari papan Jadwal; menyalakan alarmnya di sini berarti menagih orang
-  // yang tidak bisa — dan tidak seharusnya — menyelesaikannya. Lihat
-  // `getSubmissionActionDot` di lifecycle.ts untuk angka yang mendasarinya.
+  // Tab Page hanya bertitik untuk toggle siaran Kilat (antrean `broadcast`).
+  // Pekerjaan halaman lain dikerjakan admin lain, dari papan Jadwal; menyalakan
+  // alarmnya di sini berarti menagih orang yang tidak bisa menyelesaikannya.
+  const pageDot = queueTab === 'page' ? actionDot : null;
 
   const tabBar = (
     <div className="flex gap-1 -mb-px">
@@ -356,6 +358,7 @@ export function SubmissionDetailSheet({
         const isActive = activeTab === tab.id;
         const isReviewTab = tab.id === 'review';
         const isScheduleTab = tab.id === 'schedule-payment';
+        const isPageTab = tab.id === 'page';
         return (
           <button
             key={tab.id}
@@ -382,6 +385,12 @@ export function SubmissionDetailSheet({
             )}
             {isScheduleTab && scheduleDotType === 'red' && (
               <span className="relative flex h-2 w-2 ml-0.5" title={scheduleDot?.label ?? 'Perlu tindakan pada Jadwal / Tagihan'}>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+              </span>
+            )}
+            {isPageTab && pageDot && (
+              <span className="relative flex h-2 w-2 ml-0.5" title={pageDot.label}>
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
               </span>

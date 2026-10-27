@@ -1,18 +1,19 @@
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SOURCE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
-/** Aksi toggle siaran → RPC service_role-nya (sql/118). */
+/**
+ * Aksi siaran Kilat → RPC service_role-nya (sql/130). Nyala sudah otomatis
+ * (gelombang − 60 menit); `broadcast-start`/`-undo` dicabut — aksi tak dikenal
+ * ditolak gerbang.
+ */
 export const BROADCAST_RPC = {
-  'broadcast-start': 'kilat_broadcast_start',
   'broadcast-end': 'kilat_broadcast_end',
-  'broadcast-undo': 'kilat_broadcast_undo',
+  'broadcast-reopen': 'kilat_broadcast_reopen',
 };
 
 /** Argumen RPC. `p_by` = email admin dari JWT, bukan dari body. */
 export function broadcastRpcArgs(action, scheduleId, email) {
-  return action === 'broadcast-undo'
-    ? { p_schedule_id: scheduleId }
-    : { p_schedule_id: scheduleId, p_by: email };
+  return { p_schedule_id: scheduleId, p_by: email };
 }
 
 const PAGE_COLUMNS = {

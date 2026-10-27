@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { deriveOrderUiState } from './deriveOrderUiState';
+import { deriveOrderUiState, describeOrderForChat } from './deriveOrderUiState';
 import type { AdScheduleEntry, FormSubmission } from '@/utils/supabase';
 
 /*
@@ -53,3 +53,33 @@ describe('deriveOrderUiState — Kilat', () => {
     expect(ui.paymentDeadlineCause).toBe('slot');
   });
 });
+
+describe('deriveOrderUiState — Kilat live sampai dimatikan (sql/130)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+  const paidSub = { ...sub, submission_status: 'paid', payment_status: 'paid' } as unknown as FormSubmission;
+  const paid = (o: Partial<AdScheduleEntry> = {}) =>
+    entry({ status: 'paid', paymentStatus: 'paid', broadcastAt: null, broadcastEndedAt: null, ...o });
+
+  it('3 hari sesudah gelombang, belum dimatikan → masih "live", bukan selesai', () => {
+    vi.setSystemTime(new Date('2026-10-22T04:00:00Z'));
+    const ui = deriveOrderUiState(paidSub, [paid()]);
+    expect(ui.callout).toBe('live');
+    expect(ui.currentStep).toBe(3);
+    expect(describeOrderForChat(paidSub, ui)).toContain('sampai siarannya dihentikan tim Jakpat');
+    expect(describeOrderForChat(paidSub, ui)).not.toMatch(/275760/);
+  });
+
+  it('dimatikan admin → selesai', () => {
+    vi.setSystemTime(new Date('2026-10-19T09:00:00Z'));
+    const ui = deriveOrderUiState(paidSub, [paid({ broadcastEndedAt: '2026-10-19T08:00:00Z' })]);
+    expect(ui.callout).toBe('completed');
+  });
+
+  it('kolom siaran tidak dimuat (undefined) → jendela gelombang lama, tidak dianggap live', () => {
+    vi.setSystemTime(new Date('2026-10-22T04:00:00Z'));
+    const ui = deriveOrderUiState(paidSub, [entry({ status: 'paid', paymentStatus: 'paid' })]);
+    expect(ui.callout).toBe('completed');
+  });
+});
+

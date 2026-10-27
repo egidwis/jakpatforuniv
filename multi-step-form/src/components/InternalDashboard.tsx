@@ -118,7 +118,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
   /** Tutup reservasi mandiri (sql/125) — kendali bersama strip, pill, dan popup. */
   const selfBookingControl = useSelfBookingControl();
   /** Id order yang menunggu admin per jenis (badge tab + filter "Perlu Ditangani"). */
-  const [adminQueue, setAdminQueue] = useState<AdminQueueCounts>({ regular: [], kilat: [], reasons: {} });
+  const [adminQueue, setAdminQueue] = useState<AdminQueueCounts>({ regular: [], kilat: [], reasons: {}, kilatLive: [] });
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
 
   // Derived schedule state: Set of submission IDs that have a slot reserved (start_date set)
@@ -1741,6 +1741,7 @@ export function InternalDashboard({ hideAuth = false, onLogout, focusSubmission,
                     active={isXl && submission.id === openSubmissionId}
                     clientTier={clientTierMap.get(submission.id)}
                     queueReason={adminQueue.reasons[submission.id] ?? null}
+                    kilatLive={adminQueue.kilatLive.includes(submission.id)}
                   />
                 ))}
               </div>

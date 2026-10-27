@@ -96,6 +96,21 @@ function isKilatPage(p) {
     return sub?.distribution_type === 'kilat';
 }
 
+/**
+ * Halaman yang TIDAK boleh tampil di feed. FAIL-CLOSED (sql/130): halaman yang
+ * punya `submission_id` tapi join order-nya kosong tidak bisa dibuktikan bukan
+ * Kilat, jadi dibuang. Halaman yatim (submission_id NULL) tetap lolos.
+ * Diukur 27 Okt sebagai anon: 0 dari 491 halaman terbit ber-order join-nya kosong.
+ *
+ * MUST stay in sync with hiddenFromFeed() in src/components/publish-pages/types.ts.
+ */
+function hiddenFromFeed(p) {
+    if (!p?.submission_id) return false;
+    const sub = Array.isArray(p.form_submissions) ? p.form_submissions[0] : p.form_submissions;
+    if (!sub) return true;
+    return sub.distribution_type === 'kilat';
+}
+
 function orderBand(p) {
     const placed = p.display_order !== null && p.display_order !== undefined;
     if (placed) return 1;
@@ -189,13 +204,14 @@ export async function onRequestGet(context) {
             // tidak dibayar" (sql/42) tidak lagi berlaku: kapasitasnya tidak
             // pernah diberikan.
             //
-            // ⚠️ INI SATU-SATUNYA PENAHAN. Halaman Kilat terbit, tidak
-            // tersembunyi, dan publish_end_date-nya NULL sehingga LOLOS filter
-            // tanggal di bawah. Tidak ada sabuk pengaman kedua.
+            // ⚠️ INI SATU-SATUNYA PENAHAN di feed. Halaman Kilat yang sedang
+            // live terbit, tidak tersembunyi, dan publish_end_date-nya NULL
+            // sehingga LOLOS filter tanggal di bawah. Sejak sql/130 database
+            // menolak ISIAN di luar jendela, tapi tidak menyembunyikan kartu.
             //
             // ⚠️ KEMBAR: src/pages/public/SurveyListingPage.tsx punya filter
             // yang sama. Ubah satu, ubah keduanya — seperti compareDisplayOrder.
-            if (isKilatPage(s)) return false;
+            if (hiddenFromFeed(s)) return false;
 
             const start = s.publish_start_date ? normalizeScheduleDate(s.publish_start_date) : null;
             const end = s.publish_end_date ? normalizeScheduleDate(s.publish_end_date) : null;
