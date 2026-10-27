@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, Lock, Radio, RotateCcw } from 'lucide-react';
+import { Loader2, Lock, Radio } from 'lucide-react';
 import { toast } from 'sonner';
 import { Switch } from '../../ui/switch';
 import { ConfirmDialog, type ConfirmRequest } from '../../ui/confirm-dialog';
@@ -121,7 +121,7 @@ export function KilatBroadcastToggle({
                 : 'Matikan setelah push selesai.')}
               {st.phase === 'grace' && st.closesAt && (st.isSuperseded
                 ? 'Diakhiri otomatis karena gelombang berikutnya sudah live.'
-                : `Tenggang ${minutesLeft(st.closesAt, now)} menit lagi — masih bisa dinyalakan lagi.`)}
+                : `Tenggang ${minutesLeft(st.closesAt, now)} menit lagi — geser toggle untuk menyalakan lagi.`)}
               {st.phase === 'finished' && (st.isBackfill
                 ? 'Diisi migrasi (gelombang lama).'
                 : st.isSuperseded ? 'Diakhiri gelombang berikutnya. Terkunci.' : 'Terkunci — pemenang bisa dipilih.')}
@@ -138,16 +138,6 @@ export function KilatBroadcastToggle({
           />
         </div>
       </div>
-      {st.phase === 'grace' && !st.isSuperseded && (
-        <button
-          type="button"
-          onClick={askReopen}
-          disabled={busy}
-          className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-800 hover:underline disabled:opacity-50"
-        >
-          <RotateCcw className="w-3 h-3" /> Nyalakan lagi
-        </button>
-      )}
       <ConfirmDialog request={confirm} onDismiss={() => setConfirm(null)} />
     </div>
   );
