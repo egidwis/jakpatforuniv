@@ -51,8 +51,26 @@ describe('buildKilatPaidAlert', () => {
     expect(m.html).toContain('Survei &lt;Kopi&gt;');
     expect(m.html).toContain('#3a432277');
     expect(m.html).toContain('Rp 1.110');
-    expect(m.html).toContain('toggle siaran');
     expect(m.html).toContain('/internal-dash');
+  });
+
+  it('sql/130: menyebut jam live otomatis (gelombang − 60 menit) dan langkah mematikan, tanpa "nyalakan toggle"', () => {
+    const m = buildKilatPaidAlert({
+      invoiceNumber: 'JFU-3a432277-1',
+      amount: 1110,
+      waves: [{ orderId: SUB.id, title: 'K', researcher: SUB.email, ymd: '2026-10-27', hour: 8 }],
+    });
+    expect(m.html).toContain('live otomatis 07.00 WIB');
+    expect(m.html).toContain('Matikan siaran');
+    expect(m.html).not.toMatch(/nyalakan <strong>toggle/i);
+  });
+
+  it('gelombang belum ditetapkan: tidak mengarang jam live', () => {
+    const m = buildKilatPaidAlert({
+      invoiceNumber: 'X', amount: 1,
+      waves: [{ orderId: SUB.id, title: 'K', researcher: SUB.email, ymd: null, hour: null }],
+    });
+    expect(m.html).not.toContain('live otomatis');
   });
 });
 

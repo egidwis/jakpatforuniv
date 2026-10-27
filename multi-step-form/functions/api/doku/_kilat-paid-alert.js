@@ -5,9 +5,10 @@ import { sendMail } from '../_mail.js';
  * sebelum Push B).
  *
  * Sejak pintu swalayan terbuka, order Kilat lahir dan dibayar tanpa admin.
- * Satu-satunya tanda sebelumnya adalah badge "belum disiarkan" — siaran
- * terlewat bila dashboard tidak sedang dibuka. Email ini memberi tahu
- * gelombang mana yang harus di-push, lalu admin menyalakan toggle siaran.
+ * Halamannya live OTOMATIS 60 menit sebelum gelombang (sql/130) dan tetap
+ * live sampai admin mematikannya. Email ini memberi tahu gelombang mana yang
+ * harus di-push dan kapan halamannya terbuka; tugas admin tinggal mengirim
+ * push lalu mematikan siaran sesudah selesai.
  *
  * Diawali `_` supaya Cloudflare Pages tidak merutekannya. Dipanggil webhook
  * lewat context.waitUntil() — TIDAK PERNAH melempar: kegagalan mengirim email
@@ -27,6 +28,8 @@ function escapeHtml(value) {
 const formatRupiah = (amount) => 'Rp ' + Number(amount || 0).toLocaleString('id-ID');
 const waveLabel = (hour) => `Gelombang ${String(hour).padStart(2, '0')}.00 WIB`;
 const shortId = (id) => `#${String(id || '').slice(0, 8)}`;
+/** ⚠️ Cermin `kilat_lead()` sql/130: halaman live 60 menit sebelum gelombang. */
+const liveHourLabel = (hour) => `${String((hour + 23) % 24).padStart(2, '0')}.00 WIB`;
 
 /** Tanggal kalender WIB dari DATE ('2026-10-27') atau TIMESTAMPTZ. */
 function wibYmd(value) {
@@ -66,8 +69,9 @@ export function buildKilatPaidAlert({ invoiceNumber, amount, waves }) {
       <p><strong>Gelombang JFU Kilat sudah lunas</strong> — tagihan ${escapeHtml(invoiceNumber)} (${escapeHtml(formatRupiah(amount))}).</p>
       <table style="border-collapse:collapse;width:100%;max-width:560px">${rows}</table>
       <ol>
+        ${first.hour == null ? '' : `<li>Halaman survei <strong>live otomatis ${escapeHtml(liveHourLabel(first.hour))}</strong> (60 menit sebelum gelombang) — tidak perlu dinyalakan.</li>`}
         <li>Kirim push notification Jakpat pada jam gelombangnya.</li>
-        <li>Sesudah push terkirim, nyalakan <strong>toggle siaran</strong> di Submissions → tab Kilat → order ${escapeHtml(shortId(first.orderId))} → Page.</li>
+        <li>Sesudah push selesai, <strong>Matikan siaran</strong> di Submissions → tab Kilat → order ${escapeHtml(shortId(first.orderId))} → Page. Siaran tetap live sampai dimatikan; salah matikan masih bisa dinyalakan lagi dalam 60 menit.</li>
       </ol>
       <p><a href="${ADMIN_DASHBOARD}">Buka dashboard admin</a></p>
     </div>`;
