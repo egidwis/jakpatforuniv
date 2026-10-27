@@ -33,9 +33,15 @@ describe('rateContextOf — dari tarif mana harga satuan iklan datang', () => {
       .toContain('dikunci 5 Okt 2026');
   });
 
-  it('Kilat diberi keterangan rumusnya', () => {
-    expect(rateContextOf({ questionCount: 20, rateLockedAt: null, isKilat: true, nowMs: NOV_15 }))
+  it('Kilat bertarif sebelum Push B diberi keterangan rumus lamanya', () => {
+    expect(rateContextOf({ questionCount: 20, rateLockedAt: '2026-10-20T03:00:00Z', isKilat: true, nowMs: NOV_15 }))
       .toMatch(/Kilat: tarif 1× \+ add-on$/);
+  });
+
+  it('Kilat sejak Push B: tarif per gelombang, tanpa keterangan add-on', () => {
+    const text = rateContextOf({ questionCount: 20, rateLockedAt: null, isKilat: true, nowMs: NOV_15 })!;
+    expect(text).toContain('/gelombang (tarif Kilat)');
+    expect(text).not.toContain('add-on');
   });
 
   it('tanpa jumlah soal → null', () => {

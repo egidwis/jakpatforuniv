@@ -18,24 +18,17 @@ const base: SurveyFormData = {
   questionCount: 20,
 };
 
-describe('canUseKilatSelfServe — pintu tertutup sampai Push B', () => {
-  // Push Uji: satu akun uji non-admin. Dikosongkan lagi di Push B.
-  it('bendera masih tertutup; daftar pilot = akun uji saja di Push Uji', () => {
-    expect(KILAT_SELF_SERVE_OPEN).toBe(false);
-    expect(KILAT_PILOT_EMAILS).toEqual(['tegarerputra@gmail.com']);
+describe('canUseKilatSelfServe — pintu terbuka untuk semua (Push B)', () => {
+  it('bendera terbuka; daftar pilot dikosongkan lagi', () => {
+    expect(KILAT_SELF_SERVE_OPEN).toBe(true);
+    expect(KILAT_PILOT_EMAILS).toEqual([]);
   });
 
-  it('akun uji boleh; email admin TIDAK boleh ada di daftar pilot (trigger sql/117 melewatinya)', () => {
-    expect(canUseKilatSelfServe('tegarerputra@gmail.com')).toBe(true);
-    expect(canUseKilatSelfServe(' TegarErPutra@gmail.com ')).toBe(true);
-    expect(KILAT_PILOT_EMAILS).not.toContain('product@jakpat.net');
-  });
-
-  it('admin boleh (uji wizard), peneliti biasa tidak, email kosong tidak', () => {
+  it('bendera menang: semua akun boleh (pemanggilnya hanya halaman dashboard yang wajib login)', () => {
+    expect(canUseKilatSelfServe('peneliti@kampus.ac.id')).toBe(true);
     expect(canUseKilatSelfServe('product@jakpat.net')).toBe(true);
-    expect(canUseKilatSelfServe(' Product@Jakpat.net ')).toBe(true);
-    expect(canUseKilatSelfServe('peneliti@kampus.ac.id')).toBe(false);
-    expect(canUseKilatSelfServe(null)).toBe(false);
+    expect(canUseKilatSelfServe('tegarerputra@gmail.com')).toBe(true);
+    expect(canUseKilatSelfServe(null)).toBe(true);
   });
 
   it('daftar pilot huruf kecil — pemeriksaan tidak peka huruf', () => {
@@ -44,9 +37,9 @@ describe('canUseKilatSelfServe — pintu tertutup sampai Push B', () => {
 });
 
 describe('doorProductOf', () => {
-  it('?product=kilat hanya untuk akun yang boleh', () => {
+  it('?product=kilat membuka Kilat untuk akun yang masuk', () => {
     expect(doorProductOf('kilat', 'product@jakpat.net')).toBe('kilat');
-    expect(doorProductOf('kilat', 'peneliti@kampus.ac.id')).toBe('regular');
+    expect(doorProductOf('kilat', 'peneliti@kampus.ac.id')).toBe('kilat');
     expect(doorProductOf(null, 'product@jakpat.net')).toBe('regular');
     expect(doorProductOf('iklan', 'product@jakpat.net')).toBe('regular');
   });

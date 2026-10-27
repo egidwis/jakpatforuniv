@@ -7,31 +7,46 @@ import { buildOrderInvoiceItems, describeVoucher } from '../components/schedule/
 import * as server from '../../functions/api/doku/create-payment.js';
 
 /*
-  Tarif JFU Kilat bertanggal (Phase 5 Task 5.1) — SELAGI TIDUR.
+  Tarif JFU Kilat bertanggal (Phase 5 Task 5.1) — TIDAK BERLAKU SURUT.
 
-  `KILAT_TARIFF_FROM = null` sampai commit buka pintu (5.9). Yang dikunci di
+  `KILAT_TARIFF_FROM` diisi di Push B (27 Okt 2026 10.00 WIB). Yang dikunci di
   sini:
-    • tabel klien = tabel server, kode voucher Kilat klien = server;
+    • tanggal mulai klien = server, tabel klien = tabel server, kode voucher
+      Kilat klien = server;
     • invarian keputusan 14 Okt: Kilat efektif = 2,5 × Iklan efektif (selalu
       lebih mahal dari Iklan 2 hari), list pun 2,5×;
-    • selama tidur, SETIAP order Kilat dihargai rumus lama persis — tarif
-      harian + add-on Rp200rb, tanpa diskon voucher apa pun.
+    • order Kilat yang instan tarifnya SEBELUM tanggal mulai tetap dihargai
+      rumus lama persis — tarif harian + add-on Rp200rb, tanpa diskon voucher
+      (JFUTGRX = Rp1.000, opsi A). Order yang sudah dikutip tidak boleh
+      ditagih berbeda saat dibayar.
   Perilaku tabel yang sudah menyala dikunci kilatTariffActive.spec.ts.
 */
 
 const T = (iso: string) => Date.parse(iso);
+const FROM = '2026-10-27T10:00:00+07:00';
+// Semua instan SEBELUM tanggal mulai — order lama yang belum lunas.
 const INSTANTS = [
-  T('2026-09-30T23:59:59+07:00'), T('2026-10-01T00:00:00+07:00'), T('2026-11-30T23:59:59+07:00'),
-  T('2026-12-01T00:00:00+07:00'), T('2026-12-31T23:59:59+07:00'), T('2027-01-01T00:00:00+07:00'),
-  T('2027-06-01T00:00:00+07:00'),
+  T('2026-09-30T23:59:59+07:00'), T('2026-10-01T00:00:00+07:00'), T('2026-10-15T10:00:00+07:00'),
+  T(FROM) - 1,
 ];
+const LEGACY_AT = T('2026-10-20T10:00:00+07:00');
 const QS = [1, 15, 16, 30, 31, 50, 51, 70, 71];
 const sumOf = (items: { qty: number; price: number }[]) => items.reduce((a, i) => a + i.qty * i.price, 0);
 
 describe('paritas klien ⇄ server', () => {
-  test('tanggal mulai sama-sama null (tarif Kilat belum menyala)', () => {
-    expect(KILAT_TARIFF_FROM).toBeNull();
-    expect(server.KILAT_TARIFF_FROM).toBeNull();
+  test('tanggal mulai klien = server = Push B (27 Okt 2026 10.00 WIB)', () => {
+    expect(KILAT_TARIFF_FROM).toBe(FROM);
+    expect(server.KILAT_TARIFF_FROM).toBe(FROM);
+  });
+
+  test('batas tepat di tanggal mulai: 1 ms sebelumnya rumus lama, tepat di situ tabel baru', () => {
+    for (const q of QS) {
+      expect(kilatRateAt(q, T(FROM) - 1)).toMatchObject({ legacy: true });
+      expect(server.kilatRateAt(q, T(FROM) - 1)).toMatchObject({ legacy: true });
+      expect(kilatRateAt(q, T(FROM)).legacy).toBeFalsy();
+      expect(server.kilatRateAt(q, T(FROM)).legacy).toBeFalsy();
+      expect(server.kilatRateAt(q, T(FROM)).effective).toBe(kilatRateAt(q, T(FROM)).effective);
+    }
   });
 
   test('tabel literal identik', () => {
@@ -71,7 +86,7 @@ describe('invarian 2,5 × Iklan (keputusan 14 Okt 2026)', () => {
   });
 });
 
-describe('selama tidur: rumus lama persis', () => {
+describe('order bertarif sebelum tanggal mulai: rumus lama persis', () => {
   const formOf = (o: Partial<SurveyFormData>): SurveyFormData => ({
     questionCount: 40, duration: 1, winnerCount: 2, prizePerWinner: 25000,
     voucherCode: '', isKilatUpgrade: true, ...o,
@@ -112,7 +127,7 @@ describe('selama tidur: rumus lama persis', () => {
   );
 
   test('kwitansi tetap dua baris (iklan + add-on) dan menjumlah ke subtotal', () => {
-    const at = T('2026-12-10T10:00:00+07:00');
+    const at = LEGACY_AT;
     const order = {
       id: 'o', created_at: new Date(at).toISOString(), question_count: 40, duration: 1,
       winner_count: 2, prize_per_winner: 25000, voucher_code: 'JFUGITA', distribution_type: 'kilat',
@@ -143,7 +158,7 @@ describe('selama tidur: rumus lama persis', () => {
   });
 
   test('JFUTGRX Kilat lama: prefill admin = kwitansi server (satu baris biaya uji)', () => {
-    const at = T('2026-12-10T10:00:00+07:00');
+    const at = LEGACY_AT;
     const order = {
       id: 'o', created_at: new Date(at).toISOString(), question_count: 40, duration: 1,
       winner_count: 2, prize_per_winner: 25000, voucher_code: 'JFUTGRX', distribution_type: 'kilat',
@@ -161,13 +176,13 @@ describe('selama tidur: rumus lama persis', () => {
   });
 
   test('label voucher admin Kilat lama: JFUTGRX = biaya uji', () => {
-    const at = T('2026-12-10T10:00:00+07:00');
+    const at = LEGACY_AT;
     expect(describeVoucher('JFUTGRX', { adCost: 300_000, incentiveCost: 50_000, duration: 1 }, { adCost: 500_000, rateInstantMs: at })?.label)
       .toBe('Voucher uji sistem — tagihan dipatok Rp 1.000');
   });
 
   test.each(['JFUGITA', 'JFUFEB'])('label voucher admin untuk Kilat lama: %s → null (tidak mengubah harga)', (code) => {
-    const at = T('2026-12-10T10:00:00+07:00');
+    const at = LEGACY_AT;
     expect(describeVoucher(code, { adCost: 300_000, incentiveCost: 50_000, duration: 1 }, { adCost: 500_000, rateInstantMs: at })).toBeNull();
   });
 });
@@ -187,7 +202,7 @@ describe('JFUTGRX Iklan: kwitansi menjumlah ke subtotal', () => {
 });
 
 describe('getVoucherInfo form Kilat selama rumus lama (opsi A, 16 Okt)', () => {
-  const at = T('2026-12-10T10:00:00+07:00');
+  const at = LEGACY_AT;
   test('JFUTGRX sah; kode ambassador belum memotong (bukan galat)', () => {
     expect(getVoucherInfo('JFUTGRX', 1, at, 'kilat')).toEqual({ isValid: true });
     const amb = KILAT_VOUCHER_CODES.find((c) => c !== 'JFUTGRX')!;

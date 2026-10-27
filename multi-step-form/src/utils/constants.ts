@@ -31,7 +31,7 @@ export const KILAT_PAY_LEAD_MIN = 60;
  * Pintu Kilat swalayan untuk peneliti (Phase 5). `false` sampai rilis R7 —
  * selama itu order Kilat hanya lahir lewat "Jadikan Kilat" oleh admin.
  */
-export const KILAT_SELF_SERVE_OPEN = false;
+export const KILAT_SELF_SERVE_OPEN = true;
 
 /**
  * Akun uji yang boleh memakai pintu Kilat sebelum dibuka untuk semua (Push
@@ -39,7 +39,7 @@ export const KILAT_SELF_SERVE_OPEN = false;
  * sql/117 dan create-payment.js melewati pemeriksaan untuk admin, jadi order
  * admin tidak menguji jalur peneliti. Dikosongkan lagi di Push B.
  */
-export const KILAT_PILOT_EMAILS: readonly string[] = ['tegarerputra@gmail.com'];
+export const KILAT_PILOT_EMAILS: readonly string[] = [];
 
 // Turunan, bukan angka lepas. Dipakai cek ketersediaan per-hari di jalur Kilat
 // lama (JFUSUHUD, sudah mati); pemilih gelombang R5 menghitung per gelombang.
@@ -132,7 +132,7 @@ export const AD_RATE_SCHEDULE: readonly AdRateEntry[] = [
 //
 // DUPLICATED sebagai literal di functions/api/doku/create-payment.js — WAJIB
 // diubah bersamaan; rateSchedule.spec.ts membandingkan keduanya.
-export const KILAT_TARIFF_FROM: string | null = null;
+export const KILAT_TARIFF_FROM: string | null = '2026-10-27T10:00:00+07:00';
 
 export const KILAT_RATE_SCHEDULE: readonly AdRateEntry[] = [
   {

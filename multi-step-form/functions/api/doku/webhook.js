@@ -28,6 +28,7 @@
 
 import { sendWebhookAlert } from './_webhook-alert.js';
 import { sendPaymentReceipt } from './_payment-receipt.js';
+import { sendKilatPaidAlert } from './_kilat-paid-alert.js';
 import { cancelDokuOrder } from './_doku-cancel.js';
 
 // Setelah sekian kali percobaan gagal untuk satu invoice, berhenti meminta DOKU
@@ -655,6 +656,15 @@ export async function onRequest(context) {
         context.waitUntil(receiptPromise);
       } else {
         await receiptPromise;
+      }
+
+      // Gelombang Kilat lunas → email admin supaya push & toggle siaran tidak
+      // terlewat (keputusan 26 Okt). Tagihan Iklan dilewati di dalam modulnya.
+      const kilatAlertPromise = sendKilatPaidAlert(context.env, { invoiceNumber, amount });
+      if (typeof context.waitUntil === 'function') {
+        context.waitUntil(kilatAlertPromise);
+      } else {
+        await kilatAlertPromise;
       }
     }
 
