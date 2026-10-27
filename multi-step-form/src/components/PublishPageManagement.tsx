@@ -9,7 +9,7 @@ import { LiveFeedTab } from './publish-pages/LiveFeedTab';
 import { PageCatalogTab } from './publish-pages/PageCatalogTab';
 import { KilatPagesTab } from './publish-pages/KilatPagesTab';
 import { PageDetailDrawer } from './publish-pages/PageDetailDrawer';
-import { isKilatPage, type PageData } from './publish-pages/types';
+import { hiddenFromFeed, isKilatPage, type PageData } from './publish-pages/types';
 import { DEFAULT_CATALOG_VIEW, type CatalogView } from './publish-pages/catalogSearch';
 import { toast } from 'sonner';
 import { fetchProfileNames } from '../utils/profileNames';
@@ -216,7 +216,7 @@ export function PublishPageManagement() {
             //
             // ⚠️ KEMBAR KETIGA. SurveyListingPage.tsx dan functions/api/surveys.js
             // punya filter yang sama. Ubah satu, tinjau ketiganya.
-            const feedOnly = decorated.filter(p => !isKilatPage(p));
+            const feedOnly = decorated.filter(p => !hiddenFromFeed(p));
             setLivePages(feedOnly.filter(p => isLive(p, now)).sort(compareDisplayOrder));
         } catch (error) {
             console.error('Error fetching live pages:', error);

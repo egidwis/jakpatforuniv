@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { isKilatPage } from './SurveyListingPage';
+import { hiddenFromFeed, isKilatPage } from './SurveyListingPage';
 
 /**
  * ⚠️ TES INI ADALAH SABUK PENGAMAN, BUKAN PELENGKAP.
@@ -65,19 +65,36 @@ describe('isKilatPage', () => {
  * dan justru sisi aplikasi Jakpat-lah yang paling merugikan: di sanalah kartu
  * iklan reguler dibayar untuk bersaing.
  */
+describe('hiddenFromFeed — fail-closed (sql/130)', () => {
+    it('Kilat dibuang, Iklan lolos', () => {
+        expect(hiddenFromFeed({ submission_id: 's', form_submissions: { distribution_type: 'kilat' } })).toBe(true);
+        expect(hiddenFromFeed({ submission_id: 's', form_submissions: [{ distribution_type: 'regular' }] })).toBe(false);
+    });
+    it('ber-order tapi join kosong → dibuang', () => {
+        expect(hiddenFromFeed({ submission_id: 's', form_submissions: null })).toBe(true);
+        expect(hiddenFromFeed({ submission_id: 's', form_submissions: [] })).toBe(true);
+    });
+    it('yatim tetap lolos', () => {
+        expect(hiddenFromFeed({ submission_id: null, form_submissions: null })).toBe(false);
+        expect(hiddenFromFeed({})).toBe(false);
+    });
+});
+
 describe('kontrak: kedua listing surface menyaring Kilat', () => {
     const read = (rel: string) => readFileSync(path.resolve(__dirname, rel), 'utf8');
 
-    it('/pages menarik distribution_type dan memanggil isKilatPage', () => {
+    it('/pages menarik distribution_type dan memanggil hiddenFromFeed', () => {
         const src = read('./SurveyListingPage.tsx');
         expect(src).toContain('distribution_type');
-        expect(src).toContain('if (isKilatPage(page)) return false;');
+        expect(src).toContain('if (hiddenFromFeed(page)) return false;');
     });
 
-    it('/api/surveys menarik distribution_type dan memanggil isKilatPage', () => {
+    // /api/surveys kini DIJALANKAN di functions/api/surveysFeed.spec.js; yang
+    // dikunci di sini hanya kembarannya tetap ada di sumber.
+    it('/api/surveys menarik distribution_type dan memanggil hiddenFromFeed', () => {
         const src = read('../../../functions/api/surveys.js');
         expect(src).toContain('distribution_type');
-        expect(src).toContain('if (isKilatPage(s)) return false;');
+        expect(src).toContain('if (hiddenFromFeed(s)) return false;');
     });
 
     /**

@@ -131,6 +131,21 @@ export function isKilatPage(p: { form_submissions?: any } | null | undefined): b
 }
 
 /**
+ * Halaman yang TIDAK boleh tampil di feed / daftar publik. FAIL-CLOSED
+ * (sql/130): ber-`submission_id` tapi join order kosong = tidak bisa dibuktikan
+ * bukan Kilat → dibuang. Yatim (submission_id NULL) tetap lolos. `isKilatPage`
+ * sendiri tetap fail-open karena dipakai untuk label/tab, bukan penahan.
+ *
+ * KEMBAR: hiddenFromFeed() di functions/api/surveys.js.
+ */
+export function hiddenFromFeed(p: { submission_id?: string | null; form_submissions?: any } | null | undefined): boolean {
+    if (!p?.submission_id) return false;
+    const sub = Array.isArray(p.form_submissions) ? p.form_submissions[0] : p.form_submissions;
+    if (!sub) return true;
+    return sub.distribution_type === 'kilat';
+}
+
+/**
  * Keadaan halaman → token chip bersama, supaya Pages berhenti menulis pil
  * Tailwind sendiri sementara Schedule dan Submissions memakai STATUS_TOKENS.
  *
