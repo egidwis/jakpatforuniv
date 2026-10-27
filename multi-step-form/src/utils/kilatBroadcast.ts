@@ -1,4 +1,5 @@
 import { supabase, type AdScheduleEntry } from './supabase';
+import { KILAT_LEAD_MS, SUBMIT_GRACE_MS } from './kilatWindow';
 
 /**
  * Siaran JFU Kilat v2 (sql/130) — cermin `kilat_window_start/_close`.
@@ -30,10 +31,7 @@ export interface BroadcastState {
   isSuperseded: boolean;
 }
 
-/** ⚠️ DUPLIKAT `kilat_lead()` sql/130 — dijaga tes paritas. */
-export const KILAT_LEAD_MS = 60 * 60_000;
-/** ⚠️ DUPLIKAT `submit_grace()` sql/130 — dijaga tes paritas. */
-export const SUBMIT_GRACE_MS = 60 * 60_000;
+export { KILAT_LEAD_MS, SUBMIT_GRACE_MS };
 /** Live selama ini masuk antrean "Matikan siaran?". */
 export const LONG_LIVE_MS = 24 * 3600_000;
 

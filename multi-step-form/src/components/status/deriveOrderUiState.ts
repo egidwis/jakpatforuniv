@@ -3,6 +3,7 @@ import {
     creditPhaseOf,
     effectiveAiringOf,
     firstScheduleOf,
+    isOpenAiringEnd,
     isOwedOnCredit,
     isSchedulePaid,
     laterSchedulesOf,
@@ -439,9 +440,12 @@ export function describeOrderForChat(submission: FormSubmission, ui: OrderUiStat
     lines.push(`- Status: ${status}`);
 
     const start = fmt(ui.eff.activeStart);
-    const end = fmt(ui.eff.activeEnd);
+    const openEnd = isOpenAiringEnd(ui.eff.activeEnd);
+    const end = openEnd ? null : fmt(ui.eff.activeEnd);
     const startTime = fmtWibTime(ui.eff.activeStart);
-    if (start && end) {
+    if (start && openEnd) {
+        lines.push(`- Jadwal tayang: ${start} (mulai ${startTime} WIB), tayang sampai siarannya dihentikan tim Jakpat`);
+    } else if (start && end) {
         lines.push(`- Jadwal tayang: ${start} (mulai ${startTime} WIB) sampai ${end}`);
     } else if (start) {
         lines.push(`- Jadwal tayang mulai: ${start} (${startTime} WIB)`);

@@ -51,22 +51,22 @@ const patchOf = (c: Call) => c.ops.find((o) => o[0] === 'update')![1] as Record<
 describe('updateKilatSchedule — sinkron jendela halaman', () => {
   beforeEach(() => { calls = []; pages = []; paymentStatus = 'paid'; });
 
-  it('halaman berjendela: [gelombang, +24 jam) menurut WIB', async () => {
+  it('sql/130: halaman jadi [gelombang − 60 menit, NULL) — live sampai dimatikan', async () => {
     pages = [{ id: 'pg-1', publish_end_date: '2026-10-17T04:00:00Z' }];
     await updateKilatSchedule('sub-1', '2026-10-20', 11);
     const [w] = pageWrites();
-    expect(patchOf(w).publish_start_date).toBe('2026-10-20T04:00:00.000Z');
-    expect(patchOf(w).publish_end_date).toBe('2026-10-21T04:00:00.000Z');
+    expect(patchOf(w).publish_start_date).toBe('2026-10-20T03:00:00.000Z');
+    expect(patchOf(w).publish_end_date).toBeNull();
     expect(w.ops).toContainEqual(['eq', 'id', 'pg-1']);
     expect(w.ops).toContainEqual(['is', 'auto_closed_at', null]);
   });
 
-  it('halaman Kilat LAMA (tanpa tanggal akhir): hanya awalnya yang digeser', async () => {
+  it('halaman yang sudah terbuka (publish_end NULL) diperlakukan sama', async () => {
     pages = [{ id: 'pg-old', publish_end_date: null }];
     await updateKilatSchedule('sub-1', '2026-10-20', 15);
     const patch = patchOf(pageWrites()[0]);
-    expect(patch.publish_start_date).toBe('2026-10-20T08:00:00.000Z');
-    expect('publish_end_date' in patch).toBe(false);
+    expect(patch.publish_start_date).toBe('2026-10-20T07:00:00.000Z');
+    expect(patch.publish_end_date).toBeNull();
   });
 
   it('pembacaan halaman menyaring auto_closed_at (halaman ditutup sistem tidak disentuh)', async () => {
@@ -106,8 +106,8 @@ describe('updateKilatSchedule — jalur produksi lewat Pages Function', () => {
     ]);
     expect(posts[0].body).toMatchObject({ submissionId: 'sub-1', ymd: '2026-10-20', endYmd: '2026-10-21', hour: 11 });
     expect(posts[1].body.patch).toMatchObject({
-      publish_start_date: '2026-10-20T04:00:00.000Z',
-      publish_end_date: '2026-10-21T04:00:00.000Z',
+      publish_start_date: '2026-10-20T03:00:00.000Z',
+      publish_end_date: null,
     });
     expect(calls.filter((c) => c.ops.some((o) => o[0] === 'update'))).toHaveLength(0);
   });
