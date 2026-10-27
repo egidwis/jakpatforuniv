@@ -1,5 +1,7 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { buildKilatPaidAlert, sendKilatPaidAlert } from './_kilat-paid-alert.js';
+import { buildKilatPaidAlert, kilatAlertRecipients, sendKilatPaidAlert } from './_kilat-paid-alert.js';
 
 /*
   Email ke admin saat gelombang Kilat LUNAS (keputusan 26 Okt 2026, sebelum
@@ -75,12 +77,12 @@ describe('buildKilatPaidAlert', () => {
 });
 
 describe('sendKilatPaidAlert', () => {
-  it('jadwal Kilat lunas → satu email ke ADMIN_EMAILS', async () => {
+  it('jadwal Kilat lunas → satu email ke admin + penerima tambahan Kilat', async () => {
     const net = network();
     const res = await sendKilatPaidAlert(ENV, { invoiceNumber: 'JFU-3a432277-1', amount: 1110 });
     expect(res.ok).toBe(true);
     expect(net.mails).toHaveLength(1);
-    expect(net.mails[0].to).toEqual(['product@jakpat.net']);
+    expect(net.mails[0].to).toEqual(['product@jakpat.net', 'nandabrilianto@jakpat.net']);
     expect(net.mails[0].subject).toContain('Gelombang 15.00 WIB, 27 Okt 2026');
   });
 
@@ -120,5 +122,28 @@ describe('sendKilatPaidAlert', () => {
   it('tidak pernah melempar (Supabase mati)', async () => {
     global.fetch = vi.fn(async () => { throw new Error('down'); });
     await expect(sendKilatPaidAlert(ENV, { invoiceNumber: 'JFU-x', amount: 1 })).resolves.toMatchObject({ ok: false });
+  });
+});
+
+describe('kilatAlertRecipients', () => {
+  it('admin + Nanda; ADMIN_EMAILS kosong jatuh ke product@jakpat.net', () => {
+    expect(kilatAlertRecipients({})).toEqual(['product@jakpat.net', 'nandabrilianto@jakpat.net']);
+  });
+
+  it('tanpa duplikat, huruf besar/kecil diabaikan', () => {
+    const to = kilatAlertRecipients({ ADMIN_EMAILS: 'Product@jakpat.net, NandaBrilianto@jakpat.net' });
+    expect(to).toEqual(['Product@jakpat.net', 'NandaBrilianto@jakpat.net']);
+  });
+
+  it('KILAT_ALERT_EMAILS menggantikan penerima tambahan; "" = tanpa tambahan', () => {
+    expect(kilatAlertRecipients({ KILAT_ALERT_EMAILS: 'a@jakpat.net, b@jakpat.net' }))
+      .toEqual(['product@jakpat.net', 'a@jakpat.net', 'b@jakpat.net']);
+    expect(kilatAlertRecipients({ KILAT_ALERT_EMAILS: '' })).toEqual(['product@jakpat.net']);
+  });
+
+  it('penerima tambahan BUKAN admin: gerbang admin tak membaca daftar ini', () => {
+    // Daftar admin hanya dari ADMIN_EMAILS; tidak ada kode admin yang mengimpor modul ini.
+    const adminGate = fs.readFileSync(path.resolve(__dirname, '_middleware.js'), 'utf8');
+    expect(adminGate).not.toMatch(/KILAT_ALERT|nandabrilianto/);
   });
 });

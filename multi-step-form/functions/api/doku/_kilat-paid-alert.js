@@ -17,6 +17,28 @@ import { sendMail } from '../_mail.js';
 
 const ADMIN_DASHBOARD = 'https://submit.jakpatforuniv.com/internal-dash';
 
+/**
+ * Penerima TAMBAHAN selain admin. ⚠️ Jangan dimasukkan ke `ADMIN_EMAILS`:
+ * env itu juga gerbang akses admin (`_middleware.js`, `functions/api/admin/*`),
+ * jadi menambah penerima email di sana sekaligus memberi akses tulis admin.
+ * Env `KILAT_ALERT_EMAILS` (comma-separated) menggantikan daftar ini.
+ */
+const KILAT_ALERT_EXTRA_RECIPIENTS = ['nandabrilianto@jakpat.net'];
+
+/** Admin + penerima tambahan, tanpa duplikat (huruf besar/kecil diabaikan). */
+export function kilatAlertRecipients(env) {
+  const split = (v) => String(v).split(',').map((e) => e.trim()).filter(Boolean);
+  const admins = split(env.ADMIN_EMAILS || 'product@jakpat.net');
+  const extra = env.KILAT_ALERT_EMAILS != null ? split(env.KILAT_ALERT_EMAILS) : KILAT_ALERT_EXTRA_RECIPIENTS;
+  const seen = new Set();
+  return [...admins, ...extra].filter((e) => {
+    const k = e.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -126,7 +148,7 @@ export async function sendKilatPaidAlert(env, { invoiceNumber, amount }) {
       .filter(Boolean);
     if (waves.length === 0) return { ok: true, skipped: true };
 
-    const recipients = (env.ADMIN_EMAILS || 'product@jakpat.net').split(',').map((e) => e.trim()).filter(Boolean);
+    const recipients = kilatAlertRecipients(env);
     const msg = buildKilatPaidAlert({ invoiceNumber, amount, waves });
     const result = await sendMail(env, { to: recipients, ...msg });
     if (!result.ok) console.error('[kilat-paid-alert] gagal mengirim', invoiceNumber, result.error);
