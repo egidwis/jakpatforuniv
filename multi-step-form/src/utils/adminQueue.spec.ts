@@ -104,6 +104,7 @@ describe('fetchAdminQueue', () => {
       regular: ['r1', 'r2'], kilat: ['k1'],
       // Alasan per order = sumber titik merah di daftar (sama dengan badge).
       reasons: { r1: 'review', r2: 'schedule', k1: 'invoice' },
+      kilatLive: [],
     });
 
     const tx = calls.find((c) => c.table === 'transactions')!;
@@ -140,9 +141,11 @@ describe('fetchAdminQueue', () => {
     const q = await fetchAdminQueue(new Date('2026-10-15T06:30:00Z'));
     expect(q.kilat).toEqual(['w1', 'w4']);
     expect(q.reasons).toEqual({ w1: 'broadcast', w4: 'broadcast' });
+    // Chip "Live" di daftar: semua gelombang lunas yang sedang live, berapa pun lamanya.
+    expect(q.kilatLive).toEqual(['w1', 'w3', 'w4']);
     const ad = calls.find((c) => c.table === 'ad_schedules')!;
     expect(ad.filters).toContainEqual(['is', 'broadcast_ended_at', null]);
-    expect(ad.filters).toContainEqual(['lte', 'start_date', '2026-10-14T07:30:00.000Z']);
+    expect(ad.filters).toContainEqual(['lte', 'start_date', '2026-10-15T07:30:00.000Z']);
     expect(ad.filters).toContainEqual(['eq', 'distribution_type', 'kilat']);
     expect(ad.filters).toContainEqual(['not', 'status', 'in', '(cancelled,slot_cancelled)']);
   });

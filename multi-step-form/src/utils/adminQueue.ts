@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import { toWibYmd } from './airing-window';
 import { isAutoReviewed } from '@/components/status/deriveOrderUiState';
-import { KILAT_LEAD_MS, LONG_LIVE_MS, needsBroadcastEnd } from './kilatBroadcast';
+import { KILAT_LEAD_MS, broadcastStateOf, needsBroadcastEnd } from './kilatBroadcast';
 
 /**
  * Antrean kerja admin — angka pada badge tab Iklan/Kilat di Submissions
@@ -88,6 +88,8 @@ export interface AdminQueueCounts {
    * laci Submissions: order bertitik merah = order yang dihitung badge.
    */
   reasons: Record<string, QueueReason>;
+  /** Order Kilat yang gelombang lunasnya sedang live (chip "Live" di daftar). */
+  kilatLive: string[];
 }
 
 const QUEUE_COLUMNS =
@@ -120,7 +122,7 @@ export async function fetchAdminQueue(now: Date = new Date()): Promise<AdminQueu
     for (const t of tx ?? []) openBill.add((t as any).form_submission_id);
   }
 
-  const out: AdminQueueCounts = { regular: [], kilat: [], reasons: {} };
+  const out: AdminQueueCounts = { regular: [], kilat: [], reasons: {}, kilatLive: [] };
   for (const r of rows) {
     const action = adminActionOf(r, { hasOpenBill: openBill.has(r.id), todayYmd });
     if (!action) continue;
@@ -128,10 +130,10 @@ export async function fetchAdminQueue(now: Date = new Date()): Promise<AdminQueu
     out.reasons[r.id] = action;
   }
 
-  // Gelombang Kilat (kedua kaki: ordinal 1 & perpanjangan) yang live ≥ 24 jam.
-  // Saringan server longgar (mulai ≥ gelombang − 60 menit), needsBroadcastEnd
-  // yang memutuskan.
-  const startedBy = new Date(now.getTime() - LONG_LIVE_MS + KILAT_LEAD_MS).toISOString();
+  // Gelombang Kilat (kedua kaki: ordinal 1 & perpanjangan) yang sudah dibuka
+  // dan belum dimatikan. Saringan server longgar (gelombang ≤ sekarang + 60
+  // menit); broadcastStateOf/needsBroadcastEnd yang memutuskan live & ≥ 24 jam.
+  const startedBy = new Date(now.getTime() + KILAT_LEAD_MS).toISOString();
   const { data: waves, error: waveErr } = await supabase
     .from('ad_schedules')
     .select('submission_id, start_date, kilat_slot_hour, payment_status, air_on_credit_at, broadcast_at, broadcast_by, broadcast_ended_at, broadcast_ended_by')
@@ -142,12 +144,17 @@ export async function fetchAdminQueue(now: Date = new Date()): Promise<AdminQueu
     .lte('start_date', startedBy);
   if (waveErr) throw waveErr;
   for (const w of (waves ?? []) as any[]) {
-    const ok = needsBroadcastEnd({
+    const wave = {
       startDate: w.start_date, kilatSlotHour: w.kilat_slot_hour,
       paymentStatus: w.payment_status, airOnCreditAt: w.air_on_credit_at,
       broadcastAt: w.broadcast_at, broadcastBy: w.broadcast_by,
       broadcastEndedAt: w.broadcast_ended_at, broadcastEndedBy: w.broadcast_ended_by,
-    }, now);
+    };
+    const paid = ['paid', 'completed'].includes((w.payment_status || '').toLowerCase()) || !!w.air_on_credit_at;
+    if (paid && broadcastStateOf(wave, now).phase === 'live' && !out.kilatLive.includes(w.submission_id)) {
+      out.kilatLive.push(w.submission_id);
+    }
+    const ok = needsBroadcastEnd(wave, now);
     if (ok && !out.kilat.includes(w.submission_id)) {
       out.kilat.push(w.submission_id);
       out.reasons[w.submission_id] = 'broadcast';

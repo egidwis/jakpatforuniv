@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarOff, Info, Loader2, PauseCircle, X, Zap } from 'lucide-react';
+import { CalendarOff, Info, Loader2, PauseCircle, Radio, X, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import { Chip } from '../ui/chip';
@@ -374,6 +374,21 @@ export function DivertedAwayChip({ reason, paymentStatus }: { reason?: string | 
     <Chip variant="amber" size="xs" className="shrink-0 gap-1" title="Kilat jalur otomatis yang dikirim selama mode libur — admin menugaskan gelombangnya bersama peneliti.">
       <PauseCircle className="size-3" aria-hidden="true" />
       Dialihkan saat libur
+    </Chip>
+  );
+}
+
+/**
+ * Penanda order Kilat yang gelombang lunasnya sedang LIVE (sql/130: live
+ * otomatis gelombang − 60 menit sampai admin mematikan). Sumbernya
+ * `fetchAdminQueue().kilatLive`, jadi tanpa kueri per baris.
+ */
+export function KilatLiveChip({ live }: { live: boolean }) {
+  if (!live) return null;
+  return (
+    <Chip variant="amber" size="xs" className="shrink-0 gap-1" title="Siaran Kilat sedang live — matikan di tab Page setelah push selesai.">
+      <Radio className="size-3" aria-hidden="true" />
+      Live
     </Chip>
   );
 }
