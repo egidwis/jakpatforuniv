@@ -50,6 +50,9 @@
 --            60 hari dari publish_end_date) tidak langsung menghapus bukti
 --            respondennya.
 --       Snapshot sebelum perubahan di skema `backup` (tanpa hibah anon).
+--   V9  CHECK ad_schedules_broadcast_order (sql/118: selesai butuh nyala
+--       manual) diganti: selesai ≥ kilat_window_start(start, broadcast_at).
+--       ⚠️ Percobaan pertama 27 Okt gagal utuh karena CHECK lama — nol tulisan.
 --
 -- ── URUTAN ──────────────────────────────────────────────────────────────────
 --
@@ -88,6 +91,12 @@
 --                     'get_batch_rewards_bulk', 'cron_activate_extends',
 --                     'notify_primary_ads_completed')
 -- ORDER BY 1;
+--
+-- 1a2. CHECK urutan siaran masih versi sql/118. Harapan: 1 baris
+--      CHECK (((broadcast_ended_at IS NULL) OR ((broadcast_at IS NOT NULL) AND (broadcast_ended_at >= broadcast_at))))
+--
+-- SELECT pg_get_constraintdef(oid) FROM pg_constraint
+-- WHERE conrelid = 'public.ad_schedules'::regclass AND conname = 'ad_schedules_broadcast_order';
 --
 -- 1b. Nama baru belum dipakai. Harapan: 0 baris.
 --
@@ -197,6 +206,19 @@ AS $$ SELECT COALESCE(p_broadcast_at, p_start - public.kilat_lead()) $$;
 CREATE OR REPLACE FUNCTION public.kilat_window_close(p_broadcast_ended_at timestamptz)
 RETURNS timestamptz LANGUAGE sql IMMUTABLE
 AS $$ SELECT p_broadcast_ended_at + public.submit_grace() $$;
+
+-- ── 2.2b Urutan siaran (CHECK sql/118 diganti) ──────────────────────────────
+-- sql/118 mewajibkan broadcast_at terisi bila broadcast_ended_at terisi —
+-- nyala selalu manual. Sekarang nyala otomatis (broadcast_at NULL), jadi
+-- aturannya menjadi: selesai ≥ mulai menurut rumus yang sama. Percobaan
+-- pertama sql/130 (27 Okt) gagal utuh di langkah 2.10a karena CHECK lama ini;
+-- tidak ada yang tertulis.
+
+ALTER TABLE public.ad_schedules DROP CONSTRAINT ad_schedules_broadcast_order;
+ALTER TABLE public.ad_schedules ADD CONSTRAINT ad_schedules_broadcast_order CHECK (
+  broadcast_ended_at IS NULL
+  OR (start_date IS NOT NULL
+      AND broadcast_ended_at >= public.kilat_window_start(start_date, broadcast_at)));
 
 -- ── 2.3 Jendela halaman Kilat (dipakai ensure_survey_page) ──────────────────
 -- Tanpa cermin (seharusnya mustahil) → jendela gelombang lama, bukan NULL
@@ -894,6 +916,11 @@ COMMIT;
 --   AND proname IN ('kilat_lead', 'submit_grace', 'kilat_window_start', 'kilat_window_close',
 --                   'kilat_broadcast_reopen', 'guard_page_respondent_window');
 --
+-- 3a2. CHECK urutan siaran yang baru. Harapan: 1 baris memuat kilat_window_start.
+--
+-- SELECT pg_get_constraintdef(oid) FROM pg_constraint
+-- WHERE conrelid = 'public.ad_schedules'::regclass AND conname = 'ad_schedules_broadcast_order';
+--
 -- 3b. Trigger isian aktif. Harapan: 1 baris, tgenabled = 'O'.
 --
 -- SELECT tgname, tgenabled FROM pg_trigger
@@ -1429,6 +1456,13 @@ COMMIT;
 --        updated_at = b.updated_at
 --   FROM backup.r130_kilat_pages_before b
 --  WHERE b.id = sp.id;
+--
+-- -- CHECK lama kembali NOT VALID: baris yang dimatikan sesudah migrasi
+-- -- (broadcast_at NULL) tidak lolos validasi aturan lama.
+-- ALTER TABLE public.ad_schedules DROP CONSTRAINT ad_schedules_broadcast_order;
+-- ALTER TABLE public.ad_schedules ADD CONSTRAINT ad_schedules_broadcast_order CHECK (
+--   ((broadcast_ended_at IS NULL) OR ((broadcast_at IS NOT NULL) AND (broadcast_ended_at >= broadcast_at))))
+--   NOT VALID;
 --
 -- DROP FUNCTION IF EXISTS public.kilat_window_close(timestamptz);
 -- DROP FUNCTION IF EXISTS public.kilat_window_start(timestamptz, timestamptz);
