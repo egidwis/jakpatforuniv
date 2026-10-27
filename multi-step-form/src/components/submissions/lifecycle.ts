@@ -267,7 +267,7 @@ export const QUEUE_DOT_LABEL: Record<QueueReason, string> = {
   review: 'Perlu tindakan di tab Review',
   schedule: 'Perlu tindakan: Tetapkan jadwal',
   invoice: 'Perlu tindakan: Reservasi tanpa tagihan hidup',
-  broadcast: 'Perlu tindakan: Nyalakan siaran Kilat',
+  broadcast: 'Perlu tindakan: Matikan siaran Kilat (live > 24 jam)',
 };
 
 /**

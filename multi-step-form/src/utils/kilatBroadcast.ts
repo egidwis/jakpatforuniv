@@ -1,82 +1,91 @@
 import { supabase, type AdScheduleEntry } from './supabase';
 
 /**
- * Toggle siaran JFU Kilat (Phase 5 §5.4b, rilis R4).
+ * Siaran JFU Kilat v2 (sql/130) — cermin `kilat_window_start/_close`.
  *
- * Tiga keadaan, satu arah — cermin `airing_window_end` sql/118:
- *   pending  belum disiarkan   → jendela sementara [gelombang, +24 jam)
- *   live     sedang disiarkan  → [nyala, nyala + panjang jendela)
- *   finished selesai           → dimatikan admin, ATAU jendela nyala habis
+ *   scheduled  sebelum gelombang − 60 menit: halaman "belum dibuka"
+ *   live       sejak gelombang − 60 menit, TANPA batas, sampai admin mematikan
+ *   grace      sudah dimatikan, < 60 menit: halaman tutup untuk pengunjung baru,
+ *              isian sesi terbuka masih diterima, admin bisa "Nyalakan lagi"
+ *   finished   tenggang habis: terkunci, pemenang bisa dipilih
  *
  * Server (RPC `kilat_broadcast_*`) yang menegakkan aturannya; fungsi ini hanya
  * membaca waktu supaya UI tidak menawarkan aksi yang pasti ditolak.
  */
-export type BroadcastPhase = 'pending' | 'live' | 'finished';
+export type BroadcastPhase = 'scheduled' | 'live' | 'grace' | 'finished';
 
 export interface BroadcastState {
   phase: BroadcastPhase;
-  /** Kapan jendela halaman & undian tutup (live) / tertutup (finished). */
+  /** Mulai live (gelombang − 60 menit, atau nyala manual lama). */
+  opensAt: Date | null;
+  /** Dimatikan (admin / gelombang berikutnya). NULL = belum. */
+  endedAt: Date | null;
+  /** Tenggang habis: isian ditolak, pemenang bisa dipilih. */
   closesAt: Date | null;
-  /** Toggle nyala sudah boleh: gelombang − 60 menit (sql/118). */
-  canStart: boolean;
-  /** Jendela sementara gelombang sudah habis tanpa pernah disiarkan. */
-  isLate: boolean;
-  /** Pernah nyala karena migrasi (17 gelombang lama), bukan oleh admin. */
+  /** Sudah live selama ini (0 bila belum live). */
+  liveForMs: number;
+  /** Pernah nyala karena migrasi (gelombang lama), bukan oleh admin. */
   isBackfill: boolean;
+  /** Diakhiri sistem karena gelombang berikutnya mulai. */
+  isSuperseded: boolean;
 }
 
-const START_LEAD_MS = 60 * 60_000;
+/** ⚠️ DUPLIKAT `kilat_lead()` sql/130 — dijaga tes paritas. */
+export const KILAT_LEAD_MS = 60 * 60_000;
+/** ⚠️ DUPLIKAT `submit_grace()` sql/130 — dijaga tes paritas. */
+export const SUBMIT_GRACE_MS = 60 * 60_000;
+/** Live selama ini masuk antrean "Matikan siaran?". */
+export const LONG_LIVE_MS = 24 * 3600_000;
 
-type BroadcastFields = Pick<AdScheduleEntry, 'startDate' | 'endDate' | 'broadcastAt' | 'broadcastBy' | 'broadcastEndedAt'>;
+type BroadcastFields = Pick<AdScheduleEntry, 'startDate' | 'broadcastAt' | 'broadcastBy' | 'broadcastEndedAt' | 'broadcastEndedBy'>;
+
+const ms = (iso: string | null | undefined) => (iso ? new Date(iso).getTime() : NaN);
 
 export function broadcastStateOf(s: BroadcastFields, now: Date = new Date()): BroadcastState {
-  const start = s.startDate ? new Date(s.startDate).getTime() : NaN;
-  const end = s.endDate ? new Date(s.endDate).getTime() : NaN;
-  const lengthMs = Number.isFinite(start) && Number.isFinite(end) ? end - start : 24 * 3600_000;
   const t = now.getTime();
-  const isBackfill = s.broadcastBy === 'backfill';
-
-  if (s.broadcastAt) {
-    const naturalEnd = new Date(s.broadcastAt).getTime() + lengthMs;
-    const ended = s.broadcastEndedAt ? Math.min(new Date(s.broadcastEndedAt).getTime(), naturalEnd) : naturalEnd;
-    const finished = !!s.broadcastEndedAt || t >= naturalEnd;
-    return { phase: finished ? 'finished' : 'live', closesAt: new Date(ended), canStart: false, isLate: false, isBackfill };
-  }
-
-  return {
-    phase: 'pending',
-    closesAt: Number.isFinite(end) ? new Date(end) : null,
-    canStart: Number.isFinite(start) && t >= start - START_LEAD_MS,
-    isLate: Number.isFinite(end) && t >= end,
-    isBackfill,
+  const start = ms(s.startDate);
+  const opens = Number.isFinite(ms(s.broadcastAt)) ? ms(s.broadcastAt) : start - KILAT_LEAD_MS;
+  const ended = ms(s.broadcastEndedAt);
+  const closes = ended + SUBMIT_GRACE_MS;
+  const base = {
+    opensAt: Number.isFinite(opens) ? new Date(opens) : null,
+    endedAt: Number.isFinite(ended) ? new Date(ended) : null,
+    closesAt: Number.isFinite(ended) ? new Date(closes) : null,
+    isBackfill: s.broadcastBy === 'backfill' || /^sistem: sql\/130/.test(s.broadcastEndedBy || ''),
+    isSuperseded: s.broadcastEndedBy === 'sistem: gelombang berikutnya',
   };
+  if (Number.isFinite(ended)) {
+    return { ...base, phase: t < closes ? 'grace' : 'finished', liveForMs: 0 };
+  }
+  if (!Number.isFinite(opens) || t < opens) return { ...base, phase: 'scheduled', liveForMs: 0 };
+  return { ...base, phase: 'live', liveForMs: t - opens };
 }
+
+const isPaidWave = (s: Pick<AdScheduleEntry, 'paymentStatus' | 'airOnCreditAt'>) =>
+  ['paid', 'completed'].includes((s.paymentStatus || '').toLowerCase()) || !!s.airOnCreditAt;
 
 /**
- * Gelombang Kilat lunas/tempo yang menunggu admin menyalakan siaran — angka
- * tambahan di badge tab Kilat. Hanya yang toggle-nya SUDAH bisa dinyalakan
- * (gelombang − 60 menit): gelombang minggu depan bukan pekerjaan hari ini.
- *
- * ⚠️ Jendela gelombang yang SUDAH HABIS tidak dihitung lagi. Tanpa batas ini
- * gelombang yang tak pernah ditandai (mis. #a4582981, tayang 15 Okt di celah
- * antara backfill sql/118 dan rilis toggle) menetap di badge selamanya.
- * Nyala terlambat tetap tersedia di laci order (KilatBroadcastToggle).
+ * Gelombang Kilat lunas/tempo yang sudah live ≥ 24 jam tanpa dimatikan —
+ * antrean merah "Matikan siaran?" (titik di tab Page). Live tanpa batas itu
+ * keputusan 27 Okt; antrean ini yang menjaga supaya tidak terlupa.
  */
-export function awaitsBroadcast(s: BroadcastFields & Pick<AdScheduleEntry, 'paymentStatus' | 'airOnCreditAt' | 'kilatSlotHour'>, now: Date = new Date()): boolean {
-  if (s.kilatSlotHour == null || !s.startDate) return false;
-  const paid = ['paid', 'completed'].includes((s.paymentStatus || '').toLowerCase()) || !!s.airOnCreditAt;
-  if (!paid) return false;
+export function needsBroadcastEnd(
+  s: BroadcastFields & Pick<AdScheduleEntry, 'paymentStatus' | 'airOnCreditAt' | 'kilatSlotHour'>,
+  now: Date = new Date(),
+): boolean {
+  if (s.kilatSlotHour == null || !s.startDate || !isPaidWave(s)) return false;
   const st = broadcastStateOf(s, now);
-  return st.phase === 'pending' && st.canStart && !st.isLate;
+  return st.phase === 'live' && st.liveForMs >= LONG_LIVE_MS;
 }
 
-export type BroadcastAction = 'broadcast-start' | 'broadcast-end' | 'broadcast-undo';
+export type BroadcastAction = 'broadcast-end' | 'broadcast-reopen';
 
 const HINT_MESSAGE: Record<string, string> = {
-  broadcast_too_early: 'Toggle siaran baru aktif 60 menit sebelum gelombang.',
+  broadcast_auto: 'Siaran Kilat sekarang live otomatis 60 menit sebelum gelombang.',
   broadcast_finished: 'Siaran gelombang ini sudah selesai dan terkunci.',
-  broadcast_not_started: 'Siaran gelombang ini belum dinyalakan.',
-  broadcast_has_respondents: 'Sudah ada responden sejak siaran dinyalakan — nyala tidak bisa dibatalkan.',
+  broadcast_not_started: 'Siaran gelombang ini belum mulai (live otomatis 60 menit sebelum gelombang).',
+  broadcast_not_ended: 'Siaran gelombang ini masih live.',
+  broadcast_superseded: 'Gelombang berikutnya order ini sudah live — gelombang ini tidak bisa dinyalakan lagi.',
   broadcast_unpaid: 'Gelombang ini belum lunas.',
   broadcast_no_wave: 'Jadwal ini belum punya gelombang.',
   broadcast_not_kilat: 'Toggle siaran hanya untuk JFU Kilat.',

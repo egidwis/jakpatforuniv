@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import { toWibYmd } from './airing-window';
 import { isAutoReviewed } from '@/components/status/deriveOrderUiState';
-import { awaitsBroadcast } from './kilatBroadcast';
+import { KILAT_LEAD_MS, LONG_LIVE_MS, needsBroadcastEnd } from './kilatBroadcast';
 
 /**
  * Antrean kerja admin — angka pada badge tab Iklan/Kilat di Submissions
@@ -19,9 +19,8 @@ import { awaitsBroadcast } from './kilatBroadcast';
  * Predikat di bawah membaca kolom `form_submissions` yang sama dengan yang
  * menggerakkan state itu.
  *
- * Tab Kilat juga menghitung gelombang lunas yang toggle siarannya sudah bisa
- * dinyalakan tapi belum (`awaitsBroadcast`, R4). "Sedang disiarkan" tidak
- * menambah angka.
+ * Tab Kilat juga menghitung gelombang lunas yang sudah live ≥ 24 jam tanpa
+ * dimatikan (`needsBroadcastEnd`, sql/130). Live < 24 jam tidak menambah angka.
  */
 export type AdminAction = 'review' | 'schedule' | 'invoice';
 
@@ -78,7 +77,7 @@ export function adminActionOf(
   return null;
 }
 
-/** Alasan sebuah order ada di antrean — `broadcast` = gelombang Kilat menunggu toggle. */
+/** Alasan sebuah order ada di antrean — `broadcast` = gelombang Kilat live ≥ 24 jam, perlu dimatikan. */
 export type QueueReason = AdminAction | 'broadcast';
 
 export interface AdminQueueCounts {
@@ -129,22 +128,25 @@ export async function fetchAdminQueue(now: Date = new Date()): Promise<AdminQueu
     out.reasons[r.id] = action;
   }
 
-  // Gelombang Kilat (kedua kaki: ordinal 1 & perpanjangan) yang menunggu toggle.
-  const startsBy = new Date(now.getTime() + 60 * 60_000).toISOString();
+  // Gelombang Kilat (kedua kaki: ordinal 1 & perpanjangan) yang live ≥ 24 jam.
+  // Saringan server longgar (mulai ≥ gelombang − 60 menit), needsBroadcastEnd
+  // yang memutuskan.
+  const startedBy = new Date(now.getTime() - LONG_LIVE_MS + KILAT_LEAD_MS).toISOString();
   const { data: waves, error: waveErr } = await supabase
     .from('ad_schedules')
-    .select('submission_id, start_date, end_date, kilat_slot_hour, payment_status, air_on_credit_at, broadcast_at, broadcast_by, broadcast_ended_at')
+    .select('submission_id, start_date, kilat_slot_hour, payment_status, air_on_credit_at, broadcast_at, broadcast_by, broadcast_ended_at, broadcast_ended_by')
     .eq('distribution_type', 'kilat')
-    .is('broadcast_at', null)
+    .is('broadcast_ended_at', null)
     .not('kilat_slot_hour', 'is', null)
-    .neq('status', 'cancelled')
-    .lte('start_date', startsBy);
+    .not('status', 'in', '(cancelled,slot_cancelled)')
+    .lte('start_date', startedBy);
   if (waveErr) throw waveErr;
   for (const w of (waves ?? []) as any[]) {
-    const ok = awaitsBroadcast({
-      startDate: w.start_date, endDate: w.end_date, kilatSlotHour: w.kilat_slot_hour,
+    const ok = needsBroadcastEnd({
+      startDate: w.start_date, kilatSlotHour: w.kilat_slot_hour,
       paymentStatus: w.payment_status, airOnCreditAt: w.air_on_credit_at,
-      broadcastAt: w.broadcast_at, broadcastBy: w.broadcast_by, broadcastEndedAt: w.broadcast_ended_at,
+      broadcastAt: w.broadcast_at, broadcastBy: w.broadcast_by,
+      broadcastEndedAt: w.broadcast_ended_at, broadcastEndedBy: w.broadcast_ended_by,
     }, now);
     if (ok && !out.kilat.includes(w.submission_id)) {
       out.kilat.push(w.submission_id);

@@ -5825,6 +5825,9 @@ export interface AdScheduleEntry {
   broadcastBy?: string | null;
   broadcastEndedAt?: string | null;
   broadcastEndedBy?: string | null;
+  /** Nyala lagi dalam tenggang (sql/130 kilat_broadcast_reopen). */
+  broadcastReopenedAt?: string | null;
+  broadcastReopenedBy?: string | null;
   /**
    * Penyebab `status = 'cancelled'` (sql/129, ditulis trigger
    * `trg_zz_cancelled_by`). NULL = belum batal, ATAU batal sebelum sql/129 —
@@ -6016,6 +6019,7 @@ export const fetchAdSchedules = async (
         slot_booked_by, slot_reserved_at, created_at, rate_locked_at,
         air_on_credit_at, air_on_credit_note,
         broadcast_at, broadcast_by, broadcast_ended_at, broadcast_ended_by,
+        broadcast_reopened_at, broadcast_reopened_by,
         cancelled_by,
         form_submissions!ad_schedules_submission_id_fkey ( title, full_name, university, created_at )
       `, { count: 'exact' });
@@ -6138,6 +6142,8 @@ export const fetchAdSchedules = async (
       broadcastBy: row.broadcast_by ?? null,
       broadcastEndedAt: row.broadcast_ended_at ?? null,
       broadcastEndedBy: row.broadcast_ended_by ?? null,
+      broadcastReopenedAt: row.broadcast_reopened_at ?? null,
+      broadcastReopenedBy: row.broadcast_reopened_by ?? null,
       cancelledBy: row.cancelled_by ?? null,
     };
   });

@@ -44,7 +44,7 @@ describe('getSubmissionActionDot — merah hanya dari antrean admin', () => {
         ['review', 'Perlu tindakan di tab Review'],
         ['schedule', 'Perlu tindakan: Tetapkan jadwal'],
         ['invoice', 'Perlu tindakan: Reservasi tanpa tagihan hidup'],
-        ['broadcast', 'Perlu tindakan: Nyalakan siaran Kilat'],
+        ['broadcast', 'Perlu tindakan: Matikan siaran Kilat (live > 24 jam)'],
     ] as const)('alasan %s → MERAH berlabel', (reason, label) => {
         expect(getSubmissionActionDot(lifecycleOf({ stage: 'paid', isPaid: true }), reason)).toEqual({ type: 'red', label });
     });
