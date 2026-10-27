@@ -56,6 +56,14 @@ function normalizeScheduleDate(dateStr: string | null | undefined): Date {
     return d;
 }
 
+/**
+ * HINT penjaga isian sql/130 (`guard_page_respondent_window`): database
+ * menolak isian di luar [publish_start, publish_end + 60 menit]. Cek jendela
+ * saat halaman dimuat (di bawah) hanya menentukan tampilan.
+ */
+const PAGE_CLOSED_HINT = 'page_closed';
+const PAGE_CLOSED_MESSAGE = 'Survey sudah berakhir — isian tidak bisa dikirim lagi.';
+
 /** One row of get_batch_rewards (sql/44). */
 interface BatchReward {
     period_batch: string | null;
@@ -519,7 +527,14 @@ export function SurveyPage() {
                     // Other fields left null as they didn't reach that step
                 }]);
 
-            if (error) throw error;
+            if (error) {
+                if (error.hint === PAGE_CLOSED_HINT) {
+                    toast.error(PAGE_CLOSED_MESSAGE);
+                    setSubmitting(false);
+                    return;
+                }
+                throw error;
+            }
 
             toast.success('Jawaban tersimpan.');
             setTimeout(() => {
@@ -695,6 +710,12 @@ export function SurveyPage() {
                     hint: dbError.hint,
                 });
                 
+                // sql/130: database menolak isian di luar jendela halaman
+                // (Kilat dimatikan > 60 menit lalu, Iklan lewat jadwal).
+                if (dbError.hint === PAGE_CLOSED_HINT) {
+                    throw new Error(PAGE_CLOSED_MESSAGE);
+                }
+
                 // Cek error duplicate constraint
                 if (dbError.message?.includes('uq_page_respondent') || dbError.code === '23505') {
                     throw new Error('Jakpat ID ini sudah pernah mengisi survei ini.');

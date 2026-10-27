@@ -130,6 +130,9 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
     // Treated exactly like preserveSubmissionDates, but derived from the data
     // instead of relying on the caller to pass the prop.
     const [hasOtherSchedules, setHasOtherSchedules] = useState(false);
+    // sql/130: jendela halaman Kilat milik siaran (kilat_broadcast_*), bukan
+    // modal ini. Diperlakukan seperti hasOtherSchedules + tanpa End Campaign.
+    const [isKilatOrder, setIsKilatOrder] = useState(false);
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
         slug: '',
@@ -194,6 +197,17 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                             .in('status', ['waiting_payment', 'paid', 'scheduled', 'live'])
                             .limit(1);
                         hasOther = !!(others && others.length > 0);
+                        // Kilat: jendela [gelombang − 60 menit, dimatikan) dikelola
+                        // siaran sql/130. Menulis ulang dari sini = memaksa 15.00
+                        // WIB dan memotong siaran yang sedang live.
+                        const { data: sub } = await supabase
+                            .from('form_submissions')
+                            .select('distribution_type')
+                            .eq('id', submissionId)
+                            .maybeSingle();
+                        const kilat = sub?.distribution_type === 'kilat';
+                        setIsKilatOrder(kilat);
+                        if (kilat) hasOther = true;
                     } catch (e) {
                         // Fail safe: assume there IS another schedule, so the
                         // worst case is leaving dates alone rather than
@@ -829,7 +843,10 @@ export function PageBuilderModal({ isOpen, onClose, submissionId, initialData, o
                                 {(() => {
                                     const startDate = formData.publish_start_date ? normalizeScheduleDate(formData.publish_start_date) : null;
                                     const isLive = formData.is_published && !isStandalone && startDate && startDate <= new Date();
-                                    
+
+                                    // Kilat dimatikan lewat toggle siaran di tab Page (sql/130),
+                                    // bukan dengan menimpa publish_end_date dari sini.
+                                    if (isLive && isKilatOrder) return null;
                                     if (isLive) {
                                         return (
                                             <Button
