@@ -204,7 +204,7 @@ export function AdminSelfBookingDialog({ control }: { control: SelfBookingContro
           {capped != null && capped > 0 && (
             <p className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm text-amber-950">
               <strong>{capped} order</strong> yang masuk selama ditutup TETAP menunggu tim — jadwalkan dan terbitkan
-              tagihannya dari daftar Approved (bertanda “Reservasi ditutup”).
+              tagihannya dari daftar Approved (bertanda “Jadwal oleh tim”).
             </p>
           )}
           <div className="flex justify-end gap-2 pt-1">
@@ -319,9 +319,11 @@ export function AdminSelfBookingDialog({ control }: { control: SelfBookingContro
 export function SelfBookingClosedChip({ cappedAt, startDate }: { cappedAt?: string | null; startDate?: string | null }) {
   if (!cappedAt || startDate) return null;
   return (
-    <Chip variant="slate" size="xs" className="shrink-0 gap-1" title="Lahir saat reservasi mandiri ditutup — tim yang menetapkan tanggal & menerbitkan tagihan.">
+    // Netral sejak 27 Okt 2026: cap yang sama juga dipasang saat kuota penuh
+    // (peneliti tidak punya pilihan sendiri), dan alasannya tidak disimpan.
+    <Chip variant="slate" size="xs" className="shrink-0 gap-1" title="Peneliti tidak memilih tanggal sendiri (reservasi ditutup atau jadwal penuh) — tim yang menetapkan tanggal & menerbitkan tagihan.">
       <Lock className="size-3" aria-hidden="true" />
-      Reservasi ditutup
+      Jadwal oleh tim
     </Chip>
   );
 }

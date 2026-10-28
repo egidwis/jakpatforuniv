@@ -123,6 +123,25 @@ export function kilatWaveDays(
     });
 }
 
+/**
+ * Tidak ada satu pun gelombang yang bisa dipesan di jendela peneliti?
+ *
+ *   null     → ada yang terbuka, pemilih biasa.
+ *   'full'   → setiap gelombang yang tidak libur & belum lewat batas sudah
+ *              penuh (dan minimal satu penuh) — kuota yang menutupnya.
+ *   'closed' → buntu karena libur / lewat batas saja.
+ *
+ * Keduanya berujung sama: order dikirim, tim yang menjadwalkan (keputusan
+ * 27 Okt 2026, cap sql/125). Bedanya cuma judul kartu. Pemanggil WAJIB
+ * memeriksa `isReady && !hasError` lebih dulu — KOSONG BUKAN PENUH.
+ */
+export function kilatNoBookableWave(days: readonly KilatWaveDay[]): 'full' | 'closed' | null {
+  if (days.some((d) => d.hasOpenWave)) return null;
+  const waves = days.flatMap((d) => d.waves);
+  const contested = waves.filter((w) => w.status !== 'cutoff' && w.status !== 'holiday');
+  return contested.length > 0 && contested.every((w) => w.status === 'full') ? 'full' : 'closed';
+}
+
 /** Satu gelombang sebagai pilihan: tanggal YMD + jam WIB. */
 export interface KilatWavePick {
   ymd: string;

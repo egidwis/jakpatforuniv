@@ -99,6 +99,41 @@ describe('/api/send-submission-email — varian tutup reservasi mandiri (sql/125
   });
 });
 
+describe('/api/send-submission-email — kuota penuh, tim yang menjadwalkan (27 Okt 2026)', () => {
+  it('reason full (Iklan): sebab = penuh, bukan reservasi ditutup', async () => {
+    network(() => new Response('[]', { status: 200 }));
+    await call({ name: 'Sintya', email: 'p@x.id', kind: 'admin_schedule', reason: 'full' });
+    const html = sent[0].html;
+    expect(html).toContain('sudah penuh');
+    expect(html).toContain('menetapkan tanggal tayang terdekat');
+    expect(html).toContain('maksimal 1 hari kerja');
+    expect(html).not.toContain('reservasi mandiri sedang ditutup');
+    expect(html).not.toContain('akan kami review');
+  });
+
+  it('reason full (Kilat): gelombang terdekat, tanpa kosakata iklan', async () => {
+    network(() => new Response('[]', { status: 200 }));
+    await call({ name: 'Sintya', email: 'p@x.id', kind: 'admin_schedule', reason: 'full', product: 'kilat' });
+    const html = sent[0].html;
+    expect(html).toContain('menugaskan gelombang push terdekat');
+    expect(html.toLowerCase()).not.toContain('iklan');
+    expect(html).not.toContain('ditutup');
+  });
+
+  it('reason full saat libur: janji bergeser ke "setelah tim kembali"', async () => {
+    network(() => new Response(JSON.stringify([{ holiday_date: '2026-12-24', label: 'Libur' }]), { status: 200 }));
+    await call({ name: 'Sintya', email: 'p@x.id', kind: 'admin_schedule', reason: 'full' });
+    expect(sent[0].html).toContain('sudah penuh');
+    expect(sent[0].html).toContain('setelah tim kembali');
+  });
+
+  it('reason tak dikenal: teks reservasi ditutup seperti dulu', async () => {
+    network(() => new Response('[]', { status: 200 }));
+    await call({ name: 'Sintya', email: 'p@x.id', kind: 'admin_schedule', reason: '<script>' });
+    expect(sent[0].html).toContain('reservasi mandiri sedang ditutup');
+  });
+});
+
 describe('/api/send-submission-email — produk Kilat Survei', () => {
   it('review manual: nama produk Kilat Survei, tanpa kosakata iklan', async () => {
     network(() => new Response('[]', { status: 200 }));

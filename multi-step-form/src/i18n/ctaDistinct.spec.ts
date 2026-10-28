@@ -22,6 +22,8 @@ const CTA_SATU_PERJALANAN = [
   'summaryCtaPay',
   'summaryCtaReview',
   'scheduleLockCta',
+  // Pengganti tombol kunci saat kuota penuh (27 Okt 2026).
+  'bookingFullCta',
 ] as const;
 
 describe('CTA satu perjalanan — nol pasangan sekata', () => {

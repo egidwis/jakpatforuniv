@@ -39,6 +39,8 @@ import { toWibYmd, toAiringStartIso, isPayDeadlinePassed, payDeadlineFor, format
 import { airingDayCount } from './schedule/scheduleModel';
 import { useSlotAvailability } from '../../hooks/useSlotAvailability';
 import { useKilatWaveAvailability } from '../../hooks/useKilatWaveAvailability';
+import { bookingBlockedReason } from '../../utils/bookingFull';
+import { BookingFullNotice } from '../../components/schedule/BookingFullNotice';
 import { kilatLockGate, kilatWaveErrorMessageKey, formatWaveHour, type KilatWaveDraft } from '../../utils/kilatWaves';
 import { scheduleLockGate } from '../../utils/scheduleLockGate';
 import { isDailyQuotaFullError, kilatWaveErrorKind } from '../../utils/dailyQuotaError';
@@ -775,6 +777,21 @@ export function JadwalDanBayarPage() {
     </div>
   );
 
+  /*
+    Kuota penuh (27 Okt 2026): order ini SUDAH ADA, jadi peneliti tidak bisa
+    memasang cap "jadwal oleh tim" (trigger sql/125 menolak UPDATE cap) —
+    kartunya menunjuk "Tanya Mimin", pola SelfBookingNotice pick/extend.
+  */
+  const fullReason = bookingBlockedReason({
+    isKilat: mode === 'kilat',
+    waves: awayNow ? { ...waves, adminAway: true } : waves,
+    availability,
+    duration: entry.duration || 1,
+  });
+  const fullNotice = fullReason ? (
+    <BookingFullNotice product={mode} reason={fullReason} durationDays={entry.duration || 1} action="mimin" />
+  ) : null;
+
   const liveCalendar = mode === 'kilat' ? (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
@@ -797,6 +814,7 @@ export function JadwalDanBayarPage() {
         // Libur dari store (bukan hanya dari RPC): kartu pemberitahuan langsung
         // menggantikan grid begitu toggle admin terbaca menyala.
         availability={awayNow ? { ...waves, adminAway: true } : waves}
+        notice={fullNotice}
         value={pickedWave}
         onChange={(next) => { setPickedWave(next); feedback.clear(); }}
       />
@@ -811,6 +829,7 @@ export function JadwalDanBayarPage() {
         value={picked}
         onChange={pickDate}
         showSummary={false}
+        notice={fullNotice}
       />
     </div>
   );

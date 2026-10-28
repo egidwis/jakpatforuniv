@@ -76,6 +76,8 @@ import { useAuth } from '@/context/AuthContext';
 import { canUseKilatSelfServe } from '../../utils/kilatAccess';
 import { KilatWavePicker } from '../../components/KilatWavePicker';
 import { useKilatWaveAvailability } from '../../hooks/useKilatWaveAvailability';
+import { bookingBlockedReason } from '../../utils/bookingFull';
+import { BookingFullNotice } from '../../components/schedule/BookingFullNotice';
 import { kilatLockGate, kilatWaveErrorMessageKey, formatWaveHour, type KilatWaveDraft } from '../../utils/kilatWaves';
 import { kilatWaveErrorKind } from '../../utils/dailyQuotaError';
 import { kilatWaveInstant } from '../../utils/airing-window';
@@ -682,6 +684,21 @@ export function JadwalBaruPage() {
     );
   }
 
+  /*
+    Kuota penuh (27 Okt 2026): jadwal tambahan untuk order yang SUDAH ADA —
+    cap "jadwal oleh tim" tidak bisa dipasang peneliti, jadi kartunya
+    menunjuk "Tanya Mimin" (pola SelfBookingNotice varian extend).
+  */
+  const fullReason = bookingBlockedReason({
+    isKilat,
+    waves: awayNow ? { ...waves, adminAway: true } : waves,
+    availability,
+    duration,
+  });
+  const fullNotice = fullReason ? (
+    <BookingFullNotice product={isKilat ? 'kilat' : 'regular'} reason={fullReason} durationDays={duration} action="mimin" />
+  ) : null;
+
   return (
     <ScheduleReservationLayout
       onBack={() => navigate('/dashboard')}
@@ -746,7 +763,7 @@ export function JadwalBaruPage() {
               </button>
             )}
           </div>
-          <KilatWavePicker availability={awayNow ? { ...waves, adminAway: true } : waves} value={pickedWave} onChange={pickWave} />
+          <KilatWavePicker availability={awayNow ? { ...waves, adminAway: true } : waves} notice={fullNotice} value={pickedWave} onChange={pickWave} />
         </div>
       ) : (
         /* Tanggal — ⚠️ SchedulePicker, kalender PENELITI. Modal lama memakai
@@ -776,6 +793,7 @@ export function JadwalBaruPage() {
             onChange={pickDate}
             showSummary={false}
             ownRange={latestYmd ? { startYmd: latestYmd, days: latestDays } : null}
+            notice={fullNotice}
           />
         </div>
       )}

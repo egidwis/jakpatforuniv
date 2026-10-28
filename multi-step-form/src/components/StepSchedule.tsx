@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { SurveyFormData } from '../types';
-import { Loader2, Info, Lock, RefreshCw } from 'lucide-react';
+import { Loader2, Info, Lock, RefreshCw, Send } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { ScheduleReservationLayout } from './schedule/ScheduleReservationLayout';
 import { TicketStub, MobileBarInfo } from './schedule/ReservationParts';
@@ -17,6 +17,8 @@ import { useSlotAvailability } from '../hooks/useSlotAvailability';
 import { useKilatWaveAvailability } from '../hooks/useKilatWaveAvailability';
 import { scheduleLockGate } from '../utils/scheduleLockGate';
 import { kilatLockGate, type KilatWaveDraft } from '../utils/kilatWaves';
+import { bookingBlockedReason } from '../utils/bookingFull';
+import { BookingFullNotice } from './schedule/BookingFullNotice';
 
 interface StepScheduleProps {
   formData: SurveyFormData;
@@ -45,6 +47,17 @@ interface StepScheduleProps {
    * tertimpa (lihat resolveSubmissionMode).
    */
   exitMode?: 'step' | 'orders';
+  /**
+   * Kuota penuh → tim yang menjadwalkan (keputusan 27 Okt 2026). Dipanggil
+   * saat TIDAK ADA satu pun pilihan yang bisa dipesan: order dikirim tanpa
+   * tanggal lewat pintu "jadwal oleh tim" (cap sql/125). Mengembalikan false =
+   * gagal, tombol dipulihkan.
+   *
+   * ⚠️ Hanya untuk order BARU. Jadwal ulang (`exitMode='orders'`) adalah
+   * UPDATE order yang sudah ada — cap tidak bisa dipasang peneliti lewat
+   * UPDATE, jadi di sana kartunya menunjuk "Tanya Mimin".
+   */
+  onTeamSchedule?: () => Promise<boolean> | boolean;
 }
 
 /**
@@ -56,7 +69,7 @@ interface StepScheduleProps {
  * satu layar; secara alamat mereka terpisah karena Fase B punya dua pintu masuk
  * "kembali setelah pergi" yang tidak bisa dilayani state wizard.
  */
-export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', exitMode = 'step' }: StepScheduleProps) {
+export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', exitMode = 'step', onTeamSchedule }: StepScheduleProps) {
   const { t } = useLanguage();
   const isKilat = mode === 'kilat';
   // Kedua hook selalu dipanggil (aturan hooks); hanya satu yang mengambil data.
@@ -97,6 +110,32 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
       }
     } catch (e) {
       console.error('Failed to lock schedule:', e);
+      setIsConfirming(false);
+    }
+  };
+
+  // TIDAK ADA PILIHAN = kartu penuh, bukan layar buntu (aturannya di bookingFull.ts).
+  const blocked = bookingBlockedReason({ isKilat, waves, availability, duration });
+  const isBlocked = blocked !== null;
+  const fullAction: 'team' | 'mimin' = onTeamSchedule && exitMode !== 'orders' ? 'team' : 'mimin';
+  const fullNotice = isBlocked ? (
+    <BookingFullNotice
+      product={isKilat ? 'kilat' : 'regular'}
+      reason={blocked ?? 'full'}
+      durationDays={duration}
+      action={fullAction}
+    />
+  ) : null;
+
+  const handleTeamSchedule = async () => {
+    if (!onTeamSchedule) return;
+    feedback.clear();
+    setIsConfirming(true);
+    try {
+      const ok = await onTeamSchedule();
+      if (!ok) setIsConfirming(false);
+    } catch (e) {
+      console.error('Failed to send order for team scheduling:', e);
       setIsConfirming(false);
     }
   };
@@ -184,7 +223,7 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
         tiket ini berujung. Menekannya menegur di zona kunci. Kilat sama persis
         (Phase 5 §5.6): kunci gelombang → bayar.
       */
-      pay={{ kind: 'needs_lock' }}
+      pay={isBlocked ? { kind: 'none' } : { kind: 'needs_lock' }}
       mobileBarInfo={<MobileBarInfo total={cost.totalCost} />}
       calendar={isKilat ? (
         <div className="space-y-4">
@@ -209,6 +248,7 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
           </div>
           <KilatWavePicker
             availability={waves}
+            notice={fullNotice}
             value={wave}
             onChange={(next) => { setWave(next); feedback.clear(); }}
           />
@@ -244,6 +284,7 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
             value={selected}
             onChange={handleSelect}
             showSummary={false}
+            notice={fullNotice}
           />
         </div>
       )}
@@ -260,7 +301,30 @@ export function StepSchedule({ formData, onConfirm, onBack, mode = 'regular', ex
           totalLabel={t('totalPayment')}
         />
       }
-      lock={{
+      lock={isBlocked ? (fullAction === 'team' ? {
+        kind: 'action',
+        hint: t('bookingFullHint'),
+        cta: (
+          <button
+            type="button"
+            onClick={handleTeamSchedule}
+            disabled={isConfirming}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-jfu-primary px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-jfu-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jfu-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-jfu-primary"
+          >
+            {isConfirming ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {t('sendingOrderLoading')}
+              </>
+            ) : (
+              <>
+                <Send size={15} />
+                {t('bookingFullCta')}
+              </>
+            )}
+          </button>
+        ),
+      } : null) : {
         kind: 'lock',
         cta: (
         <button

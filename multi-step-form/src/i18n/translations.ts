@@ -357,7 +357,6 @@ export const translations = {
     kilatWaveHoliday: "Holiday",
     kilatWaveDayClosed: "Closed",
     kilatWaveDayNotYet: "Not yet open",
-    kilatWaveEmpty: "No wave can be booked in the next 3 working days. Check again later.",
     kilatErrorWaveTooFar: "JFU Kilat waves can only be booked for the next 3 working days, starting today. Please pick a closer wave.",
     scheduleEstimatedTitle: "Estimated Airing Schedule",
     // Halaman Jadwal & Bayar dua kolom — kalender beku & ringkasan
@@ -1410,6 +1409,17 @@ export const translations = {
     selfBookingExtendTitle: "Self-service extensions are temporarily closed",
     selfBookingExtendBody: "Our team is adjusting the airing schedule. Try again later, or ask the team to add the schedule for you.",
     selfBookingAskMimin: "Ask Mimin",
+    // Kuota penuh → tim yang menjadwalkan (27 Okt 2026, cap sql/125).
+    bookingFullTitleKilat: "Kilat waves for the next 3 working days are full",
+    bookingFullTitleKilatClosed: "No wave can be booked in the next 3 working days",
+    bookingFullTitleAds: "No date fits {days} days of airing yet",
+    bookingFullBodyTeamKilat: "Send your order — our team finds the nearest wave and prepares your invoice, max 1 working day.",
+    bookingFullBodyTeamAds: "Send your order — our team finds the nearest airing date and prepares your invoice, max 1 working day.",
+    bookingFullBodyMimin: "Every slot you can book is full right now. Ask Mimin — our team will help find a schedule.",
+    bookingFullCta: "Ask the Team to Schedule",
+    bookingFullHint: "No payment yet — the invoice follows once the team sets the schedule.",
+    adminScheduleModalStep1Full: "Every date you can book yourself is full, so our team finds your airing date.",
+    adminScheduleModalStep1FullKilat: "Every wave you can book yourself is full, so our team finds your wave.",
     selfBookingClosedToast: "Self-booking was just closed — our team handles the schedule.",
   },
 
@@ -1665,7 +1675,6 @@ export const translations = {
     kilatWaveHoliday: "Libur",
     kilatWaveDayClosed: "Tutup",
     kilatWaveDayNotYet: "Belum tersedia",
-    kilatWaveEmpty: "Belum ada gelombang yang bisa dipesan 3 hari kerja ke depan. Coba cek lagi nanti.",
     kilatErrorWaveTooFar: "Gelombang JFU Kilat hanya bisa dipesan untuk 3 hari kerja mulai hari ini. Silakan pilih gelombang yang lebih dekat.",
     scheduleEstimatedTitle: "Estimasi Jadwal Tayang",
     // Halaman Jadwal & Bayar dua kolom — kalender beku & ringkasan
@@ -2743,6 +2752,17 @@ export const translations = {
     selfBookingExtendTitle: "Perpanjangan mandiri ditutup sementara",
     selfBookingExtendBody: "Tim kami sedang menyesuaikan jadwal tayang. Coba lagi nanti, atau minta tim menambahkan jadwalnya untukmu.",
     selfBookingAskMimin: "Tanya Mimin",
+    // Kuota penuh → tim yang menjadwalkan (27 Okt 2026, cap sql/125).
+    bookingFullTitleKilat: "Gelombang Kilat 3 hari kerja ke depan sudah penuh",
+    bookingFullTitleKilatClosed: "Belum ada gelombang yang bisa dipesan 3 hari kerja ke depan",
+    bookingFullTitleAds: "Belum ada tanggal yang muat untuk {days} hari tayang",
+    bookingFullBodyTeamKilat: "Kirim pesananmu, tim kami yang mencarikan gelombang terdekat dan menyiapkan tagihannya — maksimal 1 hari kerja.",
+    bookingFullBodyTeamAds: "Kirim pesananmu, tim kami yang mencarikan tanggal tayang terdekat dan menyiapkan tagihannya — maksimal 1 hari kerja.",
+    bookingFullBodyMimin: "Semua jadwal yang bisa dipesan sedang penuh. Tanya Mimin, tim kami bantu carikan jadwalnya.",
+    bookingFullCta: "Minta Tim Menjadwalkan",
+    bookingFullHint: "Belum ada pembayaran sekarang — tagihan menyusul setelah tim menetapkan jadwal.",
+    adminScheduleModalStep1Full: "Jadwal yang bisa kamu pesan sendiri sedang penuh, jadi tim kami yang mencarikan tanggal tayangmu.",
+    adminScheduleModalStep1FullKilat: "Gelombang yang bisa kamu pesan sendiri sedang penuh, jadi tim kami yang mencarikan gelombangmu.",
     selfBookingClosedToast: "Reservasi mandiri baru saja ditutup — jadwalnya diurus tim kami.",
   }
 };

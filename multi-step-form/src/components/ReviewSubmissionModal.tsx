@@ -15,6 +15,13 @@ interface ReviewSubmissionModalProps {
    * review SUDAH lolos otomatis, yang menunggu tim hanya tanggal & tagihan.
    */
   variant?: 'review' | 'admin_schedule';
+  /**
+   * `full` (27 Okt 2026): pintu `admin_schedule` yang sama, sebabnya kuota
+   * penuh — langkah 1 tidak boleh berbunyi "reservasi mandiri ditutup".
+   */
+  teamReason?: 'full';
+  /** Kosakata langkah 1 saat `teamReason='full'`: gelombang vs tanggal tayang. */
+  product?: 'regular' | 'kilat';
 }
 
 /**
@@ -42,6 +49,8 @@ export function ReviewSubmissionModal({
   surveyTitle,
   orderId,
   variant = 'review',
+  teamReason,
+  product = 'regular',
 }: ReviewSubmissionModalProps) {
   const { t } = useLanguage();
   const away = useAdminAway();
@@ -62,7 +71,9 @@ export function ReviewSubmissionModal({
   // amber terpisah di bawahnya, yang terbaca seperti dua janji yang bertabrakan.
   const steps = [
     adminSchedule
-      ? t('adminScheduleModalStep1')
+      ? t(teamReason === 'full'
+          ? (product === 'kilat' ? 'adminScheduleModalStep1FullKilat' : 'adminScheduleModalStep1Full')
+          : 'adminScheduleModalStep1')
       : t(away ? 'reviewModalStep1Away' : 'reviewModalStep1'),
     adminSchedule
       ? t(away ? 'adminScheduleModalStep2Away' : 'adminScheduleModalStep2')

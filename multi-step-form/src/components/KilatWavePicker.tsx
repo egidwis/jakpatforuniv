@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { CalendarOff, Zap } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { KilatWaveAvailability } from '../hooks/useKilatWaveAvailability';
@@ -36,11 +36,18 @@ export function KilatWavePicker({
   availability,
   value,
   onChange,
+  notice = null,
 }: {
   availability: KilatWaveAvailability;
   /** `hour: null` = tanggal sudah dipilih, gelombangnya belum. */
   value: KilatWaveDraft | null;
   onChange: (pick: KilatWaveDraft) => void;
+  /**
+   * Kartu di atas grid saat tidak ada gelombang yang bisa dipesan
+   * (`BookingFullNotice`, keputusan 27 Okt 2026). Dulu di sini ada kalimat
+   * "coba cek lagi nanti" tanpa tombol apa pun — layar buntu.
+   */
+  notice?: ReactNode;
 }) {
   const { t, language } = useLanguage();
   const locale = language === 'en' ? 'en-US' : 'id-ID';
@@ -70,14 +77,6 @@ export function KilatWavePicker({
     );
   }
 
-  if (!days.some((d) => d.hasOpenWave)) {
-    return (
-      <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-        {t('kilatWaveEmpty')}
-      </p>
-    );
-  }
-
   const selectedDay = value ? days.find((d) => d.ymd === value.ymd) ?? null : null;
 
   const waveReason = (w: KilatWaveCell): string | null => {
@@ -89,6 +88,7 @@ export function KilatWavePicker({
 
   return (
     <div className="space-y-5">
+      {notice}
       <fieldset className="space-y-2">
         <legend className="text-sm font-semibold text-slate-800 mb-2">{t('kilatWavePickDay')}</legend>
         {/* Tiga hari kerja (sql/122 K3) + hari ke-4 terkunci — satu baris, juga di ponsel. */}
@@ -97,7 +97,13 @@ export function KilatWavePicker({
             const isSelected = value?.ymd === day.ymd;
             const disabled = !day.hasOpenWave;
             const openSeats = day.waves.filter((w) => w.status === 'open').reduce((n, w) => n + w.remaining, 0);
-            const reason = day.isHoliday ? t('kilatWaveHoliday') : disabled ? t('kilatWaveDayClosed') : null;
+            // Hari yang tertutup karena KUOTA berbunyi "Penuh", bukan "Tutup" —
+            // sejak 27 Okt grid tetap tampil di bawah kartu penuh.
+            const dayFull = day.waves.some((w) => w.status === 'full')
+              && day.waves.every((w) => w.status === 'full' || w.status === 'cutoff');
+            const reason = day.isHoliday
+              ? t('kilatWaveHoliday')
+              : disabled ? t(dayFull ? 'kilatWaveFull' : 'kilatWaveDayClosed') : null;
             const label = fmt(day.ymd, { weekday: 'long', day: 'numeric', month: 'long' });
             return (
               <button
@@ -151,6 +157,8 @@ export function KilatWavePicker({
         </div>
       </fieldset>
 
+      {/* Tanpa hari terbuka, "pilih hari dulu" di sini menyesatkan — kartu di atas yang bicara. */}
+      {days.some((d) => d.hasOpenWave) && (
       <fieldset className="space-y-2">
         <legend className="text-sm font-semibold text-slate-800 mb-2">{t('kilatWavePickWave')}</legend>
         {!selectedDay ? (
@@ -193,6 +201,7 @@ export function KilatWavePicker({
           </div>
         )}
       </fieldset>
+      )}
     </div>
   );
 }

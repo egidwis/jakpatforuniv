@@ -68,6 +68,26 @@ describe('adminActionOf', () => {
     expect(adminActionOf({ ...diverted, forced_manual_reason: null, submission_status: 'approved' }, ctx())).toBeNull();
   });
 
+  test('order bercap "jadwal oleh tim" (sql/125: ditutup ATAU kuota penuh) → schedule walau lolos review otomatis', () => {
+    const auto = row({
+      submission_status: 'approved', submission_method: 'google_import',
+      survey_url: 'https://docs.google.com/forms/d/x',
+    });
+    expect(adminActionOf({ ...auto, self_booking_closed_at: '2026-10-28T03:00:00Z' }, ctx())).toBe('schedule');
+    expect(adminActionOf({ ...auto, distribution_type: 'kilat', self_booking_closed_at: '2026-10-28T03:00:00Z' }, ctx())).toBe('schedule');
+    // Tanpa cap tetap milik peneliti; bercap yang sudah bertanggal bukan antrean jadwal.
+    expect(adminActionOf({ ...auto, self_booking_closed_at: null }, ctx())).toBeNull();
+    expect(adminActionOf({ ...auto, self_booking_closed_at: '2026-10-28T03:00:00Z', start_date: '2026-10-30' }, ctx())).toBeNull();
+  });
+
+  test('kolom cap ikut dibaca kueri antrean', async () => {
+    calls.length = 0;
+    tables = { form_submissions: [] };
+    await fetchAdminQueue(new Date('2026-10-28T03:00:00Z'));
+    const select = calls.find((c) => c.table === 'form_submissions')!.filters.find((f) => f[0] === 'select');
+    expect(String(select[1])).toContain('self_booking_closed_at');
+  });
+
   test('disetujui tapi slotnya kedaluwarsa → bola di peneliti', () => {
     expect(adminActionOf(row({ submission_status: 'approved', payment_status: 'expired' }), ctx())).toBeNull();
   });

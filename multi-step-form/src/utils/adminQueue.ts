@@ -37,6 +37,11 @@ export interface AdminQueueRow {
   detected_keywords: string[] | null;
   voucher_code: string | null;
   forced_manual_reason: string | null;
+  /**
+   * Cap "jadwal oleh tim" (sql/125): reservasi mandiri ditutup ATAU kuota
+   * penuh. Opsional supaya baris lama/uji tanpa kolom ini tetap sah.
+   */
+  self_booking_closed_at?: string | null;
 }
 
 const SETTLED = ['paid', 'completed'];
@@ -62,6 +67,10 @@ export function adminActionOf(
     // Slot kedaluwarsa (`expired`) dan order auto-review menunggu PENELITI
     // memilih jadwal, bukan admin.
     if (pay === 'expired') return null;
+    // ⚠️ Cap sql/125 DIDAHULUKAN: order bercap lolos review otomatis, tapi
+    // peneliti tidak pernah bisa mengunci tanggalnya — bolanya di admin.
+    // Tanpa cek ini order bercap tidak pernah masuk badge (3 order 23–24 Okt).
+    if (row.self_booking_closed_at) return 'schedule';
     return isAutoReviewed(row as any) ? null : 'schedule';
   }
 
@@ -93,7 +102,7 @@ export interface AdminQueueCounts {
 }
 
 const QUEUE_COLUMNS =
-  'id, distribution_type, submission_status, start_date, slot_booked_by, payment_status, dismissed_at, submission_method, survey_url, detected_keywords, voucher_code, forced_manual_reason';
+  'id, distribution_type, submission_status, start_date, slot_booked_by, payment_status, dismissed_at, submission_method, survey_url, detected_keywords, voucher_code, forced_manual_reason, self_booking_closed_at';
 
 /** Id order yang menunggu admin, dipisah per jenis distribusi. */
 export async function fetchAdminQueue(now: Date = new Date()): Promise<AdminQueueCounts> {

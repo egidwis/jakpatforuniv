@@ -76,8 +76,12 @@ export function awayNoticeHtml(away, product) {
  * Varian tutup reservasi mandiri (sql/125): order jalur otomatis yang lahir
  * saat saklar ditutup. Review-nya SUDAH lolos — yang menunggu tim hanya
  * tanggal tayang & tagihan, jadi kalimat "akan kami review" salah di sini.
+ *
+ * `reason === 'full'` (27 Okt 2026): pintu yang sama dipakai saat kuota
+ * penuh — peneliti tidak punya pilihan sendiri, tim yang mencarikan jadwal
+ * terdekat. Nilai lain = teks reservasi ditutup seperti dulu.
  */
-function adminScheduleMail(name, away, product) {
+function adminScheduleMail(name, away, product, reason) {
     const copy = productCopy(product);
     const awayBox = away
         ? `
@@ -91,7 +95,9 @@ function adminScheduleMail(name, away, product) {
           <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
             <p>Halo Kak <strong>${escapeHtml(name)}</strong>,</p>
             <p>Terima kasih, pesanan ${copy.orderName} Kakak di Jakpat for Universities sudah kami terima dan kuesionernya lolos review otomatis 🙏</p>${awayBox}
-            <p>Saat ini reservasi mandiri sedang ditutup sementara, jadi tim kami yang ${copy.teamAssigns} dan menyiapkan tagihannya — ${away
+            <p>${reason === 'full'
+                ? `Saat ini jadwal yang bisa Kakak pesan sendiri sudah penuh, jadi tim kami yang ${copy.teamAssigns} terdekat`
+                : `Saat ini reservasi mandiri sedang ditutup sementara, jadi tim kami yang ${copy.teamAssigns}`} dan menyiapkan tagihannya — ${away
                 ? 'setelah tim kembali.'
                 : 'maksimal 1 hari kerja.'}</p>
             <p>Kakak tidak perlu memilih jadwal sendiri. Tagihannya akan muncul di halaman Order Saya dan kami kabari lewat e-mail.</p>
@@ -107,7 +113,7 @@ function adminScheduleMail(name, away, product) {
 export async function onRequestPost(context) {
     try {
         const { request, env } = context;
-        const { name, email, kind, product } = await request.json();
+        const { name, email, kind, product, reason } = await request.json();
         const copy = productCopy(product);
 
 
@@ -117,7 +123,7 @@ export async function onRequestPost(context) {
 
         const away = await fetchAdminAway(env);
 
-        const result = await sendMail(env, kind === 'admin_schedule' ? { to: email, ...adminScheduleMail(name, away, product) } : {
+        const result = await sendMail(env, kind === 'admin_schedule' ? { to: email, ...adminScheduleMail(name, away, product, reason) } : {
             to: email,
             subject: `Terima kasih telah submit Form Order ${copy.orderName} di Jakpat for Universities 🙏`,
             html: `

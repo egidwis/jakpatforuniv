@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { CalendarCheck, Clock, Lock } from 'lucide-react';
 import { isBookingClosedForDate, toAiringStartIso, toAiringLastDayIso } from '../utils/airing-window';
 import { wibHorizonYmds, SCHEDULE_HORIZON_DAYS } from '../utils/scheduleHorizon';
@@ -31,6 +31,12 @@ interface SchedulePickerProps {
    * yang sudah ada jatuh di mana", supaya perpanjangan tidak dipilih buta.
    */
   ownRange?: { startYmd: string; days: number } | null;
+  /**
+   * Kartu di atas grid — dipakai saat tidak ada tanggal yang muat
+   * (`BookingFullNotice`). Grid tetap tampil supaya alasan "Penuh" per tile
+   * terlihat. Pemanggil yang memutuskan kapan.
+   */
+  notice?: ReactNode;
 }
 
 const HORIZON_DAYS = SCHEDULE_HORIZON_DAYS;
@@ -63,6 +69,7 @@ export function SchedulePicker({
   showSummary = true,
   lockedYmd = null,
   ownRange = null,
+  notice = null,
 }: SchedulePickerProps) {
   const { t, language } = useLanguage();
   const { counts, maxPerDay } = availability;
@@ -132,6 +139,7 @@ export function SchedulePicker({
 
   return (
     <div className="space-y-4">
+      {!isFrozen && notice}
       <div
         className={`grid ${isFrozen ? 'grid-cols-4' : 'grid-cols-2 sm:grid-cols-4'} md:grid-cols-7 py-1`}
         /* ⚠️ JARAK LEWAT STYLE INLINE, BUKAN `gap-2.5`.

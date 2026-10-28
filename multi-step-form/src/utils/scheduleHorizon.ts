@@ -1,4 +1,4 @@
-import { addDaysToYmd, toWibYmd } from './airing-window';
+import { addDaysToYmd, isBookingClosedForDate, toWibYmd } from './airing-window';
 
 /** Panjang kalender pemilih tanggal peneliti. */
 export const SCHEDULE_HORIZON_DAYS = 14;
@@ -40,4 +40,23 @@ export function lockedDateFitsHorizon(
   const first = toWibYmd(now);
   const last = addDaysToYmd(first, days - 1);
   return ymd >= first && ymd <= last;
+}
+
+/**
+ * Tanggal mulai pertama di kalender pemilih yang belum lewat batas pesan dan
+ * SELURUH rentang `duration` harinya masih muat kuota. `null` = tidak ada —
+ * peneliti tidak punya pilihan sendiri, order diteruskan ke tim (keputusan
+ * 27 Okt 2026, cap sql/125).
+ *
+ * ⚠️ `isRangeAvailable` fail-open selama ketersediaan belum terbaca; pemanggil
+ * WAJIB memeriksa `isReady && !hasError` lebih dulu.
+ */
+export function firstFitStartYmd(
+  ymds: readonly string[],
+  duration: number,
+  isRangeAvailable: (startYmd: string, days: number) => boolean,
+  isClosed: (ymd: string) => boolean = isBookingClosedForDate,
+): string | null {
+  const days = Math.max(duration || 1, 1);
+  return ymds.find((ymd) => !isClosed(ymd) && isRangeAvailable(ymd, days)) ?? null;
 }

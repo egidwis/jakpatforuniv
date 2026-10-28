@@ -198,6 +198,8 @@ export function MultiStepForm() {
     orderId?: string;
     /** `admin_schedule` = order lahir saat reservasi mandiri ditutup (sql/125). */
     variant?: 'review' | 'admin_schedule';
+    /** `full` = pintu yang sama, sebabnya kuota penuh (27 Okt 2026). */
+    teamReason?: 'full';
   } | null>(null);
 
   /*
@@ -376,7 +378,7 @@ export function MultiStepForm() {
    */
   const submitOrderAndRoute = async (
     overrides?: Partial<SurveyFormData>,
-    opts: { forceManual?: boolean; selfBookingClosed?: boolean } = {},
+    opts: { forceManual?: boolean; selfBookingClosed?: boolean; teamReason?: 'full' } = {},
   ): Promise<boolean> => {
     const merged = { ...formData, ...overrides };
     // `forceManual` = Kilat jalur otomatis selama mode libur: lahir sebagai
@@ -423,6 +425,7 @@ export function MultiStepForm() {
             email: merged.email,
             product: merged.isKilatUpgrade ? 'kilat' : 'ads',
             ...(teamSchedules ? { kind: 'admin_schedule' } : {}),
+            ...(teamSchedules && opts.teamReason ? { reason: opts.teamReason } : {}),
           }),
         }).catch(err => console.error('Failed to send email:', err));
       }
@@ -443,6 +446,7 @@ export function MultiStepForm() {
           surveyTitle: merged.title || '',
           orderId: saved.id,
           variant: teamSchedules ? 'admin_schedule' : 'review',
+          teamReason: teamSchedules ? opts.teamReason : undefined,
         });
       } else {
         toast.success(t('slotLockedSuccess'));
@@ -605,6 +609,17 @@ export function MultiStepForm() {
               jadwal lagi dari My Order kapan pun.
             */
             exitMode={formData.isReschedule ? 'orders' : 'step'}
+            /*
+              Kuota penuh → tim yang menjadwalkan (27 Okt 2026): pintu yang sama
+              dengan "Kirim Pesanan" saat reservasi ditutup — order lahir
+              `approved` tanpa tanggal, trigger sql/125 memasang cap. Jadwal
+              ulang TIDAK: itu UPDATE order lama, cap tak bisa dipasang peneliti.
+            */
+            onTeamSchedule={
+              formData.isReschedule
+                ? undefined
+                : () => submitOrderAndRoute({ startDate: '', endDate: '', startTime: '', kilatSlotHour: null }, { selfBookingClosed: true, teamReason: 'full' })
+            }
             onBack={
               formData.isReschedule
                 ? cancelOrder
@@ -626,6 +641,8 @@ export function MultiStepForm() {
         surveyTitle={reviewModalData?.surveyTitle}
         orderId={reviewModalData?.orderId}
         variant={reviewModalData?.variant}
+        teamReason={reviewModalData?.teamReason}
+        product={formData.isKilatUpgrade ? 'kilat' : 'regular'}
         onConfirm={handleReviewModalConfirm}
       />
     </div>

@@ -3,6 +3,7 @@ import {
   KILAT_WAVE_WINDOW_DAYS,
   KILAT_WAVE_WORKDAYS,
   kilatLockGate,
+  kilatNoBookableWave,
   kilatPickStatus,
   kilatPreviewDayYmd,
   kilatWaveDays,
@@ -183,5 +184,41 @@ describe('kilatLockGate', () => {
     const hol = { isReady: true, rows: [row('2026-10-19', 11, { isClosed: true, closedReason: 'holiday' })] };
     expect(kilatLockGate({ ymd: '2026-10-19', hour: 11 }, hol, NOW))
       .toMatchObject({ ok: false, reason: 'holiday', messageKey: 'kilatErrorWaveHoliday', clearSelection: true });
+  });
+});
+
+describe('kilatNoBookableWave — kuota penuh → tim yang menjadwalkan', () => {
+  const days = (rows: KilatWaveRow[], now = NOW) => kilatWaveDays(rows, now);
+
+  it('ada satu gelombang terbuka → null (pemilih biasa)', () => {
+    expect(kilatNoBookableWave(days([row('2026-10-19', 15), row('2026-10-20', 11, { used: 2 })]))).toBeNull();
+  });
+
+  it('semua gelombang yang belum lewat batas penuh → full', () => {
+    const later = new Date('2026-10-19T06:30:00Z'); // 13.30 WIB: gelombang hari ini tutup
+    const rows = [
+      row('2026-10-19', 11), row('2026-10-19', 15),
+      row('2026-10-20', 11, { used: 2 }), row('2026-10-20', 15, { used: 2 }),
+      row('2026-10-21', 11, { used: 2 }), row('2026-10-21', 15, { used: 2 }),
+    ];
+    expect(kilatNoBookableWave(days(rows, later))).toBe('full');
+  });
+
+  it('libur ikut tertutup alami: sisa hari kerja penuh → tetap full', () => {
+    const rows = [
+      row('2026-10-19', 11, { used: 2 }), row('2026-10-19', 15, { used: 2 }),
+      row('2026-10-20', 11, { isClosed: true, closedReason: 'holiday' }),
+      row('2026-10-20', 15, { isClosed: true, closedReason: 'holiday' }),
+    ];
+    expect(kilatNoBookableWave(days(rows))).toBe('full');
+  });
+
+  it('tanpa satu pun gelombang penuh (libur / lewat batas saja) → closed', () => {
+    const rows = [
+      row('2026-10-19', 11, { isClosed: true, closedReason: 'holiday' }),
+      row('2026-10-19', 15, { isClosed: true, closedReason: 'holiday' }),
+    ];
+    expect(kilatNoBookableWave(days(rows))).toBe('closed');
+    expect(kilatNoBookableWave([])).toBe('closed');
   });
 });
