@@ -1,5 +1,5 @@
 import type { SurveyFormData, CostCalculation } from '../types';
-import { AD_RATE_SCHEDULE, type AdRateEntry, KILAT_ADDON_COST, KILAT_ADDON_COST_VOUCHER, KILAT_RATE_SCHEDULE, KILAT_TARIFF_FROM, PPN_PERCENT, ILKOMUNY_VALID_UNTIL, JFUFEB_VALID_UNTIL, JFUSUHUD_VALID_UNTIL, PPISWEDIA_VALID_UNTIL } from './constants';
+import { AD_RATE_SCHEDULE, type AdRateEntry, KILAT_ADDON_COST, KILAT_ADDON_COST_VOUCHER, KILAT_RATE_SCHEDULE, KILAT_TARIFF_FROM, PPN_PERCENT, ILKOMUNY_VALID_UNTIL, JFUFEB_VALID_UNTIL, JFUSUHUD_VALID_UNTIL, PPISWEDIA_VALID_UNTIL, JFU_EHEF2026_VALID_UNTIL, JFU_SUHUDENDYEAR_VALID_UNTIL } from './constants';
 
 // DUPLICATED in functions/api/doku/create-payment.js (server-side authoritative
 // copy) — the two MUST be changed together: price tiers, voucher list, the
@@ -41,6 +41,14 @@ export function jfusuhudExpired(atMs: number = Date.now()): boolean {
 
 export function ppiswediaExpired(atMs: number = Date.now()): boolean {
   return atMs >= Date.parse(PPISWEDIA_VALID_UNTIL);
+}
+
+export function jfuEhef2026Expired(atMs: number = Date.now()): boolean {
+  return atMs >= Date.parse(JFU_EHEF2026_VALID_UNTIL);
+}
+
+export function jfuSuhudendyearExpired(atMs: number = Date.now()): boolean {
+  return atMs >= Date.parse(JFU_SUHUDENDYEAR_VALID_UNTIL);
 }
 
 /**
@@ -246,6 +254,16 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
     return ppiswediaExpired(atMs) ? 0 : adCost * 0.2;
   }
 
+  // JFU-EHEF2026 memberikan diskon 10% biaya iklan, s/d 31 Des 2026.
+  if (voucherCode.toUpperCase() === 'JFU-EHEF2026') {
+    return jfuEhef2026Expired(atMs) ? 0 : adCost * 0.1;
+  }
+
+  // JFU-SUHUDENDYEAR memberikan diskon 10% biaya iklan, s/d 31 Jan 2027.
+  if (voucherCode.toUpperCase() === 'JFU-SUHUDENDYEAR') {
+    return jfuSuhudendyearExpired(atMs) ? 0 : adCost * 0.1;
+  }
+
   // Contoh: kode "SEKAR" memberikan diskon 10%
   if (voucherCode.toUpperCase() === 'SEKARJFU') {
     return adCost * 0.1;
@@ -321,8 +339,9 @@ export function calculateDiscount(voucherCode: string | undefined, adCost: numbe
  * internal, dipakai bayar DOKU nyata di Push Uji (keputusan 16 Okt, opsi A).
  * Pada rumus lama `kilatAdCost` = tarif + add-on, jadi add-on ikut terpatok.
  *
- * `rateAtMs` = instan tarif (yang memilih rumus). Kode yang berlaku untuk Kilat
- * tidak punya masa berlaku, jadi instan voucher tidak dibutuhkan.
+ * `rateAtMs` = instan tarif (yang memilih rumus). Kode ambassador tidak punya
+ * masa berlaku; JFU-EHEF2026 dan JFU-SUHUDENDYEAR PUNYA (lihat VOUCHER_CATALOG),
+ * dan `rateAtMs` dipakai juga sebagai instan penilai kevalidan voucher itu.
  */
 export function calculateKilatDiscount(
   voucherCode: string | undefined | null,
@@ -337,6 +356,8 @@ export function calculateKilatDiscount(
     const totalBeforeDiscount = kilatAdCost + incentiveCost;
     return totalBeforeDiscount > 1000 ? totalBeforeDiscount - 1000 : 0;
   }
+  if (code === 'JFU-EHEF2026' && jfuEhef2026Expired(rateAtMs)) return 0;
+  if (code === 'JFU-SUHUDENDYEAR' && jfuSuhudendyearExpired(rateAtMs)) return 0;
   if (!isKilatTariffActive(rateAtMs)) return 0;
   return kilatAdCost * 0.1;
 }
@@ -433,6 +454,18 @@ export const VOUCHER_CATALOG: readonly VoucherCatalogEntry[] = [
     code: 'TEGARGANTENG',
     terms: 'Diskon 20% biaya iklan.',
     validUntil: null,
+  },
+  {
+    code: 'JFU-EHEF2026',
+    terms: 'Diskon 10% biaya iklan. Berlaku juga untuk JFU Kilat: 10% dari tarif Kilat.',
+    validUntil: JFU_EHEF2026_VALID_UNTIL,
+    kilatEligible: true,
+  },
+  {
+    code: 'JFU-SUHUDENDYEAR',
+    terms: 'Diskon 10% biaya iklan. Berlaku juga untuk JFU Kilat: 10% dari tarif Kilat.',
+    validUntil: JFU_SUHUDENDYEAR_VALID_UNTIL,
+    kilatEligible: true,
   },
   ...AMBASSADOR_CODES.map((code) => ({
     code,
@@ -586,10 +619,45 @@ export function getVoucherInfo(
     };
   }
 
+  if (upperCode === 'JFU-EHEF2026') {
+    if (jfuEhef2026Expired(atMs)) {
+      return {
+        isValid: false,
+        message: 'Kode JFU-EHEF2026 sudah berakhir (berlaku s/d 31 Des 2026).',
+        discount: 0,
+        isError: true
+      };
+    }
+    return {
+      isValid: true,
+      message: 'Diskon 10% untuk iklan regular, berlaku s/d 31 Des 2026! Atau upgrade ke ⚡ JFU Kilat',
+      discount: 10,
+      isKilatEligible: true
+    };
+  }
+
+  if (upperCode === 'JFU-SUHUDENDYEAR') {
+    if (jfuSuhudendyearExpired(atMs)) {
+      return {
+        isValid: false,
+        message: 'Kode JFU-SUHUDENDYEAR sudah berakhir (berlaku s/d 31 Jan 2027).',
+        discount: 0,
+        isError: true
+      };
+    }
+    return {
+      isValid: true,
+      message: 'Diskon 10% untuk iklan regular, berlaku s/d 31 Jan 2027! Atau upgrade ke ⚡ JFU Kilat',
+      discount: 10,
+      isKilatEligible: true
+    };
+  }
+
   // Diturunkan dari VOUCHER_CATALOG, bukan daftar kedua yang ditulis ulang.
   // Kode yang sudah pensiun (JAKPATUNIV2025) dikeluarkan; kode berperlakuan
-  // khusus di atas (JFUFEB/ILKOMUNY/PPISWEDIA/JFUSUHUD) sudah pulang lebih dulu,
-  // jadi kehadirannya di daftar ini tidak mengubah apa pun.
+  // khusus di atas (JFUFEB/ILKOMUNY/PPISWEDIA/JFUSUHUD/JFU-EHEF2026/
+  // JFU-SUHUDENDYEAR) sudah pulang lebih dulu, jadi kehadirannya di daftar ini
+  // tidak mengubah apa pun.
   const validCodes = VOUCHER_CATALOG.filter((v) => !v.retired).map((v) => v.code);
   if (validCodes.includes(upperCode)) {
     return { isValid: true };

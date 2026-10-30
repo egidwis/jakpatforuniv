@@ -32,6 +32,8 @@ const ILKOMUNY_VALID_UNTIL = '2026-12-31T17:00:00Z';
 const JFUFEB_VALID_UNTIL = '2027-02-20T17:00:00Z';
 const JFUSUHUD_VALID_UNTIL = '2026-08-31T17:00:00Z';
 const PPISWEDIA_VALID_UNTIL = '2026-06-30T17:00:00Z';
+const JFU_EHEF2026_VALID_UNTIL = '2026-12-31T17:00:00Z';
+const JFU_SUHUDENDYEAR_VALID_UNTIL = '2027-01-31T17:00:00Z';
 
 // `atMs` = "sah pada kapan". Di sini ia BUKAN kemewahan: fungsi di bawah
 // menghitung ulang harga setiap kali pembayaran dibuat, lalu mengoreksi
@@ -53,6 +55,14 @@ function jfusuhudExpired(atMs = Date.now()) {
 
 function ppiswediaExpired(atMs = Date.now()) {
   return atMs >= Date.parse(PPISWEDIA_VALID_UNTIL);
+}
+
+function jfuEhef2026Expired(atMs = Date.now()) {
+  return atMs >= Date.parse(JFU_EHEF2026_VALID_UNTIL);
+}
+
+function jfuSuhudendyearExpired(atMs = Date.now()) {
+  return atMs >= Date.parse(JFU_SUHUDENDYEAR_VALID_UNTIL);
 }
 
 function calculatePpn(dpp) {
@@ -121,7 +131,7 @@ export const KILAT_RATE_SCHEDULE = [
 export const KILAT_VOUCHER_CODES = [
   'JFUTYR', 'SEKARJFU', 'ADINDAJFU', 'RAJAJFU', 'SACIJFU', 'JFUGITA',
   'JFUTANIA', 'JFUEDO', 'JFURAISA', 'JFUANA', 'JFUSALSA', 'JFUNATALIA',
-  'JFUTGRX',
+  'JFUTGRX', 'JFU-EHEF2026', 'JFU-SUHUDENDYEAR',
 ];
 
 // ── BATAS BAYAR GELOMBANG KILAT (Phase 5 §5.7, R6) ─────────────────────
@@ -252,8 +262,11 @@ export function kilatRateAt(questionCount, atMs, tariffFrom = KILAT_TARIFF_FROM)
  * Diskon voucher Kilat. Cermin `calculateKilatDiscount()` di cost-calculator.ts:
  * ambassador = 10% tarif Kilat (0 pada rumus lama), JFUTGRX = total dipatok
  * Rp 1.000 (juga pada rumus lama), kode lain 0.
+ *
+ * `rateAtMs` = instan tarif (dipakai juga untuk menilai kevalidan JFU-EHEF2026
+ * dan JFU-SUHUDENDYEAR, satu-satunya kode Kilat yang punya masa berlaku).
  */
-export function calculateKilatDiscount(voucherCode, kilatAdCost, incentiveCost, legacy) {
+export function calculateKilatDiscount(voucherCode, kilatAdCost, incentiveCost, legacy, rateAtMs = Date.now()) {
   if (!voucherCode) return 0;
   const code = String(voucherCode).toUpperCase();
   if (!KILAT_VOUCHER_CODES.includes(code)) return 0;
@@ -262,6 +275,8 @@ export function calculateKilatDiscount(voucherCode, kilatAdCost, incentiveCost, 
     const totalBeforeDiscount = kilatAdCost + incentiveCost;
     return totalBeforeDiscount > 1000 ? totalBeforeDiscount - 1000 : 0;
   }
+  if (code === 'JFU-EHEF2026' && jfuEhef2026Expired(rateAtMs)) return 0;
+  if (code === 'JFU-SUHUDENDYEAR' && jfuSuhudendyearExpired(rateAtMs)) return 0;
   if (legacy) return 0;
   return kilatAdCost * 0.1;
 }
@@ -302,10 +317,13 @@ export function calculateDiscount(voucherCode, adCost, incentiveCost, duration, 
   const tenPercentCodes = [
     'JFUTYR', 'SEKARJFU', 'ADINDAJFU', 'RAJAJFU', 'SACIJFU', 'JFUGITA',
     'JFUTANIA', 'JFUEDO', 'JFURAISA', 'JFUANA', 'JFUSALSA', 'JFUNATALIA',
-    'JFUSUHUD',
+    'JFUSUHUD', 'JFU-EHEF2026', 'JFU-SUHUDENDYEAR',
   ];
-  // JFUSUHUD ikut daftar 10% tapi punya batas sendiri (s/d 31 Agu 2026).
+  // JFUSUHUD/JFU-EHEF2026/JFU-SUHUDENDYEAR ikut daftar 10% tapi masing-masing
+  // punya batas sendiri.
   if (code === 'JFUSUHUD' && jfusuhudExpired(atMs)) return 0;
+  if (code === 'JFU-EHEF2026' && jfuEhef2026Expired(atMs)) return 0;
+  if (code === 'JFU-SUHUDENDYEAR' && jfuSuhudendyearExpired(atMs)) return 0;
   if (tenPercentCodes.includes(code)) return adCost * 0.1;
 
   return 0;
@@ -519,7 +537,7 @@ export function computeTotalCostFromSubmission(sub, kilatTariffFrom = KILAT_TARI
     // add-on, tanpa voucher) atau tabel Kilat — `kilatRateAt` yang memilih.
     const rate = kilatRateAt(questionCount, sub.rate_instant, kilatTariffFrom);
     const kilatAdCost = rate.effective + rate.addon;
-    const discount = calculateKilatDiscount(voucherCode, kilatAdCost, incentiveCost, rate.legacy);
+    const discount = calculateKilatDiscount(voucherCode, kilatAdCost, incentiveCost, rate.legacy, sub.rate_instant);
     subtotal = kilatAdCost + incentiveCost - discount;
   } else {
     const adCost = calculateAdCostPerDay(questionCount, sub.rate_instant) * duration;
@@ -601,7 +619,7 @@ export function buildNoteItems(sub, pricingSub, kilatTariffFrom = KILAT_TARIFF_F
     } else {
       // Tabel Kilat — satu baris tarif gelombang, diskon voucher dilebur ke
       // harganya (pola yang sama dengan `discountedPerDay` Iklan di bawah).
-      const discount = calculateKilatDiscount(noteVoucherCode, rate.effective, noteIncentive, false);
+      const discount = calculateKilatDiscount(noteVoucherCode, rate.effective, noteIncentive, false, pricingSub.rate_instant);
       if (rate.effective > 0) {
         noteItems.push({
           name: 'Kilat Survei (1 gelombang)',

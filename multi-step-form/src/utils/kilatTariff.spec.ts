@@ -55,10 +55,12 @@ describe('paritas klien ⇄ server', () => {
     );
   });
 
-  test('kode voucher Kilat identik: 12 ambassador + JFUTGRX', () => {
+  test('kode voucher Kilat identik: 12 ambassador + JFUTGRX + JFU-EHEF2026 + JFU-SUHUDENDYEAR', () => {
     expect([...server.KILAT_VOUCHER_CODES].sort()).toEqual([...KILAT_VOUCHER_CODES].sort());
-    expect(KILAT_VOUCHER_CODES).toHaveLength(13);
+    expect(KILAT_VOUCHER_CODES).toHaveLength(15);
     expect(KILAT_VOUCHER_CODES).toContain('JFUTGRX');
+    expect(KILAT_VOUCHER_CODES).toContain('JFU-EHEF2026');
+    expect(KILAT_VOUCHER_CODES).toContain('JFU-SUHUDENDYEAR');
     for (const code of ['JFUFEB', 'ILKOMUNY', 'TEGARGANTENG', 'PPISWEDIA', 'JFUSUHUD', 'JAKPATUNIV2025']) {
       expect(KILAT_VOUCHER_CODES).not.toContain(code);
     }

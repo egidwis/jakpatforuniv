@@ -173,6 +173,10 @@ export const PPN_RATE = 0.11;
 export const ILKOMUNY_VALID_UNTIL = '2026-12-31T17:00:00Z';
 export const JFUFEB_VALID_UNTIL = '2027-02-20T17:00:00Z';
 export const PPISWEDIA_VALID_UNTIL = '2026-06-30T17:00:00Z';
+// JFU-EHEF2026     s/d 31 Des 2026 → 2027-01-01 00:00 WIB = 2026-12-31T17:00Z.
+// JFU-SUHUDENDYEAR s/d 31 Jan 2027 → 2027-02-01 00:00 WIB = 2027-01-31T17:00Z.
+export const JFU_EHEF2026_VALID_UNTIL = '2026-12-31T17:00:00Z';
+export const JFU_SUHUDENDYEAR_VALID_UNTIL = '2027-01-31T17:00:00Z';
 
 // JFUSUHUD adalah pintu masuk pilot JFU Kilat, bukan sekadar diskon 10%: saat ia
 // mati, tombol upgrade Kilat di Ringkasan Pesanan ikut hilang karena
