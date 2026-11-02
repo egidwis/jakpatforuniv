@@ -184,6 +184,9 @@ function AppContent() {
         {/* Invoice Route - Standalone Full Screen (without container/footer wrapper) */}
         <Route path="/invoices/:paymentId" element={<PrivateRoute><InvoicePage /></PrivateRoute>} />
 
+        {/* Public Survey Directory - Standalone Full-Bleed Shell (consistent with /homepage/) */}
+        <Route path="/pages" element={<SurveyListingPage />} />
+
         {/* Public Content Routes - Wrapped in Container */}
         <Route path="*" element={
           <PublicLayout>
@@ -192,7 +195,6 @@ function AppContent() {
               <Route path="/payment-success" element={<PaymentSuccessPage />} />
               <Route path="/payment-failed" element={<PaymentFailedPage />} />
               <Route path="/payment-retry" element={<PaymentRetryRedirect />} />
-              <Route path="/pages" element={<SurveyListingPage />} />
               <Route path="/pages/:slug" element={<SurveyPage />} />
               <Route path="/privacy-policy" element={<ExternalRedirect to="/homepage/privacy-policy.html" />} />
               <Route path="/privacy-policy.html" element={<ExternalRedirect to="/homepage/privacy-policy.html" />} />
