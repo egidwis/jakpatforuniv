@@ -1,5 +1,7 @@
 import { cardStateOf, type CardState } from '@/components/submissions/tabs/scheduleCardActions';
 import type { AdScheduleEntry, ScheduleBilling } from '@/utils/supabase';
+import { rateInstantOf, voucherInstantOf, voucherVerdict, voucherVerdictReason } from '@/utils/cost-calculator';
+import { buildExtensionInvoiceItems, buildOrderInvoiceItems, type InvoiceItem } from './invoiceItems';
 
 /**
  * Siapa yang boleh ikut satu tagihan gabungan, dan kenapa sisanya tidak.
@@ -181,4 +183,60 @@ export function distinctAccounts(
   submissions: Array<{ auth_user_id?: string | null }>,
 ): number {
   return new Set(submissions.map((s) => s.auth_user_id ?? '(tanpa akun)')).size;
+}
+
+/**
+ * Item tagihan satu bundel. Voucher dinilai pada tanggal ORDER lahir
+ * (`orderCreatedAt`), tarif pada instan tarif jadwal — sama dengan form invoice
+ * tunggal.
+ *
+ * ⚠️ Server TIDAK menghitung ulang tagihan gabungan (create-payment.js menolak
+ * mencetak tagihan kedua untuk anggota grup), jadi item inilah yang ditagih.
+ */
+export function buildBulkItems(candidate: BulkCandidate, voucherCode: string): InvoiceItem[] {
+  const { entry, orderCreatedAt } = candidate;
+  const voucherInstantMs = voucherInstantOf(orderCreatedAt);
+
+  if (entry.isExtension) {
+    return buildExtensionInvoiceItems(entry, {
+      questionCount: candidate.questionCount,
+      fallbackWinnerCount: entry.winnerCount || undefined,
+      voucherCode,
+      voucherInstantMs,
+    });
+  }
+
+  return buildOrderInvoiceItems({
+    duration: entry.duration,
+    questionCount: candidate.questionCount,
+    winnerCount: entry.winnerCount,
+    prizePerWinner: entry.prizePerWinner,
+    voucherCode,
+    isKilat: entry.distributionType === 'kilat',
+    voucherInstantMs,
+    rateInstantMs: rateInstantOf(entry.rateLockedAt),
+  }).items;
+}
+
+/**
+ * Efek voucher pada SATU bundel, dengan kalimat yang sama seperti form invoice
+ * tunggal dan rincian harga. Potongannya = selisih item tanpa vs dengan
+ * voucher — dari `buildBulkItems` yang sama, bukan rumus ketiga.
+ */
+export function bundleVoucherEffect(
+  candidate: BulkCandidate,
+  voucherCode: string,
+): { applied: boolean; label: string } | null {
+  const code = voucherCode.trim().toUpperCase();
+  if (!code) return null;
+  const sum = (items: InvoiceItem[]) => items.reduce((a, it) => a + it.qty * it.price, 0);
+  const discount = sum(buildBulkItems(candidate, '')) - sum(buildBulkItems(candidate, code));
+  const verdict = voucherVerdict(code, discount, {
+    isKilat: candidate.entry.distributionType === 'kilat',
+    voucherAtMs: voucherInstantOf(candidate.orderCreatedAt),
+    rateAtMs: rateInstantOf(candidate.entry.rateLockedAt),
+  })!;
+  return verdict.status === 'applied'
+    ? { applied: true, label: `Voucher ${code}: potongan Rp ${discount.toLocaleString('id-ID')}` }
+    : { applied: false, label: `Voucher ${code} tidak terpotong: ${voucherVerdictReason(verdict)}` };
 }

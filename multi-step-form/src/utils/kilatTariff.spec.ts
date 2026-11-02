@@ -183,9 +183,14 @@ describe('order bertarif sebelum tanggal mulai: rumus lama persis', () => {
       .toBe('Voucher uji sistem — tagihan dipatok Rp 1.000');
   });
 
-  test.each(['JFUGITA', 'JFUFEB'])('label voucher admin untuk Kilat lama: %s → null (tidak mengubah harga)', (code) => {
+  test.each([
+    ['JFUGITA', 'tarif lama'],
+    ['JFUFEB', 'tidak berlaku untuk Kilat'],
+  ])('label voucher admin untuk Kilat lama: %s → tidak terpotong, alasan "%s"', (code, reason) => {
     const at = LEGACY_AT;
-    expect(describeVoucher(code, { adCost: 300_000, incentiveCost: 50_000, duration: 1 }, { adCost: 500_000, rateInstantMs: at })).toBeNull();
+    const v = describeVoucher(code, { adCost: 300_000, incentiveCost: 50_000, duration: 1 }, { adCost: 500_000, rateInstantMs: at });
+    expect(v).toMatchObject({ applied: false, discount: 0 });
+    expect(v?.label).toContain(reason);
   });
 });
 

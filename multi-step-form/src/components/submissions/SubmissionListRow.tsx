@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronRight, ShieldAlert, Copy, Check, Clock } from 'lucide-react';
+import { AlertTriangle, ChevronRight, ShieldAlert, Copy, Check, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { Checkbox } from '../ui/checkbox';
 import { Chip } from '../ui/chip';
@@ -10,6 +10,7 @@ import {
   TooltipTrigger,
 } from '../ui/tooltip';
 import { cn } from '@/lib/utils';
+import { OFFICIAL_VOUCHER_CODES } from '@/utils/cost-calculator';
 import type { SurveySubmission } from './types';
 import type { LifecycleInfo } from './lifecycle';
 import { getSubmissionActionDot } from './lifecycle';
@@ -184,20 +185,36 @@ export function SubmissionListRow({
           <DivertedAwayChip reason={submission.forced_manual_reason} paymentStatus={submission.payment_status} />
           <KilatLiveChip live={kilatLive} />
           <SelfBookingClosedChip cappedAt={submission.self_booking_closed_at} startDate={submission.start_date} />
-          {submission.voucher_code && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 uppercase shrink-0">
-                    {submission.voucher_code}
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Voucher Code: {submission.voucher_code}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
+          {submission.voucher_code && (() => {
+            // Baris daftar tidak membawa konteks harga — yang bisa dinilai jujur
+            // di sini hanya "dikenal sistem atau tidak". Kode tak dikenal tidak
+            // pernah memotong, dan dulu tampil identik dengan kode yang sah.
+            const known = OFFICIAL_VOUCHER_CODES.includes(submission.voucher_code.trim().toUpperCase());
+            return (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className={cn(
+                      'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase shrink-0',
+                      known
+                        ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                        : 'bg-white text-amber-800 border border-dashed border-amber-400',
+                    )}>
+                      {!known && <AlertTriangle className="w-2.5 h-2.5 shrink-0" aria-hidden />}
+                      {submission.voucher_code}
+                      {!known && <span className="sr-only"> (kode tidak dikenal sistem)</span>}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>
+                      Voucher: {submission.voucher_code}
+                      {!known && ' — kode tidak dikenal sistem, tidak memotong harga. Periksa ejaannya.'}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            );
+          })()}
           {missedPayment && (
             /* Penanda Track B5. Ditaruh di judul, bukan di chip lifecycle:
                chipnya tetap "Menunggu Pembayaran" — yang benar — dan penanda ini

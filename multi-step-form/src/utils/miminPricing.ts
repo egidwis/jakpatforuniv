@@ -52,7 +52,7 @@ function kilatPricingLines(nowMs: number): string {
     }).join(' | ');
     return `  - Pesanan dibuat ${periodLabel(i, KILAT_RATE_SCHEDULE, KILAT_TARIFF_FROM)}: ${tiers}`;
   }).filter((line): line is string => line !== null);
-  return `- JFU Kilat: tarif per GELOMBANG (satu kali siar push, bukan per hari), ditambah hadiah responden. Tidak ada pilihan durasi. Voucher yang berlaku untuk Kilat hanya kode ambassador (potongan 10% dari tarif Kilat, bukan dari hadiah).
+  return `- JFU Kilat: tarif per GELOMBANG (satu kali siar push, bukan per hari), ditambah hadiah responden. Tidak ada pilihan durasi. Hanya sebagian kode voucher yang berlaku untuk Kilat (kode ambassador dan beberapa kode promo); potongannya 10% dari tarif Kilat, bukan dari hadiah. Jangan menebak apakah sebuah kode berlaku dan jangan menyebut daftar kode — minta peneliti memasukkan kodenya di form, sistem langsung memberi tahu.
 ${lines.join('\n')}`;
 }
 

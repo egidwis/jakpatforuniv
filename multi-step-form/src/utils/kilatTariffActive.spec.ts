@@ -146,8 +146,10 @@ describe('label voucher di form invoice admin (order Kilat)', () => {
   test('JFUTGRX: label biaya uji', () => {
     expect(describeVoucher('JFUTGRX', input, kilat)?.label).toContain('Rp 1.000');
   });
-  test.each(['JFUFEB', 'ILKOMUNY', 'TEGARGANTENG'])('%s: tidak mengubah harga Kilat → null', (code) => {
-    expect(describeVoucher(code, { adCost: 750_000, incentiveCost: 50_000, duration: 1 }, kilat)).toBeNull();
+  test.each(['JFUFEB', 'ILKOMUNY', 'TEGARGANTENG'])('%s: tidak terpotong di Kilat, alasannya disebut', (code) => {
+    const v = describeVoucher(code, { adCost: 750_000, incentiveCost: 50_000, duration: 1 }, kilat);
+    expect(v).toMatchObject({ applied: false, discount: 0 });
+    expect(v?.label).toContain('tidak berlaku untuk Kilat Survei');
   });
 });
 

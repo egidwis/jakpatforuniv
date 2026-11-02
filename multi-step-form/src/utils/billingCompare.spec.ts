@@ -31,7 +31,13 @@ describe('recordedVsBilled', () => {
     // Kasus nyata yang memulai pekerjaan ini. 31 pertanyaan = Rp 300.000/hari,
     // tapi harganya dibekukan di tier <=30 (Rp 200.000).
     expect(recordedVsBilled(recorded(288_600), [ev({ amount: 399_600, isPaid: true, isPending: false })]))
-      .toEqual({ billed: 399_600, recorded: 288_600, delta: 111_000 });
+      .toEqual({ billed: 399_600, recorded: 288_600, delta: 111_000, voucherCode: null });
+  });
+
+  it('membawa voucher tagihannya — harga tercatat tanpa voucher, tagihan bervoucher', () => {
+    // JAK2666 (2 Nov 2026): tercatat 527.250, tagihan gabungan dengan voucher 493.950.
+    expect(recordedVsBilled(recorded(527_250), [ev({ amount: 493_950, voucherCode: 'JFU-SUHUDENDYEAR' })]))
+      .toEqual({ billed: 493_950, recorded: 527_250, delta: -33_300, voucherCode: 'JFU-SUHUDENDYEAR' });
   });
 
   it('selisih ke arah sebaliknya juga disebut', () => {

@@ -31,6 +31,8 @@ export interface BillingEvent {
    * kedaluwarsa", yang persis perilaku sebelum kolom ini ada.
    */
   isExpired?: boolean;
+  /** Voucher yang dipakai menagih (`invoices.voucher_code`). */
+  voucherCode?: string | null;
 }
 
 /**
@@ -61,6 +63,11 @@ export interface RecordedVsBilled {
   recorded: number;
   /** `billed - recorded`. Positif = ditagih lebih dari yang tercatat. */
   delta: number;
+  /**
+   * Voucher tagihan itu. Menjawab "voucher-nya sudah masuk?" saat harga
+   * tercatat dihitung tanpa voucher tapi tagihannya memakai voucher.
+   */
+  voucherCode: string | null;
 }
 
 /**
@@ -93,5 +100,5 @@ export function recordedVsBilled(
   const billed = live[0].amount;
   if (billed === money.total) return null;
 
-  return { billed, recorded: money.total, delta: billed - money.total };
+  return { billed, recorded: money.total, delta: billed - money.total, voucherCode: live[0].voucherCode?.trim() || null };
 }

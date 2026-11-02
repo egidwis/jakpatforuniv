@@ -2025,6 +2025,8 @@ export interface InvoiceGroupMember {
   amount: number;
   status: string;
   isPaid: boolean;
+  /** Baris ini sudah mati (`DEAD_PAYMENT_STATUSES`) — tidak bisa dibayar lagi. */
+  isDead?: boolean;
   ordinal: number | null;
   startDate: string | null;
   /**
@@ -2047,6 +2049,11 @@ export interface InvoiceGroup {
    */
   total: number;
   allPaid: boolean;
+  /**
+   * Seluruh baris grup sudah mati (batal/kedaluwarsa/gagal). Panel grup tetap
+   * tampil untuk riwayat, tapi TIDAK boleh berbunyi "Hidup s/d …".
+   */
+  allDead?: boolean;
   /** Tagihan tempo — tanpa tanggal jatuh tempo (sql/102). */
   isTempo: boolean;
   /**
@@ -2126,6 +2133,7 @@ export const fetchInvoiceGroups = async (
         amount: Number(r.amount || 0),
         status,
         isPaid: PAID_ROW_STATUSES.includes(status.toLowerCase()),
+        isDead: DEAD_PAYMENT_STATUSES.includes(status.toLowerCase()),
         ordinal: sched?.ordinal ?? null,
         startDate: sched?.start_date ?? null,
         airOnCredit: sched ? !!sched.air_on_credit_at : undefined,
@@ -2155,6 +2163,7 @@ export const fetchInvoiceGroups = async (
         memberCount: members.length,
         total: members.reduce((sum, m) => sum + m.amount, 0),
         allPaid: members.length > 0 && members.every((m) => m.isPaid),
+        allDead: members.length > 0 && members.every((m) => m.isDead),
         isTempo: ownRows.some((r) => !!r.is_tempo),
         supersededBy: ownRows.find((r) => r.superseded_by)?.superseded_by ?? null,
       });

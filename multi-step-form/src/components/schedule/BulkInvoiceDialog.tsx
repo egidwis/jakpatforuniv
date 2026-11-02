@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, CalendarClock, CreditCard, Loader2, MessageCircle } from 'lucide-react';
+import { AlertTriangle, CalendarClock, CreditCard, Loader2, MessageCircle, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { formatIDR } from '@/utils/currency';
-import { rateInstantOf, voucherInstantOf } from '@/utils/cost-calculator';
 import { createManualInvoice } from '@/utils/payment';
 import { leadOf, payLinkUrl } from '@/utils/payLink';
 import {
@@ -19,10 +18,10 @@ import {
   closeTab, invoiceReadyMessage, openBlankTab, sendToTab,
 } from '@/utils/waMessage';
 import type { SurveySubmission } from '@/components/submissions/types';
-import { buildExtensionInvoiceItems, buildOrderInvoiceItems, type InvoiceItem } from './invoiceItems';
+import type { InvoiceItem } from './invoiceItems';
 import { bundleTotals, groupTotals, writeInvoiceRows, InvoiceWriteError, type InvoiceBundle } from './invoiceWrite';
 import {
-  distinctAccounts, planBulkInvoice, type BulkCandidate, type BulkRejection,
+  buildBulkItems, bundleVoucherEffect, distinctAccounts, planBulkInvoice, type BulkCandidate, type BulkRejection,
 } from './bulkInvoiceCandidates';
 
 // ─────────────────────────────────────────────────────────────
@@ -115,7 +114,7 @@ export function BulkInvoiceDialog({
     try {
       const plan = await loadPlan();
       setRejected(plan.rejected);
-      setBundles(plan.candidates.map((c) => ({ ...c, items: buildItems(c, appliedVoucher) })));
+      setBundles(plan.candidates.map((c) => ({ ...c, items: buildBulkItems(c, appliedVoucher) })));
     } catch (e: any) {
       console.error('Gagal menyiapkan tagihan gabungan:', e);
       // ⚠️ TIDAK menampilkan daftar sebagian. Daftar sebagian tidak bisa
@@ -152,7 +151,7 @@ export function BulkInvoiceDialog({
   const applyVoucher = () => {
     const code = voucher.trim().toUpperCase();
     setAppliedVoucher(code);
-    setBundles((prev) => prev.map((b) => ({ ...b, items: buildItems(b, code) })));
+    setBundles((prev) => prev.map((b) => ({ ...b, items: buildBulkItems(b, code) })));
     toast.success(code ? `Voucher ${code} diterapkan ke semua pesanan` : 'Voucher dilepas');
   };
 
@@ -190,7 +189,7 @@ export function BulkInvoiceDialog({
       if (before !== after) {
         closeTab(waTab);
         setRejected(fresh.rejected);
-        setBundles(fresh.candidates.map((c) => ({ ...c, items: buildItems(c, appliedVoucher) })));
+        setBundles(fresh.candidates.map((c) => ({ ...c, items: buildBulkItems(c, appliedVoucher) })));
         toast.warning(
           'Daftar pesanan berubah sejak dialog ini dibuka — tidak ada tagihan yang dibuat. '
           + 'Periksa daftar yang baru, lalu tekan lagi.',
@@ -529,6 +528,7 @@ export function BulkInvoiceDialog({
                 <div className="space-y-2">
                   {bundles.map((bundle, i) => {
                     const t = bundleTotals(bundle.items);
+                    const effect = bundleVoucherEffect(bundle, appliedVoucher);
                     return (
                       <div key={bundle.entry.id} className="rounded-lg border border-slate-200 bg-white p-3">
                         <div className="flex items-start justify-between gap-3">
@@ -547,6 +547,11 @@ export function BulkInvoiceDialog({
                             {formatIDR(t.amount)}
                           </span>
                         </div>
+                        {effect && (
+                          <p className={`mt-1.5 flex items-start gap-1.5 text-[11px] ${effect.applied ? 'text-emerald-700' : 'text-amber-800'}`}>
+                            <Tag className="w-3 h-3 mt-0.5 shrink-0" /> {effect.label}
+                          </p>
+                        )}
                         <ul className="mt-2 space-y-0.5 text-[11px] text-gray-600">
                           {bundle.items.map((it) => (
                             <li key={it.id} className="flex justify-between gap-3">
@@ -602,37 +607,18 @@ export function BulkInvoiceDialog({
 
 // ─────────────────────────────────────────────────────────────
 
-function buildItems(candidate: BulkCandidate, voucherCode: string): InvoiceItem[] {
-  const { entry, orderCreatedAt } = candidate;
-  const voucherInstantMs = voucherInstantOf(orderCreatedAt);
-
-  if (entry.isExtension) {
-    return buildExtensionInvoiceItems(entry, {
-      questionCount: candidate.questionCount,
-      fallbackWinnerCount: entry.winnerCount || undefined,
-      voucherCode,
-      voucherInstantMs,
-    });
-  }
-
-  return buildOrderInvoiceItems({
-    duration: entry.duration,
-    questionCount: candidate.questionCount,
-    winnerCount: entry.winnerCount,
-    prizePerWinner: entry.prizePerWinner,
-    voucherCode,
-    isKilat: entry.distributionType === 'kilat',
-    voucherInstantMs,
-    rateInstantMs: rateInstantOf(entry.rateLockedAt),
-  }).items;
-}
-
+/**
+ * ⚠️ Voucher ditulis HANYA ke bundel yang benar-benar terpotong.
+ * `invoices.voucher_code` dibaca sebagai "voucher yang dipakai menagih"
+ * (JadwalDanBayarPage, create-payment.js). Dulu kode yang diketik ditulis ke
+ * SEMUA baris — 2 Nov 2026: empat baris JFU-SUHUDENDYEAR bernominal penuh.
+ */
 const toInvoiceBundle = (voucherCode: string) => (b: BundleDraft): InvoiceBundle => ({
   entry: b.entry,
   submissionId: b.submissionId,
   items: b.items,
   memo: '',
-  voucherCode: voucherCode.trim() ? voucherCode.trim().toUpperCase() : null,
+  voucherCode: bundleVoucherEffect(b, voucherCode)?.applied ? voucherCode.trim().toUpperCase() : null,
 });
 
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {

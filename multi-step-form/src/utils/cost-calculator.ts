@@ -506,6 +506,83 @@ export const KILAT_VOUCHER_CODES: readonly string[] = VOUCHER_CATALOG
   .map((v) => v.code);
 
 /**
+ * Status voucher pada sebuah rincian harga — SATU jawaban untuk "voucher ini
+ * memotong atau tidak, dan kenapa", dipakai setiap layar yang memajang voucher.
+ *
+ * `not_in_record` = kodenya sah, tapi harga TERCATAT dihitung tanpanya (kode
+ * diketik/diperbaiki sesudah harga tersimpan). Hanya rincian harga tercatat
+ * (`scheduleMoney`) yang bisa mengetahuinya, jadi status ini dibentuk di sana.
+ */
+export type VoucherVerdictStatus =
+  | 'applied' | 'unknown' | 'expired' | 'not_for_kilat' | 'kilat_legacy' | 'no_effect' | 'not_in_record';
+
+export interface VoucherVerdict {
+  code: string;
+  status: VoucherVerdictStatus;
+  discount: number;
+  /** Batas berlaku (ISO, eksklusif) — terisi untuk `expired` yang bertanggal. */
+  validUntil: string | null;
+}
+
+/**
+ * `discount` = hasil `calculateDiscount`/`calculateKilatDiscount` milik
+ * pemanggil. Fungsi ini TIDAK menghitung harga; ia hanya menerangkan diskon
+ * nol. Masa berlaku Iklan dinilai pada tanggal order lahir (`voucherAtMs`),
+ * Kilat pada instan tarif (`rateAtMs`) — sama persis dengan penghitungnya.
+ */
+export function voucherVerdict(
+  voucherCode: string | null | undefined,
+  discount: number,
+  ctx: { isKilat: boolean; voucherAtMs: number; rateAtMs: number },
+): VoucherVerdict | null {
+  const code = (voucherCode ?? '').trim().toUpperCase();
+  if (!code) return null;
+  if (discount > 0) return { code, status: 'applied', discount, validUntil: null };
+
+  const entry = VOUCHER_CATALOG.find((v) => v.code === code);
+  const zero = (status: VoucherVerdictStatus, validUntil: string | null = null): VoucherVerdict =>
+    ({ code, status, discount: 0, validUntil });
+
+  if (!entry) return zero('unknown');
+  if (entry.retired) return zero('expired');
+  if (ctx.isKilat) {
+    if (!KILAT_VOUCHER_CODES.includes(code)) return zero('not_for_kilat');
+    if (!isVoucherActive(entry, ctx.rateAtMs)) return zero('expired', entry.validUntil);
+    if (code !== 'JFUTGRX' && !isKilatTariffActive(ctx.rateAtMs)) return zero('kilat_legacy');
+    return zero('no_effect');
+  }
+  if (!isVoucherActive(entry, ctx.voucherAtMs)) return zero('expired', entry.validUntil);
+  return zero('no_effect');
+}
+
+/** Hari terakhir berlaku (WIB) dari batas eksklusif — "31 Des 2026". */
+export function voucherLastDayLabel(validUntil: string | null, language: 'id' | 'en' = 'id'): string {
+  if (!validUntil) return '';
+  const end = Date.parse(validUntil);
+  if (Number.isNaN(end)) return '';
+  return new Intl.DateTimeFormat(language === 'en' ? 'en-GB' : 'id-ID', {
+    day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta',
+  }).format(end - 1);
+}
+
+/** Alasan diskon nol, bahasa Indonesia — layar admin (tanpa i18n). */
+export function voucherVerdictReason(v: VoucherVerdict): string {
+  switch (v.status) {
+    case 'applied': return '';
+    case 'unknown': return 'kode tidak dikenal sistem — periksa ejaannya';
+    case 'expired': return v.validUntil
+      ? `masa berlaku habis (s/d ${voucherLastDayLabel(v.validUntil)})`
+      : 'kode sudah tidak berlaku';
+    case 'not_for_kilat': return 'tidak berlaku untuk Kilat Survei';
+    case 'kilat_legacy': return 'order Kilat bertarif lama tidak menerima voucher';
+    case 'no_effect': return 'tidak mengubah harga pesanan ini';
+    // Benar untuk dua keadaan: tagihan berdiskon sudah terbit (harga tercatat
+    // memang tidak ikut diperbarui), atau belum ada tagihan sama sekali.
+    case 'not_in_record': return 'harga tercatat dihitung tanpa voucher ini — potongannya hanya berlaku bila tagihan diterbitkan dengan voucher';
+  }
+}
+
+/**
  * Mendapatkan informasi voucher berdasarkan kode
  * @param voucherCode Kode voucher
  * @returns Informasi voucher atau null jika tidak valid
@@ -526,15 +603,33 @@ export function getVoucherInfo(
   if (product === 'kilat') {
     if (upperCode === 'JFUTGRX') return { isValid: true };
     if (KILAT_VOUCHER_CODES.includes(upperCode)) {
-      // Kode ambassador baru memotong sejak tarif Kilat baru (opsi A, 16 Okt).
-      return isKilatTariffActive(atMs)
-        ? { isValid: true, message: 'Diskon 10% dari tarif Kilat Survei (kode ambassador)', discount: 10 }
-        : { isValid: false, message: 'Kode ambassador belum memotong harga Kilat Survei saat ini.', isError: false };
+      const entry = VOUCHER_CATALOG.find((v) => v.code === upperCode)!;
+      // Kode bertanggal (JFU-EHEF2026, JFU-SUHUDENDYEAR) — `calculateKilatDiscount`
+      // memberi 0 sesudah tenggatnya, jadi form tidak boleh tetap berkata "Diskon".
+      if (!isVoucherActive(entry, atMs)) {
+        return {
+          isValid: false,
+          message: `Kode ${upperCode} sudah berakhir (berlaku s/d ${voucherLastDayLabel(entry.validUntil)}).`,
+          discount: 0,
+          isError: true,
+        };
+      }
+      // Kode Kilat baru memotong sejak tarif Kilat baru (opsi A, 16 Okt).
+      if (!isKilatTariffActive(atMs)) {
+        return { isValid: false, message: 'Kode ini belum memotong harga Kilat Survei saat ini.', isError: false };
+      }
+      return {
+        isValid: true,
+        message: entry.validUntil
+          ? `Diskon 10% dari tarif Kilat Survei, berlaku s/d ${voucherLastDayLabel(entry.validUntil)}`
+          : 'Diskon 10% dari tarif Kilat Survei',
+        discount: 10,
+      };
     }
     if (OFFICIAL_VOUCHER_CODES.includes(upperCode)) {
       return {
         isValid: false,
-        message: 'Kode ini tidak berlaku untuk Kilat Survei. Kilat Survei hanya menerima kode ambassador.',
+        message: 'Kode ini tidak berlaku untuk Kilat Survei.',
         discount: 0,
         isError: true,
       };

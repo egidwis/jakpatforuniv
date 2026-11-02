@@ -2,6 +2,7 @@ import type { AdScheduleEntry } from '@/utils/supabase';
 import {
   calculateIncentiveCost, calculateDiscount, calculatePpn, calculateKilatDiscount,
   adRateAt, kilatRateAt, rateInstantOf, voucherInstantOf,
+  voucherVerdict, voucherVerdictReason, type VoucherVerdict,
 } from '@/utils/cost-calculator';
 import { formatYmdId } from '@/utils/airing-window';
 
@@ -53,7 +54,12 @@ export interface MoneyLine {
   hintVars?: Record<string, string | number>;
   hint?: string;
   amount: number;
-  tone?: 'discount' | 'addon';
+  /**
+   * `'void'` = voucher yang TERCANTUM tapi tidak memotong (`amount` selalu 0).
+   * Tanpa baris ini "ada voucher, tidak berlaku" tampil identik dengan "tanpa
+   * voucher", dan admin tidak bisa tahu apakah potongannya sudah masuk.
+   */
+  tone?: 'discount' | 'addon' | 'void';
   /**
    * `'intro'` = baris "Harga perkenalan" (selisih harga katalog − efektif).
    *
@@ -181,6 +187,38 @@ export function introLine(listAmount: number, effectiveAmount: number, introUnti
   }];
 }
 
+/**
+ * Baris rincian untuk voucher: potongan bila `applied`, baris `void` bila tidak.
+ * SATU bentuk untuk `deriveScheduleMoney` dan `orderMoneyLines`, supaya admin
+ * dan peneliti membaca kalimat yang sama di setiap layar.
+ */
+export function voucherLine(v: VoucherVerdict | null): MoneyLine[] {
+  if (!v) return [];
+  if (v.status === 'applied') {
+    return [{
+      label: `Diskon Voucher (${v.code})`,
+      labelKey: 'costLineVoucherNamed',
+      labelVars: { code: v.code },
+      amount: -v.discount,
+      tone: 'discount',
+    }];
+  }
+  const end = v.validUntil ? Date.parse(v.validUntil) : NaN;
+  // Hari terakhir berlaku, kalender WIB, sebagai YYYY-MM-DD — `CostBreakdown`
+  // yang melokalkannya (`localizeDateVars`).
+  const lastDay = Number.isNaN(end) ? '' : new Date(end - 1 + 7 * 3_600_000).toISOString().slice(0, 10);
+  return [{
+    label: `Voucher ${v.code}`,
+    labelKey: 'costLineVoucherVoid',
+    labelVars: { code: v.code },
+    hint: `tidak terpotong: ${voucherVerdictReason(v)}`,
+    hintKey: v.status === 'expired' && !lastDay ? 'costVoucherReason_retired' : `costVoucherReason_${v.status}`,
+    hintVars: { date: lastDay },
+    amount: 0,
+    tone: 'void',
+  }];
+}
+
 export function deriveScheduleMoney(
   entry: AdScheduleEntry,
   submission: {
@@ -242,6 +280,16 @@ export function deriveScheduleMoney(
       */
       let introMatched = false;
       const kilatAddon = kilatRate?.addon ?? 0;
+      /*
+        Kodenya sah dan memotong pada instan order ini, tapi nominal tersimpan
+        persis harga TANPA voucher — vouchernya diketik/dibetulkan sesudah harga
+        dicatat (mis. admin membetulkan ejaan di order tanpa menghitung ulang).
+        Tanpa cabang ini pembalikan rasio di bawah mengarang "Iklan Rp 333.333 /
+        Diskon −Rp 33.333" yang tidak pernah ditagih.
+      */
+      let voucherNotInRecord = false;
+      /** Diskon yang AKAN diberi voucher ini — 0 berarti ia memang tidak berlaku. */
+      let theoreticalDiscount = 0;
 
       if (!isKilat && !voucher && netAdCost != null && netAdCost > 0) {
         const expected = rate.effective * duration;
@@ -252,10 +300,15 @@ export function deriveScheduleMoney(
       } else if (isKilat && netAdCost != null && netAdCost > 0) {
         // Diskon Kilat selalu 0 pada rumus lama — pencocokannya tetap seperti dulu.
         const kilatDiscount = calculateKilatDiscount(voucher, rate.effective + kilatAddon, incentive || 0, rateAt);
+        theoreticalDiscount = kilatDiscount;
         if (rate.effective > 0 && Math.abs((rate.effective + kilatAddon - kilatDiscount) - netAdCost) < 10) {
           grossAdCost = rate.effective;
           discountAmount = kilatDiscount;
           introMatched = true;
+        } else if (kilatDiscount > 0 && rate.effective > 0 && Math.abs(rate.effective + kilatAddon - netAdCost) < 10) {
+          grossAdCost = rate.effective;
+          introMatched = true;
+          voucherNotInRecord = true;
         }
       } else if (voucher && netAdCost != null) {
         /*
@@ -269,11 +322,20 @@ export function deriveScheduleMoney(
         */
         let calculatedGross = rate.effective * duration;
         let calculatedDiscount = calculateDiscount(voucher, calculatedGross, incentive || 0, duration, voucherAt);
+        // Tanpa jumlah soal harga kotornya tak bisa dihitung; probe di 1jt cukup
+        // untuk menjawab "apakah kode ini memotong apa pun pada instan order ini".
+        theoreticalDiscount = calculatedGross > 0
+          ? calculatedDiscount
+          : calculateDiscount(voucher, 1_000_000, 0, duration, voucherAt);
 
         if (calculatedGross > 0 && Math.abs((calculatedGross - calculatedDiscount) - netAdCost) < 10) {
           grossAdCost = calculatedGross;
           discountAmount = calculatedDiscount;
           introMatched = true;
+        } else if (calculatedGross > 0 && calculatedDiscount > 0 && Math.abs(calculatedGross - netAdCost) < 10) {
+          grossAdCost = calculatedGross;
+          introMatched = true;
+          voucherNotInRecord = true;
         } else if (netAdCost > 0) {
           // `question_count` kosong, jadi harga kotornya tidak bisa dihitung ulang
           // — ia harus dibalik dari nilai bersih yang tersimpan.
@@ -328,13 +390,14 @@ export function deriveScheduleMoney(
         }
 
         if (discountAmount > 0) {
-          lines.push({
-            label: `Diskon Voucher (${voucher})`,
-            labelKey: 'costLineVoucherNamed',
-            labelVars: { code: voucher ?? '' },
-            amount: -discountAmount,
-            tone: 'discount',
-          });
+          lines.push(...voucherLine({ code: voucher ?? '', status: 'applied', discount: discountAmount, validUntil: null }));
+        } else if (voucher && voucherNotInRecord) {
+          lines.push(...voucherLine({ code: voucher.toUpperCase(), status: 'not_in_record', discount: 0, validUntil: null }));
+        } else if (voucher && theoreticalDiscount <= 0) {
+          // Hanya bila vouchernya MEMANG tidak memotong. Diskon teoretis > 0
+          // tapi gagal dipecah = nominal tersimpan tak bisa diterangkan; diam
+          // lebih jujur daripada menuduh vouchernya tidak berlaku.
+          lines.push(...voucherLine(voucherVerdict(voucher, 0, { isKilat, voucherAtMs: voucherAt, rateAtMs: rateAt })));
         }
 
         if (incentive != null && incentive > 0) {
@@ -427,7 +490,7 @@ export function deriveScheduleMoney(
     ...introLine(adCostList, adCost, rate.introUntil),
   ];
   if (addon > 0) lines.push({ label: 'Add-on JFU Kilat', labelKey: 'costLineKilatAddon', amount: addon, tone: 'addon' });
-  if (discount > 0) lines.push({ label: `Diskon Voucher (${voucher})`, labelKey: 'costLineVoucherNamed', labelVars: { code: voucher ?? '' }, amount: -discount, tone: 'discount' });
+  lines.push(...voucherLine(voucherVerdict(voucher, discount, { isKilat, voucherAtMs: voucherAt, rateAtMs: rateAt })));
   if (incentive > 0) {
     lines.push({
       label: 'Reward',

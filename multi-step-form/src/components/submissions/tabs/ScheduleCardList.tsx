@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import {
   AlertTriangle, Ban, CalendarPlus, Check, ChevronDown, Clock, Copy, CreditCard, ExternalLink,
-  FileText, MoreHorizontal, Sparkles, Zap,
+  FileText, MoreHorizontal, Sparkles, Tag, Zap,
 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import {
@@ -1081,7 +1081,19 @@ function ScheduleCard({
     <div className="border-t border-slate-100 px-3 py-2.5 space-y-2.5 bg-slate-50/50">
       {money.lines ? (
         <div className="space-y-1 text-xs">
-          {money.lines.map((line, i) => (
+          {money.lines.map((line, i) => line.tone === 'void' ? (
+            // Voucher tercantum tapi TIDAK memotong — bentuknya sama dengan
+            // `CostBreakdown` sisi peneliti, alasannya versi admin (`hint`).
+            <div key={i} className="flex justify-between items-start gap-3">
+              <span className="min-w-0 text-slate-500">
+                <span className="inline-flex items-center gap-1">
+                  <Tag className="w-3 h-3 shrink-0 text-amber-700" /> {line.label}
+                </span>
+                {line.hint && <span className="block text-[10px] text-amber-800">{line.hint}</span>}
+              </span>
+              <span className="shrink-0 font-semibold text-amber-800">tidak terpotong</span>
+            </div>
+          ) : (
             <div key={i} className="flex justify-between gap-3">
               <span className="text-slate-500">
                 {line.label}
@@ -1118,6 +1130,7 @@ function ScheduleCard({
           <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0 text-amber-600" />
           <span className="leading-relaxed">
             Ditagihkan <strong className="font-semibold tabular-nums">{formatIDR(mismatch.billed)}</strong>
+            {mismatch.voucherCode && <> dengan voucher <strong className="font-semibold">{mismatch.voucherCode}</strong></>}
             {' '}— {mismatch.delta > 0 ? 'lebih tinggi' : 'lebih rendah'}{' '}
             <strong className="font-semibold tabular-nums">{formatIDR(Math.abs(mismatch.delta))}</strong>
             {' '}dari harga tercatat. Uang yang masuk mengikuti tagihan; angka

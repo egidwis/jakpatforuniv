@@ -1,6 +1,6 @@
 import {
   adRateAt, calculateAdCostPerDay, calculateDiscount, calculateIncentiveCost, calculateKilatDiscount,
-  getKilatAddonCost, isKilatTariffActive, KILAT_VOUCHER_CODES, kilatRateAt, rateInstantOf, tierIndexOf,
+  getKilatAddonCost, kilatRateAt, rateInstantOf, tierIndexOf, voucherVerdict, voucherVerdictReason,
 } from '@/utils/cost-calculator';
 import { AD_TIER_LABELS } from '@/utils/constants';
 import { formatYmdId, toWibYmd } from '@/utils/airing-window';
@@ -326,13 +326,21 @@ export function newBlankItem(): InvoiceItem {
  * Apa yang voucher ini lakukan terhadap harga — untuk ditampilkan di bawah
  * kolom isian, supaya admin melihat efeknya sebelum link pembayaran dibuat.
  *
- * `null` = kode tidak dikenali. Sengaja tidak dilempar sebagai error: daftar
- * voucher hidup di `cost-calculator.ts` dan admin memang kadang mengetik kode
- * kampanye yang belum terdaftar di sana.
+ * `applied: false` membawa ALASANNYA (`voucherVerdict`, sumber yang sama
+ * dengan rincian harga di kartu jadwal & dashboard peneliti). `null` hanya
+ * untuk kolom kosong.
  */
 export function describeVoucher(
   voucherCode: string | null | undefined,
-  input: { adCost: number; incentiveCost: number; duration: number },
+  input: {
+    adCost: number; incentiveCost: number; duration: number;
+    /**
+     * Tanggal order lahir — penentu masa berlaku voucher Iklan, SAMA dengan
+     * yang dipakai item prefill. Tanpa ini label menilai pada jam sekarang
+     * dan bisa berkata "tidak terpotong" di sebelah item yang terpotong.
+     */
+    voucherInstantMs?: number;
+  },
   /**
    * Order Kilat (jadwal pertama): tarif gelombangnya + instan tarif. Voucher
    * Kilat punya aturan sendiri (`calculateKilatDiscount`) — tanpa ini label
@@ -340,30 +348,31 @@ export function describeVoucher(
    * ke item.
    */
   kilat?: { adCost: number; rateInstantMs: number },
-): { discount: number; label: string } | null {
-  const code = (voucherCode || '').trim();
+): { applied: boolean; discount: number; label: string } | null {
+  const code = (voucherCode || '').trim().toUpperCase();
   if (!code) return null;
-  if (kilat) {
-    if (code.toUpperCase() === 'JFUTGRX') {
-      return { discount: 0, label: 'Voucher uji sistem — tagihan dipatok Rp 1.000' };
-    }
-    if (!isKilatTariffActive(kilat.rateInstantMs) || !KILAT_VOUCHER_CODES.includes(code.toUpperCase())) return null;
-    const discount = calculateKilatDiscount(code, kilat.adCost, input.incentiveCost, kilat.rateInstantMs);
-    if (discount <= 0) return null;
+  if (code === 'JFUTGRX') {
+    return { applied: true, discount: 0, label: 'Voucher uji sistem — tagihan dipatok Rp 1.000' };
+  }
+  const voucherAtMs = input.voucherInstantMs ?? Date.now();
+  const discount = kilat
+    ? calculateKilatDiscount(code, kilat.adCost, input.incentiveCost, kilat.rateInstantMs)
+    : calculateDiscount(code, input.adCost, input.incentiveCost, input.duration, voucherAtMs);
+  const verdict = voucherVerdict(code, discount, {
+    isKilat: !!kilat,
+    voucherAtMs,
+    rateAtMs: kilat?.rateInstantMs ?? voucherAtMs,
+  })!;
+  if (verdict.status === 'applied') {
     return {
+      applied: true,
       discount,
-      label: `Potongan Rp ${discount.toLocaleString('id-ID')} (10% tarif Kilat) diterapkan ke baris Kilat Survei`,
+      label: kilat
+        ? `Voucher ${code}: potongan Rp ${discount.toLocaleString('id-ID')} (10% tarif Kilat) diterapkan ke baris Kilat Survei`
+        : `Voucher ${code}: potongan Rp ${discount.toLocaleString('id-ID')} diterapkan ke baris iklan`,
     };
   }
-  if (code.toUpperCase() === 'JFUTGRX') {
-    return { discount: 0, label: 'Voucher uji sistem — tagihan dipatok Rp 1.000' };
-  }
-  const discount = calculateDiscount(code, input.adCost, input.incentiveCost, input.duration);
-  if (discount <= 0) return null;
-  return {
-    discount,
-    label: `Potongan Rp ${discount.toLocaleString('id-ID')} diterapkan ke baris iklan`,
-  };
+  return { applied: false, discount: 0, label: `Voucher ${code} tidak terpotong: ${voucherVerdictReason(verdict)}` };
 }
 
 

@@ -1,5 +1,6 @@
 import type { CostCalculation } from '../types';
-import { introLine, type MoneyLine } from './scheduleMoney';
+import { voucherVerdict } from './cost-calculator';
+import { introLine, voucherLine, type MoneyLine } from './scheduleMoney';
 
 /**
  * Jembatan `CostCalculation` → `MoneyLine[]`.
@@ -21,6 +22,8 @@ export interface OrderLineContext {
   duration: number;
   isKilat?: boolean;
   voucherCode?: string;
+  /** Instan tarif & voucher order ini. Bawaan: sekarang (order yang sedang dibuat). */
+  atMs?: number;
 }
 
 /**
@@ -64,17 +67,14 @@ export function orderMoneyLines(
 
   lines.push(...introLine(calc.adCostList ?? calc.adCost, calc.adCost, calc.introUntil ?? null));
 
-  if (calc.discount > 0) {
-    // ⚠️ NEGATIF, sama seperti `deriveScheduleMoney`. `CostBreakdown` memakai
-    // tandanya untuk memutuskan merender "-"; tanda positif membuat diskon
-    // terbaca seperti biaya tambahan.
-    lines.push({
-      label: ctx.voucherCode ? `Diskon Voucher (${ctx.voucherCode})` : 'Diskon Voucher',
-      labelKey: ctx.voucherCode ? 'costLineVoucherNamed' : 'costLineVoucher',
-      labelVars: { code: ctx.voucherCode ?? '' },
-      amount: -calc.discount,
-      tone: 'discount',
-    });
+  // ⚠️ Diskon NEGATIF, sama seperti `deriveScheduleMoney`. `CostBreakdown`
+  // memakai tandanya untuk memutuskan merender "-".
+  const atMs = ctx.atMs ?? Date.now();
+  const verdict = voucherVerdict(ctx.voucherCode, calc.discount, { isKilat: !!ctx.isKilat, voucherAtMs: atMs, rateAtMs: atMs });
+  if (verdict) {
+    lines.push(...voucherLine(verdict));
+  } else if (calc.discount > 0) {
+    lines.push({ label: 'Diskon Voucher', labelKey: 'costLineVoucher', amount: -calc.discount, tone: 'discount' });
   }
 
   if (calc.kilatAddonCost && calc.kilatAddonCost > 0) {

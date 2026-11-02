@@ -114,6 +114,21 @@ function BreakdownLine({ line }: { line: MoneyLine }) {
   */
   const label = line.labelKey ? t(line.labelKey as never, line.labelVars) : line.label;
   const hint = line.hintKey ? t(line.hintKey as never, localizeDateVars(line.hintVars, language)) : line.hint;
+  if (line.tone === 'void') {
+    // Voucher tercantum tapi TIDAK memotong. Kolom nominal sengaja berisi kata,
+    // bukan "Rp 0" — "Rp 0" terbaca seperti potongan yang kebetulan nol.
+    return (
+      <div className="flex justify-between items-start gap-3 text-sm">
+        <span className="min-w-0 text-slate-700">
+          <span className="inline-flex items-center gap-1 font-medium">
+            <Tag className="w-3.5 h-3.5 shrink-0 text-amber-700" /> {label}
+          </span>
+          {hint && <span className="block text-xs sm:text-[13px] text-amber-800">{hint}</span>}
+        </span>
+        <span className="shrink-0 text-xs sm:text-sm font-semibold text-amber-800">{t('costVoucherNotApplied')}</span>
+      </div>
+    );
+  }
   return (
     /* Baris rangkuman (Subtotal/DPP) diberi garis pemisah di ATASnya: ia
        merangkum baris sebelumnya, bukan menambah biaya baru. Tanpa pemisah

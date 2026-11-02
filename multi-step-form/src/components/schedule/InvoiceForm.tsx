@@ -341,7 +341,7 @@ export function InvoiceForm({
     const kilat = isKilatOrder
       ? { adCost: kilatRateAt(submission.questionCount || 0, rateAtMs).effective, rateInstantMs: rateAtMs }
       : undefined;
-    return describeVoucher(appliedVoucher, { adCost, incentiveCost, duration }, kilat);
+    return describeVoucher(appliedVoucher, { adCost, incentiveCost, duration, voucherInstantMs: voucherInstantOf(submission.submittedAt) }, kilat);
   })();
 
   const removeItem = (id: string) => {
@@ -390,7 +390,9 @@ export function InvoiceForm({
       // sendiri di `invoices` dan `transactions` — voucher milik TAGIHAN, bukan
       // order, jadi dua jadwal di order yang sama boleh berbeda. Menulis ke dua
       // tempat sekaligus berarti dua sumber kebenaran.
-      const voucherCode = appliedVoucher.trim() ? appliedVoucher.trim().toUpperCase() : null;
+      // Hanya bila benar-benar terpotong — kolom ini dibaca sebagai "voucher
+      // yang dipakai menagih". Sama dengan dialog tagihan gabungan.
+      const voucherCode = voucherEffect?.applied ? appliedVoucher.trim().toUpperCase() : null;
 
       const bundle: InvoiceBundle = {
         entry,
@@ -842,18 +844,11 @@ export function InvoiceForm({
               Terapkan
             </Button>
           </div>
-          {voucherEffect ? (
-            <p className="flex items-start gap-1.5 text-[11px] text-emerald-700">
+          {voucherEffect && (
+            <p className={`flex items-start gap-1.5 text-[11px] ${voucherEffect.applied ? 'text-emerald-700' : 'text-amber-800'}`}>
               <Tag className="w-3 h-3 mt-0.5 shrink-0" /> {voucherEffect.label}
             </p>
-          ) : appliedVoucher.trim() ? (
-            <p className="flex items-start gap-1.5 text-[11px] text-amber-700">
-              <Tag className="w-3 h-3 mt-0.5 shrink-0" />
-              {isKilatOrder
-                ? 'Kode tidak mengubah harga JFU Kilat — hanya kode ambassador dan JFUTGRX yang berlaku, dan order Kilat bertarif lama tidak menerima voucher.'
-                : 'Kode tidak mengubah harga — periksa ejaannya atau masa berlakunya.'}
-            </p>
-          ) : null}
+          )}
           <p className="text-[10px] text-gray-400">
             Berlaku untuk tagihan ini saja; harga order tidak ikut berubah.
           </p>
