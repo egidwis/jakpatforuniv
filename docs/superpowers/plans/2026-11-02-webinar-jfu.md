@@ -42,6 +42,27 @@ yang terlewat.
   terakhir langsung terkonfirmasi, nol email konfirmasi terkirim). Pembeli baru langsung lanjut ke checkout.
 - **Kontak admin untuk pembeli:** `product@jakpat.net`.
 - **Pengelola acara pertama:** satu akun, `product@jakpat.net`.
+- **Isi `/webinar` mengikuti ritme satu-dua acara per bulan (3 Nov):** bukan grid, melainkan satu hero + bagian yang
+  hanya muncul bila ada isinya. Hero: tiket dijual dengan acara terdekat → kursi habis yang acaranya belum mulai →
+  Segera hadir terdekat → Video kelas terbaru → keadaan kosong. Acara mendatang lainnya tampil di "Webinar berikutnya",
+  Video kelas di "Video kelas"; bagian tanpa isi tidak ditampilkan.
+- **Sisa kursi** hanya tampil saat sisa ≤ 20.
+- **Layar admin (3 Nov):** berbahasa Indonesia kecuali nama menu. Draft tersimpan otomatis; acara terbit lewat Simpan
+  perubahan. Daftar acara memperingatkan link Zoom kosong bila acara mulai dalam 3 hari.
+- **⚠️ Hosting Video kelas diputuskan di awal Fase 5 (3 Nov):** Developer Policies YouTube III.F.3.1 melarang menarik bayaran untuk
+  menonton di pemutar YouTube tersemat, jadi rencana YouTube unlisted di bawah bertentangan dengan aturan itu. Usulan
+  pengganti: Cloudflare Stream dengan signed URL. Tidak menahan penjualan tiket; bagian YouTube di rencana ini menunggu
+  keputusan pemilik produk sebelum Fase 5.
+- **Kalimat izin kontak:** "Saya setuju dihubungi JFU lewat email/WhatsApp tentang webinar berikutnya" (opsional, tidak
+  tercentang).
+- **Pengujian memakai acara dummy** `uji-webinar-jfu` dari `sql/ops_webinar_uji.sql`; konten acara 1 menyusul.
+- **Landing dan dashboard konsisten lewat satu sumber (3 Nov):** `functions/api/webinar/_view.js` menghitung urutan hero,
+  label keadaan, kalimat, sisa kursi, harga, dan "Yang kamu dapat". Halaman publik memanggilnya langsung; dashboard
+  menerima hasilnya dari `events.js` dan hanya merender, tanpa aturan sendiri. Spec mengunci keduanya. Yang berbeda hanya
+  bingkai, tujuan tombol, dan "Sudah punya". Navbar halaman publik menulis "Dashboard", karena server tidak tahu status
+  login; akun yang belum masuk diarahkan ke login oleh `PrivateRoute`.
+- **"Yang kamu dapat" otomatis dari jenis halaman:** tiket = sesi live, materi PPT, rekaman; Video kelas = materi PPT dan
+  rekaman video webinar. Karena dijanjikan, materi wajib diunggah sebelum Video kelas bisa dijual (form admin, Fase 5).
 - **Isi daftar:** `/webinar` menampilkan Segera hadir, sedang dijual, habis, dan Video kelas. Section
   homepage hanya tiket mendatang. Acara lewat tanpa Video kelas hilang dari daftar, tetapi URL-nya tetap
   hidup. Menu Webinar di dashboard menampilkan daftar yang sama dengan `/webinar`, dengan tampilan dashboard.
@@ -285,7 +306,8 @@ pun.
 | Kuota | – | Wajib | – | Sisa kursi, batas jual |
 | Link Zoom/Meet | – | Boleh menyusul | – | Hanya link gabung; tidak pernah tampil di halaman |
 | Link YouTube | – | – | Wajib + "Terbitkan rekaman" | Hanya pemutar di dashboard pembeli |
-| Durasi video, materi | – | – | Opsional | Halaman (durasi), dashboard pembeli (materi) |
+| Durasi video | – | – | Opsional | Halaman |
+| Materi PPT | – | Boleh menyusul | Wajib | Dashboard pembeli; dijanjikan di halaman |
 | Tanggal buka | – | Bila memilih Pada tanggal | Bila memilih Pada tanggal | Segera hadir, tombol beli |
 | Tanggal tutup | – | Opsional (default: saat acara mulai) | Opsional (default: tidak tutup) | Keadaan tombol beli |
 | Tampil di daftar (`is_listed`) | Default ya | Default ya | Default ya | `/webinar`, homepage |
@@ -298,7 +320,7 @@ URL dibuat otomatis dari judul.
    `/live/`, `/embed/`, `/shorts/`, `studio.youtube.com/video/...`, atau ID polos.
    `src/utils/youtube.ts` mengambil ID-nya, lalu pemutar yang sama dengan milik pembeli muncul di
    form untuk memastikan videonya benar.
-3. Opsional: isi durasi video dan unggah materi.
+3. Unggah materi PPT (wajib bila dijual sebagai Video kelas). Opsional: isi durasi video.
 4. Admin menekan "Terbitkan rekaman" dan wajib mencentang: video Unlisted, sematan diizinkan, ada
    izin tertulis pembicara, wajah/nama peserta sudah dipotong. Peserta live langsung bisa menonton
    dan menerima email.
@@ -710,8 +732,11 @@ lewat `state.from`, dan login password sudah kembali ke sana. Yang disesuaikan:
     `/webinar/<slug>`; tombol beli langsung ke `/dashboard/webinar/beli/<slug>`. Acara yang sudah dimiliki
     akun (dari `my.js`) berlabel "Sudah punya" dan mengarah ke tiketnya. Video kelas otomatis ikut tampil
     begitu dijual di Fase 5.
-- **Satu entri di `PRODUCTS` (`src/components/CreateOrderCards.tsx`)**, yang memang dirancang
-  sebagai satu-satunya daftar produk dashboard. Warna aksennya ditambah satu untuk webinar.
+- **Pintu sekunder di beranda, bukan kartu produk (3 Nov):** satu baris di kaki `CreateOrderCards`, bergaya sama dengan
+  "Chat Mimin": "Webinar: <judul> · <tanggal>". Hanya muncul bila ada tiket atau video yang sedang dijual dan `is_listed`;
+  selain itu tidak ada sama sekali. Isinya mengikuti pemilihan hero `_view.js`. Tidak masuk `PRODUCTS`.
+- **Baris tiket di kolom utama:** satu baris per tiket untuk acara yang belum lewat (maks. 2), di atas "My Order". Akun tanpa
+  tiket tidak melihatnya.
 - **`src/utils/analytics/fetchRevenueData.ts`:** kecualikan `entity_type='webinar'`.
 - **Penjaga lama:** pastikan `payLinkNoRawFallback.spec.ts` tetap hijau.
 - **Chat Mimin:** pembeli webinar melihat Mimin di dashboard, sedangkan `ai_settings.system_prompt` belum
@@ -839,6 +864,10 @@ Temuan: `src/components/TransactionsPage.tsx` hanya punya filter cari, bulan, ta
 
 ## Fase 5 — Rekaman, materi & jual rekaman (sebelum H+1)
 
+> **⚠️ WAJIB DIBAHAS PERTAMA: hosting Video kelas.** Pemilik produk menunda keputusannya ke awal Fase 5 (3 Nov). YouTube
+> Developer Policies III.F.3.1 melarang menarik bayaran untuk menonton di pemutar tersemat; usulan pengganti Cloudflare Stream
+> + signed URL. Semua rincian YouTube di fase ini menunggu keputusan itu.
+>
 > **Ingatkan pemilik produk:** bahas visual ASCII bagian Rekaman, halaman Video kelas, dan menu Webinar
 > lengkap sebelum fase ini dimulai.
 
@@ -859,8 +888,6 @@ Temuan: `src/components/TransactionsPage.tsx` hanya punya filter cari, bulan, ta
   - Rekaman & materi: `YoutubePlayer`; materi lewat signed URL 10 menit dari
     `/api/webinar/material`.
   - Riwayat pembelian: acara, jenis, nominal, status, tanggal, no. invoice.
-  - Kartu "Tiket webinarmu" di beranda dashboard bila akun punya tiket, supaya pembeli yang
-    masuk langsung tidak tersesat di halaman order iklan yang kosong.
 - **ID YouTube hanya dikirim API ke akun yang berhak**, tidak pernah lewat email atau halaman
   publik.
 - **Jual rekaman:**
