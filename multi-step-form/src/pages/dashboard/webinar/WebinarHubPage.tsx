@@ -5,41 +5,7 @@ import {
     fetchMyWebinarOrders, fetchWebinarListing,
     type MyWebinarOrders, type WebinarEventView, type WebinarListing, type WebinarOrderView,
 } from '@/utils/webinarApi';
-import { AdminContactLine, CARD_CLASS, WebinarBadge, WebinarMeta, WebinarPoster } from '@/components/webinar/WebinarParts';
-
-const orderBadge = (order: WebinarOrderView) => {
-    if (order.event_cancelled) return { tone: 'ended' as const, badge: 'Acara batal' };
-    if (order.status === 'paid') return { tone: 'on_sale' as const, badge: 'Aktif' };
-    if (order.status === 'pending') return { tone: 'held' as const, badge: 'Menunggu pembayaran' };
-    if (order.status === 'refunded') return { tone: 'ended' as const, badge: 'Tidak aktif' };
-    return { tone: 'ended' as const, badge: 'Waktu bayar habis' };
-};
-
-function TicketCard({ order }: { order: WebinarOrderView }) {
-    return (
-        <article className={`${CARD_CLASS} p-4 flex flex-col sm:flex-row gap-4`}>
-            {/* Lebar lewat style: .w-full di styles.css warisan mengalahkan sm:w-40. */}
-            <div className="max-sm:hidden shrink-0" style={{ width: 160 }}><WebinarPoster event={order.event} /></div>
-            <div className="flex-1 min-w-0 space-y-1.5">
-                <WebinarBadge event={orderBadge(order)} />
-                <h3 className="font-bold text-slate-900">{order.event.title}</h3>
-                {order.event.schedule_label && <p className="text-sm text-slate-600">{order.event.schedule_label}</p>}
-                {order.ticket_code && <p className="text-xs text-slate-500">Kode {order.ticket_code}</p>}
-                {order.status === 'paid' && order.event_is_past && !order.event_cancelled && (
-                    <p className="text-sm text-slate-600">Rekaman segera tersedia.</p>
-                )}
-                <div className="flex flex-wrap gap-2 pt-1">
-                    {order.join_url && !order.event_is_past && !order.event_cancelled && order.kind === 'live' && (
-                        <a href={order.join_url} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-jfu-primary px-4 py-2 text-sm font-semibold text-white">Gabung</a>
-                    )}
-                    <Link to={`/dashboard/webinar/tiket/${order.id}`} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">
-                        {order.status === 'pending' ? 'Lanjutkan bayar' : 'Lihat tiket'}
-                    </Link>
-                </div>
-            </div>
-        </article>
-    );
-}
+import { AdminContactLine, CARD_CLASS, WebinarBadge, WebinarMeta, WebinarPoster, WebinarTicketRow } from '@/components/webinar/WebinarParts';
 
 function OfferCard({ event, owned }: { event: WebinarEventView; owned?: WebinarOrderView }) {
     return (
@@ -106,7 +72,7 @@ export function WebinarHubPage() {
                     <section className="space-y-3">
                         <h2 className="text-base font-bold text-slate-900">Tiket saya</h2>
                         {visibleOrders.length > 0 ? (
-                            <div className="space-y-3">{visibleOrders.map((o) => <TicketCard key={o.id} order={o} />)}</div>
+                            <div className="space-y-2">{visibleOrders.map((o) => <WebinarTicketRow key={o.id} order={o} />)}</div>
                         ) : (
                             <p className="text-sm text-slate-500">
                                 Belum ada tiket di akun {mine?.email}. Beli dengan akun lain? Cek e-tiketmu untuk melihat akun yang dipakai.

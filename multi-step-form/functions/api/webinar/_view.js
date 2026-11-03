@@ -20,6 +20,22 @@ export const PUBLIC_EVENT_COLUMNS = [
 
 const WIB = { timeZone: 'Asia/Jakarta' };
 
+/** Ruang gabung dibuka 30 menit sebelum acara dan tutup saat acara selesai. */
+export const JOIN_OPENS_MINUTES = 30;
+
+/**
+ * Satu aturan jendela gabung untuk link gabung (redirect) dan halaman tiket (hitung mundur).
+ * @returns {{ phase: 'before'|'open'|'after', opensAt: number, closesAt: number } | null}
+ */
+export function joinWindow(event, now = Date.now()) {
+  if (!event?.starts_at) return null;
+  const start = new Date(event.starts_at).getTime();
+  const opensAt = start - JOIN_OPENS_MINUTES * 60_000;
+  const closesAt = start + (Number(event.duration_minutes) || 0) * 60_000;
+  const phase = now < opensAt ? 'before' : now < closesAt ? 'open' : 'after';
+  return { phase, opensAt, closesAt };
+}
+
 export function formatPrice(price) {
   return `Rp ${Number(price).toLocaleString('id-ID')}`;
 }

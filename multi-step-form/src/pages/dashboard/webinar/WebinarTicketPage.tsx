@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { CheckCircle2, Loader2 } from 'lucide-react';
-import { fetchMyWebinarOrders, syncWebinarOrder, type WebinarOrderView } from '@/utils/webinarApi';
-import { AdminContactLine, CARD_CLASS } from '@/components/webinar/WebinarParts';
+import {
+    fetchMyWebinarOrders, formatJoinCountdown, joinPhaseAt, syncWebinarOrder, type WebinarOrderView,
+} from '@/utils/webinarApi';
+import { AdminContactLine, CARD_CLASS, useNow } from '@/components/webinar/WebinarParts';
 
 const POLL_MS = 5_000;
 const SYNC_AFTER_MS = 60_000;
@@ -74,6 +76,9 @@ export function WebinarTicketPage() {
         }, POLL_MS);
         return () => { clearInterval(tick); clearInterval(poll); };
     }, [isPending, orderId, load]);
+
+    // Hitung mundur ruang gabung; berhenti setelah acara selesai.
+    const joinNow = useNow(!!order?.join && joinPhaseAt(order.join, Date.now()) !== 'after');
 
     if (loading) return <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-jfu-primary" /></div>;
 
@@ -160,6 +165,9 @@ export function WebinarTicketPage() {
     }
 
     const calendar = calendarUrl(order);
+    const join = order.join;
+    const phase = join ? joinPhaseAt(join, joinNow) : null;
+    const isPast = phase ? phase === 'after' : order.event_is_past;
     return shell(
         <>
             <p className="flex items-center gap-2 font-bold text-emerald-700"><CheckCircle2 className="w-5 h-5" /> {order.kind === 'live' ? 'Tiketmu sudah terbit' : 'Pembelianmu berhasil'}</p>
@@ -167,15 +175,34 @@ export function WebinarTicketPage() {
             {event.schedule_label && <p className="text-sm text-slate-600">{event.schedule_label}</p>}
             {event.speakers.length > 0 && <p className="text-sm text-slate-600">{event.speakers.map((s) => s.name).filter(Boolean).join(' · ')}</p>}
             {order.ticket_code && <p className="text-sm text-slate-700">Kode: <strong className="tracking-wide">{order.ticket_code}</strong></p>}
-            {order.kind === 'live' && order.join_url && !order.event_is_past && (
-                <a href={order.join_url} target="_blank" rel="noopener noreferrer" className="block rounded-xl bg-jfu-primary px-4 py-3 text-center font-semibold text-white">Gabung ke webinar</a>
+            {join && phase === 'before' && (
+                <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4 text-center space-y-2">
+                    <p className="text-sm text-slate-600">Ruang dibuka dalam</p>
+                    <p className="text-3xl font-bold tabular-nums text-jfu-primary">{formatJoinCountdown(join.opens_at_ms - joinNow)}</p>
+                    <button type="button" disabled className="w-full cursor-not-allowed rounded-xl bg-slate-200 px-4 py-3 font-semibold text-slate-500">
+                        Gabung · dibuka {join.opens_label}
+                    </button>
+                </div>
             )}
-            {order.kind === 'live' && calendar && !order.event_is_past && (
+            {join && phase === 'open' && (join.meeting_ready && order.join_url ? (
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 p-4 text-center space-y-2">
+                    <p className="text-sm font-semibold text-emerald-700">Sedang berlangsung</p>
+                    <a href={order.join_url} target="_blank" rel="noopener noreferrer" className="block rounded-xl bg-jfu-primary px-4 py-3 text-center font-semibold text-white">Gabung ke webinar</a>
+                </div>
+            ) : (
+                <div className="rounded-xl border border-amber-100 bg-amber-50/70 p-4 text-center space-y-2">
+                    <p className="text-sm text-slate-700">Link sedang disiapkan. Muat ulang sebentar lagi.</p>
+                    <button type="button" onClick={() => { load().catch((err) => console.error('[webinar]', err)); }} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 font-semibold text-slate-700">
+                        Muat ulang
+                    </button>
+                </div>
+            ))}
+            {order.kind === 'live' && calendar && (phase ? phase === 'before' : !isPast) && (
                 <a href={calendar} target="_blank" rel="noopener noreferrer" className="block rounded-xl border border-slate-200 px-4 py-3 text-center font-semibold text-slate-700">Tambah ke kalender</a>
             )}
-            {order.event_is_past && <p className="text-sm text-slate-600">Rekaman segera tersedia di menu Webinar.</p>}
+            {isPast && <p className="text-sm text-slate-600">Rekaman segera tersedia di menu Webinar.</p>}
             <p className="text-sm text-slate-600">E-tiket dikirim ke {order.buyer_email}.</p>
-            {!order.event_is_past && <p className="text-sm text-slate-600">Tidak bisa hadir? Sudah termasuk rekaman dan PPT.</p>}
+            {!isPast && <p className="text-sm text-slate-600">Tidak bisa hadir? Sudah termasuk rekaman dan PPT.</p>}
             <AdminContactLine />
         </>,
     );

@@ -235,45 +235,41 @@ describe('halaman publik', () => {
     const token = 'f'.repeat(64);
     const liveEvent = (over = {}) => ({ title: 'Olah', status: 'published', starts_at: future(DAY), duration_minutes: 60, meeting_url: SECRET_ZOOM, ...over });
 
-    it('jauh sebelum acara: hitung mundur, tanpa link Zoom, no-referrer', async () => {
-      net([], { joinOrder: { status: 'paid', kind: 'live', event_id: 'e1' }, joinEvent: liveEvent() });
+    const paidOrder = { id: ORDER_ID, status: 'paid', kind: 'live', event_id: 'e1' };
+    const TICKET_PAGE = `https://submit.jakpatforuniv.com/dashboard/webinar/tiket/${ORDER_ID}`;
+
+    it('jauh sebelum acara: ke halaman tiket di dashboard, tanpa link Zoom, no-referrer', async () => {
+      net([], { joinOrder: paidOrder, joinEvent: liveEvent() });
       const res = await open(`gabung/${token}`);
-      const html = await res.text();
-      expect(res.status).toBe(200);
-      expect(html).not.toContain(SECRET_ZOOM);
-      expect(html).toContain('data-count');
+      expect(res.status).toBe(302);
+      expect(res.headers.get('Location')).toBe(TICKET_PAGE);
+      expect(await res.text()).not.toContain(SECRET_ZOOM);
       expect(res.headers.get('Referrer-Policy')).toBe('no-referrer');
       expect(res.headers.get('X-Robots-Tag')).toContain('noindex');
     });
 
-    it('30 menit sebelum: 302 ke Zoom', async () => {
-      net([], { joinOrder: { status: 'paid', kind: 'live', event_id: 'e1' }, joinEvent: liveEvent({ starts_at: future(20 * 60_000) }) });
-      const res = await open(`gabung/${token}`);
+    it('30 menit sebelum sampai selesai: 302 ke Zoom tanpa login', async () => {
+      net([], { joinOrder: paidOrder, joinEvent: liveEvent({ starts_at: future(20 * 60_000) }) });
+      let res = await open(`gabung/${token}`);
       expect(res.status).toBe(302);
       expect(res.headers.get('Location')).toBe(SECRET_ZOOM);
       expect(res.headers.get('Referrer-Policy')).toBe('no-referrer');
+      net([], { joinOrder: paidOrder, joinEvent: liveEvent({ starts_at: future(-30 * 60_000) }) });
+      res = await open(`gabung/${token}`);
+      expect(res.headers.get('Location')).toBe(SECRET_ZOOM);
     });
 
-    it('link belum diisi: pesan menunggu', async () => {
-      net([], { joinOrder: { status: 'paid', kind: 'live', event_id: 'e1' }, joinEvent: liveEvent({ starts_at: future(60_000), meeting_url: null }) });
-      expect(await (await open(`gabung/${token}`)).text()).toContain('Link sedang disiapkan');
-    });
-
-    it('sesudah acara: ke menu Webinar', async () => {
-      net([], { joinOrder: { status: 'paid', kind: 'live', event_id: 'e1' }, joinEvent: liveEvent({ starts_at: future(-2 * DAY) }) });
+    it.each([
+      ['link Zoom belum diisi', { joinEvent: liveEvent({ starts_at: future(60_000), meeting_url: null }) }],
+      ['sesudah acara', { joinEvent: liveEvent({ starts_at: future(-2 * DAY) }) }],
+      ['acara batal', { joinEvent: liveEvent({ status: 'cancelled', starts_at: future(60_000) }) }],
+      ['tiket refunded', { joinOrder: { ...paidOrder, status: 'refunded' } }],
+      ['rekaman', { joinOrder: { ...paidOrder, kind: 'replay' } }],
+    ])('%s: ke halaman tiket, tanpa link Zoom', async (_label, over) => {
+      net([], { joinOrder: paidOrder, joinEvent: liveEvent(), ...over });
       const res = await open(`gabung/${token}`);
-      expect(res.headers.get('Location')).toContain('/dashboard/webinar');
-    });
-
-    it('tiket refunded dan acara batal: kalimat tanpa menyebut pengembalian dana', async () => {
-      net([], { joinOrder: { status: 'refunded', kind: 'live', event_id: 'e1' } });
-      let html = await (await open(`gabung/${token}`)).text();
-      expect(html).toContain('Tiket tidak aktif');
-      expect(html.toLowerCase()).not.toContain('refund');
-      net([], { joinOrder: { status: 'paid', kind: 'live', event_id: 'e1' }, joinEvent: liveEvent({ status: 'cancelled', starts_at: future(60_000) }) });
-      html = await (await open(`gabung/${token}`)).text();
-      expect(html).toContain('dibatalkan');
-      expect(html).not.toContain(SECRET_ZOOM);
+      expect(res.status).toBe(302);
+      expect(res.headers.get('Location')).toBe(TICKET_PAGE);
     });
 
     it('token salah format tidak sampai database', async () => {
@@ -569,6 +565,24 @@ describe('my', () => {
     calls = authedNet({ '/webinar_orders': () => json([order({ ticket_email_sent_at: null, webinar_events: { ...event(), status: 'cancelled' } })]) });
     await call();
     expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+  });
+
+  it('jendela gabung dari jam server, tanpa link Zoom di respons', async () => {
+    authedNet({ '/webinar_orders': () => json([order({ webinar_events: { ...event(), starts_at: future(DAY), duration_minutes: 60, meeting_url: 'https://zoom.us/j/x' } })]) });
+    const before = (await (await call()).json()).orders[0];
+    expect(before.join.phase).toBe('before');
+    expect(before.join.opens_in_seconds).toBeGreaterThan(DAY / 1000 - 30 * 60 - 5);
+    expect(before.join.opens_in_seconds).toBeLessThanOrEqual(DAY / 1000 - 30 * 60);
+    expect(before.join.opens_label).toMatch(/^\d{2}\.\d{2} WIB$/);
+    expect(before.join.meeting_ready).toBe(true);
+    expect(JSON.stringify(before)).not.toContain('zoom.us');
+
+    authedNet({ '/webinar_orders': () => json([order({ webinar_events: { ...event(), starts_at: future(10 * 60_000), duration_minutes: 60, meeting_url: null } })]) });
+    const open = (await (await call()).json()).orders[0];
+    expect(open.join).toMatchObject({ phase: 'open', opens_in_seconds: 0, meeting_ready: false });
+
+    authedNet({ '/webinar_orders': () => json([order({ status: 'pending' })]) });
+    expect((await (await call()).json()).orders[0].join).toBeNull();
   });
 
   it('keadaan order', () => {

@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { CalendarDays, Clock, Ticket } from 'lucide-react';
-import type { WebinarEventView } from '@/utils/webinarApi';
+import { joinOpensHint, joinPhaseAt, type WebinarEventView, type WebinarOrderView } from '@/utils/webinarApi';
 
 const TONE: Record<WebinarEventView['tone'], string> = {
     on_sale: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -53,5 +55,66 @@ export function AdminContactLine({ className = '' }: { className?: string }) {
             Ada kendala? Hubungi admin di{' '}
             <a className="font-medium text-jfu-primary underline" href={`mailto:${ADMIN_EMAIL}`}>{ADMIN_EMAIL}</a>
         </p>
+    );
+}
+
+/** Jam yang berdetak selama `enabled`; untuk hitung mundur dan pergantian keadaan ruang gabung. */
+export function useNow(enabled: boolean, intervalMs = 1_000): number {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        if (!enabled) return undefined;
+        setNow(Date.now());
+        const tick = setInterval(() => setNow(Date.now()), intervalMs);
+        return () => clearInterval(tick);
+    }, [enabled, intervalMs]);
+    return now;
+}
+
+type RowState = { hint: string | null; tone: string; join: boolean; action: string };
+
+function ticketRowState(order: WebinarOrderView, now: number): RowState {
+    const plain = (hint: string | null, tone = 'text-slate-500', action = 'Lihat'): RowState => ({ hint, tone, join: false, action });
+    if (order.event_cancelled) return plain('Acara dibatalkan');
+    if (order.status === 'pending') return plain('Menunggu pembayaran', 'text-amber-700', 'Lanjutkan bayar');
+    if (order.status === 'refunded') return plain('Tiket tidak aktif');
+    if (order.status !== 'paid') return plain('Waktu bayar habis');
+    if (!order.join) return plain(order.event_is_past ? 'Rekaman segera tersedia' : null);
+    const phase = joinPhaseAt(order.join, now);
+    if (phase === 'before') return plain(joinOpensHint(order.join.opens_at_ms - now));
+    if (phase === 'after') return plain('Rekaman segera tersedia');
+    return order.join.meeting_ready && order.join_url
+        ? { hint: 'Sedang berlangsung', tone: 'text-emerald-700 font-semibold', join: true, action: 'Gabung' }
+        : plain('Link sedang disiapkan', 'text-amber-700');
+}
+
+/**
+ * Satu baris tiket untuk beranda (di atas My Order) dan menu Webinar. Detail, hitung mundur,
+ * dan kalender ada di halaman tiket; baris ini hanya menunjuk ke sana, kecuali saat ruang
+ * dibuka: tombol Gabung langsung ke link gabung.
+ */
+export function WebinarTicketRow({ order, prefix }: { order: WebinarOrderView; prefix?: string }) {
+    const live = order.status === 'paid' && !!order.join;
+    // Per 30 detik cukup untuk "dibuka dalam N menit" dan pergantian ke Gabung.
+    const now = useNow(live, 30_000);
+    const state = ticketRowState(order, now);
+    const ticketUrl = `/dashboard/webinar/tiket/${order.id}`;
+    return (
+        <div className={`${CARD_CLASS} flex items-center gap-3 px-4 py-3 hover:border-jfu-primary/50 transition-colors`}>
+            <Ticket className="w-4 h-4 shrink-0 text-jfu-primary" />
+            <Link to={ticketUrl} className="flex-1 min-w-0 text-sm text-slate-700">
+                <span className="block">
+                    {prefix && <span className="font-semibold">{prefix} </span>}{order.event.title}
+                </span>
+                {order.event.schedule_label && <span className="block text-xs text-slate-500">{order.event.schedule_label}</span>}
+                {state.hint && <span className={`block text-xs ${state.tone}`}>{state.hint}</span>}
+            </Link>
+            {state.join ? (
+                <a href={order.join_url as string} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-xl bg-jfu-primary px-4 py-2 text-sm font-semibold text-white">
+                    Gabung
+                </a>
+            ) : (
+                <Link to={ticketUrl} className="shrink-0 text-sm font-semibold text-jfu-primary">{state.action} →</Link>
+            )}
+        </div>
     );
 }

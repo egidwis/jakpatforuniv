@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight, Ticket } from 'lucide-react';
 import { activeTickets, fetchMyWebinarOrders, fetchWebinarListing, type WebinarEventView, type WebinarOrderView } from '@/utils/webinarApi';
-import { CARD_CLASS } from './WebinarParts';
+import { WebinarTicketRow } from './WebinarParts';
 import { useWebinarOpen } from './WebinarGate';
 
 /**
@@ -41,7 +41,7 @@ export function WebinarFooterRow({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 /** Akses ke tiket yang sudah dibayar, di atas My Order. Akun tanpa tiket tidak melihatnya. */
-export function WebinarTicketStrip() {
+export function WebinarTicketStrip({ className = '' }: { className?: string }) {
     const [tickets, setTickets] = useState<WebinarOrderView[]>([]);
     const open = useWebinarOpen();
 
@@ -57,21 +57,8 @@ export function WebinarTicketStrip() {
     if (!open || tickets.length === 0) return null;
 
     return (
-        <div className="space-y-2">
-            {tickets.map((order) => (
-                <Link
-                    key={order.id}
-                    to={`/dashboard/webinar/tiket/${order.id}`}
-                    className={`${CARD_CLASS} flex items-center gap-3 px-4 py-3 hover:border-jfu-primary/50 transition-colors`}
-                >
-                    <Ticket className="w-4 h-4 shrink-0 text-jfu-primary" />
-                    <span className="flex-1 min-w-0 text-sm text-slate-700">
-                        <span className="font-semibold">Tiketmu:</span> {order.event.title}
-                        {order.event.schedule_label ? <span className="block text-xs text-slate-500">{order.event.schedule_label}</span> : null}
-                    </span>
-                    <span className="text-sm font-semibold text-jfu-primary shrink-0">Lihat →</span>
-                </Link>
-            ))}
+        <div className={`space-y-2 ${className}`}>
+            {tickets.map((order) => <WebinarTicketRow key={order.id} order={order} prefix="Tiketmu:" />)}
         </div>
     );
 }

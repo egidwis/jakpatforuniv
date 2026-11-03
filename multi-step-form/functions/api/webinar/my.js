@@ -1,10 +1,28 @@
 import { webinarOpenFor } from './_access.js';
 import { deliverWebinarTicket } from '../doku/_webinar.js';
-import { SITE_URL, buildEventView, formatPrice } from './_view.js';
+import { SITE_URL, buildEventView, formatPrice, formatTimeWib, joinWindow } from './_view.js';
 import { caller, CORS, json, resolveService, rest, sbFetch } from './_server.js';
 
-// meeting_url sengaja tidak diambil; pembeli masuk lewat link gabung.
-const EVENT_COLUMNS = 'id,slug,title,summary,poster_url,speakers,starts_at,duration_minutes,price,status,offer_kind,sales_mode,is_listed,is_test,recording_minutes,recording_published_at';
+// meeting_url hanya dibaca untuk `join.meeting_ready` (boolean); nilainya tidak pernah
+// ikut ke browser, karena buildEventView memilih kolomnya sendiri. Pembeli masuk lewat link gabung.
+const EVENT_COLUMNS = 'id,slug,title,summary,poster_url,speakers,starts_at,duration_minutes,price,status,offer_kind,sales_mode,is_listed,is_test,recording_minutes,recording_published_at,meeting_url';
+
+/**
+ * Jendela gabung untuk halaman tiket. Hitungan dalam detik dari jam server, supaya jam
+ * perangkat yang salah tidak menggeser hitung mundur. Null bila tidak ada ruang untuk dimasuki.
+ */
+export function buildJoinView(order, event, display, now = Date.now()) {
+  if (order.kind !== 'live' || display !== 'paid' || event.status === 'cancelled') return null;
+  const win = joinWindow(event, now);
+  if (!win) return null;
+  return {
+    phase: win.phase,
+    opens_in_seconds: Math.max(0, Math.ceil((win.opensAt - now) / 1000)),
+    closes_in_seconds: Math.max(0, Math.ceil((win.closesAt - now) / 1000)),
+    opens_label: `${formatTimeWib(new Date(win.opensAt).toISOString())} WIB`,
+    meeting_ready: /^https:\/\//i.test(event.meeting_url || ''),
+  };
+}
 
 /** Keadaan yang dilihat pembeli; pending yang link-nya mati terbaca kedaluwarsa. */
 export function orderDisplayStatus(order, now = Date.now()) {
@@ -31,6 +49,7 @@ export function buildOrderView(order, now = Date.now()) {
     payment_url: display === 'pending' ? order.payment_url : null,
     payment_expires_at: display === 'pending' ? order.payment_expires_at : null,
     join_url: display === 'paid' ? `${SITE_URL}/webinar/gabung/${order.join_token}` : null,
+    join: buildJoinView(order, event, display, now),
     event: buildEventView({ ...event, webinar_offer_state: { state: event.status === 'cancelled' ? 'cancelled' : 'closed' } }),
     event_cancelled: event.status === 'cancelled',
     event_is_past: event.starts_at

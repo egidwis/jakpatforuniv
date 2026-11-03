@@ -823,7 +823,6 @@ export function StatusPage() {
 
                 {/* Daftar order — kolom lebar di kanan (desktop), di bawah kartu aksi (ponsel) */}
                 <div className="relative lg:col-span-8 min-w-0 space-y-4">
-                    <WebinarTicketStrip />
                     {/* Integrated Control Bar: My Order, Counter, Subtitle & Toolbar */}
                     {/* Tinggi 65px di desktop = kepala kiri (`lg:h-16` + 1px border kartu), jadi tepi
                         bawah dua kepala sejajar. Mode bingkai: kepala MELAYANG di atas bingkai
@@ -949,6 +948,9 @@ export function StatusPage() {
                     {/* Hari libur tim admin (Phase 5 §5.4b) — hanya pada tanggal libur aktif. Di DALAM
                         bingkai (bukan di atas kepala kaca) supaya kepala tetap menempel di atas kolom. */}
                     <AdminHolidayBanner className="mb-4" />
+                    {/* Tiket webinar juga di DALAM bingkai: di atas kolom ia tertutup kepala kaca
+                        (absolute top-0) dan hanya menyisakan celah kosong di bawah kepala. */}
+                    <WebinarTicketStrip className="mb-4" />
                     {submissions.length === 0 ? (
                         /* Modern, Clean & Elevated Empty State Card */
                         <Card className="border border-slate-200/90 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] bg-white/95 rounded-2xl overflow-hidden">

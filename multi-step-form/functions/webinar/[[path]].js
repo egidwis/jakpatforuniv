@@ -3,24 +3,23 @@
  *
  *   /webinar                     daftar: satu hero + bagian yang punya isi
  *   /webinar/<slug>              detail, juga ?pratinjau=<token> untuk draft
- *   /webinar/gabung/<join_token> link pribadi di e-tiket, tanpa login
+ *   /webinar/gabung/<join_token> link pribadi di e-tiket: ke Zoom saat ruang dibuka,
+ *                                selain itu ke halaman tiket di dashboard
  *
  * Isi dan kalimat datang dari _view.js, sama dengan yang diterima dashboard.
  * meeting_url hanya dibaca di cabang gabung dan hanya keluar sebagai 302.
  * Teks di sini dilihat pembeli: jangan menyebut refund.
  */
-import { googleCalendarUrl } from '../api/doku/_webinar-ticket-email.js';
 import { resolveService, rest, JOIN_TOKEN_RE, SLUG_RE } from '../api/webinar/_server.js';
 import { WEBINAR_PREVIEW_ONLY } from '../api/webinar/_access.js';
 import {
   ADMIN_CONTACT, EMPTY_LISTING_TEXT, PUBLIC_EVENT_COLUMNS, SITE_URL,
-  buildEventView, buildListing, formatDateWib, formatTimeWib,
+  buildEventView, buildListing, joinWindow,
 } from '../api/webinar/_view.js';
 import { escapeHtml, renderBlocks } from './_render-blocks.js';
 
 const CANONICAL_ORIGIN = 'https://jakpatforuniv.com';
 const LOGO_URL = `${SITE_URL}/favicon.webp`;
-const JOIN_OPENS_MINUTES = 30;
 
 const e = escapeHtml;
 
@@ -221,60 +220,37 @@ const notFound = () => html(page({
 <p><a href="/webinar">Lihat webinar lainnya</a></p></div></main>`,
 }), 404);
 
+/**
+ * Link gabung tidak punya tampilan sendiri: halaman tiket di dashboard yang menampilkan
+ * hitung mundur, kalender, dan keadaan tiket. Hanya selama ruang dibuka link ini langsung
+ * ke Zoom tanpa login, supaya peserta yang membuka email menjelang acara tidak tertahan.
+ */
 async function handleJoin(sb, token, now = Date.now()) {
-  const inactive = (text) => html(joinPage({ title: 'Tiket', inner: `<p>${e(text)}</p>` }), 200, JOIN_HEADERS);
-  if (!JOIN_TOKEN_RE.test(token)) return html(joinPage({ title: 'Tiket', inner: '<p>Link tidak dikenali.</p>' }), 404, JOIN_HEADERS);
+  const unknown = () => html(joinPage({ title: 'Tiket', inner: '<p>Link tidak dikenali.</p>' }), 404, JOIN_HEADERS);
+  if (!JOIN_TOKEN_RE.test(token)) return unknown();
 
-  const [order] = await rest(sb, `webinar_orders?join_token=eq.${token}&select=status,kind,event_id`, {}, 'SELECT webinar_orders (gabung)');
-  if (!order) return html(joinPage({ title: 'Tiket', inner: '<p>Link tidak dikenali.</p>' }), 404, JOIN_HEADERS);
-  if (order.status !== 'paid') return inactive('Tiket tidak aktif. Hubungi admin bila ada pertanyaan.');
+  const [order] = await rest(sb, `webinar_orders?join_token=eq.${token}&select=id,status,kind,event_id`, {}, 'SELECT webinar_orders (gabung)');
+  if (!order) return unknown();
 
-  const dashboard = () => new Response(null, {
+  const redirect = (location) => new Response(null, {
     status: 302,
-    headers: { Location: `${SITE_URL}/dashboard/webinar`, 'Cache-Control': 'no-store', ...JOIN_HEADERS },
+    headers: { Location: location, 'Cache-Control': 'no-store', ...JOIN_HEADERS },
   });
-  if (order.kind !== 'live') return dashboard();
+  const ticketPage = () => redirect(`${SITE_URL}/dashboard/webinar/tiket/${order.id}`);
+  if (order.status !== 'paid' || order.kind !== 'live') return ticketPage();
 
   const [event] = await rest(
     sb,
-    `webinar_events?id=eq.${order.event_id}&select=title,status,starts_at,duration_minutes,meeting_url`,
+    `webinar_events?id=eq.${order.event_id}&select=status,starts_at,duration_minutes,meeting_url`,
     {},
     'SELECT webinar_events (gabung)'
   );
-  if (!event) return inactive('Tiket tidak aktif. Hubungi admin bila ada pertanyaan.');
-  if (event.status === 'cancelled') return inactive(`Acara ${event.title} dibatalkan. Hubungi admin bila ada pertanyaan.`);
+  if (!event || event.status === 'cancelled') return ticketPage();
 
-  const start = new Date(event.starts_at).getTime();
-  const end = start + (Number(event.duration_minutes) || 0) * 60_000;
-  const opensAt = start - JOIN_OPENS_MINUTES * 60_000;
-
-  if (now >= end) return dashboard();
-
-  if (now >= opensAt) {
-    if (/^https:\/\//i.test(event.meeting_url || '')) {
-      return new Response(null, { status: 302, headers: { Location: event.meeting_url, 'Cache-Control': 'no-store', ...JOIN_HEADERS } });
-    }
-    return html(joinPage({
-      title: event.title,
-      inner: `<h1 style="font-size:22px">${e(event.title)}</h1><p>Link sedang disiapkan. Muat ulang sebentar lagi.</p>
-<button class="btn" onclick="location.reload()">Muat ulang</button>`,
-    }), 200, JOIN_HEADERS);
+  if (joinWindow(event, now)?.phase === 'open' && /^https:\/\//i.test(event.meeting_url || '')) {
+    return redirect(event.meeting_url);
   }
-
-  const secondsLeft = Math.ceil((opensAt - now) / 1000);
-  const calendar = googleCalendarUrl({
-    title: event.title,
-    startsAt: event.starts_at,
-    durationMinutes: event.duration_minutes,
-    joinUrl: `${SITE_URL}/webinar/gabung/${token}`,
-  });
-  return html(joinPage({
-    title: event.title,
-    inner: `<h1 style="font-size:22px">${e(event.title)}</h1><p class="muted">${e(formatDateWib(event.starts_at))} · ${e(formatTimeWib(event.starts_at))} WIB</p>
-<p style="margin-bottom:0">Ruang dibuka dalam</p><div class="count" data-count></div>
-<a class="btn btn-soft" href="${e(calendar)}" target="_blank" rel="noopener">Tambah ke kalender</a><p class="note" style="margin-top:12px">Simpan link ini.</p>`,
-    scripts: [countdownScript(secondsLeft, { reloadKey: `webinar-join-${event.starts_at}` })],
-  }), 200, JOIN_HEADERS);
+  return ticketPage();
 }
 
 export async function onRequest({ request, env, params }) {

@@ -38,6 +38,21 @@ export interface WebinarListing {
 
 export type WebinarOrderStatus = 'pending' | 'paid' | 'expired' | 'refunded';
 
+export type WebinarJoinPhase = 'before' | 'open' | 'after';
+
+/** Jendela gabung dari server (functions/api/webinar/my.js → buildJoinView). */
+export interface WebinarJoinView {
+    phase: WebinarJoinPhase;
+    opens_in_seconds: number;
+    closes_in_seconds: number;
+    /** "08.06 WIB" */
+    opens_label: string;
+    meeting_ready: boolean;
+    /** Diisi klien saat respons tiba: hitungan server dipindah ke jam perangkat, jadi jam HP yang salah tidak menggeser hitung mundur. */
+    opens_at_ms: number;
+    closes_at_ms: number;
+}
+
 export interface WebinarOrderView {
     id: string;
     kind: 'live' | 'replay';
@@ -49,6 +64,7 @@ export interface WebinarOrderView {
     payment_url: string | null;
     payment_expires_at: string | null;
     join_url: string | null;
+    join: WebinarJoinView | null;
     event: WebinarEventView;
     event_cancelled: boolean;
     event_is_past: boolean;
@@ -96,7 +112,43 @@ export const fetchWebinarListing = () => call<WebinarListing>('events', undefine
 export const fetchWebinarEvent = (slug: string) =>
     call<{ event: WebinarEventView }>(`event?slug=${encodeURIComponent(slug)}`, undefined, true).then((r) => r.event);
 
-export const fetchMyWebinarOrders = () => call<MyWebinarOrders>('my', undefined, true);
+export const fetchMyWebinarOrders = () => call<MyWebinarOrders>('my', undefined, true).then((mine) => {
+    const receivedAt = Date.now();
+    return {
+        ...mine,
+        orders: (mine.orders ?? []).map((o) => (o.join ? {
+            ...o,
+            join: {
+                ...o.join,
+                opens_at_ms: receivedAt + o.join.opens_in_seconds * 1000,
+                closes_at_ms: receivedAt + o.join.closes_in_seconds * 1000,
+            },
+        } : { ...o, join: o.join ?? null })),
+    };
+});
+
+export function joinPhaseAt(join: WebinarJoinView, now: number): WebinarJoinPhase {
+    if (now < join.opens_at_ms) return 'before';
+    return now < join.closes_at_ms ? 'open' : 'after';
+}
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/** "13 hari 15:30:33" atau "15:30:33"; sama dengan hitung mundur halaman publik. */
+export function formatJoinCountdown(ms: number): string {
+    const total = Math.max(0, Math.ceil(ms / 1000));
+    const days = Math.floor(total / 86400);
+    const clock = `${pad(Math.floor((total % 86400) / 3600))}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`;
+    return days ? `${days} hari ${clock}` : clock;
+}
+
+/** Kalimat ringkas untuk baris tiket: "Ruang dibuka dalam 13 hari". */
+export function joinOpensHint(ms: number): string {
+    const minutes = Math.max(1, Math.ceil(ms / 60_000));
+    if (minutes >= 24 * 60) return `Ruang dibuka dalam ${Math.floor(minutes / (24 * 60))} hari`;
+    if (minutes >= 60) return `Ruang dibuka dalam ${Math.floor(minutes / 60)} jam`;
+    return `Ruang dibuka dalam ${minutes} menit`;
+}
 
 export interface WebinarCheckoutResult {
     result: 'created' | 'reused' | 'already_owned';
