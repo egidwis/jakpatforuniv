@@ -54,7 +54,11 @@ export function googleCalendarUrl({ title, startsAt, durationMinutes, joinUrl })
 }
 
 /** Hanya kolom yang dikirim ke sini yang bisa bocor; meeting_url tidak pernah. */
-export function buildTicketEmail({ order, event }) {
+/**
+ * `accountEmail` = email akun pembeli (pemilik tiket). Bisa berbeda dari buyer_email
+ * bila pembeli mengisi kontak khusus di checkout; kosong berarti tidak diketahui.
+ */
+export function buildTicketEmail({ order, event, accountEmail = null }) {
   const joinUrl = `${SITE_URL}/webinar/gabung/${order.join_token}`;
   const dashboardUrl = `${SITE_URL}/dashboard/webinar`;
   const calendarUrl = googleCalendarUrl({
@@ -90,7 +94,7 @@ export function buildTicketEmail({ order, event }) {
         <a href="${escapeHtml(calendarUrl)}">Tambahkan ke Google Calendar</a> ·
         <a href="${escapeHtml(dashboardUrl)}">Buka menu Webinar</a>
       </p>
-      <p style="margin:0 0 8px;font-size:14px;">Tidak bisa hadir? Tiketmu sudah termasuk rekaman, yang tersedia di menu Webinar setelah acara. Masuk dengan akun <strong>${escapeHtml(order.buyer_email)}</strong>.</p>
+      <p style="margin:0 0 8px;font-size:14px;">Tidak bisa hadir? Tiketmu sudah termasuk rekaman, yang tersedia di menu Webinar setelah acara. ${accountEmail ? `Masuk dengan akun <strong>${escapeHtml(accountEmail)}</strong>.` : 'Masuk dengan akun yang kamu pakai saat membeli.'}</p>
       <p style="margin:0;font-size:14px;">Ada kendala? Hubungi admin di <a href="mailto:${ADMIN_CONTACT}">${ADMIN_CONTACT}</a>.</p>
     </div>
   `;
@@ -131,11 +135,11 @@ export function buildTicketReceipt({ order, event }) {
 }
 
 /** Meneruskan hasil sendMail: `{ ok: true, ... }` atau `{ ok: false, error, ... }`. */
-export async function sendWebinarTicketEmail(env, { order, event }) {
+export async function sendWebinarTicketEmail(env, { order, event, accountEmail = null }) {
   const receipt = buildTicketReceipt({ order, event });
   return sendMail(env, {
     to: [order.buyer_email],
-    ...buildTicketEmail({ order, event }),
+    ...buildTicketEmail({ order, event, accountEmail }),
     ...(receipt ? { attachments: [receipt] } : {}),
   });
 }

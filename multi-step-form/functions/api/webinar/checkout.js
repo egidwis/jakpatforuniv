@@ -1,17 +1,39 @@
 import { webinarOpenFor } from './_access.js';
 import { dokuRequest } from '../doku/_helpers.js';
 import { caller, CORS, json, resolveService, rest, SLUG_RE } from './_server.js';
+import { resolveWebinarVoucher, voucherRpcPayload } from './_vouchers.js';
 
 const LINK_MINUTES = 30;
 const DEFAULT_SAC_ID = 'SAC-7926-1778565828595';
 
 // Naikkan bila teks S&K webinar berubah; nilainya disimpan per order sebagai bukti.
-export const TERMS_VERSION = '2026-11-webinar-1';
+export const TERMS_VERSION = '2026-11-webinar-2'; // -2: kalimat perekaman diperhalus (3 Nov)
 export const CONSENT_VERSION = '2026-11-webinar-1';
 
 const isComplete = (p) => Boolean(
   p?.full_name?.trim() && p?.phone_number?.trim() && p?.university?.trim() && p?.department?.trim() && p?.status?.trim()
 );
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Kontak khusus order (switch "Sama dengan data akun" dimatikan), sama dengan
+ * Detail Invoice di alur iklan. Hanya menentukan ke mana e-tiket dikirim dan nama
+ * di kwitansi; pemilik tiket tetap akun yang login (auth_user_id).
+ * Mengembalikan null bila tidak dikirim, atau { error } bila tidak sah.
+ */
+export function parseCustomContact(raw) {
+  if (raw == null) return null;
+  if (typeof raw !== 'object') return { error: 'Data peserta tidak sah' };
+  const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+  const email = typeof raw.email === 'string' ? raw.email.trim().toLowerCase() : '';
+  const phone = typeof raw.phone === 'string' ? raw.phone.trim() : '';
+  if (!name || name.length > 120) return { error: 'Nama lengkap wajib diisi' };
+  if (!EMAIL_RE.test(email) || email.length > 254) return { error: 'Email belum benar' };
+  const digits = phone.replace(/[^0-9]/g, '');
+  if (!/^\+?[0-9\s-]+$/.test(phone) || digits.length < 8 || digits.length > 16) return { error: 'No telepon belum benar' };
+  return { name, email, phone };
+}
 
 export function buildWebinarCheckoutPayload({ env, origin, order, buyer }) {
   const email = String(buyer.email);
@@ -51,6 +73,15 @@ export async function onRequest({ request, env }) {
   try { body = await request.json(); } catch { return json(400, { error: 'Body bukan JSON' }); }
   if (typeof body?.slug !== 'string' || !SLUG_RE.test(body.slug)) return json(400, { error: 'Acara tidak dikenali' });
   if (body.termsAccepted !== true) return json(400, { error: 'Persetujuan S&K wajib', code: 'terms_required' });
+  const custom = parseCustomContact(body.contact);
+  if (custom?.error) return json(400, { error: custom.error, code: 'contact_invalid' });
+  // Voucher dinilai di server pada saat order dibuat; harga dihitung webinar_reserve_seat.
+  let voucher = null;
+  if (typeof body.voucherCode === 'string' && body.voucherCode.trim()) {
+    const resolved = resolveWebinarVoucher(body.voucherCode);
+    if (!resolved.ok) return json(400, { error: resolved.message, code: 'voucher_invalid', reason: resolved.reason });
+    voucher = voucherRpcPayload(resolved.entry);
+  }
 
   let sb;
   try { sb = resolveService(env); } catch (err) { return json(500, { error: err.message }); }
@@ -65,7 +96,8 @@ export async function onRequest({ request, env }) {
     );
     if (!isComplete(profile)) return json(409, { error: 'Lengkapi profil dulu', code: 'profile_incomplete' });
 
-    const buyer = {
+    // Tanpa kontak khusus: data akun. Kampus, jurusan, dan status selalu dari profil.
+    const buyer = custom ?? {
       email: user.email,
       name: profile.full_name.trim(),
       phone: profile.phone_number.trim(),
@@ -77,7 +109,7 @@ export async function onRequest({ request, env }) {
       body: JSON.stringify({
         p_slug: body.slug,
         p_auth_user_id: user.id,
-        p_buyer_email: user.email,
+        p_buyer_email: buyer.email,
         p_buyer: {
           name: buyer.name,
           phone: buyer.phone,
@@ -89,6 +121,7 @@ export async function onRequest({ request, env }) {
         p_terms_version: TERMS_VERSION,
         p_marketing_consent: marketing,
         p_consent_version: marketing ? CONSENT_VERSION : null,
+        ...(voucher ? { p_voucher: voucher } : {}),
       }),
     }, 'RPC webinar_reserve_seat');
 

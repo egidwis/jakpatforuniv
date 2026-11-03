@@ -104,12 +104,45 @@ export interface WebinarCheckoutResult {
     paymentUrl?: string;
 }
 
-export const startWebinarCheckout = (slug: string, marketingConsent: boolean) =>
+/** Kontak khusus order; null = sama dengan data akun (server membaca profil). */
+export interface WebinarContact {
+    name: string;
+    email: string;
+    phone: string;
+}
+
+export const startWebinarCheckout = (
+    slug: string, marketingConsent: boolean, contact: WebinarContact | null = null, voucherCode = '',
+) =>
     call<WebinarCheckoutResult>(
         'checkout',
-        { method: 'POST', body: JSON.stringify({ slug, termsAccepted: true, marketingConsent }) },
+        {
+            method: 'POST',
+            body: JSON.stringify({
+                slug, termsAccepted: true, marketingConsent,
+                ...(contact ? { contact } : {}),
+                ...(voucherCode.trim() ? { voucherCode: voucherCode.trim() } : {}),
+            }),
+        },
         true,
     );
+
+export type WebinarVoucherPreview =
+    | { valid: true; code: string; label: string; price: number; discount: number; total: number; discount_label: string; total_label: string; message: string }
+    | { valid: false; reason: 'unknown' | 'not_for_product' | 'expired'; message: string };
+
+/** Pratinjau saja; harga yang ditagih tetap dihitung server saat checkout. */
+export const previewWebinarVoucher = (slug: string, code: string) =>
+    call<WebinarVoucherPreview>(`voucher?slug=${encodeURIComponent(slug)}&code=${encodeURIComponent(code.trim())}`, undefined, true);
+
+/** Cermin parseCustomContact di functions/api/webinar/checkout.js; server tetap penentunya. */
+export function webinarContactError(c: WebinarContact): string | null {
+    const digits = c.phone.replace(/[^0-9]/g, '');
+    if (!c.name.trim()) return 'Nama lengkap wajib diisi';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email.trim())) return 'Email belum benar';
+    if (!/^\+?[0-9\s-]+$/.test(c.phone.trim()) || digits.length < 8 || digits.length > 16) return 'No telepon belum benar';
+    return null;
+}
 
 export const syncWebinarOrder = (orderId: string) =>
     call<{ status: string; checked: boolean }>(
@@ -127,6 +160,7 @@ export function checkoutErrorText(err: unknown): string {
     if (err instanceof WebinarApiError) {
         if (err.code === 'preparing') return 'Tagihan sedang disiapkan. Coba lagi beberapa detik.';
         if (err.code === 'doku_failed') return 'Pembayaran belum bisa dibuat. Coba lagi beberapa saat.';
+        if (err.code === 'voucher_invalid' || err.code === 'contact_invalid') return err.message;
         if (err.code === 'not_for_sale') {
             if (err.state === 'seats_held') return 'Kursi sedang ditahan pembeli lain, coba lagi beberapa menit.';
             if (err.state === 'sold_out') return 'Kursi live habis. Rekaman bisa dibeli setelah acara.';

@@ -349,7 +349,13 @@ describe('kwitansi e-tiket', () => {
 });
 
 describe('isi e-tiket', () => {
-  const email = () => buildTicketEmail({ order: ORDER, event: { ...EVENT, meeting_url: 'https://zoom.us/j/rahasia' } });
+  const email = (accountEmail = 'budi@example.test') => buildTicketEmail({ order: ORDER, event: { ...EVENT, meeting_url: 'https://zoom.us/j/rahasia' }, accountEmail });
+
+  it('kalimat akun memakai email akun pemilik, bukan email kontak khusus', () => {
+    const custom = buildTicketEmail({ order: { ...ORDER, buyer_email: 'lain@kontak.test' }, event: EVENT, accountEmail: 'akun@login.test' });
+    expect(custom.html).toContain('Masuk dengan akun <strong>akun@login.test</strong>');
+    expect(email(null).html).toContain('Masuk dengan akun yang kamu pakai saat membeli');
+  });
 
   it('memuat yang dibutuhkan pembeli, dengan jadwal WIB', () => {
     const { subject, html } = email();

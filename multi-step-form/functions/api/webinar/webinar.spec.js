@@ -15,6 +15,7 @@ vi.mock('./_access.js', async (importOriginal) => {
 import { buildEventView, buildListing, PUBLIC_EVENT_COLUMNS } from './_view.js';
 import { onRequest as eventsHandler } from './events.js';
 import { onRequest as eventHandler } from './event.js';
+import { onRequest as voucherHandler } from './voucher.js';
 import { onRequest as checkoutHandler } from './checkout.js';
 import { onRequest as myHandler, orderDisplayStatus } from './my.js';
 import { onRequest as syncHandler } from './sync.js';
@@ -345,6 +346,81 @@ describe('checkout', () => {
     expect(calls.some((c) => c.url.includes('/rpc/'))).toBe(false);
   });
 
+  it('voucher sah: diteruskan ke RPC sebagai persen dari katalog, bukan dari body', async () => {
+    const calls = authedNet({
+      '/profiles': () => json([PROFILE]),
+      '/rpc/webinar_reserve_seat': () => json({ ...created, amount: 40000 }),
+      '/checkout/v1/payment': doku(),
+      '/webinar_orders': () => json([{ id: ORDER_ID }]),
+    });
+    const res = await call({ slug: 'olah-data', termsAccepted: true, voucherCode: ' tegarganteng ', percent: 99, amount: 1 });
+    expect(res.status).toBe(200);
+    const rpc = calls.find((c) => c.url.endsWith('/rpc/webinar_reserve_seat')).body;
+    expect(rpc.p_voucher).toEqual({ code: 'TEGARGANTENG', percent: 20 });
+    const dokuBody = calls.find((c) => c.url.includes('/checkout/v1/payment')).body;
+    expect(dokuBody.order.amount).toBe(40000);
+    expect(dokuBody.order.line_items[0].price).toBe(40000);
+  });
+
+  it('tanpa voucher: RPC tidak menerima p_voucher', async () => {
+    const calls = authedNet({
+      '/profiles': () => json([PROFILE]),
+      '/rpc/webinar_reserve_seat': () => json(created),
+      '/checkout/v1/payment': doku(),
+      '/webinar_orders': () => json([{ id: ORDER_ID }]),
+    });
+    await call({ slug: 'olah-data', termsAccepted: true, voucherCode: '  ' });
+    expect('p_voucher' in calls.find((c) => c.url.endsWith('/rpc/webinar_reserve_seat')).body).toBe(false);
+  });
+
+  it.each([
+    ['JFUFEB', 'tidak bisa digunakan pada produk ini'],
+    ['ASAL123', 'tidak dikenal'],
+    ['JAKPATUNIV2025', 'sudah habis'],
+  ])('voucher %s ditolak 400 sebelum database', async (code, text) => {
+    const calls = authedNet({});
+    const res = await call({ slug: 'olah-data', termsAccepted: true, voucherCode: code });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.code).toBe('voucher_invalid');
+    expect(body.error).toContain(text);
+    expect(calls.some((c) => c.url.includes('/rest/v1/'))).toBe(false);
+  });
+
+  it('kontak khusus: e-tiket ke email itu, pemilik tetap akun login, kampus dari profil', async () => {
+    const calls = authedNet({
+      '/profiles': () => json([PROFILE]),
+      '/rpc/webinar_reserve_seat': () => json(created),
+      '/checkout/v1/payment': doku(),
+      '/webinar_orders': () => json([{ id: ORDER_ID }]),
+    });
+    const res = await call({
+      slug: 'olah-data', termsAccepted: true,
+      contact: { name: ' Sinta ', email: ' Sinta@Kampus.AC.id ', phone: '+62 812-3456-7890' },
+    });
+    expect(res.status).toBe(200);
+    const rpc = calls.find((c) => c.url.endsWith('/rpc/webinar_reserve_seat')).body;
+    expect(rpc.p_auth_user_id).toBe(USER.id);
+    expect(rpc.p_buyer_email).toBe('sinta@kampus.ac.id');
+    expect(rpc.p_buyer).toMatchObject({ name: 'Sinta', phone: '+62 812-3456-7890', university: 'UGM', major: 'Psikologi' });
+    const dokuBody = calls.find((c) => c.url.includes('/checkout/v1/payment')).body;
+    expect(dokuBody.customer.email).toBe('sinta@kampus.ac.id');
+  });
+
+  it.each([
+    ['nama kosong', { name: ' ', email: 'a@b.co', phone: '08123456789' }],
+    ['email salah', { name: 'A', email: 'bukan-email', phone: '08123456789' }],
+    ['telepon pendek', { name: 'A', email: 'a@b.co', phone: '0812' }],
+    ['telepon berhuruf', { name: 'A', email: 'a@b.co', phone: '0812abc45678' }],
+    ['bukan objek', 'a@b.co'],
+  ])('kontak khusus tidak sah (%s): 400 sebelum database', async (_label, contact) => {
+    const calls = authedNet({});
+    const res = await call({ slug: 'olah-data', termsAccepted: true, contact });
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('contact_invalid');
+    expect(calls.some((c) => c.url.includes('/rest/v1/'))).toBe(false);
+  });
+
   it('identitas dan biodata dari server; body tidak bisa memalsukan', async () => {
     const calls = authedNet({
       '/profiles': () => json([PROFILE]),
@@ -541,6 +617,7 @@ describe('masa uji: hanya akun di daftar izin', () => {
     expect((await checkout.json()).code).toBe('not_open');
     expect((await myHandler({ request: authed('my', null, 'GET'), env: ENV })).status).toBe(403);
     expect((await syncHandler({ request: authed('sync', { orderId: ORDER_ID }), env: ENV })).status).toBe(403);
+    expect((await voucherHandler({ request: authed('voucher?slug=olah-data&code=JFUTYR', null, 'GET'), env: ENV })).status).toBe(403);
     expect(calls.some((c) => c.url.includes('/rest/v1/'))).toBe(false);
   });
 
@@ -607,5 +684,28 @@ describe('masa uji: hanya akun di daftar izin', () => {
       expect(res.status).toBe(200);
       expect(await res.text()).toContain('Olah Data');
     });
+  });
+});
+
+describe('voucher (pratinjau)', () => {
+  const preview = (q) => voucherHandler({ request: authed(`voucher?${q}`, null, 'GET'), env: ENV });
+
+  it('menghitung total dari harga acara di database', async () => {
+    authedNet({ '/webinar_events': () => json([{ price: 50000 }]) });
+    const body = await (await preview('slug=olah-data&code=jfutyr')).json();
+    expect(body).toMatchObject({ valid: true, code: 'JFUTYR', discount: 5000, total: 45000, total_label: 'Rp 45.000' });
+  });
+
+  it('kode khusus iklan: kalimat produk, tanpa kueri acara', async () => {
+    const calls = authedNet({ '/webinar_events': () => json([{ price: 50000 }]) });
+    const body = await (await preview('slug=olah-data&code=ILKOMUNY')).json();
+    expect(body).toMatchObject({ valid: false, reason: 'not_for_product' });
+    expect(body.message).toBe('Kode voucher tidak bisa digunakan pada produk ini.');
+    expect(calls.some((c) => c.url.includes('/webinar_events'))).toBe(false);
+  });
+
+  it('tanpa sesi: 401', async () => {
+    authedNet({ user: null });
+    expect((await preview('slug=olah-data&code=JFUTYR')).status).toBe(401);
   });
 });

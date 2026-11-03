@@ -48,3 +48,13 @@ describe('checkoutErrorText', () => {
         expect(checkoutErrorText(new Error('rahasia'))).not.toContain('rahasia');
     });
 });
+
+describe('webinarContactError (cermin server)', () => {
+    it('menerima kontak yang sah dan menolak yang tidak', async () => {
+        const { webinarContactError } = await import('./webinarApi');
+        expect(webinarContactError({ name: 'Sinta', email: 'sinta@kampus.ac.id', phone: '+62 812-3456-7890' })).toBeNull();
+        expect(webinarContactError({ name: ' ', email: 'a@b.co', phone: '08123456789' })).toContain('Nama');
+        expect(webinarContactError({ name: 'A', email: 'bukan', phone: '08123456789' })).toContain('Email');
+        expect(webinarContactError({ name: 'A', email: 'a@b.co', phone: '0812' })).toContain('telepon');
+    });
+});

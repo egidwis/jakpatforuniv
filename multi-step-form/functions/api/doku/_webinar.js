@@ -114,6 +114,23 @@ export async function recordWebinarAlarm({ env, sb, sbFetch, invoiceNumber, outc
  * bersamaan. Tidak pernah melempar: tiketnya sudah terbit, dan DOKU tidak akan
  * mengulang sesudah menerima 200.
  */
+/**
+ * Email akun pemilik tiket, untuk kalimat "Masuk dengan akun ..." di e-tiket.
+ * Bisa berbeda dari buyer_email (kontak khusus). Gagal membaca tidak menahan tiket.
+ */
+async function accountEmailOf({ sb, userId }) {
+  if (!userId) return null;
+  try {
+    const res = await fetch(`${sb.url}/auth/v1/admin/users/${encodeURIComponent(userId)}`, { headers: sb.headers });
+    if (!res.ok) return null;
+    const user = await res.json();
+    return typeof user?.email === 'string' && user.email ? user.email.toLowerCase() : null;
+  } catch (err) {
+    console.error('[webinar] email akun tidak terbaca:', err?.message || err);
+    return null;
+  }
+}
+
 export async function deliverWebinarTicket({ env, sb, sbFetch, invoiceNumber, now = () => new Date() }) {
   const encodedInvoice = encodeURIComponent(invoiceNumber);
   let claimed = false;
@@ -145,7 +162,8 @@ export async function deliverWebinarTicket({ env, sb, sbFetch, invoiceNumber, no
     const [event] = await eventRes.json();
     if (!event) throw new Error(`Acara ${order.event_id} tidak ditemukan`);
 
-    const mail = await sendWebinarTicketEmail(env, { order, event });
+    const accountEmail = await accountEmailOf({ sb, userId: order.auth_user_id });
+    const mail = await sendWebinarTicketEmail(env, { order, event, accountEmail });
     if (!mail?.ok) {
       throw new Error(`Provider ${mail?.provider ?? '?'} menolak: ${mail?.error ?? 'tanpa keterangan'}`);
     }
