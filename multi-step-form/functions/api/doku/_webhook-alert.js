@@ -17,9 +17,30 @@ const OUTCOME_LABELS = {
   amount_mismatch: 'Jumlah pembayaran tidak cocok',
   no_submission_found: 'Invoice tidak dikenali',
   paid_on_dead_bill: 'Pembayaran masuk pada tagihan yang sudah tidak berlaku (batal/expired)',
+  webinar_over_quota: 'Webinar: tiket lunas melewati kuota',
+  webinar_duplicate_paid: 'Webinar: pembeli membayar dua kali',
+  webinar_not_found: 'Webinar: invoice tidak dikenali',
+  webinar_paid_on_cancelled: 'Webinar: pembayaran masuk untuk acara yang batal',
+  webinar_ticket_email_failed: 'Webinar: e-tiket gagal terkirim',
 };
 
 const OUTCOME_ADVICE = {
+  webinar_over_quota: `
+    <li>Pembayarannya sudah dicatat dan <strong>tiket tetap terbit</strong>; jumlah tiket lunas kini melewati kuota.</li>
+    <li>Pastikan kapasitas Zoom cukup. Kirim ulang notifikasi tidak diperlukan.</li>`,
+  webinar_duplicate_paid: `
+    <li>Akun ini sudah punya pembayaran lunas lain untuk acara yang sama. Keduanya sudah dicatat.</li>
+    <li>Hubungi pembelinya, lalu putuskan apakah kelebihan bayarnya direfund manual.</li>`,
+  webinar_not_found: `
+    <li>DOKU menerima pembayaran untuk invoice <code>WBN-</code> yang tidak ada di <code>webinar_orders</code>.
+        <strong>Tidak ada yang ditulis</strong>, dan kirim ulang notifikasi tidak akan menolong.</li>
+    <li>Cari nomor invoice ini di dashboard DOKU untuk melihat siapa yang membayar.</li>`,
+  webinar_paid_on_cancelled: `
+    <li>Pembayaran masuk sesudah acara dibatalkan. Uangnya sudah dicatat, dan e-tiket sengaja tidak dikirim.</li>
+    <li>Hubungi pembelinya, lalu putuskan apakah direfund manual.</li>`,
+  webinar_ticket_email_failed: `
+    <li>Tiket sudah terbit dan pembayarannya tercatat; hanya emailnya yang gagal.</li>
+    <li>Baca pesan error di bawah. Pembeli tetap bisa melihat tiketnya di dashboard.</li>`,
   write_failed: `
     <li>Buka dashboard DOKU → Notification Center → cari invoice ini → <strong>Kirim Ulang Notifikasi</strong>.
         Kalau database sudah pulih, sekali kirim ulang biasanya menyelesaikannya.</li>
