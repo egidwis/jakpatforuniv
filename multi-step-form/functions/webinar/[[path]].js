@@ -63,7 +63,7 @@ section{margin-top:28px}.grid{display:grid;gap:14px}.tile{display:block;color:in
 .hero{display:grid;grid-template-columns:1.15fr 1fr;gap:24px;padding:18px;align-items:center}.hero h2{font-size:30px}
 .grid{grid-template-columns:repeat(3,1fr)}.layout{grid-template-columns:minmax(0,1fr) 340px;align-items:start}
 .side{position:sticky;top:76px}.buybar{display:none}.content{padding:24px}}
-@media(max-width:799px){.side .buy-action{display:none}}
+@media(min-width:800px){.only-sm{display:none}}@media(max-width:799px){.only-lg{display:none}}
 `;
 
 const INAPP_SCRIPT = `(function(){var u=navigator.userAgent||"";if(!/Instagram|FBAN|FBAV|FB_IAB|Line\\/|TikTok|musical_ly|BytedanceWebview/i.test(u))return;
@@ -71,9 +71,9 @@ document.querySelectorAll(".inapp").forEach(function(b){b.style.display="block";
 var d=function(){c.textContent="Link tersalin"};if(navigator.clipboard)navigator.clipboard.writeText(location.href).then(d);else d()}})})();`;
 
 function countdownScript(seconds, { reloadKey }) {
-  return `(function(){var left=${Number(seconds)},el=document.querySelector("[data-count]"),k=${JSON.stringify(reloadKey)};
+  return `(function(){var left=${Number(seconds)},els=document.querySelectorAll("[data-count]"),k=${JSON.stringify(reloadKey)};
 function p(n){return String(n).padStart(2,"0")}function draw(){var d=Math.floor(left/86400),h=Math.floor(left%86400/3600),m=Math.floor(left%3600/60),s=left%60;
-if(el)el.textContent=(d?d+" hari ":"")+p(h)+":"+p(m)+":"+p(s)}draw();var t=setInterval(function(){left--;if(left>0){draw();return}clearInterval(t);
+var txt=(d?d+" hari ":"")+p(h)+":"+p(m)+":"+p(s);els.forEach(function(el){el.textContent=txt})}draw();var t=setInterval(function(){left--;if(left>0){draw();return}clearInterval(t);
 if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1");location.reload()},1000)})();`;
 }
 
@@ -149,16 +149,28 @@ function renderDetail(event, { preview }) {
 ${/^https:\/\//i.test(s?.photo_url || '') ? `<img src="${e(s.photo_url)}" alt="" width="44" height="44" loading="lazy">` : '<div class="ph"></div>'}
 <div><strong>${e(s?.name)}</strong>${s?.title ? `<div class="muted" style="font-size:14px">${e(s.title)}</div>` : ''}</div></div>`).join('');
 
+  // Rancangan A2 (3 Nov): di HP info acara ada di bawah judul dan tombol di bar bawah;
+  // di desktop info acara + tombol pindah ke kartu kanan yang ikut di-scroll.
+  const [dateLine, timeLine] = (view.schedule_label || '').split(' · ');
+  const facts = `<ul class="meta">
+${dateLine ? `<li>📅 ${e(dateLine)}</li>` : ''}${timeLine ? `<li>🕖 ${e(timeLine)}</li>` : ''}
+${view.kind === 'live' ? '<li>💻 Online via Zoom</li>' : ''}
+${view.kind === 'replay' && view.recording_minutes ? `<li>▶ ${Number(view.recording_minutes)} menit</li>` : ''}
+${view.seats_label ? `<li>🎟 ${e(view.seats_label)}</li>` : ''}</ul>`;
+  const replayNote = view.kind === 'live' ? '<p class="note">Tidak bisa hadir? Tiket sudah termasuk rekaman.</p>' : '';
+  const prose = renderBlocks(event.description_blocks);
+
   const body = `${preview ? '<div class="preview">Pratinjau — belum tentu terlihat publik</div>' : ''}${navbar()}<main><div class="layout"><div class="stack" style="gap:16px">
-${posterTag(view)}<div class="content card">${badge(view)}<h1>${e(view.title)}</h1>
-${view.summary ? `<p class="muted" style="margin:0 0 8px">${e(view.summary)}</p>` : ''}${metaList(view)}
-<div class="prose" style="margin-top:16px">${renderBlocks(event.description_blocks)}</div>
+${posterTag(view)}<div class="content card"><div class="only-sm">${badge(view)}</div><h1>${e(view.title)}</h1>
+${view.summary ? `<p class="muted" style="margin:0 0 8px">${e(view.summary)}</p>` : ''}
+<div class="only-sm">${facts}${statusBlock}</div>
+${prose ? `<h2 style="margin-top:20px">Tentang webinar ini</h2><div class="prose">${prose}</div>` : ''}
 ${speakers ? `<h2 style="margin-top:20px">Pembicara</h2>${speakers}` : ''}
 <h2 style="margin-top:20px">Yang kamu dapat</h2><ul class="benefits">${view.benefits.map((b) => `<li>${e(b)}</li>`).join('')}</ul>
-${view.kind === 'live' ? '<p class="note" style="margin-top:12px">Tidak bisa hadir? Tiket sudah termasuk rekaman.</p>' : ''}
+<div class="only-sm" style="margin-top:12px">${replayNote}</div>
 <p class="note" style="margin-top:12px">Ada kendala? Hubungi admin di <a href="mailto:${ADMIN_CONTACT}">${ADMIN_CONTACT}</a>.</p></div></div>
-<aside class="side card buy"><div class="stack">${badge(view)}${priceBlock(view)}${statusBlock}${inAppNotice()}<div class="buy-action">${action}</div></div></aside></div></main>
-${(action || view.note) ? `<div class="buybar card">${action
+<aside class="side card buy only-lg"><div class="stack">${badge(view)}${priceBlock(view)}${facts}${statusBlock}${inAppNotice()}${action}${replayNote}</div></aside></div></main>
+${(action || view.note) ? `<div class="buybar card">${inAppNotice()}${action
     ? `<div class="buy-row">${view.price_label ? `<strong>${e(view.price_label)}</strong>` : ''}${action}</div>`
     : `<p class="note">${e(view.note)}</p>`}</div>` : ''}`;
 
