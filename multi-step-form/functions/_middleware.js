@@ -17,6 +17,15 @@ export async function onRequest(context) {
     return next();
   }
 
+  // Halaman dan API webinar dirender Pages Function di kedua domain.
+  if (
+    url.pathname === '/webinar' ||
+    url.pathname.startsWith('/webinar/') ||
+    url.pathname.startsWith('/api/webinar/')
+  ) {
+    return next();
+  }
+
   // --- Homepage domain routing ---
   let filePath = url.pathname;
 

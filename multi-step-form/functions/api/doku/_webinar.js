@@ -79,6 +79,37 @@ export async function processWebinarPayment({ sb, sbFetch, invoiceNumber, amount
 }
 
 /**
+ * Jalur Check Status tidak lewat recordWebhookEvent di webhook.js, jadi alarmnya
+ * ditulis di sini supaya tetap muncul di banner admin. Tidak pernah melempar:
+ * pembayarannya sudah tercatat.
+ */
+export async function recordWebinarAlarm({ env, sb, sbFetch, invoiceNumber, outcome, errorMessage, amount, rawPayload }) {
+  try {
+    await sbFetch(
+      `${sb.url}/rest/v1/doku_webhook_events`,
+      {
+        method: 'POST',
+        headers: { ...sb.headers, Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          invoice_number: invoiceNumber,
+          doku_status: 'SUCCESS',
+          app_status: 'completed',
+          amount: toNumericAmount(amount),
+          outcome,
+          http_status: 200,
+          error_message: errorMessage ?? 'Ditemukan lewat Check Status.',
+          raw_payload: rawPayload ?? null,
+        }),
+      },
+      'INSERT doku_webhook_events (sync)'
+    );
+  } catch (err) {
+    console.error(`[webinar] Gagal mencatat alarm ${invoiceNumber}:`, err);
+  }
+  await sendWebhookAlert(env, { invoiceNumber, outcome, errorMessage, amount, dokuStatus: 'SUCCESS' });
+}
+
+/**
  * Mengirim e-tiket tepat satu kali walau webhook dan Check Status berjalan
  * bersamaan. Tidak pernah melempar: tiketnya sudah terbit, dan DOKU tidak akan
  * mengulang sesudah menerima 200.
