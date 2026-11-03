@@ -547,6 +547,23 @@ export async function onRequest(context) {
       });
     }
 
+    // Notifikasi SNAP tidak bertanda tangan, dan gerbang ?k= di verifyDokuAuth
+    // bergantung pada env. Tiket webinar bernilai langsung bagi pembeli yang tahu
+    // nomor invoicenya sendiri, jadi jalur ini selalu mewajibkan secret.
+    if (
+      isWebinarInvoice(invoiceNumber) &&
+      (!context.env.DOKU_WEBHOOK_SECRET ||
+        new URL(context.request.url).searchParams.get('k') !== context.env.DOKU_WEBHOOK_SECRET)
+    ) {
+      return await rejectAndLog(context, {
+        rawBodyText,
+        outcome: REJECT_OUTCOMES.auth,
+        httpStatus: 401,
+        errorMessage: 'Invoice WBN- tanpa secret ?k= yang benar.',
+        responseBody: { error: 'Unauthorized' },
+      });
+    }
+
     console.log(`Webhook DOKU: Invoice: ${invoiceNumber}, Status: ${status}`);
 
     // Map status DOKU ke status aplikasi

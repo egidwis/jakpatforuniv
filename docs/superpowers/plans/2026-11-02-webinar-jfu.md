@@ -383,6 +383,7 @@ Fase 0, 1, dan 7 tidak memerlukan pembahasan ini. Fase 7 menyusul bila butirnya 
   - Dashboard DOKU:
     - QRIS aktif untuk Checkout.
     - Notification URL produk QRIS = `/api/doku/webhook?k=…`.
+      **Wajib:** invoice `WBN-` tanpa `?k=` yang benar ditolak 401, terlepas dari `WEBHOOK_ENFORCE_SECRET`.
   - **Izin tertulis pembicara** untuk merekam & menjual, wajib sebelum penjualan acara 1 dibuka.
   - **Setelan Zoom/Meet:** kapasitas dan batas durasi paket cukup untuk acara, dan Waiting Room menyala,
     karena link rapat terlihat oleh pembeli sesudah dialihkan dan bisa disebar.
@@ -643,6 +644,17 @@ lewat `state.from`, dan login password sudah kembali ke sana. Yang disesuaikan:
   - Banner `DashboardLayout.tsx:82` ("…agar bisa memasang survei") dinetralkan.
   - Bila `from` mengarah ke `/dashboard/webinar/`, tampilkan baris konteks "Masuk atau daftar untuk
     melanjutkan pembelian tiket webinar".
+
+### Keamanan endpoint (mengikuti pola gerbang `functions/api/admin` dan `schedules/lock.js`)
+- **Pemilik order = `auth_user_id` saja.** Fallback email seperti `owns()` di `lock.js` tidak disalin: verifikasi email
+  mati, jadi siapa pun bisa mendaftar memakai email orang lain.
+- **Identitas dan biodata dibaca server** dari sesi dan profil. `p_auth_user_id`, `p_buyer_email`, dan `p_buyer` tidak
+  pernah diambil dari body.
+- **Setiap endpoint punya gerbang tersendiri + spec:** daftar kolom yang boleh ditulis, nol baris dianggap galat, dan
+  endpoint admin mengecek `ADMIN_EMAILS` lewat `/auth/v1/user`.
+- **Cegah kursi diborong:** akun gratis tanpa verifikasi bisa menahan kursi 40 menit per akun. Pasang batas laju
+  Cloudflare pada `/api/webinar/checkout`, dan batas order pending per IP/akun di endpoint.
+- **Link gabung:** respons `/webinar/gabung/<token>` memakai `Referrer-Policy: no-referrer` dan `noindex`.
 
 ### Checkout di dashboard (React, `PrivateRoute`, mobile-first)
 - **`/dashboard/webinar/beli/:slug`** (pola tampilan & perilaku Jadwal & Bayar):

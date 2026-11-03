@@ -205,6 +205,39 @@ describe('webhook × webinar: alarm', () => {
   });
 });
 
+describe('webhook × webinar: gerbang autentikasi', () => {
+  it('secret salah, enforcement env mati: tetap ditolak sebelum RPC, nol tulisan webinar', async () => {
+    const net = network();
+    const good = request();
+    const res = await onRequest({
+      request: new Request(good.url.replace(ENV.DOKU_WEBHOOK_SECRET, 'salah'), {
+        method: 'POST', headers: good.headers, body: await good.text(),
+      }),
+      env: ENV,
+      waitUntil: () => {},
+    });
+    expect(res.status).toBe(401);
+    expect(net.of('/rpc/webinar_mark_paid')).toHaveLength(0);
+    expect(net.of('/webinar_orders')).toHaveLength(0);
+    expect(net.tickets()).toHaveLength(0);
+    expect(net.audit()[0]).toMatchObject({ outcome: 'rejected_auth', http_status: 401 });
+  });
+
+  it('secret salah pada invoice iklan: perilaku lama tidak berubah', async () => {
+    const net = network();
+    const good = request('SUCCESS', 50000, 'JFU-INV-t-1');
+    const res = await onRequest({
+      request: new Request(good.url.replace(ENV.DOKU_WEBHOOK_SECRET, 'salah'), {
+        method: 'POST', headers: good.headers, body: await good.text(),
+      }),
+      env: ENV,
+      waitUntil: () => {},
+    });
+    expect(res.status).toBe(200);
+    expect(net.audit()[0].outcome).not.toBe('rejected_auth');
+  });
+});
+
 describe('webhook × webinar: bukan lunas', () => {
   it('FAILED: hanya baris pending yang menjadi expired', async () => {
     const net = network();
