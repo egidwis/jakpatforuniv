@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../utils/supabase';
+import { fetchAllRows } from '@/utils/fetchAllRows';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,14 +45,19 @@ export function CustomersPage() {
       if (formError) throw formError;
 
       // 2. Fetch actual paid amounts from transactions (source of truth for revenue)
-      const { data: txData } = await supabase
-        .from('transactions')
-        .select('form_submission_id, amount, status');
+      // Tiket webinar ikut terhitung di tabel ini, jadi batas 1.000 baris PostgREST
+      // bisa terlampaui diam-diam tanpa paginasi.
+      const txData = await fetchAllRows<{ form_submission_id: string | null; amount: number; status: string }>(() =>
+        supabase
+          .from('transactions')
+          .select('form_submission_id, amount, status')
+          .order('id', { ascending: true }),
+      );
 
       // Build map: submission_id → total paid amount
       const paidMap = new Map<string, number>();
-      (txData || []).forEach((tx: any) => {
-        if (['paid', 'completed'].includes(tx.status)) {
+      txData.forEach((tx) => {
+        if (tx.form_submission_id && ['paid', 'completed'].includes(tx.status)) {
           paidMap.set(tx.form_submission_id, (paidMap.get(tx.form_submission_id) || 0) + tx.amount);
         }
       });

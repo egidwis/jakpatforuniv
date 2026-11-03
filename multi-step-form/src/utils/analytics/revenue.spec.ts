@@ -907,3 +907,11 @@ describe('coverageGapDays — berapa lama sumbu kosong di kiri', () => {
         ])).toBe(0);
     });
 });
+
+describe('isNotWebinar', () => {
+    test('hanya menyingkirkan baris webinar; entity_type kosong tetap iklan', async () => {
+        const { isNotWebinar } = await import('./fetchRevenueData');
+        const rows = [{ entity_type: 'submission' }, { entity_type: 'extend' }, { entity_type: null }, { entity_type: 'webinar' }];
+        expect(rows.filter(isNotWebinar).map((r) => r.entity_type)).toEqual(['submission', 'extend', null]);
+    });
+});

@@ -89,6 +89,9 @@ export function previousRange(range: DateRange): DateRange {
     return { from: new Date(range.from.getTime() - span), to: new Date(range.from.getTime()) };
 }
 
+export const isNotWebinar = (tx: { entity_type?: string | null }): boolean =>
+    tx.entity_type !== 'webinar';
+
 export async function fetchRevenueData(range: DateRange): Promise<RevenueDataset> {
     const prev = previousRange(range);
     const fromIso = range.from.toISOString();
@@ -122,6 +125,11 @@ export async function fetchRevenueData(range: DateRange): Promise<RevenueDataset
     // Riwayat penuh untuk segmentasi baru vs repeat. Dua query ringan, bukan join
     // yang ditanam — bentuk embed PostgREST diam-diam berubah kalau nama FK-nya
     // berubah, sementara dua SELECT kolom-sempit ini tidak bisa gagal separuh.
+    // Webinar punya jalur laporan sendiri (Fase 4). Tanpa saringan ini total
+    // pendapatan naik tanpa masuk rincian mana pun.
+    const adTransactions = transactions.filter(isNotWebinar);
+    const adPreviousTransactions = previousTransactions.filter(isNotWebinar);
+
     const [allPaidTx, allSubOwners] = await Promise.all([
         fetchAllRows(() =>
             supabase
@@ -157,7 +165,7 @@ export async function fetchRevenueData(range: DateRange): Promise<RevenueDataset
     // Susulan: submission induk yang jatuh di luar rentang. Tanpa langkah ini,
     // revenue-nya masuk total tapi hilang dari setiap breakdown.
     const missing = new Set<string>();
-    for (const tx of [...transactions, ...previousTransactions]) {
+    for (const tx of [...adTransactions, ...adPreviousTransactions]) {
         const id = tx.form_submission_id;
         if (typeof id === 'string' && id && !submissionsById.has(id)) missing.add(id);
     }
@@ -174,8 +182,8 @@ export async function fetchRevenueData(range: DateRange): Promise<RevenueDataset
     }
 
     return {
-        transactions,
-        previousTransactions,
+        transactions: adTransactions,
+        previousTransactions: adPreviousTransactions,
         submissionsInRange,
         submissionsById,
         firstPaidAtByCustomer,
