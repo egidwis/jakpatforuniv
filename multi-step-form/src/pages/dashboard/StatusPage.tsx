@@ -35,6 +35,7 @@ import { PublicationPhase } from '@/components/status/PublicationPhase';
 import { buildScheduleCards } from '@/components/status/airingPeriods';
 import { groupInfoFor } from '@/components/status/invoiceGroups';
 import { CreateOrderCards, NewOrderFab } from '@/components/CreateOrderCards';
+import { WebinarTicketStrip } from '@/components/webinar/WebinarHomeEntries';
 import { canUseKilatSelfServe } from '@/utils/kilatAccess';
 import { deriveOrderUiState, getActiveDashboardPhase, type OrderGroup } from '@/components/status/deriveOrderUiState';
 import { AdsEntryModal } from '@/components/AdsEntryModal';
@@ -822,6 +823,7 @@ export function StatusPage() {
 
                 {/* Daftar order — kolom lebar di kanan (desktop), di bawah kartu aksi (ponsel) */}
                 <div className="relative lg:col-span-8 min-w-0 space-y-4">
+                    <WebinarTicketStrip />
                     {/* Integrated Control Bar: My Order, Counter, Subtitle & Toolbar */}
                     {/* Tinggi 65px di desktop = kepala kiri (`lg:h-16` + 1px border kartu), jadi tepi
                         bawah dua kepala sejajar. Mode bingkai: kepala MELAYANG di atas bingkai

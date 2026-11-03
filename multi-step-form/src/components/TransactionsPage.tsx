@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase, cancelInvoice, fetchInvoiceGroups, tempoCancelBlockReason } from '../utils/supabase';
+import { fetchAllRows } from '@/utils/fetchAllRows';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -83,10 +84,11 @@ export function TransactionsPage() {
         sama sekali (papan Schedule gagal memuat sejak hari pertama karenanya).
         Menyaring di sisi `invoices` menghindarinya sepenuhnya.
       */
-      const [txRes, invRes] = await Promise.all([
-        supabase
-          .from('transactions')
-          .select(`
+      const [txRows, invRes] = await Promise.all([
+        fetchAllRows<Transaction>(() =>
+          supabase
+            .from('transactions')
+            .select(`
             *,
             form_submissions!inner(
               id,
@@ -97,12 +99,13 @@ export function TransactionsPage() {
               end_date
             )
           `)
-          .order('created_at', { ascending: false }),
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: true }),
+        ),
         supabase.from('invoices').select('payment_id').eq('status', 'pending'),
       ]);
 
-      if (txRes.error) throw txRes.error;
-      setTransactions(txRes.data || []);
+      setTransactions(txRows);
 
       /*
         Kegagalan di sini GAGAL TERTUTUP, bukan melempar: daftar transaksi adalah

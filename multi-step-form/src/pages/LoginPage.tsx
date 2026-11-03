@@ -9,6 +9,8 @@ import logoMark from '../assets/Jakpat Navbar Logo.webp';
 import { ACADEMIC_STATUS_OPTIONS, DEPARTMENT_OPTIONS, UNIVERSITY_OPTIONS, REFERRAL_SOURCE_OPTIONS, collapseReferralSource } from '../constants/biodata';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { useLanguage } from '../i18n/LanguageContext';
+import { InAppBrowserNotice } from '../components/webinar/InAppBrowserNotice';
+import { authErrorText } from '../utils/inAppBrowser';
 
 const inputClass = "flex h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 hover:bg-slate-50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-jfu-primary/10 focus:border-jfu-primary transition-all disabled:opacity-50 dark:bg-gray-900 dark:border-gray-700 dark:text-white";
 
@@ -32,6 +34,7 @@ export default function LoginPage() {
 
     const location = useLocation();
     const from = location.state?.from?.pathname || '/dashboard';
+    const isWebinarPurchase = from.startsWith('/dashboard/webinar/beli/');
 
     // If user is already logged in, redirect to dashboard or original destination
     if (!loading && session) {
@@ -41,7 +44,8 @@ export default function LoginPage() {
     const handleGoogleLogin = async () => {
         try {
             setIsLoggingIn(true);
-            await signInWithGoogle();
+            // Tanpa tujuan ini, pembeli yang datang dari halaman beli mendarat di /dashboard.
+            await signInWithGoogle(`${window.location.origin}${from}`);
         } catch (error) {
             console.error('Login error:', error);
             toast.error('Gagal masuk dengan Google');
@@ -94,12 +98,14 @@ export default function LoginPage() {
                         ? collapseReferralSource(referralSource, referralSourceOther)
                         : undefined,
                 });
-                toast.success('Pendaftaran berhasil! Silakan cek email Anda untuk verifikasi.');
-                setMode('login'); // Switch to login after signup
+                // Verifikasi email mati: sesi langsung ada, dan <Navigate> di atas membawa ke `from`.
+                toast.success('Pendaftaran berhasil!');
+                setMode('login');
+                setIsLoggingIn(false);
             }
         } catch (error: any) {
             console.error('Auth error:', error);
-            toast.error(error.message || 'Autentikasi gagal');
+            toast.error(authErrorText(error.message));
             setIsLoggingIn(false);
         }
     };
@@ -147,9 +153,13 @@ export default function LoginPage() {
                         {mode === 'login' ? t('authWelcomeBack') : t('authCreateAccount')}
                     </h1>
                     <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">
-                        {mode === 'login' ? t('authLoginSubtitle') : t('authSignupSubtitle')}
+                        {isWebinarPurchase
+                            ? 'Masuk atau daftar untuk melanjutkan pembelian tiket webinar'
+                            : mode === 'login' ? t('authLoginSubtitle') : t('authSignupSubtitle')}
                     </p>
                 </div>
+
+                <div className="mb-4 empty:hidden"><InAppBrowserNotice /></div>
 
                 {/* Segmented Control Switcher */}
                 <div className="[display:grid] grid-cols-2 p-1 bg-slate-100/90 dark:bg-gray-700/60 rounded-xl mb-6 border border-slate-200/60 dark:border-gray-600">

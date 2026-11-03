@@ -312,3 +312,79 @@ function toggleTestimonials() {
         hideText.style.display = 'none';
     }
 }
+
+// Webinar: section sementara. Isi dan aturannya datang dari _view.js di server.
+(function initWebinarSection() {
+    var section = document.getElementById('webinar');
+    var list = document.getElementById('webinar-home-list');
+    if (!section || !list || typeof fetch !== 'function') return;
+
+    function text(tag, className, value) {
+        var el = document.createElement(tag);
+        el.className = className;
+        el.textContent = value;
+        return el;
+    }
+
+    function poster(view) {
+        if (/^https:\/\//i.test(view.poster_url || '')) {
+            var img = document.createElement('img');
+            img.className = 'webinar-home-poster';
+            img.src = view.poster_url;
+            img.alt = view.title;
+            img.loading = 'lazy';
+            return img;
+        }
+        return text('div', 'webinar-home-poster', view.title);
+    }
+
+    function translated(key, fallback) {
+        var data = typeof translations !== 'undefined' ? translations[currentLanguage] : null;
+        return (data && data.webinar && data.webinar[key]) || fallback;
+    }
+
+    function card(view) {
+        var a = document.createElement('a');
+        a.className = 'webinar-home-card';
+        a.href = view.detail_url;
+        a.appendChild(poster(view));
+
+        var body = document.createElement('div');
+        body.className = 'webinar-home-body';
+        var tone = view.tone === 'on_sale' ? ' is-sale' : (view.tone === 'ended' ? ' is-ended' : '');
+        body.appendChild(text('span', 'webinar-home-badge' + tone, view.badge));
+        body.appendChild(text('div', 'webinar-home-title', view.title));
+        if (view.schedule_label) body.appendChild(text('p', 'webinar-home-meta', view.schedule_label));
+        if (view.state === 'coming_soon' && view.note) body.appendChild(text('p', 'webinar-home-meta', view.note));
+        var speaker = (view.speakers || []).map(function (s) {
+            return [s && s.name, s && s.title].filter(Boolean).join(', ');
+        }).filter(Boolean).join(' · ');
+        if (speaker) body.appendChild(text('p', 'webinar-home-meta', speaker));
+        if (view.price_label) {
+            var price = text('p', 'webinar-home-price', view.price_label + ' ');
+            price.appendChild(text('small', '', '· ' + translated('ppn', 'termasuk PPN')));
+            body.appendChild(price);
+        }
+        var cta = text('span', 'webinar-home-cta', translated('cta', 'Lihat Webinar') + ' →');
+        cta.setAttribute('data-i18n', 'webinar.cta');
+        body.appendChild(cta);
+        a.appendChild(body);
+        return a;
+    }
+
+    fetch('/api/webinar/events')
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (data) {
+            // Menu Webinar tersembunyi sampai server bilang terbuka (masa uji: open:false).
+            if (data && data.open === true) {
+                document.querySelectorAll('[data-webinar-nav]').forEach(function (el) { el.style.display = ''; });
+            }
+            var items = data && data.open === true && Array.isArray(data.homepage) ? data.homepage : [];
+            if (items.length === 0) return;
+            list.className = 'webinar-home-list ' + (items.length === 1 ? 'is-one' : 'is-two');
+            items.forEach(function (view) { list.appendChild(card(view)); });
+            section.hidden = false;
+        })
+        .catch(function (err) { console.error('[webinar]', err); });
+})();
+
