@@ -1,7 +1,13 @@
 import { sendMail } from '../_mail.js';
+import {
+  formatChannelLabel,
+  formatDateTimeIndo,
+  generateReceiptPdf,
+  shortDocCode,
+  terbilangCapitalized,
+} from './_payment-receipt.js';
 
-// E-tiket webinar. Kwitansi PDF menyusul di Fase 2, sesudah label
-// generateReceiptPdf dijadikan parameter.
+// E-tiket webinar beserta kwitansi PDF.
 //
 // Keputusan pemilik produk: teks untuk pembeli tidak menyebut pengembalian dana
 // sama sekali. Pembeli yang punya kendala diarahkan menghubungi admin. Dikunci
@@ -92,7 +98,44 @@ export function buildTicketEmail({ order, event }) {
   return { subject: `E-tiket: ${event.title}`, html };
 }
 
+const SHORT_DATE = { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'short', year: 'numeric' };
+
+/** Kwitansi tidak boleh menahan tiket: gagal membuat PDF berarti tiket terkirim tanpa lampiran. */
+export function buildTicketReceipt({ order, event }) {
+  try {
+    const code = shortDocCode(order.invoice_number);
+    const content = generateReceiptPdf({
+      docNumber: `RCP-${code}`,
+      invoiceNumber: order.invoice_number,
+      paidAtFormatted: formatDateTimeIndo(order.paid_at ? new Date(order.paid_at) : new Date()),
+      fullName: order.buyer_name || 'Peserta',
+      university: order.buyer_university || '',
+      bundles: [{
+        title: `Tiket webinar: ${event.title}`,
+        scheduleStr: new Date(event.starts_at).toLocaleDateString('id-ID', SHORT_DATE),
+        amount: order.amount,
+      }],
+      subtotal: order.subtotal,
+      ppn: order.ppn_amount,
+      total: order.amount,
+      channelLabel: formatChannelLabel(order.payment_channel),
+      terbilangText: terbilangCapitalized(order.amount),
+      itemColumnLabel: 'Deskripsi',
+      scheduleColumnLabel: 'Jadwal Acara',
+    });
+    return content ? { filename: `Kwitansi-${code}.pdf`, content } : null;
+  } catch (err) {
+    console.error(`[webinar] Kwitansi ${order.invoice_number} gagal dibuat:`, err);
+    return null;
+  }
+}
+
 /** Meneruskan hasil sendMail: `{ ok: true, ... }` atau `{ ok: false, error, ... }`. */
 export async function sendWebinarTicketEmail(env, { order, event }) {
-  return sendMail(env, { to: [order.buyer_email], ...buildTicketEmail({ order, event }) });
+  const receipt = buildTicketReceipt({ order, event });
+  return sendMail(env, {
+    to: [order.buyer_email],
+    ...buildTicketEmail({ order, event }),
+    ...(receipt ? { attachments: [receipt] } : {}),
+  });
 }

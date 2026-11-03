@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { onRequest } from './webhook.js';
 import { deliverWebinarTicket } from './_webinar.js';
-import { buildTicketEmail, googleCalendarUrl } from './_webinar-ticket-email.js';
+import { buildTicketEmail, buildTicketReceipt, googleCalendarUrl } from './_webinar-ticket-email.js';
 
 /*
   Handler SUNGGUHAN dipanggil dengan notifikasi yang lolos autentikasi; jaringan
@@ -317,6 +317,34 @@ describe('deliverWebinarTicket', () => {
     global.fetch = vi.fn(async (url) => (String(url).includes('api.resend.com') ? json({ id: 'm' }) : json({}, 500)));
     await expect(deliver()).resolves.toEqual({ sent: false, reason: 'failed' });
     expect(global.fetch.mock.calls.some(([u]) => String(u).includes('api.resend.com'))).toBe(true);
+  });
+});
+
+describe('kwitansi e-tiket', () => {
+  const receiptOrder = { ...ORDER, amount: 1110, subtotal: 1000, ppn_amount: 110, payment_channel: 'QRIS_DOKU', paid_at: '2026-11-03T02:00:00Z' };
+  const pdfText = (content) => atob(content);
+
+  it('uji Rp 1.110: Subtotal 1.000, PPN 110, label webinar', () => {
+    const receipt = buildTicketReceipt({ order: receiptOrder, event: EVENT });
+    expect(receipt.filename).toBe('Kwitansi-ABCDEF12.pdf');
+    const text = pdfText(receipt.content);
+    expect(text).toContain('%PDF');
+    expect(text).toContain('Jadwal Acara');
+    expect(text).not.toContain('Jadwal Tayang');
+    expect(text).toMatch(/Rp\s?1\.000/);
+    expect(text).toMatch(/Rp\s?110/);
+    expect(text).toMatch(/Rp\s?1\.110/);
+  });
+
+  it('PDF gagal: tiket tetap terkirim, tanpa lampiran', async () => {
+    const bad = buildTicketReceipt({ order: receiptOrder, event: { ...EVENT, title: Symbol('x') } });
+    expect(bad).toBeNull();
+  });
+
+  it('e-tiket membawa lampiran kwitansi', async () => {
+    const net = network({ claim: () => [receiptOrder] });
+    await call();
+    expect(net.tickets()[0].attachments[0].filename).toBe('Kwitansi-ABCDEF12.pdf');
   });
 });
 

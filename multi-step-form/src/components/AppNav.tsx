@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LogOut, User, ChevronDown, Globe, Menu, LayoutDashboard, ListPlus, Sparkles, Wrench } from 'lucide-react';
+import { LogOut, User, ChevronDown, Globe, Menu, LayoutDashboard, ListPlus, Sparkles, Ticket, Wrench } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { LanguageSwitcher } from './LanguageSwitcher';
@@ -24,7 +24,7 @@ import {
 
 /**
  * Header Dashboard User:
- * - Desktop: Text-only navigation links (My Order, Tools Dropdown [Buat Kuesioner, Data Analyzer]) rata kanan dengan Avatar Dropdown.
+ * - Desktop: Text-only navigation links (My Order, Webinar, Tools Dropdown [Buat Kuesioner, Data Analyzer]) rata kanan dengan Avatar Dropdown.
  * - Mobile: Hamburger menu yang membuka Side Sheet dengan menu lengkap dan Switch Bahasa.
  *
  * Chat Mimin sengaja TIDAK ada di sini: pintu masuknya satu, yaitu kaki kartu
@@ -51,6 +51,7 @@ export function AppNav() {
     const isMyOrdersActive = location.pathname === '/dashboard' || location.pathname === '/dashboard/status';
     // Termasuk /forms/new, /forms/:id/edit, dan /forms/:id/responses — seluruh
     // pembuat form hidup di bawah prefix ini.
+    const isWebinarActive = location.pathname.startsWith('/dashboard/webinar');
     const isTheFormActive = location.pathname.startsWith('/dashboard/forms');
     const isAnalyzerActive = location.pathname.startsWith('/dashboard/analyzer');
     const isToolsActive = isTheFormActive || isAnalyzerActive;
@@ -88,6 +89,22 @@ export function AppNav() {
                                     <LayoutDashboard className={`w-4 h-4 shrink-0 transition-colors ${isMyOrdersActive ? 'text-jfu-primary' : 'text-slate-400'}`} />
                                     <span>{t('navMyOrder')}</span>
                                     {isMyOrdersActive && (
+                                        <span className="absolute bottom-0 inset-x-0 h-[2.5px] bg-jfu-primary rounded-t-full" />
+                                    )}
+                                </Link>
+
+                                {/* Webinar */}
+                                <Link
+                                    to="/dashboard/webinar"
+                                    className={`relative flex items-center gap-2 h-14 md:h-16 px-1 text-sm font-bold transition-colors ${
+                                        isWebinarActive
+                                            ? 'text-jfu-primary'
+                                            : 'text-slate-500 hover:text-slate-800'
+                                    }`}
+                                >
+                                    <Ticket className={`w-4 h-4 shrink-0 transition-colors ${isWebinarActive ? 'text-jfu-primary' : 'text-slate-400'}`} />
+                                    <span>Webinar</span>
+                                    {isWebinarActive && (
                                         <span className="absolute bottom-0 inset-x-0 h-[2.5px] bg-jfu-primary rounded-t-full" />
                                     )}
                                 </Link>
@@ -248,6 +265,19 @@ export function AppNav() {
                                             >
                                                 <LayoutDashboard className={`w-4 h-4 shrink-0 ${isMyOrdersActive ? 'text-white' : 'text-slate-500'}`} />
                                                 <span>{t('navMyOrder')}</span>
+                                            </Link>
+                                        </SheetClose>
+                                        <SheetClose asChild>
+                                            <Link
+                                                to="/dashboard/webinar"
+                                                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                                                    isWebinarActive
+                                                        ? 'bg-jfu-primary text-white shadow-xs'
+                                                        : 'text-slate-700 hover:bg-slate-100/80'
+                                                }`}
+                                            >
+                                                <Ticket className={`w-4 h-4 shrink-0 ${isWebinarActive ? 'text-white' : 'text-slate-400'}`} />
+                                                <span>Webinar</span>
                                             </Link>
                                         </SheetClose>
                                     </div>

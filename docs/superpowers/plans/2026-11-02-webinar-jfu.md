@@ -674,8 +674,8 @@ lewat `state.from`, dan login password sudah kembali ke sana. Yang disesuaikan:
   pernah diambil dari body.
 - **Setiap endpoint punya gerbang tersendiri + spec:** daftar kolom yang boleh ditulis, nol baris dianggap galat, dan
   endpoint admin mengecek `ADMIN_EMAILS` lewat `/auth/v1/user`.
-- **Cegah kursi diborong:** akun gratis tanpa verifikasi bisa menahan kursi 40 menit per akun. Pasang batas laju
-  Cloudflare pada `/api/webinar/checkout`, dan batas order pending per IP/akun di endpoint.
+- **Cegah kursi diborong:** akun gratis tanpa verifikasi bisa menahan kursi 40 menit per akun. Satu pending per akun
+  dijaga index; batas per IP lewat aturan rate limiting Cloudflare pada `/api/webinar/checkout` (setelan pemilik produk).
 - **Link gabung:** respons `/webinar/gabung/<token>` memakai `Referrer-Policy: no-referrer` dan `noindex`.
 
 ### Checkout di dashboard (React, `PrivateRoute`, mobile-first)

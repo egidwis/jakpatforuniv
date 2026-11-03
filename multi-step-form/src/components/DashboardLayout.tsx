@@ -90,7 +90,7 @@ export function DashboardLayout() {
               >
                 Lengkapi sekarang
               </button>{' '}
-              agar bisa memasang survei.
+              agar bisa memakai layanan JFU.
             </span>
           </div>
         )}

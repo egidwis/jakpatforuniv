@@ -17,12 +17,12 @@ import { sendMail } from '../_mail.js';
 
 const DEFAULT_ORIGIN = 'https://submit.jakpatforuniv.com';
 
-function shortDocCode(paymentId) {
+export function shortDocCode(paymentId) {
   const raw = (paymentId || '').trim();
   if (!raw) return 'XXXXXXXX';
 
   let rest = raw;
-  for (const prefix of ['JFU-INV-', 'JFU-', 'sim_doku_', 'sim_']) {
+  for (const prefix of ['JFU-INV-', 'JFU-', 'WBN-', 'sim_doku_', 'sim_']) {
     if (rest.toLowerCase().startsWith(prefix.toLowerCase())) {
       rest = rest.slice(prefix.length);
       break;
@@ -135,7 +135,7 @@ export function receiptScheduleLabel({ start, end, duration, distributionType, k
   return 'Belum dijadwalkan';
 }
 
-function formatDateTimeIndo(dateInput) {
+export function formatDateTimeIndo(dateInput) {
   if (!dateInput) return '-';
   const d = new Date(dateInput);
   if (Number.isNaN(d.getTime())) return '-';
@@ -172,6 +172,8 @@ export function generateReceiptPdf({
   total,
   channelLabel,
   terbilangText,
+  itemColumnLabel = 'Deskripsi Pesanan / Survei',
+  scheduleColumnLabel = 'Jadwal Tayang',
 }) {
   let stream = '';
 
@@ -228,8 +230,8 @@ export function generateReceiptPdf({
 
   stream += '0.2 0.2 0.2 rg\n';
   stream += 'BT /F2 9 Tf 50 587 Td (No) Tj ET\n';
-  stream += 'BT /F2 9 Tf 80 587 Td (Deskripsi Pesanan / Survei) Tj ET\n';
-  stream += 'BT /F2 9 Tf 330 587 Td (Jadwal Tayang) Tj ET\n';
+  stream += `BT /F2 9 Tf 80 587 Td (${escapePdfText(itemColumnLabel)}) Tj ET\n`;
+  stream += `BT /F2 9 Tf 330 587 Td (${escapePdfText(scheduleColumnLabel)}) Tj ET\n`;
   stream += 'BT /F2 9 Tf 470 587 Td (Nominal) Tj ET\n';
 
   let currentY = 555;

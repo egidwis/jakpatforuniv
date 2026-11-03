@@ -15,6 +15,7 @@ var translations = {
             services: "Layanan",
             testimonials: "Testimoni",
             comparison: "Perbandingan",
+            webinar: "Webinar",
             ariaLabel: "Navigasi utama",
             hamburgerAriaLabel: "Toggle menu navigasi",
             mobileMenuAriaLabel: "Menu mobile",
@@ -64,6 +65,13 @@ var translations = {
         },
 
         // Comparison Section
+        webinar: {
+            heading: "Webinar Mendatang",
+            subtitle: "Belajar riset langsung dari praktisinya",
+            cta: "Lihat Webinar",
+            ppn: "termasuk PPN",
+        },
+
         comparison: {
             heading: "Perbandingan dan <span class=\"highlight-academic\">Perbedaan Paket</span>",
             subtitle: "Pilih layanan yang sesuai dengan kebutuhan penelitian dan budget akademikmu",
@@ -129,6 +137,7 @@ var translations = {
             services: "Services",
             testimonials: "Testimonials",
             comparison: "Comparison",
+            webinar: "Webinar",
             ariaLabel: "Main navigation",
             hamburgerAriaLabel: "Toggle navigation menu",
             mobileMenuAriaLabel: "Mobile menu",
@@ -178,6 +187,13 @@ var translations = {
         },
 
         // Comparison Section
+        webinar: {
+            heading: "Upcoming Webinars",
+            subtitle: "Learn research directly from practitioners",
+            cta: "View Webinar",
+            ppn: "VAT included",
+        },
+
         comparison: {
             heading: "Comparison and <span class=\"highlight-academic\">Package Differences</span>",
             subtitle: "Choose the service that fits your research needs and academic budget",
