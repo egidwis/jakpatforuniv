@@ -2,7 +2,22 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('./supabase', () => ({ supabase: { auth: { getSession: async () => ({ data: { session: null } }) } } }));
 
-const { activeTickets, checkoutErrorText, WebinarApiError } = await import('./webinarApi');
+const { activeTickets, checkoutErrorText, fetchMyWebinarOrders, fetchWebinarListing, WebinarApiError } = await import('./webinarApi');
+
+describe('respons bukan JSON', () => {
+    it('index.html berstatus 200 dianggap galat, bukan daftar kosong', async () => {
+        const html = new Response('<!doctype html><html></html>', { status: 200, headers: { 'Content-Type': 'text/html' } });
+        vi.stubGlobal('fetch', vi.fn(async () => html.clone()));
+        await expect(fetchWebinarListing()).rejects.toBeInstanceOf(WebinarApiError);
+        await expect(fetchMyWebinarOrders()).rejects.toBeInstanceOf(WebinarApiError);
+        vi.unstubAllGlobals();
+    });
+    it('JSON valid tetap diteruskan', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ email: 'a@b.c', orders: [] }), { status: 200 })));
+        await expect(fetchMyWebinarOrders()).resolves.toEqual({ email: 'a@b.c', orders: [] });
+        vi.unstubAllGlobals();
+    });
+});
 
 const order = (over = {}) => ({ status: 'paid', kind: 'live', event_is_past: false, event_cancelled: false, ...over }) as never;
 

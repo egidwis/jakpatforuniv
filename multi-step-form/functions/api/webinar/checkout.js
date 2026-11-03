@@ -1,3 +1,4 @@
+import { webinarOpenFor } from './_access.js';
 import { dokuRequest } from '../doku/_helpers.js';
 import { caller, CORS, json, resolveService, rest, SLUG_RE } from './_server.js';
 
@@ -44,6 +45,7 @@ export async function onRequest({ request, env }) {
 
   const user = await caller(env, request);
   if (!user) return json(401, { error: 'Unauthorized' });
+  if (!webinarOpenFor(user.email)) return json(403, { error: 'Webinar belum dibuka', code: 'not_open' });
 
   let body;
   try { body = await request.json(); } catch { return json(400, { error: 'Body bukan JSON' }); }

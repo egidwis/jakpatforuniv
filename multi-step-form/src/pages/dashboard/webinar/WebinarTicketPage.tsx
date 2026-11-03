@@ -46,8 +46,13 @@ export function WebinarTicketPage() {
         return found;
     }, [orderId]);
 
+    const [loadFailed, setLoadFailed] = useState(false);
+
     useEffect(() => {
-        load().catch((err) => console.error('[webinar]', err)).finally(() => setLoading(false));
+        load()
+            .then(() => setLoadFailed(false))
+            .catch((err) => { console.error('[webinar]', err); setLoadFailed(true); })
+            .finally(() => setLoading(false));
     }, [load]);
 
     const isPending = order?.status === 'pending';
@@ -78,6 +83,11 @@ export function WebinarTicketPage() {
             <Link to="/dashboard/webinar" className="block mt-4 text-center text-sm font-semibold text-jfu-primary">Kembali ke Webinar</Link>
         </div>
     );
+
+    if (loadFailed && !order) {
+        // Gagal muat bukan "tidak ditemukan": pembeli yang baru bayar tidak boleh mengira tiketnya hilang.
+        return shell(<p className="text-center text-slate-700">Tiket belum bisa dimuat. Muat ulang beberapa saat lagi.</p>);
+    }
 
     if (notFound || !order) {
         return shell(<p className="text-center text-slate-700">Tiket tidak ditemukan di akun ini. Cek akun yang tertulis di e-tiketmu.</p>);

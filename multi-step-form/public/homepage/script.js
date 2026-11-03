@@ -375,7 +375,11 @@ function toggleTestimonials() {
     fetch('/api/webinar/events')
         .then(function (res) { return res.ok ? res.json() : null; })
         .then(function (data) {
-            var items = data && Array.isArray(data.homepage) ? data.homepage : [];
+            // Menu Webinar tersembunyi sampai server bilang terbuka (masa uji: open:false).
+            if (data && data.open === true) {
+                document.querySelectorAll('[data-webinar-nav]').forEach(function (el) { el.style.display = ''; });
+            }
+            var items = data && data.open === true && Array.isArray(data.homepage) ? data.homepage : [];
             if (items.length === 0) return;
             list.className = 'webinar-home-list ' + (items.length === 1 ? 'is-one' : 'is-two');
             items.forEach(function (view) { list.appendChild(card(view)); });

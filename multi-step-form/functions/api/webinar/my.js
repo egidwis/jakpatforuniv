@@ -1,3 +1,4 @@
+import { webinarOpenFor } from './_access.js';
 import { deliverWebinarTicket } from '../doku/_webinar.js';
 import { SITE_URL, buildEventView, formatPrice } from './_view.js';
 import { caller, CORS, json, resolveService, rest, sbFetch } from './_server.js';
@@ -44,6 +45,7 @@ export async function onRequest({ request, env, waitUntil }) {
 
   const user = await caller(env, request);
   if (!user) return json(401, { error: 'Unauthorized' });
+  if (!webinarOpenFor(user.email)) return json(403, { error: 'Webinar belum dibuka', code: 'not_open' });
 
   try {
     const sb = resolveService(env);

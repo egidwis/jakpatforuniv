@@ -32,6 +32,8 @@ export interface WebinarListing {
     videos: WebinarEventView[];
     homepage: WebinarEventView[];
     dashboard_row: WebinarEventView | null;
+    /** false selama masa uji untuk akun di luar daftar izin. */
+    open?: boolean;
 }
 
 export type WebinarOrderStatus = 'pending' | 'paid' | 'expired' | 'refunded';
@@ -80,13 +82,19 @@ async function call<T>(path: string, init?: RequestInit, withAuth = false): Prom
     const res = await fetch(`/api/webinar/${path}`, { ...init, headers });
     const body = await res.json().catch(() => null);
     if (!res.ok) throw new WebinarApiError(body?.error || 'Terjadi kendala. Coba lagi beberapa saat.', res.status, body);
+    // 200 tanpa JSON (mis. index.html SPA saat Function tidak terpasang) bukan keadaan kosong.
+    if (body === null || typeof body !== 'object') {
+        throw new WebinarApiError('Terjadi kendala. Coba lagi beberapa saat.', res.status, { code: 'bad_response' });
+    }
     return body as T;
 }
 
-export const fetchWebinarListing = () => call<WebinarListing>('events');
+// Sesi ikut dikirim: selama masa uji (src/utils/webinarAccess.ts) server hanya
+// membuka isi untuk akun yang diizinkan.
+export const fetchWebinarListing = () => call<WebinarListing>('events', undefined, true);
 
 export const fetchWebinarEvent = (slug: string) =>
-    call<{ event: WebinarEventView }>(`event?slug=${encodeURIComponent(slug)}`).then((r) => r.event);
+    call<{ event: WebinarEventView }>(`event?slug=${encodeURIComponent(slug)}`, undefined, true).then((r) => r.event);
 
 export const fetchMyWebinarOrders = () => call<MyWebinarOrders>('my', undefined, true);
 

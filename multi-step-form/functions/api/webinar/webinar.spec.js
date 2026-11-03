@@ -1,6 +1,20 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+
+// Tes lama menguji perilaku sesudah rilis (masa uji mati). Blok "masa uji"
+// menyalakannya. Logika webinarOpenFor yang asli diuji di _access.spec.js.
+const access = vi.hoisted(() => ({ preview: false }));
+vi.mock('./_access.js', async (importOriginal) => {
+  const real = await importOriginal();
+  return {
+    get WEBINAR_PREVIEW_ONLY() { return access.preview; },
+    WEBINAR_PREVIEW_EMAILS: real.WEBINAR_PREVIEW_EMAILS,
+    webinarOpenFor: (email) => !access.preview
+      || real.WEBINAR_PREVIEW_EMAILS.includes(String(email || '').trim().toLowerCase()),
+  };
+});
 import { buildEventView, buildListing, PUBLIC_EVENT_COLUMNS } from './_view.js';
 import { onRequest as eventsHandler } from './events.js';
+import { onRequest as eventHandler } from './event.js';
 import { onRequest as checkoutHandler } from './checkout.js';
 import { onRequest as myHandler, orderDisplayStatus } from './my.js';
 import { onRequest as syncHandler } from './sync.js';
@@ -512,5 +526,86 @@ describe('sync', () => {
     const audit = calls.find((c) => c.method === 'POST' && c.url.includes('/doku_webhook_events'));
     expect(audit.body.outcome).toBe('webinar_over_quota');
     expect(calls.some((c) => c.url.includes('api.resend.com'))).toBe(true);
+  });
+});
+
+describe('masa uji: hanya akun di daftar izin', () => {
+  const TEGAR = { id: '33333333-3333-4333-8333-333333333333', email: 'Tegar@Jakpat.net' };
+  afterEach(() => { access.preview = false; });
+
+  it('checkout, my, sync menolak akun lain dengan 403 sebelum database', async () => {
+    access.preview = true;
+    const calls = authedNet({});
+    const checkout = await checkoutHandler({ request: authed('checkout', { slug: 'olah-data', termsAccepted: true }), env: ENV });
+    expect(checkout.status).toBe(403);
+    expect((await checkout.json()).code).toBe('not_open');
+    expect((await myHandler({ request: authed('my', null, 'GET'), env: ENV })).status).toBe(403);
+    expect((await syncHandler({ request: authed('sync', { orderId: ORDER_ID }), env: ENV })).status).toBe(403);
+    expect(calls.some((c) => c.url.includes('/rest/v1/'))).toBe(false);
+  });
+
+  it('akun yang diizinkan lolos gerbang (huruf besar tidak berpengaruh)', async () => {
+    access.preview = true;
+    authedNet({ user: TEGAR, '/webinar_orders': () => json([]) });
+    const res = await myHandler({ request: authed('my', null, 'GET'), env: ENV });
+    expect(res.status).toBe(200);
+    expect((await res.json()).orders).toEqual([]);
+  });
+
+  it('events: tanpa sesi atau akun lain mendapat daftar kosong + open:false tanpa kueri acara', async () => {
+    access.preview = true;
+    const calls = authedNet({ '/webinar_events': () => json([event()]) });
+    const anon = await (await eventsHandler({ request: new Request('https://x.test/api/webinar/events'), env: ENV })).json();
+    expect(anon.open).toBe(false);
+    expect(anon.hero).toBeNull();
+    const other = await (await eventsHandler({ request: authed('events', null, 'GET'), env: ENV })).json();
+    expect(other.open).toBe(false);
+    expect(calls.some((c) => c.url.includes('/webinar_events'))).toBe(false);
+  });
+
+  it('events: akun yang diizinkan melihat isi + open:true', async () => {
+    access.preview = true;
+    authedNet({ user: TEGAR, '/webinar_events': () => json([event()]) });
+    const body = await (await eventsHandler({ request: authed('events', null, 'GET'), env: ENV })).json();
+    expect(body.open).toBe(true);
+    expect(body.hero.slug).toBe('olah-data');
+  });
+
+  it('sesudah rilis events selalu open:true untuk homepage', async () => {
+    global.fetch = vi.fn(async () => json([event()]));
+    const body = await (await eventsHandler({ request: new Request('https://x.test/api/webinar/events'), env: ENV })).json();
+    expect(body.open).toBe(true);
+  });
+
+  it('event (API checkout): 404 untuk akun lain, 200 untuk yang diizinkan', async () => {
+    access.preview = true;
+    authedNet({ '/webinar_events': () => json([event()]) });
+    expect((await eventHandler({ request: authed('event?slug=olah-data', null, 'GET'), env: ENV })).status).toBe(404);
+    authedNet({ user: TEGAR, '/webinar_events': () => json([event()]) });
+    expect((await eventHandler({ request: authed('event?slug=olah-data', null, 'GET'), env: ENV })).status).toBe(200);
+  });
+
+  describe('halaman publik', () => {
+    const page = (path, rows) => {
+      global.fetch = vi.fn(async (url) => (String(url).includes('/webinar_events') ? json(rows) : json([])));
+      return pageHandler({
+        request: new Request(`https://submit.jakpatforuniv.com/webinar${path ? `/${path}` : ''}`),
+        env: ENV,
+        params: { path: path ? path.split('/') : undefined },
+      });
+    };
+
+    it('daftar /webinar: 404', async () => {
+      access.preview = true;
+      expect((await page('', [event()])).status).toBe(404);
+    });
+
+    it('detail acara sungguhan: 404; acara uji: tampil', async () => {
+      access.preview = true;
+      expect((await page('olah-data', [event()])).status).toBe(404);
+      const res = await page('olah-data', [event({ is_test: true })]);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toContain('Olah Data');
+    });
   });
 });

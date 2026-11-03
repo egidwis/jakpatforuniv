@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ChevronRight, Ticket } from 'lucide-react';
 import { activeTickets, fetchMyWebinarOrders, fetchWebinarListing, type WebinarEventView, type WebinarOrderView } from '@/utils/webinarApi';
 import { CARD_CLASS } from './WebinarParts';
+import { useWebinarOpen } from './WebinarGate';
 
 /**
  * Pintu sekunder di beranda: satu baris di bawah Chat Mimin, hanya saat ada yang
@@ -11,16 +12,18 @@ import { CARD_CLASS } from './WebinarParts';
  */
 export function WebinarFooterRow({ onNavigate }: { onNavigate?: () => void }) {
     const [row, setRow] = useState<WebinarEventView | null>(null);
+    const open = useWebinarOpen();
 
     useEffect(() => {
+        if (!open) return undefined;
         let alive = true;
         fetchWebinarListing()
             .then((listing) => { if (alive) setRow(listing.dashboard_row); })
             .catch((err) => console.error('[webinar] daftar gagal dimuat:', err));
         return () => { alive = false; };
-    }, []);
+    }, [open]);
 
-    if (!row) return null;
+    if (!open || !row) return null;
 
     return (
         <Link
@@ -40,16 +43,18 @@ export function WebinarFooterRow({ onNavigate }: { onNavigate?: () => void }) {
 /** Akses ke tiket yang sudah dibayar, di atas My Order. Akun tanpa tiket tidak melihatnya. */
 export function WebinarTicketStrip() {
     const [tickets, setTickets] = useState<WebinarOrderView[]>([]);
+    const open = useWebinarOpen();
 
     useEffect(() => {
+        if (!open) return undefined;
         let alive = true;
         fetchMyWebinarOrders()
             .then((data) => { if (alive) setTickets(activeTickets(data.orders).slice(0, 2)); })
             .catch((err) => console.error('[webinar] tiket gagal dimuat:', err));
         return () => { alive = false; };
-    }, []);
+    }, [open]);
 
-    if (tickets.length === 0) return null;
+    if (!open || tickets.length === 0) return null;
 
     return (
         <div className="space-y-2">

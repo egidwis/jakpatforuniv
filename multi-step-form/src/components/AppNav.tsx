@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LogOut, User, ChevronDown, Globe, Menu, LayoutDashboard, ListPlus, Sparkles, Ticket, Wrench } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useWebinarOpen } from './webinar/WebinarGate';
 import { useLanguage } from '../i18n/LanguageContext';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { useMediaQuery } from '../lib/utils';
@@ -52,6 +53,7 @@ export function AppNav() {
     // Termasuk /forms/new, /forms/:id/edit, dan /forms/:id/responses — seluruh
     // pembuat form hidup di bawah prefix ini.
     const isWebinarActive = location.pathname.startsWith('/dashboard/webinar');
+    const webinarOpen = useWebinarOpen();
     const isTheFormActive = location.pathname.startsWith('/dashboard/forms');
     const isAnalyzerActive = location.pathname.startsWith('/dashboard/analyzer');
     const isToolsActive = isTheFormActive || isAnalyzerActive;
@@ -93,8 +95,8 @@ export function AppNav() {
                                     )}
                                 </Link>
 
-                                {/* Webinar */}
-                                <Link
+                                {/* Webinar (masa uji: hanya akun di src/utils/webinarAccess.ts) */}
+                                {webinarOpen && <Link
                                     to="/dashboard/webinar"
                                     className={`relative flex items-center gap-2 h-14 md:h-16 px-1 text-sm font-bold transition-colors ${
                                         isWebinarActive
@@ -107,7 +109,7 @@ export function AppNav() {
                                     {isWebinarActive && (
                                         <span className="absolute bottom-0 inset-x-0 h-[2.5px] bg-jfu-primary rounded-t-full" />
                                     )}
-                                </Link>
+                                </Link>}
 
                                 {/* Tools Dropdown (Buat Kuesioner + Data Analyzer) */}
                                 <DropdownMenu>
@@ -267,7 +269,7 @@ export function AppNav() {
                                                 <span>{t('navMyOrder')}</span>
                                             </Link>
                                         </SheetClose>
-                                        <SheetClose asChild>
+                                        {webinarOpen && <SheetClose asChild>
                                             <Link
                                                 to="/dashboard/webinar"
                                                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
@@ -279,7 +281,7 @@ export function AppNav() {
                                                 <Ticket className={`w-4 h-4 shrink-0 ${isWebinarActive ? 'text-white' : 'text-slate-400'}`} />
                                                 <span>Webinar</span>
                                             </Link>
-                                        </SheetClose>
+                                        </SheetClose>}
                                     </div>
 
                                     {/* Group B: Tools & Fitur */}
