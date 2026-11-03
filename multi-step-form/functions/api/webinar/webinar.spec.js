@@ -474,6 +474,43 @@ describe('checkout', () => {
     expect(patch.url).toContain('status=eq.pending');
   });
 
+  it('DOKU menolak bentuk lengkap (4xx): dicoba sekali dengan bentuk dasar iklan, lalu berhasil', async () => {
+    let n = 0;
+    const calls = authedNet({
+      '/profiles': () => json([PROFILE]),
+      '/rpc/webinar_reserve_seat': () => json({ ...created, item_name: '[UJI] Olah Data' }),
+      '/checkout/v1/payment': () => (++n === 1
+        ? json({ error: { message: 'line_items.name invalid' } }, 400)
+        : json({ response: { payment: { url: 'https://pay.test/2' } } })),
+      '/webinar_orders': () => json([{ id: ORDER_ID }]),
+    });
+    const res = await call();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.paymentUrl).toBe('https://pay.test/2');
+    expect(body.dokuFallback).toEqual({ status: 400, message: 'line_items.name invalid' });
+    const [full, basic] = calls.filter((c) => c.url.includes('/checkout/v1/payment')).map((c) => c.body);
+    expect(full.order.line_items[0].name).toBe('UJI Olah Data');
+    expect(full.payment.payment_method_types).toEqual(['QRIS']);
+    expect(basic.order.line_items).toBeUndefined();
+    expect(basic.payment).toEqual({ payment_due_date: 30 });
+    expect(basic.order.invoice_number).toBe(full.order.invoice_number);
+    expect(calls.some((c) => c.method === 'PATCH' && c.body?.status === 'cancelled')).toBe(false);
+  });
+
+  it('DOKU 5xx: tidak dicoba ulang; alasan DOKU ikut di respons 502', async () => {
+    const calls = authedNet({
+      '/profiles': () => json([PROFILE]),
+      '/rpc/webinar_reserve_seat': () => json(created),
+      '/checkout/v1/payment': () => json({ message: 'down' }, 503),
+      '/webinar_orders': () => json([{ id: ORDER_ID }]),
+    });
+    const res = await call();
+    expect(res.status).toBe(502);
+    expect((await res.json()).doku).toEqual({ first: null, last: { status: 503, message: 'down' } });
+    expect(calls.filter((c) => c.url.includes('/checkout/v1/payment'))).toHaveLength(1);
+  });
+
   it('link tidak tersimpan (0 baris): dianggap gagal', async () => {
     authedNet({
       '/profiles': () => json([PROFILE]),

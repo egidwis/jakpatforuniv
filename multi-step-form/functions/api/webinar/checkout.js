@@ -35,7 +35,12 @@ export function parseCustomContact(raw) {
   return { name, email, phone };
 }
 
-export function buildWebinarCheckoutPayload({ env, origin, order, buyer }) {
+/**
+ * `basic: true` = bentuk yang dipakai create-payment.js iklan (terbukti diterima DOKU):
+ * tanpa line_items dan tanpa pembatasan metode. Dipakai sebagai cadangan bila DOKU
+ * menolak bentuk lengkap; percobaan pertama di produksi (3 Nov) ditolak DOKU.
+ */
+export function buildWebinarCheckoutPayload({ env, origin, order, buyer, basic = false }) {
   const email = String(buyer.email);
   const payload = {
     order: {
@@ -44,9 +49,12 @@ export function buildWebinarCheckoutPayload({ env, origin, order, buyer }) {
       currency: 'IDR',
       callback_url: `${origin}/dashboard/webinar/tiket/${order.order_id}`,
       auto_redirect: true,
-      line_items: [{ name: String(order.item_name).substring(0, 255), price: order.amount, quantity: 1 }],
+      ...(basic ? {} : {
+        // DOKU melarang simbol di line_items untuk beberapa kanal; "[UJI]" dll. dibuang.
+        line_items: [{ name: String(order.item_name).replace(/[^\p{L}\p{N} ]/gu, ' ').replace(/\s+/g, ' ').trim().substring(0, 255) || 'Tiket webinar', price: order.amount, quantity: 1 }],
+      }),
     },
-    payment: { payment_due_date: LINK_MINUTES, payment_method_types: ['QRIS'] },
+    payment: { payment_due_date: LINK_MINUTES, ...(basic ? {} : { payment_method_types: ['QRIS'] }) },
     customer: {
       id: email.replace(/[^a-zA-Z0-9]/g, '').substring(0, 50),
       name: String(buyer.name || 'Peserta').substring(0, 255),
@@ -59,6 +67,14 @@ export function buildWebinarCheckoutPayload({ env, origin, order, buyer }) {
   const phone = String(buyer.phone || '').replace(/[^0-9]/g, '').substring(0, 16);
   if (phone) payload.customer.phone = phone;
   return payload;
+}
+
+/** Ringkas jawaban DOKU untuk log/respons: status + pesan galat, tanpa header atau rahasia. */
+export function summarizeDokuError(doku) {
+  if (!doku) return null;
+  const d = doku.data || {};
+  const message = d.error?.message ?? d.message ?? d.error ?? d.raw ?? d;
+  return { status: doku.status ?? null, message: String(typeof message === 'string' ? message : JSON.stringify(message)).slice(0, 300) };
 }
 
 export async function onRequest({ request, env }) {
@@ -143,14 +159,27 @@ export async function onRequest({ request, env }) {
     }
 
     const origin = new URL(request.url).origin;
-    const doku = await dokuRequest(
+    let doku = await dokuRequest(
       env, 'POST', '/checkout/v1/payment',
       buildWebinarCheckoutPayload({ env, origin, order: seat, buyer })
     );
-    const paymentUrl = doku?.data?.response?.payment?.url;
+    let paymentUrl = doku?.data?.response?.payment?.url;
+    let firstRejection = null;
+
+    // Validasi ditolak (4xx): invoice belum terbit di DOKU, jadi aman mencoba sekali
+    // lagi dengan bentuk dasar yang sama dengan pembayaran iklan.
+    if ((!doku?.ok || !paymentUrl) && doku?.status >= 400 && doku?.status < 500) {
+      firstRejection = summarizeDokuError(doku);
+      console.error('[webinar/checkout] DOKU menolak bentuk lengkap, coba bentuk dasar:', firstRejection);
+      doku = await dokuRequest(
+        env, 'POST', '/checkout/v1/payment',
+        buildWebinarCheckoutPayload({ env, origin, order: seat, buyer, basic: true })
+      );
+      paymentUrl = doku?.data?.response?.payment?.url;
+    }
 
     if (!doku?.ok || !paymentUrl) {
-      console.error('[webinar/checkout] DOKU menolak:', doku?.status, JSON.stringify(doku?.data).slice(0, 400));
+      console.error('[webinar/checkout] DOKU menolak:', summarizeDokuError(doku), 'percobaan pertama:', firstRejection);
       // Lepas kursinya sekarang, supaya pembeli bisa langsung mencoba lagi.
       await rest(
         sb,
@@ -158,7 +187,12 @@ export async function onRequest({ request, env }) {
         { method: 'PATCH', body: JSON.stringify({ status: 'cancelled' }) },
         'PATCH webinar_orders (DOKU gagal)'
       ).catch((err) => console.error('[webinar/checkout]', err));
-      return json(502, { error: 'Pembayaran belum bisa dibuat, coba lagi', code: 'doku_failed' });
+      // Alasan DOKU ikut dikirim supaya terlihat di tab Network tanpa membuka log Cloudflare.
+      return json(502, {
+        error: 'Pembayaran belum bisa dibuat, coba lagi',
+        code: 'doku_failed',
+        doku: { first: firstRejection, last: summarizeDokuError(doku) },
+      });
     }
 
     const saved = await rest(
@@ -178,7 +212,10 @@ export async function onRequest({ request, env }) {
       throw new Error(`Link ${seat.invoice_number} tidak tersimpan (0 baris)`);
     }
 
-    return json(200, { result: 'created', orderId: seat.order_id, paymentUrl });
+    return json(200, {
+      result: 'created', orderId: seat.order_id, paymentUrl,
+      ...(firstRejection ? { dokuFallback: firstRejection } : {}),
+    });
   } catch (err) {
     console.error('[webinar/checkout]', err);
     return json(500, { error: 'Terjadi kendala. Coba lagi beberapa saat.' });
