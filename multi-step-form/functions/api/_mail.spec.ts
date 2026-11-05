@@ -92,6 +92,17 @@ describe('bentuk payload per provider', () => {
     expect(body.attachments).toEqual([{ filename: 'receipt.pdf', content: 'JVBERi0xLjQK' }]);
   });
 
+  // 5 Nov 2026: adapter lama membuang lampiran, jadi kwitansi PDF tidak pernah ikut.
+  it('Cloudflare meneruskan attachments dengan type dan disposition', async () => {
+    await sendMail(
+      { MAIL_PROVIDER: 'cloudflare', CF_EMAIL_API_TOKEN: 't', CF_ACCOUNT_ID: 'acc' },
+      { ...MSG, attachments: [{ filename: 'Kwitansi-AB.pdf', content: 'JVBERi0xLjQK' }] }
+    );
+    expect(bodyOf(0).attachments).toEqual([
+      { content: 'JVBERi0xLjQK', filename: 'Kwitansi-AB.pdf', type: 'application/pdf', disposition: 'attachment' },
+    ]);
+  });
+
   it('Brevo memetakan attachment sebagai { name, content }', async () => {
     await sendMail(
       { MAIL_PROVIDER: 'brevo', BREVO_API_KEY: 'k' },
@@ -99,6 +110,38 @@ describe('bentuk payload per provider', () => {
     );
     const body = bodyOf(0);
     expect(body.attachment).toEqual([{ name: 'receipt.pdf', content: 'JVBERi0xLjQK' }]);
+  });
+});
+
+describe('balasan Cloudflare per penerima', () => {
+  const CF = { MAIL_PROVIDER: 'cloudflare', CF_EMAIL_API_TOKEN: 't', CF_ACCOUNT_ID: 'acc' };
+  const cfReply = (result: unknown) => okJson({ success: true, errors: [], result });
+
+  it('terkirim langsung: ok, id = penerima', async () => {
+    fetchMock.mockResolvedValueOnce(cfReply({ delivered: ['a@x.test'], queued: [], permanent_bounces: [] }));
+    const r = await sendMail(CF, MSG);
+    expect(r).toMatchObject({ ok: true, provider: 'cloudflare', id: 'a@x.test' });
+  });
+
+  it('semua penerima ditolak permanen: gagal, dan cadangan dicoba', async () => {
+    fetchMock
+      .mockResolvedValueOnce(cfReply({ delivered: [], queued: [], permanent_bounces: ['a@x.test'] }))
+      .mockResolvedValueOnce(okJson({ messageId: 'b-1' }));
+    const r = await sendMail({ ...CF, MAIL_PROVIDER_FALLBACK: 'brevo', BREVO_API_KEY: 'k' }, MSG);
+    expect(r).toMatchObject({ ok: true, provider: 'brevo', recoveredFrom: 'cloudflare' });
+  });
+
+  it('semua ditolak tanpa cadangan: ok:false menyebut permanent_bounces', async () => {
+    fetchMock.mockResolvedValueOnce(cfReply({ delivered: [], queued: [], permanent_bounces: ['a@x.test'] }));
+    const r = await sendMail(CF, MSG);
+    expect(r.ok).toBe(false);
+    expect(r.error).toEqual({ permanent_bounces: ['a@x.test'] });
+  });
+
+  it('sebagian ditolak: tetap ok (tidak dikirim ulang ke semua), penolakan dilaporkan', async () => {
+    fetchMock.mockResolvedValueOnce(cfReply({ delivered: ['a@x.test'], queued: [], permanent_bounces: ['b@x.test'] }));
+    const r = await sendMail(CF, { ...MSG, to: ['a@x.test', 'b@x.test'] });
+    expect(r).toMatchObject({ ok: true, bounced: ['b@x.test'] });
   });
 });
 

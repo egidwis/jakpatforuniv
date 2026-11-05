@@ -148,6 +148,16 @@ async function sendViaCloudflare(env, msg, from) {
         html: msg.html,
         ...(msg.text ? { text: msg.text } : {}),
         ...(msg.replyTo ? { reply_to: { address: msg.replyTo } } : {}),
+        // Dulu lampiran tidak diteruskan sama sekali, jadi kwitansi PDF iklan dan
+        // e-tiket webinar hilang diam-diam selama provider = cloudflare (5 Nov 2026).
+        ...(Array.isArray(msg.attachments) && msg.attachments.length > 0 ? {
+          attachments: msg.attachments.map((att) => ({
+            content: att.content,
+            filename: att.filename,
+            type: att.type || guessContentType(att.filename),
+            disposition: 'attachment',
+          })),
+        } : {}),
       }),
     }
   );
@@ -156,7 +166,32 @@ async function sendViaCloudflare(env, msg, from) {
   if (!res.ok || body?.success === false) {
     return { ok: false, provider: 'cloudflare', status: res.status, error: body?.errors || body };
   }
-  return { ok: true, provider: 'cloudflare', id: body?.result?.queued?.[0] || null };
+
+  // Balasan sukses tetap bisa berarti GAGAL: tiap penerima masuk `delivered`,
+  // `queued`, atau `permanent_bounces`. Bila tidak ada satu pun yang terkirim
+  // atau antre, kirimannya gagal, supaya cadangan dicoba dan galatnya tercatat.
+  const result = body?.result || {};
+  const accepted = [...(result.delivered || []), ...(result.queued || [])];
+  const bounced = result.permanent_bounces || [];
+  if (bounced.length > 0 && accepted.length === 0) {
+    return { ok: false, provider: 'cloudflare', status: res.status, error: { permanent_bounces: bounced } };
+  }
+  if (bounced.length > 0) {
+    console.error('[mail] cloudflare: sebagian penerima ditolak permanen:', bounced);
+  }
+  return { ok: true, provider: 'cloudflare', id: accepted[0] || null, ...(bounced.length ? { bounced } : {}) };
+}
+
+function guessContentType(filename = '') {
+  const ext = String(filename).toLowerCase().split('.').pop();
+  return {
+    pdf: 'application/pdf',
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    csv: 'text/csv',
+    txt: 'text/plain',
+  }[ext] || 'application/octet-stream';
 }
 
 const PROVIDERS = {
