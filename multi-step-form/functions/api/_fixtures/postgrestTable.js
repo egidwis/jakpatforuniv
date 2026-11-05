@@ -1,6 +1,7 @@
 // KHUSUS TES. Satu tabel di memori yang menjawab seperti PostgREST, sebatas sintaks
-// yang dipakai kode kita: filter `kolom=op.nilai` (eq, neq, lt, gt, lte, gte, is),
-// `or=(kolom.op.nilai,…)`, dan `select=a,b`.
+// yang dipakai kode kita: filter `kolom=op.nilai` (eq, neq, lt, gt, lte, gte, is, like),
+// `or=(kolom.op.nilai,…)`, `select=a,b` (termasuk `*` dan kolom terhitung), serta
+// GET/PATCH/POST/DELETE.
 //
 // Kenapa ada: mock lama menjawab baris untuk PATCH apa pun, jadi tes hijau sementara
 // produksi gagal diam-diam (insiden e-tiket webinar 3 & 5 Nov 2026). Emulator ini
@@ -50,6 +51,10 @@ function compare(rowValue, op, raw) {
   }
 
   switch (op) {
+    case 'like': {
+      const re = new RegExp(`^${String(raw).split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`);
+      return re.test(String(rowValue));
+    }
     case 'eq': return a === b;
     case 'neq': return a !== b;
     case 'lt': return a < b;
@@ -91,12 +96,14 @@ function parseQuery(url) {
 const passesFilters = (row, filters) => filters.every((f) => compare(row[f.column], f.op, f.value));
 const passesOr = (row, or) => !or || or.some((c) => compare(row[c.column], c.op, c.value));
 
-function project(row, select) {
+function project(row, select, computed) {
   if (!select || select === '*') return { ...row };
   const out = {};
   for (const column of select.split(',')) {
     if (column.includes('(')) throw new Error(`postgrestTable: embed "${column}" tidak didukung`);
-    out[column] = row[column] ?? null;
+    if (column === '*') Object.assign(out, row);
+    else if (computed[column]) out[column] = computed[column](row);
+    else out[column] = row[column] ?? null;
   }
   return out;
 }
@@ -114,28 +121,64 @@ const respondRows = (rows) => new Response(JSON.stringify(rows), {
   },
 });
 
+const noContent = () => new Response(null, { status: 204, headers: { 'Content-Range': '*/*' } });
+const pgError = (status, code, message) => new Response(JSON.stringify({ code, message }), {
+  status,
+  headers: { 'Content-Type': 'application/json' },
+});
+
 /**
  * @param {object[]} seed baris awal (disalin)
+ * @param {object} [options]
+ * @param {Record<string, (row: object) => unknown>} [options.computed] kolom terhitung untuk `select=`
+ * @param {string[]} [options.unique] kolom UNIQUE; INSERT yang bentrok → 409 kode 23505
+ * @param {(row: object) => object} [options.defaults] isi bawaan baris baru (DEFAULT kolom)
+ * @param {(row: object) => boolean} [options.restrictDelete] true → DELETE ditolak 23503 (FK RESTRICT)
+ * @param {(row: object) => void} [options.onUpdate] meniru trigger BEFORE UPDATE (mis. updated_at)
  * @returns {{ rows: object[], respond: (url: string, init?: RequestInit) => Response }}
  */
-export function postgrestTable(seed = []) {
+export function postgrestTable(seed = [], options = {}) {
+  const { computed = {}, unique = [], defaults = () => ({}), restrictDelete = () => false, onUpdate = () => {} } = options;
   const rows = seed.map((row) => ({ ...row }));
+  const wantsRows = (init) => preferOf(init).includes('return=representation');
 
   function respond(url, init = {}) {
     const method = (init.method || 'GET').toUpperCase();
     const { filters, or, select } = parseQuery(url);
     const matched = rows.filter((row) => passesFilters(row, filters) && passesOr(row, or));
 
-    if (method === 'GET') return respondRows(matched.map((row) => project(row, select)));
+    if (method === 'GET') return respondRows(matched.map((row) => project(row, select, computed)));
 
     if (method === 'PATCH') {
       const patch = init.body ? JSON.parse(init.body) : {};
-      for (const row of matched) Object.assign(row, patch);
-      if (!preferOf(init).includes('return=representation')) {
-        return new Response(null, { status: 204, headers: { 'Content-Range': '*/*' } });
+      for (const row of matched) {
+        Object.assign(row, patch);
+        onUpdate(row);
       }
+      if (!wantsRows(init)) return noContent();
       // Perilaku produksi 5 Nov: filter logika diterapkan ulang ke baris yang dikembalikan.
-      return respondRows(matched.filter((row) => passesOr(row, or)).map((row) => project(row, select)));
+      return respondRows(matched.filter((row) => passesOr(row, or)).map((row) => project(row, select, computed)));
+    }
+
+    if (method === 'POST') {
+      const body = JSON.parse(init.body);
+      const incoming = Array.isArray(body) ? body : [body];
+      const created = [];
+      for (const raw of incoming) {
+        const row = { ...defaults(raw), ...raw };
+        const clash = unique.find((col) => rows.some((r) => r[col] === row[col]));
+        if (clash) return pgError(409, '23505', `duplicate key value violates unique constraint "${clash}"`);
+        created.push(row);
+      }
+      rows.push(...created);
+      return wantsRows(init) ? respondRows(created.map((row) => project(row, select, computed))) : noContent();
+    }
+
+    if (method === 'DELETE') {
+      const blocked = matched.find(restrictDelete);
+      if (blocked) return pgError(409, '23503', 'update or delete violates foreign key constraint');
+      for (const row of matched) rows.splice(rows.indexOf(row), 1);
+      return wantsRows(init) ? respondRows(matched.map((row) => project(row, select, computed))) : noContent();
     }
 
     throw new Error(`postgrestTable: metode ${method} tidak didukung`);

@@ -28,6 +28,8 @@ export interface ConfirmRequest {
   /** Nominal/tanggal yang dipertaruhkan — dialog aksi uang WAJIB menyebutnya. */
   highlight?: string;
   confirmLabel: string;
+  /** Teks tombol tutup; bawaan "Batal". Pakai "Kembali" bila aksinya sendiri bernama "Batalkan …". */
+  cancelLabel?: string;
   tone: 'danger' | 'neutral';
   onConfirm: () => void | Promise<void>;
 }
@@ -77,7 +79,7 @@ export function ConfirmDialog({
             onClick={onDismiss}
             className="text-xs font-semibold h-9 px-5 text-gray-600 border-gray-200 hover:bg-gray-50"
           >
-            Batal
+            {request?.cancelLabel ?? 'Batal'}
           </Button>
           <Button
             className={cn(
