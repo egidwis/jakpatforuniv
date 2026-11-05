@@ -8,6 +8,8 @@ vi.mock('./_access.js', async (importOriginal) => {
   return {
     get WEBINAR_PREVIEW_ONLY() { return access.preview; },
     WEBINAR_PREVIEW_EMAILS: real.WEBINAR_PREVIEW_EMAILS,
+    webinarPreviewOnly: () => access.preview,
+    webinarLocalOpen: real.webinarLocalOpen,
     webinarOpenFor: (email) => !access.preview
       || real.WEBINAR_PREVIEW_EMAILS.includes(String(email || '').trim().toLowerCase()),
   };
@@ -326,6 +328,19 @@ describe('checkout', () => {
     const calls = authedNet({ user: null });
     expect((await call()).status).toBe(401);
     expect(calls.some((c) => c.url.includes('/rpc/'))).toBe(false);
+  });
+
+  it('uji lokal: bayar ditolak sebelum kursi ditahan atau DOKU dipanggil', async () => {
+    const calls = authedNet({ '/profiles': () => json([PROFILE]) });
+    const request = new Request('http://localhost:8788/api/webinar/checkout', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer tok', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: 'olah-data', termsAccepted: true }),
+    });
+    const res = await checkoutHandler({ request, env: { ...ENV, WEBINAR_LOCAL_OPEN: 'true' } });
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe('local_test');
+    expect(calls.some((c) => c.url.includes('/rest/v1/') || c.url.includes('/checkout/v1/'))).toBe(false);
   });
 
   it('tanpa S&K dan slug aneh: 400 sebelum database', async () => {

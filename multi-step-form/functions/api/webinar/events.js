@@ -1,6 +1,6 @@
 import { buildListing, PUBLIC_EVENT_COLUMNS } from './_view.js';
 import { caller, CORS, json, resolveService, rest } from './_server.js';
-import { WEBINAR_PREVIEW_ONLY, webinarOpenFor } from './_access.js';
+import { webinarPreviewOnly, webinarOpenFor } from './_access.js';
 
 /** Daftar publik: dipakai dashboard dan homepage, tanpa login. */
 export async function onRequest({ request, env }) {
@@ -9,9 +9,9 @@ export async function onRequest({ request, env }) {
 
   // Masa uji: hanya akun di daftar _access.js yang melihat isi; homepage
   // memakai open:false untuk menyembunyikan menu Webinar.
-  if (WEBINAR_PREVIEW_ONLY) {
+  if (webinarPreviewOnly(env, request)) {
     const user = await caller(env, request);
-    if (!webinarOpenFor(user?.email)) return json(200, { ...buildListing([]), open: false });
+    if (!webinarOpenFor(user?.email, env, request)) return json(200, { ...buildListing([]), open: false });
   }
 
   try {

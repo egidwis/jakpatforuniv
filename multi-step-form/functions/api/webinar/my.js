@@ -64,7 +64,7 @@ export async function onRequest({ request, env, waitUntil }) {
 
   const user = await caller(env, request);
   if (!user) return json(401, { error: 'Unauthorized' });
-  if (!webinarOpenFor(user.email)) return json(403, { error: 'Webinar belum dibuka', code: 'not_open' });
+  if (!webinarOpenFor(user.email, env, request)) return json(403, { error: 'Webinar belum dibuka', code: 'not_open' });
 
   try {
     const sb = resolveService(env);

@@ -11,7 +11,7 @@
  * Teks di sini dilihat pembeli: jangan menyebut refund.
  */
 import { resolveService, rest, JOIN_TOKEN_RE, SLUG_RE } from '../api/webinar/_server.js';
-import { WEBINAR_PREVIEW_ONLY } from '../api/webinar/_access.js';
+import { webinarPreviewOnly } from '../api/webinar/_access.js';
 import {
   ADMIN_CONTACT, EMPTY_LISTING_TEXT, PUBLIC_EVENT_COLUMNS, SITE_URL,
   buildEventView, buildListing, joinWindow,
@@ -267,7 +267,7 @@ export async function onRequest({ request, env, params }) {
     }
 
     // Masa uji (functions/api/webinar/_access.js): daftar publik belum ada.
-    if (segments.length === 0 && WEBINAR_PREVIEW_ONLY) return notFound();
+    if (segments.length === 0 && webinarPreviewOnly(env, request)) return notFound();
 
     if (segments.length === 0) {
       const rows = await rest(
@@ -301,7 +301,7 @@ export async function onRequest({ request, env, params }) {
     const preview = previewFilter !== '';
     if (event.status === 'draft' && !preview) return notFound();
     // Masa uji: hanya acara uji (atau link pratinjau) yang punya halaman.
-    if (WEBINAR_PREVIEW_ONLY && !event.is_test && !preview) return notFound();
+    if (webinarPreviewOnly(env, request) && !event.is_test && !preview) return notFound();
     return html(renderDetail(event, { preview }));
   } catch (err) {
     console.error('[webinar page]', err);

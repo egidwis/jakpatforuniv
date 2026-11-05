@@ -1,4 +1,4 @@
-import { webinarOpenFor } from './_access.js';
+import { webinarLocalOpen, webinarOpenFor } from './_access.js';
 import { dokuRequest } from '../doku/_helpers.js';
 import { caller, CORS, json, resolveService, rest, SLUG_RE } from './_server.js';
 import { resolveWebinarVoucher, voucherRpcPayload } from './_vouchers.js';
@@ -83,7 +83,12 @@ export async function onRequest({ request, env }) {
 
   const user = await caller(env, request);
   if (!user) return json(401, { error: 'Unauthorized' });
-  if (!webinarOpenFor(user.email)) return json(403, { error: 'Webinar belum dibuka', code: 'not_open' });
+  if (!webinarOpenFor(user.email, env, request)) return json(403, { error: 'Webinar belum dibuka', code: 'not_open' });
+  // Uji lokal memakai database produksi: jangan menahan kursi atau menerbitkan
+  // tagihan DOKU sungguhan dari laptop.
+  if (webinarLocalOpen(env, request)) {
+    return json(403, { error: 'Pembayaran dimatikan di uji lokal. Uji bayar di produksi.', code: 'local_test' });
+  }
 
   let body;
   try { body = await request.json(); } catch { return json(400, { error: 'Body bukan JSON' }); }
