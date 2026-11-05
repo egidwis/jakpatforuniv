@@ -15,9 +15,8 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import PrivateRoute from './components/PrivateRoute';
 import { DashboardLayout } from './components/DashboardLayout';
 import { StatusPage } from './pages/dashboard/StatusPage';
-import { WebinarHubPage } from './pages/dashboard/webinar/WebinarHubPage';
+import { WebinarHubPage, WebinarTicketRedirect } from './pages/dashboard/webinar/WebinarHubPage';
 import { WebinarCheckoutPage } from './pages/dashboard/webinar/WebinarCheckoutPage';
-import { WebinarTicketPage } from './pages/dashboard/webinar/WebinarTicketPage';
 import { WebinarGate } from './components/webinar/WebinarGate';
 import { ChatPage } from './pages/dashboard/ChatPage';
 import { ProfilePage } from './pages/dashboard/ProfilePage';
@@ -161,7 +160,7 @@ function AppContent() {
           <Route element={<WebinarGate />}>
             <Route path="webinar" element={<WebinarHubPage />} />
             <Route path="webinar/beli/:slug" element={<WebinarCheckoutPage />} />
-            <Route path="webinar/tiket/:orderId" element={<WebinarTicketPage />} />
+            <Route path="webinar/tiket/:orderId" element={<WebinarTicketRedirect />} />
           </Route>
           <Route path="chat" element={<ChatPage />} />
           <Route path="profile" element={<ProfilePage />} />

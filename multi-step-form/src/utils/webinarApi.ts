@@ -203,6 +203,9 @@ export const syncWebinarOrder = (orderId: string) =>
         true,
     );
 
+/** Tiket di menu Webinar; kartunya disorot dan digulir ke layar. Tidak ada halaman tiket terpisah. */
+export const webinarTicketHref = (orderId: string) => `/dashboard/webinar?tiket=${encodeURIComponent(orderId)}`;
+
 /** Tiket yang masih relevan untuk ditampilkan di atas My Order. */
 export function activeTickets(orders: WebinarOrderView[]): WebinarOrderView[] {
     return orders.filter((o) => o.status === 'paid' && o.kind === 'live' && !o.event_is_past && !o.event_cancelled);

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarDays, Clock, Ticket } from 'lucide-react';
-import { joinOpensHint, joinPhaseAt, type WebinarEventView, type WebinarOrderView } from '@/utils/webinarApi';
+import { joinOpensHint, joinPhaseAt, webinarTicketHref, type WebinarEventView, type WebinarOrderView } from '@/utils/webinarApi';
 
 const TONE: Record<WebinarEventView['tone'], string> = {
     on_sale: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -88,16 +88,16 @@ function ticketRowState(order: WebinarOrderView, now: number): RowState {
 }
 
 /**
- * Satu baris tiket untuk beranda (di atas My Order) dan menu Webinar. Detail, hitung mundur,
- * dan kalender ada di halaman tiket; baris ini hanya menunjuk ke sana, kecuali saat ruang
- * dibuka: tombol Gabung langsung ke link gabung.
+ * Satu baris tiket di beranda (di atas My Order). Hitung mundur dan kalender ada di kartu
+ * tiket di menu Webinar; baris ini menunjuk ke sana, kecuali saat ruang dibuka: tombol
+ * Gabung langsung ke link gabung.
  */
 export function WebinarTicketRow({ order, prefix }: { order: WebinarOrderView; prefix?: string }) {
     const live = order.status === 'paid' && !!order.join;
     // Per 30 detik cukup untuk "dibuka dalam N menit" dan pergantian ke Gabung.
     const now = useNow(live, 30_000);
     const state = ticketRowState(order, now);
-    const ticketUrl = `/dashboard/webinar/tiket/${order.id}`;
+    const ticketUrl = webinarTicketHref(order.id);
     return (
         <div className={`${CARD_CLASS} flex items-center gap-3 px-4 py-3 hover:border-jfu-primary/50 transition-colors`}>
             <Ticket className="w-4 h-4 shrink-0 text-jfu-primary" />

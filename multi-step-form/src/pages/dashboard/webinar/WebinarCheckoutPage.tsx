@@ -7,7 +7,7 @@ import { getOwnProfile, isProfileComplete, type ResearcherProfile } from '@/util
 import { createInFlightGate } from '@/utils/inFlightGate';
 import {
     checkoutErrorText, fetchMyWebinarOrders, fetchWebinarEvent, previewWebinarVoucher, startWebinarCheckout, webinarContactError,
-    WebinarApiError, type WebinarCheckoutResult, type WebinarContact, type WebinarEventView, type WebinarVoucherPreview,
+    WebinarApiError, webinarTicketHref, type WebinarCheckoutResult, type WebinarContact, type WebinarEventView, type WebinarVoucherPreview,
 } from '@/utils/webinarApi';
 import { FieldRow, SectionLabel } from '@/components/SurveyFieldRow';
 import { Switch } from '@/components/ui/switch';
@@ -63,7 +63,7 @@ export function WebinarCheckoutPage() {
                 // Pending dan lunas sama-sama punya halaman sendiri; jangan menawarkan bayar lagi.
                 const existing = mine.orders.find((o) => o.event.slug === slug && (o.status === 'paid' || o.status === 'pending'));
                 if (existing && (existing.status === 'pending' || existing.kind === 'live' || ev.kind === 'replay')) {
-                    navigate(`/dashboard/webinar/tiket/${existing.id}`, { replace: true });
+                    navigate(webinarTicketHref(existing.id), { replace: true });
                     return;
                 }
                 setEvent(ev);
@@ -133,7 +133,7 @@ export function WebinarCheckoutPage() {
             } else {
                 tab?.close();
             }
-            navigate(`/dashboard/webinar/tiket/${result.orderId}`, { replace: true });
+            navigate(webinarTicketHref(result.orderId), { replace: true });
         } catch (err) {
             tab?.close();
             if (err instanceof WebinarApiError && err.code === 'voucher_invalid') {
