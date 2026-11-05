@@ -63,10 +63,10 @@ export function WebinarEventForm({
             setConfirm({
                 title: 'Jadwal berubah',
                 lines: [
-                    `Sudah ada ${result.confirmSold} tiket terjual.`,
-                    'Sistem belum mengirim pemberitahuan otomatis; kabari peserta setelah ini.',
+                    `Tiket sudah terjual ke ${result.confirmSold} peserta.`,
+                    'Sesudah disimpan, mereka otomatis menerima email jadwal baru. Tiket tetap berlaku.',
                 ],
-                confirmLabel: 'Tetap simpan',
+                confirmLabel: 'Simpan & kabari peserta',
                 cancelLabel: 'Kembali',
                 tone: 'neutral',
                 onConfirm: async () => { await editor.saveChanges(true); },

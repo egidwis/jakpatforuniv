@@ -343,7 +343,7 @@ describe('deliverWebinarTicket', () => {
   it('provider menolak: klaim sendiri dilepas, galat dicatat, alarm ke admin, tidak melempar', async () => {
     const net = network({ mailOk: false });
     const result = await deliver();
-    expect(result).toEqual({ sent: false, reason: 'failed' });
+    expect(result).toEqual({ sent: false, reason: 'failed', error: expect.stringContaining('resend') });
     expect(net.of('/webinar_orders').at(-1).url).toContain('ticket_email_claimed_at=eq.');
     const [row] = net.orders.rows;
     expect(row.ticket_email_claimed_at).toBeNull();
@@ -351,9 +351,52 @@ describe('deliverWebinarTicket', () => {
     expect(net.of('api.resend.com').at(-1).body.subject).toContain('e-tiket gagal terkirim');
   });
 
+  describe('kirim ulang dari admin (resend)', () => {
+    const SENT_ROW = { ...PAID_ROW, ticket_email_sent_at: '2026-11-05T05:00:00.000Z', ticket_email_claimed_at: null };
+    const resend = (at = T) => deliverWebinarTicket({ env: ENV, sb, sbFetch, invoiceNumber: INVOICE, now: () => new Date(at), resend: true });
+
+    it('mengirim lagi walau e-tiket sudah pernah terkirim', async () => {
+      const net = network({ row: SENT_ROW });
+      expect((await resend()).sent).toBe(true);
+      expect(net.tickets()).toHaveLength(1);
+      expect(net.of('/webinar_orders')[0].url).not.toContain('ticket_email_sent_at=is.null');
+    });
+
+    it('klik ganda: dua resend bersamaan hanya satu email', async () => {
+      const net = network({ row: SENT_ROW });
+      const results = await Promise.all([resend(T), resend(T + 1)]);
+      expect(results.filter((r) => r.sent)).toHaveLength(1);
+      expect(net.tickets()).toHaveLength(1);
+    });
+
+    it('sesudah terkirim, klaim dilepas sehingga resend berikutnya langsung bisa', async () => {
+      const net = network({ row: SENT_ROW });
+      await resend(T);
+      expect(net.orders.rows[0].ticket_email_claimed_at).toBeNull();
+      expect((await resend(T + 1000)).sent).toBe(true);
+      expect(net.tickets()).toHaveLength(2);
+    });
+
+    it.each([
+      ['order belum lunas', { status: 'pending' }],
+      ['tiket refund', { status: 'refunded' }],
+      ['bukan tiket live', { kind: 'replay' }],
+    ])('%s: tidak dikirim', async (_n, over) => {
+      const net = network({ row: { ...SENT_ROW, ...over } });
+      expect((await resend()).sent).toBe(false);
+      expect(net.tickets()).toHaveLength(0);
+    });
+
+    it('jalur biasa tetap tidak mengirim ulang tiket yang sudah terkirim', async () => {
+      const net = network({ row: SENT_ROW });
+      expect((await deliver()).sent).toBe(false);
+      expect(net.tickets()).toHaveLength(0);
+    });
+  });
+
   it('klaim gagal karena database: tidak melempar dan tetap memberi alarm', async () => {
     global.fetch = vi.fn(async (url) => (String(url).includes('api.resend.com') ? json({ id: 'm' }) : json({}, 500)));
-    await expect(deliver()).resolves.toEqual({ sent: false, reason: 'failed' });
+    await expect(deliver()).resolves.toMatchObject({ sent: false, reason: 'failed' });
     expect(global.fetch.mock.calls.some(([u]) => String(u).includes('api.resend.com'))).toBe(true);
   });
 });

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  normalizeTicketEmail, normalizeRefundNote,
   WEBINAR_ADMIN_ACTIONS, EDITABLE_COLUMNS, FIELD_ORDER, adminEmails, validateWebinarRequest,
   isEmptyDoc, hasDataImage, normalizeDoc, normalizeSpeakers, normalizePatch, applySalesInvariant,
   slugifyTitle, pickFreeSlug, isSlugLocked, missingForPublish, crossFieldError, quotaError,
@@ -13,8 +14,28 @@ const para = (text) => ({ type: 'paragraph', content: text ? [{ type: 'text', te
 describe('validateWebinarRequest', () => {
   it('menerima setiap aksi yang terdaftar dengan bentuk benar', () => {
     for (const action of WEBINAR_ADMIN_ACTIONS) {
-      expect(validateWebinarRequest({ action, id: ID, patch: {} })).toBeNull();
+      expect(validateWebinarRequest({ action, id: ID, patch: {}, orderId: ID, broadcastId: ID, note: 'Bentrok jadwal' })).toBeNull();
     }
+  });
+
+  it('Fase 3: order, email, dan catatan refund divalidasi sebelum menyentuh database', () => {
+    expect(validateWebinarRequest({ action: 'refund', orderId: 'abc', note: 'catatan' })).toMatch(/Order tidak dikenali/);
+    expect(validateWebinarRequest({ action: 'refund', orderId: ID, note: ' a ' })).toMatch(/Catatan refund/);
+    expect(validateWebinarRequest({ action: 'refund', orderId: ID, note: 'x'.repeat(501) })).toMatch(/Catatan refund/);
+    expect(validateWebinarRequest({ action: 'resend-ticket', orderId: ID, email: 'bukan email' })).toMatch(/email tidak valid/);
+    expect(validateWebinarRequest({ action: 'resend-ticket', orderId: ID, email: '' })).toBeNull();
+    expect(validateWebinarRequest({ action: 'email-retry', broadcastId: 'x' })).toMatch(/Email tidak dikenali/);
+    expect(validateWebinarRequest({ action: 'participants', id: 'x' })).toMatch(/Acara tidak dikenali/);
+  });
+
+  it('normalizeTicketEmail & normalizeRefundNote', () => {
+    expect(normalizeTicketEmail('  Budi@Mail.COM ')).toBe('budi@mail.com');
+    expect(normalizeTicketEmail('budi@mail')).toBeNull();
+    expect(normalizeTicketEmail('a b@mail.com')).toBeNull();
+    expect(normalizeTicketEmail(`${'a'.repeat(250)}@x.co`)).toBeNull();
+    expect(normalizeRefundNote('  Bentrok jadwal ')).toBe('Bentrok jadwal');
+    expect(normalizeRefundNote('ab')).toBeNull();
+    expect(normalizeRefundNote(5)).toBeNull();
   });
 
   it('menolak aksi tak dikenal, id bukan uuid, dan patch bukan objek', () => {

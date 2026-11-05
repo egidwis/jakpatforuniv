@@ -1,5 +1,5 @@
 // KHUSUS TES. Satu tabel di memori yang menjawab seperti PostgREST, sebatas sintaks
-// yang dipakai kode kita: filter `kolom=op.nilai` (eq, neq, lt, gt, lte, gte, is, like),
+// yang dipakai kode kita: filter `kolom=op.nilai` (eq, neq, lt, gt, lte, gte, is, like, in),
 // `or=(kolom.op.nilai,…)`, `select=a,b` (termasuk `*` dan kolom terhitung), serta
 // GET/PATCH/POST/DELETE.
 //
@@ -28,6 +28,10 @@ function compare(rowValue, op, raw) {
     if (raw === 'true') return rowValue === true;
     if (raw === 'false') return rowValue === false;
     throw new Error(`postgrestTable: is.${raw} tidak didukung`);
+  }
+  if (op === 'in') {
+    const list = String(raw).replace(/^\(/, '').replace(/\)$/, '').split(',');
+    return rowValue !== null && rowValue !== undefined && list.includes(String(rowValue));
   }
   // Semantik SQL: perbandingan apa pun dengan NULL tidak benar.
   if (rowValue === null || rowValue === undefined) return false;

@@ -16,7 +16,7 @@ import {
 const SITE_URL = 'https://submit.jakpatforuniv.com';
 const ADMIN_CONTACT = 'product@jakpat.net';
 
-function escapeHtml(value) {
+export function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

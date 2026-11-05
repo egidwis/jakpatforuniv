@@ -11,8 +11,28 @@
 // berputar karena klien dan server menormalisasi berbeda. webinarGate.spec.js
 // mengunci kesamaannya.
 
-export const WEBINAR_ADMIN_ACTIONS = ['list', 'get', 'create', 'save', 'publish', 'close-sales', 'cancel', 'delete'];
-const NEEDS_ID = new Set(['get', 'save', 'publish', 'close-sales', 'cancel', 'delete']);
+export const WEBINAR_ADMIN_ACTIONS = [
+  'list', 'get', 'create', 'save', 'publish', 'close-sales', 'cancel', 'delete',
+  // Fase 3: peserta, refund, email otomatis
+  'participants', 'participant', 'resend-ticket', 'check-order', 'refund', 'email-retry',
+];
+const NEEDS_ID = new Set(['get', 'save', 'publish', 'close-sales', 'cancel', 'delete', 'participants']);
+const NEEDS_ORDER = new Set(['participant', 'resend-ticket', 'check-order', 'refund']);
+const EMAIL_RE = /^[^\s@<>(),;:"]+@[^\s@<>(),;:"]+\.[^\s@<>(),;:"]+$/;
+
+/** Email tujuan e-tiket yang dikoreksi admin: dipangkas & huruf kecil; null bila tidak sah. */
+export function normalizeTicketEmail(value) {
+  if (typeof value !== 'string') return null;
+  const email = value.trim().toLowerCase();
+  return email.length <= 254 && EMAIL_RE.test(email) ? email : null;
+}
+
+/** Catatan refund (hanya admin): 3–500 karakter sesudah dipangkas; null bila tidak sah. */
+export function normalizeRefundNote(value) {
+  if (typeof value !== 'string') return null;
+  const note = value.trim();
+  return note.length >= 3 && note.length <= 500 ? note : null;
+}
 const TAKES_PATCH = new Set(['create', 'save', 'publish']);
 
 export const EDITABLE_COLUMNS = [
@@ -44,6 +64,11 @@ export function validateWebinarRequest(body) {
   if (!isPlainObject(body)) return 'Permintaan tidak dikenali';
   if (!WEBINAR_ADMIN_ACTIONS.includes(body.action)) return 'Tindakan tidak diizinkan';
   if (NEEDS_ID.has(body.action) && (typeof body.id !== 'string' || !UUID_RE.test(body.id))) return 'Acara tidak dikenali';
+  if (NEEDS_ORDER.has(body.action) && (typeof body.orderId !== 'string' || !UUID_RE.test(body.orderId))) return 'Order tidak dikenali';
+  if (body.action === 'email-retry' && (typeof body.broadcastId !== 'string' || !UUID_RE.test(body.broadcastId))) return 'Email tidak dikenali';
+  if (body.action === 'refund' && !normalizeRefundNote(body.note)) return 'Catatan refund wajib diisi (3–500 karakter)';
+  if (body.action === 'resend-ticket' && body.email !== undefined && body.email !== null && body.email !== ''
+    && !normalizeTicketEmail(body.email)) return 'Alamat email tidak valid';
   if (TAKES_PATCH.has(body.action)) {
     const patch = body.patch ?? {};
     if (!isPlainObject(patch)) return 'Isian tidak dikenali';

@@ -15,14 +15,16 @@
 //   badge di daftar admin sama dengan yang dilihat pengunjung.
 
 import { caller, json, CORS, resolveService } from '../webinar/_server.js';
-import { buildEventView } from '../webinar/_view.js';
+import { webinarLocalOpen } from '../webinar/_access.js';
 import { cancelDokuOrder } from '../doku/_doku-cancel.js';
 import {
   adminEmails, validateWebinarRequest, normalizePatch, applySalesInvariant, slugifyTitle, pickFreeSlug,
   isSlugLocked, missingForPublish, crossFieldError, quotaError, clearedScheduleError, scheduleChanged,
 } from './webinarGate.js';
-
-const EVENT_SELECT = '*,webinar_offer_state';
+import { DbError, Refusal, refuse, db, decorate, loadEvent, loadOrRefuse } from './_webinarDb.js';
+import {
+  participants, participant, resendTicket, checkOrder, refundOrder, retryEmail, notifyParticipants, LOCAL_BLOCKED_ACTIONS,
+} from './_webinarOps.js';
 
 // meeting_url hanya dibaca untuk has_meeting_url lalu dibuang; deskripsi tidak perlu di daftar.
 const LIST_SELECT = [
@@ -32,51 +34,7 @@ const LIST_SELECT = [
   'meeting_url', 'webinar_offer_state',
 ].join(',');
 
-class DbError extends Error {
-  constructor(label, status, body) {
-    super(`${label} gagal — HTTP ${status}: ${JSON.stringify(body).slice(0, 400)}`);
-    this.status = status;
-    this.code = body && typeof body === 'object' ? body.code : undefined;
-  }
-}
-
-class Refusal extends Error {
-  constructor(status, error, extra = {}) {
-    super(error);
-    this.status = status;
-    this.extra = extra;
-  }
-}
-
-const refuse = (status, error, extra) => new Refusal(status, error, extra);
-
-async function db(sb, path, init = {}, label = path) {
-  const res = await fetch(`${sb.url}/rest/v1/${path}`, {
-    ...init,
-    headers: { ...sb.headers, Prefer: 'return=representation', ...(init.headers || {}) },
-  });
-  const raw = await res.text();
-  let data = null;
-  try { data = raw ? JSON.parse(raw) : null; } catch { data = raw; }
-  if (!res.ok) throw new DbError(label, res.status, data);
-  return data;
-}
-
-function decorate(row, { full = true } = {}) {
-  const { meeting_url: meetingUrl, ...rest } = row;
-  return { ...(full ? row : rest), view: buildEventView(row), has_meeting_url: Boolean(meetingUrl) };
-}
-
-async function loadEvent(sb, id) {
-  const rows = await db(sb, `webinar_events?id=eq.${id}&select=${EVENT_SELECT}`, {}, 'SELECT webinar_events');
-  return rows?.[0] ?? null;
-}
-
-async function loadOrRefuse(sb, id) {
-  const row = await loadEvent(sb, id);
-  if (!row) throw refuse(404, 'Acara tidak ditemukan');
-  return row;
-}
+const LOCAL_TEST = 'Dimatikan di uji lokal karena memakai database produksi dan bisa mengirim email ke peserta sungguhan. Uji di produksi.';
 
 /** PATCH berfilter id saja, minta barisnya kembali, lalu baca ulang bersama keadaan penjualan. */
 async function writeEvent(sb, id, write, label) {
@@ -140,6 +98,17 @@ function checkRules(current, next, { publishing = false, confirmScheduleChange =
   }
 }
 
+const soldOf = (row) => Number(row.webinar_offer_state?.sold) || 0;
+
+const FAILURE_MESSAGE = {
+  participants: 'Daftar peserta belum bisa dimuat. Coba lagi sebentar.',
+  participant: 'Data peserta belum bisa dimuat. Coba lagi sebentar.',
+  'resend-ticket': 'E-tiket belum bisa dikirim ulang. Coba lagi sebentar.',
+  'check-order': 'Status pembayaran belum bisa dicek. Coba lagi sebentar.',
+  refund: 'Refund belum bisa dicatat. Coba lagi sebentar.',
+  'email-retry': 'Email belum bisa dikirim ulang. Coba lagi sebentar.',
+};
+
 // ── Aksi ───────────────────────────────────────────────────────────────────
 
 async function list(sb) {
@@ -170,7 +139,7 @@ async function create(sb, body) {
   return { event: decorate(await loadOrRefuse(sb, id)) };
 }
 
-async function save(sb, body) {
+async function save(sb, body, ctx) {
   const current = await loadOrRefuse(sb, body.id);
   if (current.status === 'cancelled') throw refuse(409, 'Acara yang dibatalkan tidak bisa diubah', { code: 'cancelled' });
   if (body.expectedUpdatedAt && body.expectedUpdatedAt !== current.updated_at) {
@@ -179,6 +148,9 @@ async function save(sb, body) {
 
   const patch = normalized(body);
   const next = applySalesInvariant({ ...current, ...patch });
+  // Peserta dikabari otomatis bila jadwal acara yang sudah terjual berubah.
+  const notifySchedule = current.status === 'published' && soldOf(current) > 0 && scheduleChanged(current, next);
+  if (notifySchedule && ctx.local) throw refuse(403, LOCAL_TEST, { code: 'local_test' });
   checkRules(current, next, { confirmScheduleChange: body.confirmScheduleChange === true });
 
   const write = columnsToWrite(current, patch, next);
@@ -189,7 +161,9 @@ async function save(sb, body) {
     ...write,
     ...(followTitle ? { slug: await freeSlug(sb, next.title, body.id) } : {}),
   }, 'PATCH webinar_events (simpan)'));
-  return { event: decorate(event) };
+  // Sesudah tersimpan: email yang gagal diantrekan tidak membatalkan simpanan.
+  const notice = notifySchedule ? await notifyParticipants({ ...ctx, sb, eventId: body.id, kind: 'schedule_change' }) : {};
+  return { event: decorate(event), ...notice };
 }
 
 async function publish(sb, body) {
@@ -230,9 +204,12 @@ async function closeSales(sb, body) {
  * Bayaran yang masuk belakangan tetap dicatat webinar_mark_paid sebagai alarm
  * webinar_paid_on_cancelled, jadi admin tetap tahu siapa yang harus dihubungi.
  */
-async function cancel(sb, env, body) {
+async function cancel(sb, env, body, ctx) {
   const current = await loadOrRefuse(sb, body.id);
   if (current.status === 'draft') throw refuse(409, 'Draft dihapus, bukan dibatalkan', { code: 'draft' });
+  // Hanya transisi pertama yang mengabari peserta; memanggil ulang hanya membersihkan.
+  const notifyCancel = current.status === 'published' && soldOf(current) > 0;
+  if (notifyCancel && ctx.local) throw refuse(403, LOCAL_TEST, { code: 'local_test' });
 
   const event = current.status === 'published'
     ? await writeEvent(sb, body.id, { status: 'cancelled' }, 'PATCH webinar_events (batal)')
@@ -263,11 +240,13 @@ async function cancel(sb, env, body) {
     }, 'PATCH webinar_orders (batal)');
   }
 
+  const notice = notifyCancel ? await notifyParticipants({ ...ctx, sb, eventId: body.id, kind: 'cancellation' }) : {};
   return {
     event: decorate(event),
     pending_cancelled: pending.length,
     doku_cancelled: results.length - failed.length,
     doku_failed: failed,
+    ...notice,
   };
 }
 
@@ -285,7 +264,7 @@ async function remove(sb, body) {
 
 // ── Handler ────────────────────────────────────────────────────────────────
 
-export async function onRequest({ request, env }) {
+export async function onRequest({ request, env, waitUntil }) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (request.method !== 'POST') return json(405, { error: 'Method Not Allowed' });
 
@@ -297,17 +276,27 @@ export async function onRequest({ request, env }) {
   const invalid = validateWebinarRequest(body);
   if (invalid) return json(400, { error: invalid });
 
+  const local = webinarLocalOpen(env, request);
+  if (local && LOCAL_BLOCKED_ACTIONS.includes(body.action)) return json(403, { error: LOCAL_TEST, code: 'local_test' });
+
   try {
     const sb = resolveService(env);
+    const ctx = { env, waitUntil, local, adminEmail: user.email };
     switch (body.action) {
       case 'list': return json(200, await list(sb));
       case 'get': return json(200, await get(sb, body));
       case 'create': return json(200, await create(sb, body));
-      case 'save': return json(200, await save(sb, body));
+      case 'save': return json(200, await save(sb, body, ctx));
       case 'publish': return json(200, await publish(sb, body));
       case 'close-sales': return json(200, await closeSales(sb, body));
-      case 'cancel': return json(200, await cancel(sb, env, body));
+      case 'cancel': return json(200, await cancel(sb, env, body, ctx));
       case 'delete': return json(200, await remove(sb, body));
+      case 'participants': return json(200, await participants(sb, body));
+      case 'participant': return json(200, await participant(sb, body));
+      case 'resend-ticket': return json(200, await resendTicket(sb, env, body));
+      case 'check-order': return json(200, await checkOrder(sb, env, body, waitUntil));
+      case 'refund': return json(200, await refundOrder(sb, body, user.email));
+      case 'email-retry': return json(200, await retryEmail(sb, env, body, waitUntil));
       default: return json(400, { error: 'Tindakan tidak diizinkan' });
     }
   } catch (err) {
@@ -323,6 +312,6 @@ export async function onRequest({ request, env }) {
       return json(400, { error: 'Isian belum memenuhi syarat penyimpanan. Periksa lagi isian penjualan.' });
     }
     console.error('[admin/webinar]', body.action, err);
-    return json(500, { error: 'Acara belum bisa disimpan. Coba lagi sebentar.' });
+    return json(500, { error: FAILURE_MESSAGE[body.action] ?? 'Acara belum bisa disimpan. Coba lagi sebentar.' });
   }
 }

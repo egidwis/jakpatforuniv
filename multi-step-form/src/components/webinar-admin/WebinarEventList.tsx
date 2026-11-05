@@ -15,6 +15,7 @@ const TONE_CLASS: Record<string, string> = {
 
 export interface WebinarListActions {
     onEdit: (event: AdminWebinarEvent) => void;
+    onParticipants: (event: AdminWebinarEvent) => void;
     onPreview: (event: AdminWebinarEvent) => void;
     onCopyLink: (event: AdminWebinarEvent) => void;
     onCloseSales: (event: AdminWebinarEvent) => void;
@@ -64,7 +65,12 @@ function EventCard({ event, actions, now }: { event: AdminWebinarEvent; actions:
                     </p>
                 )}
 
-                <div className="mt-auto flex items-center justify-end gap-2 pt-2">
+                <div className="mt-auto flex flex-wrap items-center justify-end gap-2 pt-2">
+                    {!isDraft && (
+                        <Button variant="outline" size="sm" className="h-8 text-xs font-semibold" onClick={() => actions.onParticipants(event)}>
+                            Peserta ({seats.sold})
+                        </Button>
+                    )}
                     <Button variant="outline" size="sm" className="h-8 text-xs font-semibold" onClick={() => actions.onEdit(event)}>
                         {event.status === 'cancelled' ? 'Lihat' : 'Edit'}
                     </Button>

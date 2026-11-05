@@ -823,9 +823,8 @@ setiap koreksi isi butuh developer sampai form siap.
     melihat "Tiket tidak aktif".
   - Batalkan acara: juga mematikan link DOKU order pending lewat `cancelDokuOrder`
     (`functions/api/doku/_doku-cancel.js`), supaya tidak ada yang membayar acara batal.
-  - Siaran "pengingat" dan "perubahan jadwal/pembatalan" ke peserta live yang paid. Dikirim
-    bertahap per batch dari UI supaya aman dari batas subrequest Cloudflare. Templat pembatalan menyertakan
-    kontak admin, tanpa kata refund.
+  - **Email ke peserta otomatis dengan templat tetap** (diubah 6 Nov): pengingat H-1 lewat cron; email jadwal
+    berubah dan pembatalan terkirim sendiri bersama aksi admin. Rinciannya ada di lampiran "Iterasi 6 Nov".
 - **Backend:** aksi baru di `functions/api/admin/webinar.js` + `webinarGate.js` + tes gerbang.
 - **Gerbang:** pemilik produk bisa melihat peserta, mengekspor CSV, mengirim ulang e-tiket, dan
   mengirim siaran tanpa bantuan developer.
@@ -925,8 +924,7 @@ Temuan: `src/components/TransactionsPage.tsx` hanya punya filter cari, bulan, ta
   domain.
 
 ## Fase 7 — Sesudah acara pertama (backlog)
-- Pengingat otomatis H-1 (pg_cron + pg_net → Function). Endpoint dideploy **sebelum** cron
-  dinyalakan (pelajaran insiden sql/48).
+- ~~Pengingat otomatis H-1~~: dipindah ke Fase 3 (6 Nov). Cron tetap dinyalakan **sesudah** endpoint dideploy.
 - Sapuan otomatis Check Status untuk pembeli yang sudah bayar tapi tidak kembali ke halaman.
 - Ukur corong: kunjungan halaman acara → checkout → order → lunas, untuk menilai dampak wajib
   login.
@@ -973,3 +971,510 @@ Temuan: `src/components/TransactionsPage.tsx` hanya punya filter cari, bulan, ta
 - `npx wrangler pages dev dist` (butuh `.dev.vars`) untuk uji Function lokal, karena
   `npm run dev` tidak menjembatani Function baru.
 - Gerbang produksi di setiap fase, seperti tertulis di masing-masing fase.
+
+---
+
+## Lampiran — Iterasi 6 Nov: Fase 3 (peserta, refund, email otomatis)
+
+### Context
+Pemilik produk menyatakan uji Fase 2 lulus (6 Nov) dan meminta lanjut ke Fase 3.
+
+**Tujuan Fase 3:** acara bisa dijalankan tanpa developer.
+- Admin bisa melihat dan mengekspor peserta.
+- Admin bisa membantu pembeli: kirim ulang e-tiket, cek pembayaran ke DOKU, dan refund.
+- Peserta dikabari secara otomatis.
+
+**Email ke peserta otomatis (permintaan pemilik produk, 6 Nov).** Polanya mengikuti notifikasi iklan/Kilat,
+bukan tombol kirim manual. Notifikasi iklan/Kilat punya dua jenis:
+- **Berdasarkan waktu:** pg_cron + pg_net memanggil Function yang dijaga `?k=CRON_NOTIFY_SECRET`
+  (`notify-ad-live.js`, sql/48).
+- **Ikut aksi admin:** email terkirim sebagai bagian dari aksinya (`notify-schedule-change.js`,
+  `notify-review-result.js`).
+
+Bedanya, satu email iklan hanya untuk satu peneliti, sedangkan satu email webinar untuk banyak peserta. Karena
+itu email webinar dikirim lewat antrean di database, bertahap.
+
+### Keputusan pemilik produk (6 Nov)
+- **Halaman peserta terpisah,** dibuka dari tombol "Peserta (n)" di kartu acara. Form acara tidak diubah.
+- **Email ke peserta otomatis dengan templat tetap.** Admin tidak bisa mengubah teksnya (teks lengkap di bawah).
+  - **Pengingat H-1:** satu-satunya pengingat, dikirim lewat cron.
+  - **Jadwal berubah:** terkirim sendiri saat admin menyimpan jadwal baru untuk acara yang sudah ada tiketnya.
+  - **Pembatalan:** terkirim sendiri saat admin membatalkan acara.
+  - **E-tiket:** tetap seperti sekarang, dikirim lewat webhook.
+- **Refund:**
+  - Tiket langsung tidak aktif, dan kursinya kembali bisa dibeli.
+  - Pembeli **tidak** menerima email. Admin mengabari sendiri.
+
+### Keputusan saya (koreksi bila keliru)
+- **Penerima email otomatis:** semua tiket live yang lunas, apa pun status izin kontaknya. Ini email layanan
+  atas tiket yang sudah dibeli, bukan promosi. Tiket yang sudah di-refund tidak menerima.
+- **Pengingat H-1:**
+  - Dikirim sekali, 24 jam sebelum acara mulai. Batas terakhirnya 3 jam sebelum mulai; lewat dari itu,
+    pengingat dilewati.
+  - Pembeli yang lunas kurang dari 6 jam sebelumnya tidak menerimanya, karena e-tiketnya baru masuk.
+  - Pengingat dilewati bila email jadwal baru terkirim kurang dari 12 jam sebelumnya.
+  - Bila jadwal berubah, pengingat dijadwalkan ulang mengikuti jadwal yang baru.
+- **Antrean basi:**
+  - Bila jadwal berubah lagi, email jadwal sebelumnya yang masih antre dibatalkan.
+  - Bila acara dibatalkan, pengingat dan email jadwal yang masih antre ikut dibatalkan.
+  - Email pembatalan hanya terkirim sekali per acara.
+- **Gagal kirim:**
+  - Galat sementara, termasuk batas harian Cloudflare, diulang otomatis paling banyak 3 kali dengan jeda minimal
+    5 menit.
+  - Alamat yang ditolak permanen (bounce) tidak diulang.
+  - Sisanya tampil "gagal" dengan tombol **Kirim ulang yang gagal**.
+- **Nama di layar:** "Email otomatis", bukan "Siaran", karena kata "siaran" sudah dipakai Kilat (sql/130).
+- **Refund:** wajib disertai catatan yang hanya terlihat admin. Refund bersifat final dan tidak bisa dibatalkan
+  dari layar.
+- **Ubah email e-tiket:** ada di dialog Kirim ulang e-tiket, karena checkout menjanjikan "Salah alamat? Hubungi
+  admin". Alamat baru juga dipakai untuk email otomatis berikutnya.
+- **Uji lokal:** `dev:full` memakai database PRODUKSI, jadi aksi berikut ditolak di localhost dengan `local_test`:
+  - kirim ulang e-tiket, Cek ke DOKU, refund, dan Kirim ulang yang gagal;
+  - simpan jadwal dan batalkan acara, khusus untuk acara yang sudah ada pesertanya.
+
+  Tujuannya supaya laptop tidak menghasilkan email ke peserta sungguhan. Halaman peserta tetap bisa dilihat di
+  lokal.
+- **Cakupan peserta:** hanya tiket live. Pembeli rekaman menyusul di Fase 5.
+
+### Temuan produksi 6 Nov (SELECT lewat MCP, baca saja)
+- **Check Status DOKU belum pernah berjalan sejak fix 27fc3e5.** `last_status_check_at` terakhir masih
+  5 Nov 05:47:03, yaitu klaim yang rusak. Ini dibuktikan lewat langkah Cek ke DOKU di gerbang Fase 3.
+- **"Uji Webinar" (`uji-webinar`) tercatat sebagai acara sungguhan.**
+  - Datanya: `is_test=false`, `is_listed=true`, Rp 99.999, sedang dijual, mulai 9 Nov 10.00 WIB.
+  - Risikonya: begitu saklar masa uji dimatikan, acara ini tampil di `/webinar` dan bisa dibeli.
+  - Penanganannya: ops SQL menandainya sebagai acara uji. Sesudah itu acara ini dipakai untuk uji batal + refund,
+    lalu dibatalkan.
+- **Baris `transactions` WBN-B8F3AAA2 (3 Nov, Rp 1.110, uji) tidak punya order.** Order-nya terhapus oleh
+  `ops_webinar_reset_uji_tegar.sql`.
+  - Dicatat untuk Fase 4.
+  - Skrip reset itu jangan dipakai lagi. Refund menggantikannya, karena akun bisa membeli ulang sesudah refund.
+- **Sudah tersedia di produksi:**
+  - Empat cron: activate-extends, notify-primary-ads-live, notify-primary-ads-completed, release-expired-slots.
+  - pg_net dan vault `cron_notify_secret`.
+  - `transactions` tidak punya CHECK pada status, dan kedua trigger penjaganya meloloskan service_role. Jadi
+    `refunded` bisa ditulis.
+- **Batas pengiriman:**
+  - Workers Free mengizinkan 50 subrequest per permintaan, jadi satu panggilan antrean dibatasi paling banyak 30.
+  - Kuota harian Cloudflare Email belum diketahui (akun baru dimulai kecil). **Cek di dashboard sebelum acara
+    pertama.**
+
+### Visual (HP 375 px + desktop; disetujui lewat pilihan 6 Nov)
+
+**C3. Kartu acara di daftar.** Tombol "Peserta (n)" ditambahkan untuk acara terbit dan batal, tidak untuk draft.
+`n` = tiket lunas. Di desktop poster tetap di kiri; di HP tombolnya boleh turun baris.
+```
+┌───────────────────────────────────┐
+│ Olah Data SPSS untuk Skripsi [UJI]│
+│ Sel, 17 Nov 2026 · 08.30 WIB      │
+│ ● Dijual  Terjual 12 / 25         │
+│ [Peserta (12)] [Edit] [Pratinjau] │
+│                               [⋯] │
+└───────────────────────────────────┘
+```
+
+**C4. Halaman Peserta, tampilan HP**
+```
+← Semua acara
+Olah Data SPSS untuk Skripsi    [UJI]
+Sel, 17 Nov 2026 · 08.30 WIB · ● Dijual
+┌───────────┬───────────┬───────────┐
+│ Lunas     │ Ditahan   │ Izin      │
+│ 12 / 25   │ 2         │ kontak 8  │
+└───────────┴───────────┴───────────┘
+Pendapatan Rp 588.000
+EMAIL OTOMATIS
+  E-tiket         12/12 terkirim
+  Pengingat H-1   dijadwalkan
+                  Sen, 16 Nov · 08.30 WIB
+  Jadwal berubah  10 Nov 09.12
+                  11 terkirim · 1 gagal
+                  [Kirim ulang yang gagal]
+(Lunas 12) (Belum bayar 3) (Refund 1) →
+[🔍 Cari nama, email, kode tiket    ]
+┌───────────────────────────────────┐
+│ Putra Kurniawan       ✓ E-tiket   │
+│ tegar@jakpat.net                  │
+│ UIU · 7F3A91B2C4 · Izin ✓         │
+├───────────────────────────────────┤
+│ Sari Wulandari   ⚠ E-tiket gagal  │
+│ sari@gmial.com                    │
+│ UGM · 91B2C47F3A · Izin –         │
+├───────────────────────────────────┤
+│ Bima Pratama      ⚠ Bayar dobel   │
+│ bima@ui.ac.id                     │
+│ UI · C47F3A91B2 · Izin ✓          │
+└───────────────────────────────────┘
+───────────────────────────────────── (menempel)
+[         Ekspor CSV (12)           ]
+```
+
+**C4. Halaman Peserta, tampilan desktop (≥ 1024 px).** Klik baris membuka panel detail C5 di kanan.
+```
+← Semua acara                                                 [Ekspor CSV (12)]
+Olah Data SPSS untuk Skripsi  [UJI]
+Sel, 17 Nov 2026 · 08.30 WIB · ● Dijual
+┌─────────────┬─────────────┬──────────────┬───────────────┐
+│ Lunas       │ Ditahan     │ Izin kontak  │ Pendapatan    │
+│ 12 / 25     │ 2           │ 8            │ Rp 588.000    │
+└─────────────┴─────────────┴──────────────┴───────────────┘
+Email otomatis
+  E-tiket          12/12 terkirim
+  Pengingat H-1    dijadwalkan Sen, 16 Nov · 08.30 WIB
+  Jadwal berubah   10 Nov 09.12 · 11 terkirim · 1 gagal   [Kirim ulang yang gagal]
+(Lunas 12) (Belum bayar 3) (Refund 1)              [🔍 Cari nama, email, kode   ]
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Nama                Email e-tiket      Kampus  Kode tiket  E-tiket   Izin  │
+│ Putra Kurniawan     tegar@jakpat.net   UIU     7F3A91B2C4  ✓         ✓   ⋯ │
+│ Sari Wulandari      sari@gmial.com     UGM     91B2C47F3A  ⚠ Gagal   –   ⋯ │
+│ Bima Pratama ⚠Dobel bima@ui.ac.id      UI      C47F3A91B2  ✓         ✓   ⋯ │
+└────────────────────────────────────────────────────────────────────────────┘
+Chip Belum bayar:  Dewi Lestari · Menunggu bayar, sisa 12 mnt   [Cek ke DOKU]
+                   Andi Saputra · Kedaluwarsa 5 Nov 14.10       [Cek ke DOKU]
+Chip Refund:       Rina Putri · Refund 7 Nov · "Bentrok jadwal kuliah"
+Acara batal:       banner "Acara dibatalkan · email pembatalan 12/12 terkirim"
+```
+Baris Pengingat H-1 menampilkan salah satu keadaan ini:
+- dijadwalkan `<waktu>`
+- sedang dikirim x/y
+- x/y terkirim, ditambah jumlah yang gagal bila ada
+- dilewati: `<alasan>`
+- tidak ada penerima
+- terlewat
+- tanda "—" bila acara sudah lewat atau batal
+
+**C5. Detail peserta.** Tampil sebagai panel di kanan (desktop) atau lembar dari bawah (HP).
+```
+┌ Putra Kurniawan ──────────────── ● Lunas ┐
+│ ⚠ Bayar dobel: akun ini punya 2 tiket     │ ← hanya bila ada alarm
+│   lunas. Hubungi pembeli, lalu tandai     │
+│   refund salah satunya.                   │
+│ Email e-tiket  tegar@jakpat.net           │
+│ Akun           tegar@jakpat.net           │
+│ WhatsApp       0812 3456 7890             │
+│ Kampus         UIU · Teknik · Mahasiswa   │
+│ Izin kontak    Ya · 5 Nov, 12.40 WIB      │
+│ Kode tiket     7F3A91B2C4                 │
+│ Invoice        WBN-E1642A9A-1793856539227 │
+│ Dibayar        Rp 49.000 · QRIS           │
+│                5 Nov, 12.47 WIB           │
+│ Voucher        –                          │
+│ Email          E-tiket ✓ 5 Nov 12.48      │
+│                Pengingat H-1 ✓ 16 Nov     │
+│ [Kirim ulang e-tiket] [Salin link gabung] │
+│ ───────────────────────────────────────── │
+│ Tandai refund…                    (merah) │
+└───────────────────────────────────────────┘
+```
+- **Order belum bayar:** panel menampilkan invoice, waktu order dibuat, batas link bayar, waktu terakhir dicek ke
+  DOKU, dan tombol [Cek ke DOKU]. Kemungkinan hasilnya:
+  - "Belum dibayar di DOKU (10.15 WIB)"
+  - "Lunas — tiket terbit, e-tiket dikirim"
+  - "Baru saja dicek, coba lagi sesudah 1 menit"
+  - "DOKU tidak menjawab, coba lagi sebentar"
+- **Order refund:** panel menampilkan "Refund 7 Nov, 10.02 WIB oleh product@jakpat.net · Catatan: …", tanpa
+  tombol aksi.
+
+**C6. Kirim ulang e-tiket**
+```
+┌ Kirim ulang e-tiket? ─────────────────────┐
+│ E-tiket + kwitansi PDF dikirim ke:        │
+│ [tegar@jakpat.net                       ] │
+│ Alamat baru juga dipakai email otomatis   │
+│ berikutnya untuk peserta ini.             │
+│                      [Kembali] [Kirim]    │
+└───────────────────────────────────────────┘
+```
+
+**C7. Tandai refund** (pilihan pemilik produk 6 Nov)
+```
+┌ Tandai refund? ───────────────────────────┐
+│ Putra Kurniawan · 7F3A91B2C4 · Rp 49.000  │
+│ • Tiket langsung tidak aktif; link gabung │
+│   berhenti meneruskan ke Zoom.            │
+│ • Kursi kembali bisa dibeli.              │
+│ • Uang dikembalikan manual di luar sistem.│
+│ • Pembeli tidak menerima email; kabari    │
+│   sendiri.                                │
+│ • Tidak bisa dibatalkan dari layar ini.   │
+│ Catatan (hanya admin)*                    │
+│ [Bentrok jadwal kuliah                  ] │
+│                [Kembali] [Tandai refund]  │
+└───────────────────────────────────────────┘
+```
+Pembeli melihat "Tiket tidak aktif. Hubungi admin bila ada pertanyaan." Teks ini sudah ada di
+`WebinarTicketCard`, dan link gabung sudah mengarah ke halaman tiket untuk order yang tidak lunas.
+
+**C8. Dua dialog lama yang teksnya berubah**
+```
+┌ Jadwal berubah ───────────────────────────┐  ← form acara
+│ Tiket sudah terjual ke 12 peserta.        │
+│ Sesudah disimpan, mereka otomatis         │
+│ menerima email jadwal baru. Tiket tetap   │
+│ berlaku.                                  │
+│   [Kembali] [Simpan & kabari peserta]     │
+└───────────────────────────────────────────┘
+┌ Batalkan acara ini? ──────────────────────┐  ← daftar acara
+│ Olah Data SPSS untuk Skripsi              │
+│ • 12 peserta otomatis menerima email      │
+│   pembatalan.                             │
+│ • Link bayar yang masih aktif dimatikan.  │
+│ • Tindakan ini tidak bisa dibatalkan.     │
+│              [Kembali] [Batalkan acara]   │
+└───────────────────────────────────────────┘
+```
+Bila belum ada tiket terjual, baris tentang email tidak tampil.
+
+### Teks email otomatis (templat tetap)
+Aturan yang berlaku untuk ketiga templat:
+- Sapaannya `Halo {nama}`. Bila nama kosong, dipakai "Kak".
+- Jadwal ditulis dalam WIB, lengkap dengan jam selesai.
+- Kontak admin: product@jakpat.net.
+- Tidak ada kata refund atau "pengembalian dana".
+- Link Zoom tidak pernah dicantumkan. Yang dipakai hanya link gabung pribadi.
+
+**Pengingat H-1**. Subjek: `Pengingat: {judul} · {Sel, 17 Nov, 08.30 WIB}`
+> Halo {nama}, ini pengingat untuk webinar yang kamu ikuti.
+> **{judul}** · Jadwal: Selasa, 17 November 2026 · 08.30–10.00 WIB · Pembicara: {nama, jabatan · …} · Kode tiket: {kode}
+> [Gabung ke webinar]
+> Ruang dibuka 30 menit sebelum acara. Link ini milikmu pribadi, jadi jangan disebarkan.
+> Tambahkan ke Google Calendar · Buka menu Webinar
+> Tidak bisa hadir? Tiketmu sudah termasuk rekaman, yang tersedia di menu Webinar setelah acara.
+> Ada kendala? Hubungi admin di product@jakpat.net.
+
+**Jadwal berubah**. Subjek: `Jadwal baru: {judul}`
+> Halo {nama}, jadwal webinar **{judul}** berubah. Ini jadwal terbarunya:
+> Jadwal: Kamis, 19 November 2026 · 13.00–14.30 WIB · Kode tiket: {kode}
+> Tiketmu tetap berlaku untuk jadwal baru ini dan sudah termasuk rekaman. Kamu tidak perlu melakukan apa pun.
+> [Gabung ke webinar]
+> Link gabungmu tetap sama. Tambahkan jadwal baru ke Google Calendar
+> Ada kendala? Hubungi admin di product@jakpat.net.
+
+**Pembatalan**. Subjek: `Webinar dibatalkan: {judul}`. Tanpa tombol gabung dan tanpa tautan kalender.
+> Halo {nama}, mohon maaf, webinar **{judul}** yang dijadwalkan Selasa, 17 November 2026 · 08.30–10.00 WIB dibatalkan.
+> Untuk pertanyaan tentang tiketmu (kode {kode}), hubungi admin di product@jakpat.net.
+> Terima kasih atas pengertianmu.
+
+### Data: `sql/135_webinar_operasional.sql`
+Berkas ini dijalankan pemilik produk sendiri di SQL Editor; MCP hanya dipakai untuk SELECT.
+- **Susunan berkas** mengikuti sql/131 dan sql/134: dry-run, terapkan, verifikasi, lalu rollback.
+- **Diuji di PGlite** dengan constraint dan badan fungsi produksi disalin ke prelude. `net.http_post` dan vault
+  diganti stub.
+
+**Bagian A: dijalankan sebelum kode di-push**
+- **`webinar_orders`:**
+  - Kolom baru `refunded_at`, `refunded_by`, dan `refund_note`.
+  - CHECK baru: order berstatus refunded wajib punya `refunded_at` dan `refund_note`. Dry-run memastikan belum
+    ada baris refunded di produksi.
+- **Tabel `webinar_broadcasts`:**
+  - Kolom: `id`; `event_id` (FK CASCADE); `kind` (reminder_day | schedule_change | cancellation);
+    `event_starts_at`, yaitu jadwal acara saat email masuk antrean; `recipient_total`; `skipped_reason`;
+    `created_by` (email admin, NULL = cron); `created_at`.
+  - Unik: satu reminder_day per kombinasi acara + jadwal, dan satu cancellation per acara.
+- **Tabel `webinar_broadcast_deliveries`:**
+  - PK (`broadcast_id`, `order_id`).
+  - Kolom: `email`; `status` (queued | sending | sent | failed | skipped); `attempts`; `claimed_at`;
+    `retry_after`; `sent_at`; `error`.
+  - FK CASCADE ke broadcast dan order, supaya ops yang menghapus order uji tidak terblokir.
+- **Hak akses kedua tabel:** RLS ON tanpa policy, `REVOKE ALL` dari PUBLIC/anon/authenticated, `GRANT` ke
+  service_role.
+- **Hak akses fungsi:**
+  - Semua fungsi SECURITY INVOKER, kecuali tick.
+  - `REVOKE EXECUTE` dari PUBLIC, anon, dan authenticated; `GRANT` ke service_role.
+  - Verifikasi lewat `proacl`, karena pg_default_acl memberi hak otomatis ke setiap fungsi baru.
+- **Fungsi `webinar_mark_refunded(order_id, note, admin_email)`:**
+  1. Kunci acara, lalu order (urutan yang sama dengan mark_paid).
+  2. Hanya order `paid` yang diproses. Order yang sudah refunded idempoten; status lain dijawab `not_paid`.
+  3. Ubah order menjadi refunded dan isi kolom refund.
+  4. Ubah baris `transactions` (`payment_id` = invoice, `entity_type='webinar'`, `completed`) menjadi
+     `refunded`. Bila yang berubah bukan tepat 1 baris, RAISE supaya seluruhnya di-rollback.
+
+  Kursi kembali dengan sendirinya, karena `webinar_offer_state` hanya menghitung order `paid`.
+- **Fungsi `webinar_enqueue_broadcast(event_id, kind, created_by)`:**
+  1. Kunci acara dan cek keadaannya sesuai jenis email.
+  2. Tandai antrean basi `skipped`.
+  3. Sisipkan broadcast + deliveries (`queued`) untuk semua tiket live yang lunas.
+
+  Untuk reminder_day, penerimanya hanya yang lunas minimal 6 jam sebelumnya. Bila email jadwal baru terkirim
+  kurang dari 12 jam sebelumnya, broadcast dicatat dengan `skipped_reason`.
+- **Fungsi `webinar_enqueue_due_reminders()`:** cari acara terbit (live) yang mulai antara 3 dan 24 jam lagi dan
+  belum punya reminder_day untuk jadwalnya, lalu masukkan ke antrean.
+- **Fungsi `webinar_claim_deliveries(limit)`:**
+  1. Tandai `skipped` untuk order yang tidak lagi lunas, serta pengingat/email jadwal milik acara yang batal.
+  2. Baris `sending` yang basi lebih dari 10 menit menjadi failed sementara.
+  3. Ambil baris `queued`, ditambah baris `failed` dengan `retry_after <= now()` dan `attempts < 3`. Pakai
+     `FOR UPDATE SKIP LOCKED`.
+  4. Ubah yang terambil menjadi `sending` dengan token `claimed_at`, lalu kembalikan data penerima (email terbaru
+     dari order) dan data acara.
+- **Fungsi `webinar_record_deliveries(token, results)`:**
+  - Mencatat hasil sent atau failed. `retry_after` hanya diisi untuk galat sementara.
+  - Hanya menyentuh baris `sending` yang tokennya cocok.
+- **Fungsi `webinar_retry_broadcast(broadcast_id)`:** baris failed yang order-nya masih lunas dikembalikan ke
+  queued, dengan `attempts` di-reset ke 0.
+- **Fungsi `webinar_notify_tick()`:**
+  - SECURITY DEFINER, `search_path` public, extensions, vault (pola sql/48).
+  - Menjalankan enqueue_due_reminders.
+  - Bila ada pekerjaan, memanggil `net.http_post(<webinar_notify_url>?k=<cron_notify_secret>)` dengan timeout
+    30 detik.
+
+**Bagian B: dijalankan sesudah deploy, saat endpoint sudah hidup (pelajaran insiden sql/48)**
+- `vault.create_secret('https://submit.jakpatforuniv.com/api/notify-webinar', 'webinar_notify_url')`.
+- `cron.schedule('webinar-notify', '* * * * *', 'select public.webinar_notify_tick()')`.
+- Verifikasi: baris `cron.job` ada, lalu `net._http_response` terbaru bernilai 200. Jangan berhenti di cron.job.
+
+**Ops `sql/ops_webinar_uji_webinar_jadi_uji.sql`** (dengan dry-run + rollback):
+- Ubah `uji-webinar` menjadi `is_test=true` dan `is_listed=false`.
+- Harganya diturunkan ke Rp 1.000 lewat form.
+
+### Server
+- **`functions/api/notify-webinar.js` (baru, dipanggil cron):**
+  - Menerima POST. `?k=` harus sama dengan `CRON_NOTIFY_SECRET`; bila tidak, 401. Pola sama dengan
+    `notify-ad-live.js`.
+  - Menjalankan `dispatchWebinarNotifications`.
+- **`functions/api/webinar/_notify.js` (baru):**
+  - `dispatchWebinarNotifications({ env, sb, limit: 20 })`: klaim, render, kirim lewat `sendMail` (4 paralel),
+    lalu catat hasilnya.
+  - Galat permanen (`permanent_bounces`, atau 4xx untuk alamat) tidak diulang.
+  - Dipakai oleh cron, oleh aksi simpan jadwal dan batal (`waitUntil`, batch pertama langsung dikirim), dan oleh
+    Kirim ulang yang gagal.
+- **`functions/api/webinar/_notify-email.js` (baru):**
+  - `buildWebinarNotifyEmail({ kind, event, recipient })` menghasilkan teks persis seperti di atas.
+  - `escapeHtml` dan `googleCalendarUrl` diekspor dari `_webinar-ticket-email.js`, ditambah
+    `formatWibRange(starts_at, duration_minutes)`.
+  - meeting_url tidak pernah dibaca.
+- **`functions/api/webinar/_checkStatus.js` (baru):**
+  - Inti `sync.js` dipindah ke `checkOrderAtDoku({ env, sb, order, statusFilter, now, waitUntil })`.
+  - `sync.js` (pemilik order, `status=eq.pending`) dan admin (`status=in.(pending,expired,cancelled)`) memakai
+    inti yang sama.
+  - Aturan 60 detik dan klaim `last_status_check_at` tidak berubah.
+- **`functions/api/doku/_webinar.js`:**
+  - `deliverWebinarTicket({ …, resend })`: mode resend tidak mensyaratkan `ticket_email_sent_at=is.null`.
+  - Sukses selalu mengosongkan `ticket_email_claimed_at`. Dengan begitu klaim berarti "sedang mengirim", dan klik
+    ganda tetap menghasilkan satu email.
+  - `accountEmailOf` diekspor.
+- **`functions/api/admin/webinar.js`:**
+  - Aksi baru ditaruh di `_webinarOps.js`; helper `db`/`refuse` dipindah ke `_webinarDb.js`.
+
+  | Aksi | Isi |
+  |---|---|
+  | `participants` | Acara + order live, tanpa `payment_url`/`doku_request_id`. `join_url` hanya untuk order lunas. Paginasi per 1000 baris. Disertai broadcast dan deliveries |
+  | `participant` | Satu order + email akun (`/auth/v1/admin/users`) |
+  | `resend-ticket` | Hanya order lunas dengan acara yang tidak batal. Email baru opsional: PATCH dengan filter `id=eq.` saja, dan barisnya wajib kembali tepat 1. Lalu `deliverWebinarTicket(resend)` |
+  | `check-order` | `checkOrderAtDoku` untuk pending/expired/cancelled |
+  | `refund` | RPC `webinar_mark_refunded`; `not_paid` → 409 |
+  | `email-retry` | RPC `webinar_retry_broadcast`, lalu dispatch lewat `waitUntil` |
+
+  - `save`: sesudah tulisan berhasil, bila jadwal berubah dan sudah ada tiket terjual, masukkan
+    `schedule_change` ke antrean dan jalankan dispatch.
+  - `cancel`: saat acara berpindah dari published ke cancelled dan sudah ada tiket terjual, masukkan
+    `cancellation` ke antrean (unik per acara) dan jalankan dispatch.
+  - Di localhost (`webinarLocalOpen`): aksi tulis Fase 3 dijawab 403 `local_test`, begitu juga save jadwal dan
+    cancel bila sudah ada tiket terjual.
+- **`functions/api/admin/webinarGate.js`:** validasi `orderId` dan `broadcastId` (UUID), `note` (3–500
+  karakter), dan `email` (format benar, maksimal 254 karakter).
+
+### Klien
+- **`src/utils/webinarParticipants.ts`** (fungsi murni):
+  - pengelompokan per chip, statistik, dan pencarian;
+  - label e-tiket, alarm, dan belum bayar;
+  - status baris "Email otomatis";
+  - baris CSV.
+- **`src/utils/webinarAdminApi.ts`:** fungsi bertipe untuk aksi-aksi baru.
+- **Komponen baru di `src/components/webinar-admin/`:** `WebinarParticipantsPage`, `WebinarParticipantSheet`
+  (memakai `ui/sheet`), `WebinarEmailStatus`, `WebinarResendDialog`, dan `WebinarRefundDialog`.
+- **Komponen yang diubah:**
+  - `WebinarAdminPage`: view `{ kind: 'participants', id }`.
+  - `WebinarEventList`: tombol Peserta dan teks dialog Batalkan acara (C8).
+  - `WebinarEventForm`: teks dialog Jadwal berubah (C8).
+- **CSV** lewat `downloadCsv` (`src/utils/csv.ts`, dengan BOM dan kutip ganda):
+  - Kolom: Nama, Email e-tiket, WhatsApp, Kampus, Jurusan, Status, Referral, Izin kontak, Waktu izin (WIB), Kode
+    tiket, Invoice, Status order, Harga, Diskon, Voucher, Dibayar (WIB), Kanal, E-tiket terkirim (WIB), Catatan
+    refund.
+  - Isinya mengikuti chip dan pencarian yang sedang aktif.
+  - Nama berkas: `peserta-<slug>-<YYYY-MM-DD>.csv`.
+- **Tata letak:** grep `styles.css` untuk setiap utility responsif baru. Jebakan cascade ini sudah kambuh 5 kali.
+
+### Tes
+- **`functions/api/admin/webinarOps.spec.js`.** Handler sungguhan dipanggil, dan fetch dirute per URL.
+  - Akun bukan admin mendapat 401 tanpa satu pun panggilan REST.
+  - Setiap aksi beserta penolakannya.
+  - `local_test` di localhost.
+  - `save`/`cancel` memasukkan email ke antrean hanya bila sudah ada tiket terjual, dan hanya sesudah tulisan
+    berhasil.
+  - PATCH email hanya memakai filter `id=eq.`.
+  - Respons `participants` tidak memuat `payment_url` maupun `doku_request_id`.
+- **`functions/api/webinar/notify.spec.js`:**
+  - Rahasia `?k=` yang salah dijawab 401.
+  - Urutan klaim → kirim → catat.
+  - Galat sementara dibedakan dari galat permanen.
+  - Ketiga templat:
+    - nama, judul, dan jadwal WIB benar;
+    - link gabung pribadi ada, kecuali di email pembatalan;
+    - `<script>` di nama atau judul di-escape;
+    - tidak ada kata refund atau pengembalian dana;
+    - tidak ada meeting_url.
+- **`functions/api/doku/webhookWebinar.spec.js`:** resend diuji dengan `postgrestTable`.
+  - E-tiket bisa dikirim lagi sesudah terkirim.
+  - Dua resend bersamaan menghasilkan satu email.
+  - Jalur biasa tetap tidak mengirim ulang.
+- **`functions/api/webinar/webinar.spec.js`:** tes sync yang lama tetap hijau sesudah refactor.
+- **`src/utils/webinarParticipants.spec.ts`:** pengelompokan, statistik, CSV, dan status pengingat tepat di
+  batas 24 jam dan 3 jam.
+- **PGlite sql/135:**
+  - Refund: order lunas, order yang sudah refund, order belum bayar, dan baris transaksi hilang (harus
+    rollback).
+  - Enqueue: tiap jenis email, antrean basi, serta aturan 6 jam dan 12 jam.
+  - Claim: SKIP LOCKED, status skipped, `retry_after`, dan batas 3 kali.
+  - Record: hanya baris dengan token yang cocok.
+  - Tick: memanggil stub `net.http_post` hanya bila ada pekerjaan.
+  - Hak akses: anon dan authenticated ditolak.
+
+### Urutan kerja
+0. **Commit alat uji lokal (`dev:full`)** secara terpisah, saat kamu minta. Ada 14 berkas yang belum di-commit.
+1. **SQL.** Siapkan `sql/135`, uji di PGlite, dan siapkan ops SQL. Pemilik produk menjalankan **Bagian A** dan
+   ops SQL.
+2. **Server** beserta tesnya.
+3. **Klien** beserta tesnya.
+4. **Gerbang otomatis:**
+   - `npx vitest run` hijau, kecuali 2 kegagalan baseline di `respondentsGate.spec.ts`;
+   - `npx tsc -p tsconfig.app.json | grep -E "TS2304|TS2552"` kosong.
+5. **Cek visual lokal** lewat `pnpm run dev:full`, di HP 375 px dan desktop: kartu, halaman peserta, detail,
+   dialog, dan CSV. Aksi tulis harus menampilkan pesan uji lokal.
+6. **Commit** saat diminta, disertai `graphify update .`. Pemilik produk push `main` (sekaligus deploy), lalu
+   menjalankan **Bagian B** (cron).
+7. **Gerbang Fase 3** di produksi (lihat di bawah).
+8. **Catatan:** perbarui memory `webinar-jfu-plan-state` dan salinan rencana di
+   `docs/superpowers/plans/2026-11-02-webinar-jfu.md`. Catat juga preferensi "email otomatis lebih disukai
+   daripada tombol kirim manual".
+
+### Gerbang Fase 3 (produksi, akun uji tegar@jakpat.net)
+`uji-webinar-jfu` tetap menjadi acara uji utama. `uji-webinar` (sesudah ops SQL, harga Rp 1.000) dipakai untuk
+uji yang mengakhiri acara.
+1. **Daftar peserta** `uji-webinar-jfu`: order lunas tampil benar, dan CSV terbuka rapi di Sheets/Excel.
+2. **Kirim ulang e-tiket:** email + PDF masuk, dan `ticket_email_sent_at` bergerak. Ubah alamat email: e-tiket
+   masuk ke alamat baru. Sesudah itu kembalikan ke alamat semula.
+3. **Jadwal berubah dan pengingat:** ubah jadwal `uji-webinar-jfu` menjadi kira-kira 37 jam lagi. Email Jadwal
+   berubah harus masuk dalam 1 menit. Kira-kira 13 jam kemudian, Pengingat H-1 harus masuk sendiri, dan status
+   "Email otomatis" ikut berubah.
+4. **Cek ke DOKU:** beli tiket `uji-webinar`, lalu biarkan belum dibayar lebih dari 60 detik.
+   - Cek ke DOKU harus menjawab "Belum dibayar". Ini membuktikan Check Status berjalan; `last_status_check_at`
+     ikut bergerak.
+   - Sesudah dibayar, order menjadi lunas dan e-tiket terkirim.
+5. **Pembatalan:** batalkan `uji-webinar`. Email Pembatalan harus masuk, tanpa link gabung.
+6. **Refund:** tandai refund order tersebut.
+   - Di menu Webinar pembeli muncul "Tiket tidak aktif".
+   - Link gabung tidak lagi meneruskan ke Zoom.
+   - Angka Terjual turun.
+   - SELECT menunjukkan order dan baris `transactions` berstatus `refunded`.
+7. **SELECT akhir:**
+   - `webinar_broadcast_deliveries` sesuai dengan email yang dikirim;
+   - `net._http_response` bernilai 200;
+   - tidak ada baris `sending` yang basi.
+
+### Status per fase (6 Nov)
+| Fase | Status |
+|---|---|
+| 0 | Bagian builder selesai. Izin pembicara, setelan Zoom, dan konten acara 1 ada di pemilik produk. Kuota email Cloudflare dicek di Fase 3 |
+| 1 | Live (sql/131, 132, 134) |
+| 2 | Lulus uji pemilik produk 6 Nov, masih dalam masa uji. Sisanya: Check Status (gerbang Fase 3 #4) dan `uji-webinar` sebelum rilis. Rilis di tangan pemilik produk: saklar masa uji dimatikan, rate limit, sql/133, acara 1 |
+| 3 | Iterasi ini |
+| 4–7 | Belum dimulai. Catatan untuk Fase 4: baris transaksi WBN-B8F3AAA2 tanpa order, dan label `refunded` |

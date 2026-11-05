@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { AdminWebinarEvent, ColumnKey, WebinarColumns } from './webinarAdmin';
+import type { AdminBroadcast, AdminDelivery, AdminWebinarOrder } from './webinarParticipants';
 
 /** Galat bertipe dari /api/admin/webinar; `field`/`fields` menunjuk isian form. */
 export class WebinarAdminError extends Error {
@@ -18,11 +19,32 @@ export class WebinarAdminError extends Error {
     }
 }
 
-export interface CancelResult {
+/** Email otomatis ke peserta yang ikut aksi simpan-jadwal / batalkan acara. */
+export interface NotifyNotice {
+    notified?: number;
+    notify_error?: boolean;
+}
+
+export interface CancelResult extends NotifyNotice {
     event: AdminWebinarEvent;
     pending_cancelled: number;
     doku_cancelled: number;
     doku_failed: { invoice: string; reason: string }[];
+}
+
+export interface ParticipantsResult {
+    event: AdminWebinarEvent;
+    orders: AdminWebinarOrder[];
+    broadcasts: AdminBroadcast[];
+    deliveries: AdminDelivery[];
+}
+
+export interface CheckOrderResult {
+    checked: boolean;
+    status: string;
+    reason?: 'too_soon' | 'recently_checked' | 'doku_error' | 'unpaid';
+    dokuStatus?: string | null;
+    outcome?: string;
 }
 
 type Patch = Partial<WebinarColumns>;
@@ -54,7 +76,11 @@ export const createWebinarEvent = (patch: Patch) =>
     webinarAdmin<{ event: AdminWebinarEvent }>('create', { patch }).then((r) => r.event);
 
 export const saveWebinarEvent = (id: string, patch: Patch, expectedUpdatedAt: string, confirmScheduleChange = false) =>
-    webinarAdmin<{ event: AdminWebinarEvent }>('save', { id, patch, expectedUpdatedAt, confirmScheduleChange }).then((r) => r.event);
+    saveWebinarEventWithNotice(id, patch, expectedUpdatedAt, confirmScheduleChange).then((r) => r.event);
+
+/** Seperti saveWebinarEvent, ditambah kabar email otomatis bila jadwal acara terjual berubah. */
+export const saveWebinarEventWithNotice = (id: string, patch: Patch, expectedUpdatedAt: string, confirmScheduleChange = false) =>
+    webinarAdmin<{ event: AdminWebinarEvent } & NotifyNotice>('save', { id, patch, expectedUpdatedAt, confirmScheduleChange });
 
 export const publishWebinarEvent = (id: string, patch: Patch, expectedUpdatedAt: string) =>
     webinarAdmin<{ event: AdminWebinarEvent }>('publish', { id, patch, expectedUpdatedAt }).then((r) => r.event);
@@ -65,3 +91,21 @@ export const closeWebinarSales = (id: string) =>
 export const cancelWebinarEvent = (id: string) => webinarAdmin<CancelResult>('cancel', { id });
 
 export const deleteWebinarEvent = (id: string) => webinarAdmin<{ deleted: string }>('delete', { id });
+
+// ── Fase 3: peserta ─────────────────────────────────────────────────────────
+
+export const listParticipants = (id: string) => webinarAdmin<ParticipantsResult>('participants', { id });
+
+export const getParticipant = (orderId: string) =>
+    webinarAdmin<{ order: AdminWebinarOrder; account_email: string | null }>('participant', { orderId });
+
+/** `email` diisi bila admin mengoreksi alamat tujuan e-tiket. */
+export const resendTicket = (orderId: string, email?: string) =>
+    webinarAdmin<{ sent: true; email: string }>('resend-ticket', { orderId, ...(email ? { email } : {}) });
+
+export const checkOrder = (orderId: string) => webinarAdmin<CheckOrderResult>('check-order', { orderId });
+
+export const refundOrder = (orderId: string, note: string) =>
+    webinarAdmin<{ outcome: 'ok' | 'already_refunded'; refunded_at?: string }>('refund', { orderId, note });
+
+export const retryEmail = (broadcastId: string) => webinarAdmin<{ requeued: number }>('email-retry', { broadcastId });

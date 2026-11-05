@@ -9,11 +9,12 @@ import {
 } from '@/utils/webinarAdminApi';
 import { WebinarEventForm } from './WebinarEventForm';
 import { WebinarEventList, type WebinarListActions } from './WebinarEventList';
+import { WebinarParticipantsPage } from './WebinarParticipantsPage';
 
-type View = { kind: 'list' } | { kind: 'edit'; id: string | null };
+type View = { kind: 'list' } | { kind: 'edit'; id: string | null } | { kind: 'participants'; id: string };
 
 /**
- * Menu Webinar di /internal-dash: daftar acara (C1) dan form acara (C2).
+ * Menu Webinar di /internal-dash: daftar acara (C1), form acara (C2), dan peserta (C4, Fase 3).
  * Semua baca-tulis lewat /api/admin/webinar (service_role), tidak lewat supabase-js.
  */
 export function WebinarAdminPage({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) {
@@ -46,6 +47,7 @@ export function WebinarAdminPage({ onDirtyChange }: { onDirtyChange?: (dirty: bo
 
     const actions: WebinarListActions = {
         onEdit: (event) => setView({ kind: 'edit', id: event.id }),
+        onParticipants: (event) => setView({ kind: 'participants', id: event.id }),
         onPreview: (event) => window.open(previewEventUrl(event.slug, event.preview_token), '_blank'),
         onCopyLink: (event) => {
             const url = event.status === 'draft' ? previewEventUrl(event.slug, event.preview_token) : publicEventUrl(event.slug);
@@ -74,10 +76,8 @@ export function WebinarAdminPage({ onDirtyChange }: { onDirtyChange?: (dirty: bo
                 title: 'Batalkan acara ini?',
                 highlight: event.title,
                 lines: [
-                    sold > 0
-                        ? `${sold} pembeli akan melihat pemberitahuan acara batal. Link bayar yang masih aktif dimatikan.`
-                        : 'Halaman acara menampilkan pemberitahuan batal. Link bayar yang masih aktif dimatikan.',
-                    'Sistem belum mengirim email otomatis; kabari pembeli sendiri.',
+                    sold > 0 && `${sold} peserta otomatis menerima email pembatalan.`,
+                    'Link bayar yang masih aktif dimatikan.',
                     'Tindakan ini tidak bisa dibatalkan.',
                 ],
                 confirmLabel: 'Batalkan acara',
@@ -86,10 +86,13 @@ export function WebinarAdminPage({ onDirtyChange }: { onDirtyChange?: (dirty: bo
                 onConfirm: () => run(async () => {
                     const result = await cancelWebinarEvent(event.id);
                     replace(result.event);
+                    if (result.notify_error) {
+                        toast.warning('Acara dibatalkan, tetapi email pembatalan gagal diantrekan. Kabari peserta lewat WA.', { duration: 10000 });
+                    }
                     if (result.doku_failed.length) {
                         toast.warning(`Acara dibatalkan, tetapi ${result.doku_failed.length} link bayar gagal dimatikan di DOKU. Pilih "Batalkan acara" lagi untuk mencoba ulang.`, { duration: 10000 });
-                    } else {
-                        toast.success('Acara dibatalkan');
+                    } else if (!result.notify_error) {
+                        toast.success(result.notified ? `Acara dibatalkan. ${result.notified} peserta dikabari lewat email.` : 'Acara dibatalkan');
                     }
                 }),
             });
@@ -108,6 +111,10 @@ export function WebinarAdminPage({ onDirtyChange }: { onDirtyChange?: (dirty: bo
             }),
         }),
     };
+
+    if (view.kind === 'participants') {
+        return <WebinarParticipantsPage key={view.id} eventId={view.id} onBack={() => setView({ kind: 'list' })} />;
+    }
 
     if (view.kind === 'edit') {
         return (

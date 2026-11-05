@@ -6,6 +6,7 @@ import {
 } from '@/utils/webinarAdmin';
 import {
     WebinarAdminError, closeWebinarSales, createWebinarEvent, getWebinarEvent, publishWebinarEvent, saveWebinarEvent,
+    saveWebinarEventWithNotice,
 } from '@/utils/webinarAdminApi';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -238,11 +239,15 @@ export function useWebinarEditor(eventId: string | null) {
         if (Object.keys(diff).length === 0) return {};
         setBusy('save');
         try {
-            const event = await saveWebinarEvent(current.id, diff, current.updated_at, confirmScheduleChange);
+            const { event, notified, notify_error: notifyError } = await saveWebinarEventWithNotice(current.id, diff, current.updated_at, confirmScheduleChange);
             setRow(event);
             setSavedAt(new Date());
             setStatus('saved');
-            toast.success('Perubahan disimpan');
+            if (notifyError) {
+                toast.warning('Perubahan disimpan, tetapi email jadwal baru gagal diantrekan. Kabari peserta lewat WA.', { duration: 10000 });
+            } else {
+                toast.success(notified ? `Perubahan disimpan. ${notified} peserta dikabari lewat email.` : 'Perubahan disimpan');
+            }
             return {};
         } catch (err) {
             if (err instanceof WebinarAdminError && err.code === 'confirm_schedule') return { confirmSold: err.sold ?? 0 };

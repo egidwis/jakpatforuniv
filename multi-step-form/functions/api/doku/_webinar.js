@@ -120,7 +120,7 @@ export async function recordWebinarAlarm({ env, sb, sbFetch, invoiceNumber, outc
  * Email akun pemilik tiket, untuk kalimat "Masuk dengan akun ..." di e-tiket.
  * Bisa berbeda dari buyer_email (kontak khusus). Gagal membaca tidak menahan tiket.
  */
-async function accountEmailOf({ sb, userId }) {
+export async function accountEmailOf({ sb, userId }) {
   if (!userId) return null;
   try {
     const res = await fetch(`${sb.url}/auth/v1/admin/users/${encodeURIComponent(userId)}`, { headers: sb.headers });
@@ -137,8 +137,13 @@ async function accountEmailOf({ sb, userId }) {
  * Mengirim e-tiket tepat satu kali walau webhook, Check Status, dan halaman pembeli
  * berjalan bersamaan. Tidak pernah melempar: tiketnya sudah terbit, dan DOKU tidak
  * akan mengulang sesudah menerima 200.
+ *
+ * `resend: true` = "Kirim ulang e-tiket" dari admin: tidak mensyaratkan e-tiket
+ * belum terkirim. Klaim tetap berlaku, jadi klik ganda hanya menghasilkan satu email.
+ * Sesudah terkirim klaim selalu dilepas: klaim berarti "sedang mengirim", bukan
+ * "sudah pernah dikirim" (itu tugas ticket_email_sent_at).
  */
-export async function deliverWebinarTicket({ env, sb, sbFetch, invoiceNumber, now = () => new Date() }) {
+export async function deliverWebinarTicket({ env, sb, sbFetch, invoiceNumber, now = () => new Date(), resend = false }) {
   const encodedInvoice = encodeURIComponent(invoiceNumber);
   let token = null;
   try {
@@ -149,7 +154,7 @@ export async function deliverWebinarTicket({ env, sb, sbFetch, invoiceNumber, no
       sbFetch,
       table: 'webinar_orders',
       match: `invoice_number=eq.${encodedInvoice}`,
-      where: 'status=eq.paid&kind=eq.live&ticket_email_sent_at=is.null',
+      where: resend ? 'status=eq.paid&kind=eq.live' : 'status=eq.paid&kind=eq.live&ticket_email_sent_at=is.null',
       column: 'ticket_email_claimed_at',
       staleBefore: new Date(startedAt.getTime() - EMAIL_CLAIM_TTL_MS).toISOString(),
       select: TICKET_ORDER_COLUMNS,
@@ -183,7 +188,7 @@ export async function deliverWebinarTicket({ env, sb, sbFetch, invoiceNumber, no
       {
         method: 'PATCH',
         headers: { ...sb.headers, Prefer: 'return=minimal' },
-        body: JSON.stringify({ ticket_email_sent_at: now().toISOString(), ticket_email_error: null }),
+        body: JSON.stringify({ ticket_email_sent_at: now().toISOString(), ticket_email_error: null, ticket_email_claimed_at: null }),
       },
       'PATCH webinar_orders (e-tiket terkirim)'
     );
@@ -212,6 +217,6 @@ export async function deliverWebinarTicket({ env, sb, sbFetch, invoiceNumber, no
       outcome: 'webinar_ticket_email_failed',
       errorMessage: message,
     });
-    return { sent: false, reason: 'failed' };
+    return { sent: false, reason: 'failed', error: message };
   }
 }
