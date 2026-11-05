@@ -191,6 +191,26 @@ export function WebinarCheckoutPage() {
     );
     const totalLabel = voucher?.valid ? voucher.total_label : event.price_label;
 
+    // Dua tempat: di bawah formulir pada layar sempit (tombol Bayar menempel di dasar layar),
+    // dan tepat di atas tombol Bayar pada layar lebar. Keduanya memakai state yang sama.
+    const agreements = (
+        <section className={`${CARD_CLASS} p-4 space-y-3`}>
+            <label className="flex items-start gap-2.5 text-sm text-slate-700">
+                <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                    Saya menyetujui{' '}
+                    <a className="font-medium text-jfu-primary underline" href="https://jakpatforuniv.com/terms-conditions.html#webinar" target="_blank" rel="noopener noreferrer">Syarat &amp; Ketentuan</a>
+                    , termasuk bahwa sesi ini direkam dan rekamannya tersedia sebagai video kelas di JFU.
+                </span>
+            </label>
+            <label className="flex items-start gap-2.5 text-sm text-slate-700">
+                <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>Saya setuju dihubungi JFU lewat email/WhatsApp tentang webinar berikutnya (opsional).</span>
+            </label>
+            <AdminContactLine />
+        </section>
+    );
+
     const payButton = (
         <button
             type="button"
@@ -323,26 +343,15 @@ export function WebinarCheckoutPage() {
                         </div>
                     </section>
 
-                    <section className={`${CARD_CLASS} p-4 space-y-3`}>
-                        <label className="flex items-start gap-2.5 text-sm text-slate-700">
-                            <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" />
-                            <span>
-                                Saya menyetujui{' '}
-                                <a className="font-medium text-jfu-primary underline" href="https://jakpatforuniv.com/terms-conditions.html#webinar" target="_blank" rel="noopener noreferrer">Syarat &amp; Ketentuan</a>
-                                , termasuk bahwa sesi ini direkam dan rekamannya tersedia sebagai video kelas di JFU.
-                            </span>
-                        </label>
-                        <label className="flex items-start gap-2.5 text-sm text-slate-700">
-                            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" />
-                            <span>Saya setuju dihubungi JFU lewat email/WhatsApp tentang webinar berikutnya (opsional).</span>
-                        </label>
-                        <AdminContactLine />
-                    </section>
+                    <div className="lg:hidden">{agreements}</div>
                 </div>
 
                 <aside className="lg:col-span-5 lg:sticky lg:top-24 space-y-3 order-1 lg:order-2">
                     {summary}
-                    <div className="max-lg:hidden">{payButton}</div>
+                    <div className="max-lg:hidden space-y-3">
+                        {agreements}
+                        {payButton}
+                    </div>
                 </aside>
             </div>
 
