@@ -21,6 +21,7 @@ import { onRequest as myHandler, orderDisplayStatus } from './my.js';
 import { onRequest as syncHandler } from './sync.js';
 import { onRequest as pageHandler } from '../../webinar/[[path]].js';
 import { renderBlocks } from '../../webinar/_render-blocks.js';
+import { postgrestTable } from '../_fixtures/postgrestTable.js';
 
 const ENV = {
   VITE_SUPABASE_URL: 'https://db.example.test',
@@ -298,10 +299,10 @@ function authedNet(routes) {
     const u = String(url);
     const method = (init.method || 'GET').toUpperCase();
     const body = init.body ? JSON.parse(init.body) : null;
-    calls.push({ url: u, method, body });
+    calls.push({ url: u, method, body, prefer: new Headers(init.headers || {}).get('Prefer') });
     if (u.endsWith('/auth/v1/user')) return routes.user === null ? json({}, 401) : json(routes.user ?? USER);
     for (const [frag, handler] of Object.entries(routes)) {
-      if (frag !== 'user' && u.includes(frag)) return handler({ url: u, method, body });
+      if (frag !== 'user' && u.includes(frag)) return handler({ url: u, method, body, init });
     }
     return json([]);
   });
@@ -558,11 +559,22 @@ describe('my', () => {
     expect(dead.orders[0].payment_url).toBeNull();
   });
 
-  it('e-tiket yang belum terkirim dicoba lagi, kecuali acara batal', async () => {
-    let calls = authedNet({ '/webinar_orders': () => json([order({ ticket_email_sent_at: null })]) });
+  it('e-tiket yang belum terkirim dicoba lagi lewat klaim bertoken, kecuali acara batal', async () => {
+    // Daftar order memakai embed acara; klaim (PATCH) dan baca-baliknya dijawab seperti PostgREST.
+    const unsent = (over = {}) => ({
+      '/webinar_orders': ({ url, method }) => {
+        if (method === 'PATCH') return new Response(null, { status: 204 });
+        if (url.includes('webinar_events(')) return json([order({ ticket_email_sent_at: null, ...over })]);
+        return json([]);
+      },
+    });
+    let calls = authedNet(unsent());
     await call();
-    expect(calls.some((c) => c.method === 'PATCH' && c.url.includes('ticket_email_sent_at=is.null'))).toBe(true);
-    calls = authedNet({ '/webinar_orders': () => json([order({ ticket_email_sent_at: null, webinar_events: { ...event(), status: 'cancelled' } })]) });
+    const claim = calls.find((c) => c.method === 'PATCH' && c.url.includes('ticket_email_sent_at=is.null'));
+    expect(claim.prefer).toBe('return=minimal');
+    expect(calls.some((c) => c.method === 'GET' && c.url.includes('ticket_email_claimed_at=eq.'))).toBe(true);
+
+    calls = authedNet(unsent({ webinar_events: { ...event(), status: 'cancelled' } }));
     await call();
     expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
   });
@@ -592,7 +604,10 @@ describe('my', () => {
 });
 
 describe('sync', () => {
-  const pending = (over = {}) => ({ id: ORDER_ID, invoice_number: 'WBN-1', status: 'pending', created_at: future(-120_000), last_status_check_at: null, ...over });
+  const pending = (over = {}) => ({
+    id: ORDER_ID, auth_user_id: USER.id, invoice_number: 'WBN-1', status: 'pending',
+    created_at: future(-120_000), last_status_check_at: null, ...over,
+  });
   const call = async () => {
     const pendingWork = [];
     const res = await syncHandler({ request: authed('sync', { orderId: ORDER_ID }), env: ENV, waitUntil: (p) => pendingWork.push(p) });
@@ -602,35 +617,53 @@ describe('sync', () => {
 
   const dokuPaid = () => json({ order: { amount: 50000 }, transaction: { status: 'SUCCESS' }, channel: { id: 'QRIS_DOKU' } });
 
-  function routes(rpc = { outcome: 'ok', send_ticket: false }, first = pending(), claim = [{ id: ORDER_ID }]) {
+  // webinar_orders dijawab emulator PostgREST: klaim ber-`or=` tidak bisa lagi lolos
+  // hanya karena mock mengembalikan baris (insiden 5 Nov).
+  function routes(rpc = { outcome: 'ok', send_ticket: false }, first = pending()) {
+    const orders = postgrestTable([first]);
     return {
-      '/rest/v1/webinar_orders': ({ method, url }) => {
-        if (method === 'PATCH') return json(claim);
-        if (url.includes('select=status')) return json([{ status: 'paid' }]);
-        return json([first]);
-      },
+      '/rest/v1/webinar_orders': ({ url, init }) => orders.respond(url, init),
       '/orders/v1/status/': dokuPaid,
-      '/rpc/webinar_mark_paid': () => json(rpc),
+      '/rpc/webinar_mark_paid': () => {
+        if (rpc.outcome === 'ok') orders.rows[0].status = 'paid';
+        return json(rpc);
+      },
     };
   }
+  const askedDoku = (calls) => calls.some((c) => c.url.includes('/orders/v1/status'));
 
   it('hanya pemilik: filter auth_user_id, order orang lain 404', async () => {
-    const calls = authedNet({ '/rest/v1/webinar_orders': () => json([]) });
+    const calls = authedNet(routes(undefined, pending({ auth_user_id: '99999999-9999-4999-8999-999999999999' })));
     expect((await call()).status).toBe(404);
     expect(calls.find((c) => c.url.includes('/webinar_orders')).url).toContain(`auth_user_id=eq.${USER.id}`);
-    expect(calls.some((c) => c.url.includes('/orders/v1/status'))).toBe(false);
+    expect(askedDoku(calls)).toBe(false);
   });
 
   it('kurang dari 60 detik: tidak bertanya ke DOKU', async () => {
     const calls = authedNet(routes(undefined, pending({ created_at: future(-5000) })));
     expect((await (await call()).json()).checked).toBe(false);
-    expect(calls.some((c) => c.url.includes('/orders/v1/status'))).toBe(false);
+    expect(askedDoku(calls)).toBe(false);
   });
 
-  it('klaim kalah: tidak bertanya ke DOKU', async () => {
-    const calls = authedNet(routes(undefined, pending(), []));
-    await call();
-    expect(calls.some((c) => c.url.includes('/orders/v1/status'))).toBe(false);
+  it('klaim kalah (dicek 10 detik lalu): tidak bertanya ke DOKU', async () => {
+    const calls = authedNet(routes(undefined, pending({ last_status_check_at: future(-10_000) })));
+    expect((await (await call()).json()).checked).toBe(false);
+    expect(askedDoku(calls)).toBe(false);
+  });
+
+  it('cek terakhir lebih dari 60 detik lalu: diklaim ulang lewat token dan bertanya ke DOKU', async () => {
+    const calls = authedNet(routes(undefined, pending({ last_status_check_at: future(-61_000) })));
+    expect((await (await call()).json()).checked).toBe(true);
+    expect(askedDoku(calls)).toBe(true);
+    const claim = calls.find((c) => c.method === 'PATCH' && c.url.includes('/webinar_orders'));
+    expect(claim.prefer).toBe('return=minimal');
+    expect(claim.body.last_status_check_at).toMatch(/\.\d{6}Z$/);
+  });
+
+  it('belum pernah dicek: bertanya ke DOKU walau balasan PATCH ber-or= kosong (insiden 5 Nov)', async () => {
+    const calls = authedNet(routes({ outcome: 'ok', send_ticket: false }, pending()));
+    expect((await (await call()).json()).checked).toBe(true);
+    expect(askedDoku(calls)).toBe(true);
   });
 
   it('DOKU SUCCESS: lewat mark_paid dengan nominal dari DOKU, via status_check', async () => {

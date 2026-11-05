@@ -21,6 +21,11 @@
 //   2. PATCH yang penting memakai `Prefer: return=representation` dan MEMERIKSA
 //      array balikannya. Array kosong = 0 baris cocok = kegagalan diam-diam yang
 //      dari luar tampak seperti sukses.
+//      ⚠️ KECUALI bila filternya menguji kolom yang diubah PATCH itu sendiri,
+//      terutama lewat `or=`/`and=`: PostgREST menerapkan ulang filter logika ke
+//      baris yang dikembalikan, jadi balasannya `[]` walau barisnya BERUBAH
+//      (insiden e-tiket webinar 5 Nov 2026). Klaim bersyarat seperti itu lewat
+//      claimRow() di functions/api/webinar/_claim.js (token + baca-balik).
 //   3. Kegagalan tulis membalas HTTP 500 supaya DOKU retry (dibatasi
 //      MAX_WRITE_ATTEMPTS agar tidak jadi badai), mencatat baris di
 //      doku_webhook_events, dan mengirim email ke admin.

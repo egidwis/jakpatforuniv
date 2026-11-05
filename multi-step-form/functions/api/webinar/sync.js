@@ -2,6 +2,7 @@ import { webinarOpenFor } from './_access.js';
 import { dokuRequest } from '../doku/_helpers.js';
 import { deliverWebinarTicket, processWebinarPayment, recordWebinarAlarm } from '../doku/_webinar.js';
 import { caller, CORS, json, resolveService, rest, sbFetch, UUID_RE } from './_server.js';
+import { claimRow } from './_claim.js';
 
 // Dokumentasi DOKU: Check Status hanya sesudah 60 detik.
 const MIN_INTERVAL_MS = 60_000;
@@ -39,15 +40,21 @@ export async function onRequest({ request, env, waitUntil }) {
       return json(200, { status: 'pending', checked: false });
     }
 
-    // Klaim bersyarat: tab ganda hanya menghasilkan satu panggilan ke DOKU.
-    const claimed = await rest(
+    // Klaim bersyarat: tab ganda hanya menghasilkan satu panggilan ke DOKU. Lewat token +
+    // baca-balik, BUKAN balasan PATCH: balasan PATCH ber-`or=` selalu kosong (insiden 5 Nov).
+    const claimed = await claimRow({
       sb,
-      `webinar_orders?id=eq.${order.id}&status=eq.pending` +
-        `&or=(last_status_check_at.is.null,last_status_check_at.lt.${encodeURIComponent(notBefore)})`,
-      { method: 'PATCH', body: JSON.stringify({ last_status_check_at: new Date(now).toISOString() }) },
-      'PATCH webinar_orders (klaim sync)'
-    );
-    if (!Array.isArray(claimed) || claimed.length === 0) return json(200, { status: 'pending', checked: false });
+      sbFetch,
+      table: 'webinar_orders',
+      match: `id=eq.${order.id}`,
+      where: 'status=eq.pending',
+      column: 'last_status_check_at',
+      staleBefore: notBefore,
+      select: 'id',
+      now: new Date(now),
+      label: 'webinar_orders (klaim sync)',
+    });
+    if (!claimed) return json(200, { status: 'pending', checked: false });
 
     const doku = await dokuRequest(env, 'GET', `/orders/v1/status/${encodeURIComponent(order.invoice_number)}`);
     const dokuStatus = doku?.data?.transaction?.status;

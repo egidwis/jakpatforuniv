@@ -1,5 +1,6 @@
 import { sendWebhookAlert } from './_webhook-alert.js';
 import { sendWebinarTicketEmail } from './_webinar-ticket-email.js';
+import { claimRow } from '../webinar/_claim.js';
 
 // Jalur uang webinar: dipanggil webhook.js, dan nanti Check Status (Fase 2).
 //
@@ -19,6 +20,12 @@ export const WEBINAR_ALERT_OUTCOMES = new Set([
 
 // Sesudah ini klaim dianggap mati: pengirimnya berhenti sebelum sempat mencatat.
 const EMAIL_CLAIM_TTL_MS = 10 * 60_000;
+
+/** Kolom order yang dipakai e-tiket dan kwitansinya. meeting_url tidak ada di tabel ini. */
+export const TICKET_ORDER_COLUMNS = [
+  'event_id', 'auth_user_id', 'invoice_number', 'amount', 'subtotal', 'ppn_amount', 'paid_at',
+  'payment_channel', 'buyer_name', 'buyer_email', 'buyer_university', 'ticket_code', 'join_token',
+].join(',');
 
 const toNumericAmount = (amount) => {
   if (amount === null || amount === undefined || amount === '') return null;
@@ -110,11 +117,6 @@ export async function recordWebinarAlarm({ env, sb, sbFetch, invoiceNumber, outc
 }
 
 /**
- * Mengirim e-tiket tepat satu kali walau webhook dan Check Status berjalan
- * bersamaan. Tidak pernah melempar: tiketnya sudah terbit, dan DOKU tidak akan
- * mengulang sesudah menerima 200.
- */
-/**
  * Email akun pemilik tiket, untuk kalimat "Masuk dengan akun ..." di e-tiket.
  * Bisa berbeda dari buyer_email (kontak khusus). Gagal membaca tidak menahan tiket.
  */
@@ -131,26 +133,32 @@ async function accountEmailOf({ sb, userId }) {
   }
 }
 
+/**
+ * Mengirim e-tiket tepat satu kali walau webhook, Check Status, dan halaman pembeli
+ * berjalan bersamaan. Tidak pernah melempar: tiketnya sudah terbit, dan DOKU tidak
+ * akan mengulang sesudah menerima 200.
+ */
 export async function deliverWebinarTicket({ env, sb, sbFetch, invoiceNumber, now = () => new Date() }) {
   const encodedInvoice = encodeURIComponent(invoiceNumber);
-  let claimed = false;
+  let token = null;
   try {
-    const staleBefore = new Date(now().getTime() - EMAIL_CLAIM_TTL_MS).toISOString();
-    const claimRes = await sbFetch(
-      `${sb.url}/rest/v1/webinar_orders?invoice_number=eq.${encodedInvoice}` +
-        `&status=eq.paid&kind=eq.live&ticket_email_sent_at=is.null` +
-        `&or=(ticket_email_claimed_at.is.null,ticket_email_claimed_at.lt.${encodeURIComponent(staleBefore)})`,
-      {
-        method: 'PATCH',
-        headers: { ...sb.headers, Prefer: 'return=representation' },
-        body: JSON.stringify({ ticket_email_claimed_at: now().toISOString() }),
-      },
-      'PATCH webinar_orders (klaim e-tiket)'
-    );
-    const rows = await claimRes.json();
-    const order = Array.isArray(rows) ? rows[0] : null;
-    if (!order) return { sent: false, reason: 'not_claimed' };
-    claimed = true;
+    const startedAt = now();
+    // Klaim lewat token + baca-balik, BUKAN balasan PATCH (insiden 5 Nov, lihat _claim.js).
+    const claim = await claimRow({
+      sb,
+      sbFetch,
+      table: 'webinar_orders',
+      match: `invoice_number=eq.${encodedInvoice}`,
+      where: 'status=eq.paid&kind=eq.live&ticket_email_sent_at=is.null',
+      column: 'ticket_email_claimed_at',
+      staleBefore: new Date(startedAt.getTime() - EMAIL_CLAIM_TTL_MS).toISOString(),
+      select: TICKET_ORDER_COLUMNS,
+      now: startedAt,
+      label: 'webinar_orders (klaim e-tiket)',
+    });
+    if (!claim) return { sent: false, reason: 'not_claimed' };
+    token = claim.token;
+    const order = claim.row;
 
     // meeting_url sengaja tidak diambil, jadi tidak mungkin masuk email.
     const eventRes = await sbFetch(
@@ -184,10 +192,12 @@ export async function deliverWebinarTicket({ env, sb, sbFetch, invoiceNumber, no
     const message = err?.message || String(err);
     console.error(`[webinar] E-tiket ${invoiceNumber} gagal:`, message);
 
-    if (claimed) {
-      // Lepas klaim supaya halaman tiket bisa mencoba lagi tanpa menunggu 10 menit.
+    if (token) {
+      // Lepas klaim supaya menu Webinar bisa mencoba lagi tanpa menunggu 10 menit.
+      // Hanya klaim milik sendiri: klaim yang sudah basi bisa telah diambil alih.
       await sbFetch(
-        `${sb.url}/rest/v1/webinar_orders?invoice_number=eq.${encodedInvoice}`,
+        `${sb.url}/rest/v1/webinar_orders?invoice_number=eq.${encodedInvoice}` +
+          `&ticket_email_claimed_at=eq.${encodeURIComponent(token)}`,
         {
           method: 'PATCH',
           headers: { ...sb.headers, Prefer: 'return=minimal' },

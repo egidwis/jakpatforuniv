@@ -2,11 +2,16 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { onRequest } from './webhook.js';
 import { deliverWebinarTicket } from './_webinar.js';
 import { buildTicketEmail, buildTicketReceipt, googleCalendarUrl } from './_webinar-ticket-email.js';
+import { postgrestTable } from '../_fixtures/postgrestTable.js';
 
 /*
   Handler SUNGGUHAN dipanggil dengan notifikasi yang lolos autentikasi; jaringan
   dipalsukan per URL. Isi webinar_mark_paid sendiri diuji dengan menjalankannya di
   PGlite; di sini yang dikunci adalah cara webhook bereaksi atas jawabannya.
+
+  Tabel webinar_orders dijawab emulator PostgREST (`_fixtures/postgrestTable.js`),
+  bukan mock yang selalu mengembalikan baris: mock seperti itu meloloskan klaim
+  e-tiket yang di produksi selalu kosong (insiden 3 & 5 Nov 2026).
 */
 
 const INVOICE = 'WBN-ABCDEF12-1793657933901';
@@ -36,6 +41,15 @@ const EVENT = {
   duration_minutes: 90,
   speakers: [{ name: 'Dr. Sari', title: 'Dosen' }],
 };
+// Baris order lunas yang e-tiketnya belum terkirim, seperti sesudah webinar_mark_paid.
+const PAID_ROW = {
+  ...ORDER,
+  status: 'paid',
+  kind: 'live',
+  auth_user_id: null,
+  ticket_email_sent_at: null,
+  ticket_email_claimed_at: null,
+};
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { 'Content-Type': 'application/json' },
@@ -59,16 +73,17 @@ function request(dokuStatus = 'SUCCESS', amount = 50000, invoice = INVOICE) {
   });
 }
 
-function network({ rpc = { outcome: 'ok', send_ticket: true }, rpcStatus = 200, claim = () => [ORDER], mailOk = true } = {}) {
+function network({ rpc = { outcome: 'ok', send_ticket: true }, rpcStatus = 200, row = PAID_ROW, mailOk = true } = {}) {
   const calls = [];
+  const orders = postgrestTable(row ? [row] : []);
   global.fetch = vi.fn(async (url, init = {}) => {
     const u = String(url);
     const method = (init.method || 'GET').toUpperCase();
     const body = init.body ? JSON.parse(init.body) : null;
-    calls.push({ url: u, method, body });
+    calls.push({ url: u, method, body, prefer: new Headers(init.headers || {}).get('Prefer') });
 
     if (u.endsWith('/rpc/webinar_mark_paid')) return json(rpc, rpcStatus);
-    if (u.includes('/webinar_orders') && u.includes('ticket_email_sent_at=is.null')) return json(claim());
+    if (u.includes('/rest/v1/webinar_orders')) return orders.respond(u, init);
     if (u.includes('/webinar_events')) return json([EVENT]);
     if (u.includes('api.resend.com')) {
       return mailOk ? json({ id: 'mail-1' }) : json({ message: 'ditolak' }, 422);
@@ -80,6 +95,7 @@ function network({ rpc = { outcome: 'ok', send_ticket: true }, rpcStatus = 200, 
   const mails = () => of('api.resend.com').map((c) => c.body);
   return {
     calls,
+    orders,
     of,
     tickets: () => mails().filter((m) => String(m.subject).startsWith('E-tiket')),
     alarms: () => mails().filter((m) => String(m.subject).startsWith('⚠️')),
@@ -275,41 +291,63 @@ describe('deliverWebinarTicket', () => {
     if (!res.ok) throw new Error(`${label} HTTP ${res.status}`);
     return res;
   };
-  const deliver = () => deliverWebinarTicket({ env: ENV, sb, sbFetch, invoiceNumber: INVOICE });
+  const T = Date.parse('2026-11-05T05:47:04.630Z');
+  const MIN = 60_000;
+  const iso = (ms) => new Date(ms).toISOString();
+  const deliver = (at = T) => deliverWebinarTicket({ env: ENV, sb, sbFetch, invoiceNumber: INVOICE, now: () => new Date(at) });
 
   it('webhook dan Check Status bersamaan: hanya pemenang klaim yang mengirim', async () => {
-    let free = true;
-    const net = network({ claim: () => { if (free) { free = false; return [ORDER]; } return []; } });
-    const results = await Promise.all([deliver(), deliver()]);
-    expect(net.tickets()).toHaveLength(1);
+    const net = network();
+    const results = await Promise.all([deliver(T), deliver(T + 1)]);
     expect(results.filter((r) => r.sent)).toHaveLength(1);
+    expect(results.filter((r) => r.reason === 'not_claimed')).toHaveLength(1);
+    expect(net.tickets()).toHaveLength(1);
   });
 
-  it('klaim hanya untuk tiket live lunas yang belum terkirim, dan klaim basi bisa diambil alih', async () => {
-    const net = network({ claim: () => [] });
+  it('klaim: PATCH return=minimal bersyarat, lalu baca-balik bertoken (bukan balasan PATCH)', async () => {
+    const net = network();
     await deliver();
-    const { url } = net.calls[0];
-    expect(url).toContain('status=eq.paid');
-    expect(url).toContain('kind=eq.live');
-    expect(url).toContain('ticket_email_sent_at=is.null');
-    expect(url).toContain('or=(ticket_email_claimed_at.is.null,ticket_email_claimed_at.lt.');
+    const [patch, readBack] = net.of('/webinar_orders');
+    expect(patch.method).toBe('PATCH');
+    expect(patch.prefer).toBe('return=minimal');
+    expect(patch.url).toContain('status=eq.paid');
+    expect(patch.url).toContain('kind=eq.live');
+    expect(patch.url).toContain('ticket_email_sent_at=is.null');
+    expect(patch.url).toContain('or=(ticket_email_claimed_at.is.null,ticket_email_claimed_at.lt.');
+    expect(patch.body.ticket_email_claimed_at).toMatch(/\.\d{6}Z$/);
+    expect(readBack.method).toBe('GET');
+    expect(readBack.url).toContain(`ticket_email_claimed_at=eq.${encodeURIComponent(patch.body.ticket_email_claimed_at)}`);
   });
 
-  it('terkirim: sent_at dicatat', async () => {
+  it.each([
+    ['order belum lunas', { status: 'pending' }, false],
+    ['bukan tiket live', { kind: 'replay' }, false],
+    ['e-tiket sudah terkirim', { ticket_email_sent_at: '2026-11-05T05:00:00.000Z' }, false],
+    ['klaim 5 menit lalu masih dipegang', { ticket_email_claimed_at: iso(T - 5 * MIN) }, false],
+    ['klaim 11 menit lalu basi dan diambil alih', { ticket_email_claimed_at: iso(T - 11 * MIN) }, true],
+  ])('%s', async (_name, over, sends) => {
+    const net = network({ row: { ...PAID_ROW, ...over } });
+    const result = await deliver();
+    expect(result.sent).toBe(sends);
+    expect(net.tickets()).toHaveLength(sends ? 1 : 0);
+  });
+
+  it('terkirim: sent_at dicatat di baris', async () => {
     const net = network();
     expect(await deliver()).toEqual({ sent: true });
-    const last = net.of('/webinar_orders').at(-1);
-    expect(last.body.ticket_email_sent_at).toBeTruthy();
-    expect(last.body.ticket_email_error).toBeNull();
+    const [row] = net.orders.rows;
+    expect(row.ticket_email_sent_at).toBeTruthy();
+    expect(row.ticket_email_error).toBeNull();
   });
 
-  it('provider menolak: klaim dilepas, galat dicatat, alarm ke admin, tidak melempar', async () => {
+  it('provider menolak: klaim sendiri dilepas, galat dicatat, alarm ke admin, tidak melempar', async () => {
     const net = network({ mailOk: false });
     const result = await deliver();
     expect(result).toEqual({ sent: false, reason: 'failed' });
-    const last = net.of('/webinar_orders').at(-1);
-    expect(last.body.ticket_email_claimed_at).toBeNull();
-    expect(last.body.ticket_email_error).toBeTruthy();
+    expect(net.of('/webinar_orders').at(-1).url).toContain('ticket_email_claimed_at=eq.');
+    const [row] = net.orders.rows;
+    expect(row.ticket_email_claimed_at).toBeNull();
+    expect(row.ticket_email_error).toBeTruthy();
     expect(net.of('api.resend.com').at(-1).body.subject).toContain('e-tiket gagal terkirim');
   });
 
@@ -342,7 +380,7 @@ describe('kwitansi e-tiket', () => {
   });
 
   it('e-tiket membawa lampiran kwitansi', async () => {
-    const net = network({ claim: () => [receiptOrder] });
+    const net = network({ row: { ...PAID_ROW, ...receiptOrder } });
     await call();
     expect(net.tickets()[0].attachments[0].filename).toBe('Kwitansi-ABCDEF12.pdf');
   });
