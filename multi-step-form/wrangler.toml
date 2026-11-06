@@ -20,3 +20,8 @@ WEBHOOK_ENFORCE_SECRET = "true"
 # Gerbang admin /api/doku/*. Comma-separated. Kode punya fallback ke email ini
 # (functions/api/doku/_middleware.js), jadi ini eksplisit-kan saja.
 ADMIN_EMAILS = "product@jakpat.net"
+# Rekaman webinar (Fase 5A) di bucket R2 privat. Bukan rahasia; kuncinya
+# (R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY) ada di Secrets dashboard Pages.
+# Dibaca functions/api/webinar/_recording.js (recordingConfig).
+R2_ACCOUNT_ID = "d7930124b6922868c34274c51c60048f"
+R2_RECORDINGS_BUCKET = "jfu-webinar-recordings"
