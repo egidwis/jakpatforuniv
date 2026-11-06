@@ -68,6 +68,19 @@ const BENEFITS = {
 
 const BUY_LABEL = { live: 'Beli tiket', replay: 'Beli rekaman' };
 
+/**
+ * Video kelas (Fase 5B) tidak punya jadwal live untuk ditampilkan. Halaman hasil ubah
+ * jenis menyebut tanggal acaranya sebagai "Direkam …"; kelas tanpa sesi live tidak.
+ */
+function replayLabels(event) {
+  if (event.offer_kind !== 'replay') return { recorded_label: null, kind_label: null };
+  const minutes = Number(event.recording_minutes) || null;
+  return {
+    recorded_label: event.starts_at ? `Direkam ${formatDateWib(event.starts_at)}` : null,
+    kind_label: minutes ? `Video kelas · ${minutes} menit` : 'Video kelas',
+  };
+}
+
 function stateCopy(state, offer) {
   const opens = offer.opens_at
     ? `${formatShortDateWib(offer.opens_at)}, ${formatTimeWib(offer.opens_at)} WIB`
@@ -115,7 +128,8 @@ export function buildEventView(event) {
     buy_url: `${SITE_URL}/dashboard/webinar/beli/${event.slug}`,
     detail_url: `/webinar/${event.slug}`,
     price_label: event.price != null ? formatPrice(event.price) : null,
-    schedule_label: scheduleLabel(event),
+    schedule_label: event.offer_kind === 'replay' ? null : scheduleLabel(event),
+    ...replayLabels(event),
     short_date: event.starts_at ? formatShortDateWib(event.starts_at) : null,
     starts_at: event.starts_at ?? null,
     duration_minutes: event.duration_minutes ?? null,

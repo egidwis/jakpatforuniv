@@ -6,11 +6,13 @@ import { WebinarApiError, downloadMaterial, fetchWatch, type WebinarWatchView } 
 import { WATERMARK_TICK_MS, formatMinutes, watermarkSpot } from '@/utils/webinarRecording';
 import { AdminContactLine, CARD_CLASS } from '@/components/webinar/WebinarParts';
 
-type Failure = { code: string; message: string };
+type Failure = { code: string; message: string; kind?: 'live' | 'replay' | null };
 
 const FAILURE_COPY: Record<string, { title: string; body: string }> = {
     not_owner: { title: 'Rekaman ini untuk pemilik tiket', body: 'Masuk dengan akun yang dipakai saat membeli tiket. Akun yang dipakai tertulis di e-tiketmu.' },
     inactive: { title: 'Tiket tidak aktif', body: 'Hubungi admin bila ada pertanyaan.' },
+    // Pembeli Video kelas tidak punya tiket (Fase 5B).
+    inactive_replay: { title: 'Akses video ini tidak aktif', body: 'Hubungi admin bila ada pertanyaan.' },
     not_ready: { title: 'Rekaman segera tersedia', body: 'Kamu akan menerima email begitu rekaman bisa ditonton.' },
     cancelled: { title: 'Acara dibatalkan', body: 'Acara ini tidak punya rekaman.' },
 };
@@ -56,7 +58,7 @@ export function WebinarWatchPage() {
             setView(await fetchWatch(orderId));
         } catch (err) {
             const code = err instanceof WebinarApiError ? err.code ?? 'error' : 'error';
-            setFailure({ code, message: err instanceof Error ? err.message : '' });
+            setFailure({ code, message: err instanceof Error ? err.message : '', kind: err instanceof WebinarApiError ? err.kind : null });
         }
     }, [orderId]);
 
@@ -129,7 +131,7 @@ export function WebinarWatchPage() {
     );
 
     if (failure) {
-        const copy = FAILURE_COPY[failure.code];
+        const copy = FAILURE_COPY[failure.code === 'inactive' && failure.kind === 'replay' ? 'inactive_replay' : failure.code];
         return (
             <div className="mx-auto max-w-3xl px-4 py-5 md:px-6 md:py-8">
                 {back}
@@ -232,7 +234,9 @@ export function WebinarWatchPage() {
                         </button>
                     )}
                     <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Tentang acara</p>
-                    {event.schedule_label && <p className="mt-1 text-sm text-slate-700">{event.schedule_label}</p>}
+                    {(event.schedule_label ?? event.recorded_label) && (
+                        <p className="mt-1 text-sm text-slate-700">{event.schedule_label ?? event.recorded_label}</p>
+                    )}
                     {event.speakers.map((s) => (
                         <p key={`${s.name}-${s.title}`} className="text-sm text-slate-600">{[s.name, s.title].filter(Boolean).join(', ')}</p>
                     ))}

@@ -37,6 +37,13 @@ export function WebinarMeta({ event }: { event: WebinarEventView }) {
             {event.schedule_label && (
                 <li className="flex items-start gap-2"><CalendarDays className="w-4 h-4 mt-0.5 shrink-0 text-slate-400" />{event.schedule_label}</li>
             )}
+            {/* Video kelas (Fase 5B): durasi rekaman dan tanggal rekamnya, bukan jadwal live. */}
+            {event.kind === 'replay' && event.kind_label && (
+                <li className="flex items-start gap-2">
+                    <Clock className="w-4 h-4 mt-0.5 shrink-0 text-slate-400" />
+                    {[event.kind_label, event.recorded_label].filter(Boolean).join(' · ')}
+                </li>
+            )}
             {event.note && event.state !== 'on_sale' && (
                 <li className="flex items-start gap-2"><Clock className="w-4 h-4 mt-0.5 shrink-0 text-slate-400" />{event.note}</li>
             )}

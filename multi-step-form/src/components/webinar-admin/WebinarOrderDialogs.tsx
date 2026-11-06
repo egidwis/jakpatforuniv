@@ -19,20 +19,21 @@ export function WebinarResendDialog({
     const [busy, setBusy] = useState(false);
     useEffect(() => { setEmail(order?.buyer_email ?? ''); setBusy(false); }, [order]);
     const valid = EMAIL_RE.test(email.trim());
+    const replay = order?.kind === 'replay';
 
     return (
         <Dialog open={Boolean(order)} onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
             <DialogContent className="max-w-md">
                 <DialogHeader>
-                    <DialogTitle>Kirim ulang e-tiket?</DialogTitle>
-                    <DialogDescription>E-tiket + kwitansi PDF dikirim ke:</DialogDescription>
+                    <DialogTitle>{replay ? 'Kirim ulang bukti pembelian?' : 'Kirim ulang e-tiket?'}</DialogTitle>
+                    <DialogDescription>{replay ? 'Email "Rekamanmu siap"' : 'E-tiket'} + kwitansi PDF dikirim ke:</DialogDescription>
                 </DialogHeader>
                 <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="h-10 rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    aria-label="Email tujuan e-tiket"
+                    aria-label={replay ? 'Email tujuan bukti pembelian' : 'Email tujuan e-tiket'}
                 />
                 <p className="text-[13px] text-slate-500">Alamat baru juga dipakai email otomatis berikutnya untuk peserta ini.</p>
                 <DialogFooter className="gap-2">
@@ -79,8 +80,14 @@ export function WebinarRefundDialog({
                     )}
                 </DialogHeader>
                 <ul className="list-disc space-y-1 pl-5 text-[13px] text-slate-700">
-                    <li>Tiket langsung tidak aktif; link gabung berhenti meneruskan ke Zoom.</li>
-                    <li>Kursi kembali bisa dibeli.</li>
+                    {order?.kind === 'replay' ? (
+                        <li>Akses rekaman langsung berhenti.</li>
+                    ) : (
+                        <>
+                            <li>Tiket langsung tidak aktif; link gabung berhenti meneruskan ke Zoom.</li>
+                            <li>Kursi kembali bisa dibeli.</li>
+                        </>
+                    )}
                     <li>Uang dikembalikan manual di luar sistem.</li>
                     <li>Pembeli tidak menerima email; kabari sendiri.</li>
                     <li>Tidak bisa dibatalkan dari layar ini.</li>

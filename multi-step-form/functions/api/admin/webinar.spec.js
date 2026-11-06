@@ -486,14 +486,17 @@ function seedOps() {
 }
 
 describe('participants', () => {
-  it('order live acara ini; link gabung hanya untuk lunas; tanpa link bayar, request DOKU, atau token mentah', async () => {
+  it('semua order acara ini (tiket live + Video kelas); link gabung hanya untuk tiket live lunas; tanpa link bayar, request DOKU, atau token mentah', async () => {
     seedOps();
     const r = await call({ action: 'participants', id: PUB_ID });
     expect(r.status).toBe(200);
-    expect(r.body.orders.map((o) => o.id).sort()).toEqual([ORDER_PAID, ORDER_PENDING].sort());
+    // Fase 5B: pembeli Video kelas ikut tampil (satu daftar + label).
+    expect(r.body.orders.map((o) => o.id).sort()).toEqual([ORDER_PAID, ORDER_PENDING, ORDER_REPLAY].sort());
+    expect(r.body.orders.find((o) => o.id === ORDER_REPLAY).kind).toBe('replay');
     const paid = r.body.orders.find((o) => o.id === ORDER_PAID);
     expect(paid.join_url).toBe(`https://submit.jakpatforuniv.com/webinar/gabung/${'a'.repeat(64)}`);
     expect(r.body.orders.find((o) => o.id === ORDER_PENDING).join_url).toBeNull();
+    expect(r.body.orders.find((o) => o.id === ORDER_REPLAY).join_url).toBeNull();
     const text = JSON.stringify(r.body);
     expect(text).not.toContain('doku.test/pay');
     expect(text).not.toContain('req-9');
@@ -940,5 +943,129 @@ describe('rekaman & materi (Fase 5A)', () => {
     rowOf(PUB_ID).recording_object_key = OLD_KEY;
     const r = await call({ action: 'list' });
     expect(r.body.events.find((e) => e.id === PUB_ID).recording_object_key).toBe(OLD_KEY);
+  });
+});
+
+// ── Fase 5B: Video kelas ─────────────────────────────────────────────────────
+
+describe('Video kelas (Fase 5B)', () => {
+  const ENDED = { starts_at: at(-2 * DAY), duration_minutes: 90 };
+  const recOf = (id) => ({
+    recording_object_key: `rekaman/${id}/rekaman-spss-00000000.mp4`, recording_published_at: at(-DAY),
+    recording_minutes: 88, materials_path: `${id}/materi-spss.pdf`,
+  });
+  const CLASS = {
+    summary: 'Ringkas', poster_url: 'https://cdn.test/p.webp', description_blocks: doc,
+    speakers: [{ name: 'Dr. Sari', title: 'Dosen' }], price: 49000,
+  };
+  const conf = { speakerPermission: true, facesTrimmed: true };
+
+  it('ubah acara terbit yang sudah selesai: satu PATCH id saja; tanggal buka/tutup lama dikosongkan server', async () => {
+    Object.assign(rowOf(PUB_ID), ENDED, recOf(PUB_ID), { sales_close_at: at(-2 * DAY - 60_000) });
+    offers[PUB_ID] = { state: 'sales_ended', sold: 12, held: 0 };
+    const r = await call({ action: 'save', id: PUB_ID, patch: { offer_kind: 'replay', sales_mode: 'open' } });
+    expect(r.status).toBe(200);
+    const patches = eventPatches();
+    expect(patches).toHaveLength(1);
+    expect(patches[0].url).toMatch(new RegExp(`webinar_events\\?id=eq\\.${PUB_ID}&select=id$`));
+    expect(patches[0].body).toEqual({ offer_kind: 'replay', sales_mode: 'open', sales_open_at: null, sales_close_at: null });
+    // Jadwal & kuota acara hasil ubah jenis tetap (tampil sebagai "Direkam …").
+    expect(rowOf(PUB_ID)).toMatchObject({ offer_kind: 'replay', starts_at: ENDED.starts_at, quota: 100, sales_close_at: null });
+    expect(r.body.notify_scheduled).toBeUndefined();
+  });
+
+  it('ubah jenis tanpa pilihan penjualan → 400 sales_choice_required, tanpa menulis', async () => {
+    Object.assign(rowOf(PUB_ID), ENDED, recOf(PUB_ID));
+    const r = await call({ action: 'save', id: PUB_ID, patch: { offer_kind: 'replay' } });
+    expect(r).toMatchObject({ status: 400, body: { code: 'sales_choice_required', field: 'sales_open_at' } });
+    expect(eventPatches()).toHaveLength(0);
+  });
+
+  it('acara bertiket yang belum selesai → 409 event_not_over + jam selesai, tanpa menulis', async () => {
+    offers[PUB_ID] = { state: 'on_sale', sold: 12, held: 0 };
+    const r = await call({ action: 'save', id: PUB_ID, patch: { offer_kind: 'replay', sales_mode: 'coming_soon' } });
+    expect(r).toMatchObject({ status: 409, body: { code: 'event_not_over', field: 'offer_kind' } });
+    expect(Date.parse(r.body.ends_at)).toBe(Date.parse(READY.starts_at) + 90 * 60_000);
+    expect(eventPatches()).toHaveLength(0);
+  });
+
+  it('Video kelas dijual wajib rekaman terbit + materi; Segera hadir tidak', async () => {
+    Object.assign(rowOf(PUB_ID), ENDED);
+    const sell = await call({ action: 'save', id: PUB_ID, patch: { offer_kind: 'replay', sales_mode: 'open' } });
+    expect(sell).toMatchObject({ status: 400, body: { code: 'missing_fields', fields: ['recording', 'materials_path'] } });
+    expect(eventPatches()).toHaveLength(0);
+    const soon = await call({ action: 'save', id: PUB_ID, patch: { offer_kind: 'replay', sales_mode: 'coming_soon' } });
+    expect(soon.status).toBe(200);
+    expect(rowOf(PUB_ID)).toMatchObject({ offer_kind: 'replay', sales_mode: 'coming_soon' });
+  });
+
+  it('Video kelas terbit tidak bisa kembali menjadi tiket → 409 offer_locked', async () => {
+    Object.assign(rowOf(PUB_ID), ENDED, recOf(PUB_ID), { offer_kind: 'replay' });
+    const r = await call({ action: 'save', id: PUB_ID, patch: { offer_kind: 'live', sales_mode: 'coming_soon' } });
+    expect(r).toMatchObject({ status: 409, body: { code: 'offer_locked', field: 'offer_kind' } });
+    expect(eventPatches()).toHaveLength(0);
+  });
+
+  it('draft → Video kelas: jadwal, kuota, dan link Zoom dikosongkan server', async () => {
+    Object.assign(rowOf(DRAFT_ID), { starts_at: at(5 * DAY), duration_minutes: 60, quota: 50, meeting_url: 'https://zoom.us/j/1' });
+    const r = await call({ action: 'save', id: DRAFT_ID, patch: { offer_kind: 'replay', sales_mode: 'coming_soon' } });
+    expect(r.status).toBe(200);
+    expect(eventPatches()[0].body).toMatchObject({ starts_at: null, duration_minutes: null, quota: null, meeting_url: null });
+    expect(rowOf(DRAFT_ID)).toMatchObject({ offer_kind: 'replay', starts_at: null, quota: null, meeting_url: null });
+  });
+
+  it('acara terbit tanpa tiket yang belum berlangsung → Video kelas: jadwal dikosongkan (tidak ada "Direkam" palsu)', async () => {
+    const r = await call({ action: 'save', id: PUB_ID, patch: { offer_kind: 'replay', sales_mode: 'coming_soon' } });
+    expect(r.status).toBe(200);
+    expect(eventPatches()[0].body).toMatchObject({ starts_at: null, duration_minutes: null, quota: null, meeting_url: null });
+    expect(rowOf(PUB_ID)).toMatchObject({ offer_kind: 'replay', starts_at: null });
+  });
+
+  it('kelas tanpa sesi live: terbitkan rekaman di draft (tanpa email), lalu halaman terbit dijual', async () => {
+    rowOf(DRAFT_ID).offer_kind = 'replay';
+    const early = await call({ action: 'publish', id: DRAFT_ID, patch: { ...CLASS, sales_mode: 'open' } });
+    expect(early).toMatchObject({ status: 400, body: { code: 'missing_fields', fields: ['recording', 'materials_path'] } });
+
+    Object.assign(rowOf(DRAFT_ID), { recording_object_key: recOf(DRAFT_ID).recording_object_key, materials_path: recOf(DRAFT_ID).materials_path });
+    const rec = await call({ action: 'recording-publish', id: DRAFT_ID, confirmations: conf });
+    expect(rec.status).toBe(200);
+    expect(rec.body.notify_scheduled).toBe(0);
+    expect(rowOf(DRAFT_ID).recording_published_at).toBeTruthy();
+
+    const pub = await call({ action: 'publish', id: DRAFT_ID, patch: { ...CLASS, sales_mode: 'open' } });
+    expect(pub.status).toBe(200);
+    expect(rowOf(DRAFT_ID)).toMatchObject({ status: 'published', offer_kind: 'replay', sales_mode: 'open' });
+  });
+
+  it('Video kelas tidak dibatalkan (pakai Tutup penjualan) → 409, tanpa menulis', async () => {
+    Object.assign(rowOf(PUB_ID), ENDED, recOf(PUB_ID), { offer_kind: 'replay' });
+    const r = await call({ action: 'cancel', id: PUB_ID });
+    expect(r).toMatchObject({ status: 409, body: { code: 'replay_no_cancel' } });
+    expect(eventPatches()).toHaveLength(0);
+    expect(rowOf(PUB_ID).status).toBe('published');
+  });
+
+  it('daftar: angka terjual per jenis dari order lunas (webinar_offer_state hanya menghitung tiket live)', async () => {
+    setup({
+      orderSeed: [
+        orderRow({ id: crypto.randomUUID() }),
+        orderRow({ id: crypto.randomUUID(), invoice_number: 'WBN-2' }),
+        orderRow({ id: crypto.randomUUID(), kind: 'replay', invoice_number: 'WBN-3' }),
+        orderRow({ id: crypto.randomUUID(), kind: 'replay', status: 'pending', invoice_number: 'WBN-4' }),
+        orderRow({ id: crypto.randomUUID(), kind: 'replay', status: 'refunded', invoice_number: 'WBN-5' }),
+      ],
+    });
+    const r = await call({ action: 'list' });
+    const pub = r.body.events.find((e) => e.id === PUB_ID);
+    expect(pub).toMatchObject({ sold_live: 2, sold_replay: 1 });
+    expect(r.body.events.find((e) => e.id === DRAFT_ID)).toMatchObject({ sold_live: 0, sold_replay: 0 });
+  });
+
+  it('kirim ulang ke pembeli Video kelas memakai email "Rekamanmu siap"', async () => {
+    seedOps();
+    Object.assign(rowOf(PUB_ID), recOf(PUB_ID));
+    const r = await call({ action: 'resend-ticket', orderId: ORDER_REPLAY });
+    expect(r).toMatchObject({ status: 200, body: { sent: true } });
+    expect(mails()[0].subject).toBe('Rekamanmu siap: Statistik');
   });
 });

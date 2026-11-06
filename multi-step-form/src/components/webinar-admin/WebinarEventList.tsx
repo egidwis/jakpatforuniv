@@ -4,7 +4,7 @@ import {
     DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { adminDateLabel, seatsSummary, zoomWarning, type AdminWebinarEvent } from '@/utils/webinarAdmin';
+import { adminDateLabel, seatsSummary, soldLabel, zoomWarning, type AdminWebinarEvent } from '@/utils/webinarAdmin';
 
 const TONE_CLASS: Record<string, string> = {
     on_sale: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
@@ -30,6 +30,10 @@ function EventCard({ event, actions, now }: { event: AdminWebinarEvent; actions:
     const badge = isDraft ? 'Draft' : event.view.badge;
     const tone = isDraft ? 'ended' : event.view.tone;
     const note = event.view.state === 'coming_soon' ? event.view.note : null;
+    // C18 (Fase 5B): Video kelas tanpa jadwal live; jumlah peserta = tiket live + pembeli video.
+    const replay = event.offer_kind === 'replay';
+    const participants = (event.sold_live ?? seats.sold) + (event.sold_replay ?? 0);
+    const dateLine = replay ? event.view.recorded_label : event.starts_at ? adminDateLabel(event.starts_at) : null;
 
     return (
         <article className="flex gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -47,16 +51,17 @@ function EventCard({ event, actions, now }: { event: AdminWebinarEvent; actions:
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                 <div className="flex items-start gap-2">
                     <h3 className="min-w-0 flex-1 text-[15px] font-semibold leading-snug text-slate-900">{event.title}</h3>
+                    {replay && <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">Video kelas</span>}
                     {event.is_test && <span className="shrink-0 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">UJI</span>}
                 </div>
-                {event.starts_at && <p className="text-[13px] text-slate-600">{adminDateLabel(event.starts_at)}</p>}
+                {dateLine && <p className="text-[13px] text-slate-600">{dateLine}</p>}
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
                     <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset', TONE_CLASS[tone] ?? TONE_CLASS.ended)}>
                         {badge}
                     </span>
                     {note && <span className="text-slate-500">{note}</span>}
-                    {!isDraft && event.quota != null && (
-                        <span className="tabular-nums text-slate-600">Terjual {seats.sold} / {event.quota}{seats.held ? ` · ditahan ${seats.held}` : ''}</span>
+                    {!isDraft && (replay || event.quota != null) && (
+                        <span className="tabular-nums text-slate-600">{soldLabel(event)}</span>
                     )}
                 </div>
                 {zoomWarning(event, now) && (
@@ -68,7 +73,7 @@ function EventCard({ event, actions, now }: { event: AdminWebinarEvent; actions:
                 <div className="mt-auto flex flex-wrap items-center justify-end gap-2 pt-2">
                     {!isDraft && (
                         <Button variant="outline" size="sm" className="h-8 text-xs font-semibold" onClick={() => actions.onParticipants(event)}>
-                            Peserta ({seats.sold})
+                            Peserta ({participants})
                         </Button>
                     )}
                     <Button variant="outline" size="sm" className="h-8 text-xs font-semibold" onClick={() => actions.onEdit(event)}>
@@ -90,7 +95,8 @@ function EventCard({ event, actions, now }: { event: AdminWebinarEvent; actions:
                             {isPublished && event.sales_mode !== 'closed' && (
                                 <DropdownMenuItem onSelect={() => actions.onCloseSales(event)}>Tutup penjualan</DropdownMenuItem>
                             )}
-                            {isPublished && (
+                            {/* Video kelas tidak dibatalkan (pemegang tiket akan kehilangan rekaman); pakai Tutup penjualan. */}
+                            {isPublished && !replay && (
                                 <>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={() => actions.onCancel(event)}>

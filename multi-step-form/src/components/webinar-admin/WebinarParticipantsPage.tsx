@@ -8,7 +8,7 @@ import { adminDateLabel, formatRupiah } from '@/utils/webinarAdmin';
 import { errorMessage } from '@/utils/webinarParticipants';
 import { listParticipants, refundOrder, resendTicket, type ParticipantsResult } from '@/utils/webinarAdminApi';
 import {
-    alarmLabel, filterParticipants, groupCounts, participantCsv, participantStats, ticketEmailState, unpaidLabel,
+    alarmLabel, filterParticipants, groupCounts, participantCsv, participantStats, purchaseEmailLabel, ticketEmailState, unpaidLabel,
     type AdminWebinarOrder, type ParticipantGroup,
 } from '@/utils/webinarParticipants';
 import { WebinarEmailStatus } from './WebinarEmailStatus';
@@ -30,14 +30,20 @@ const TONE_CLASS: Record<string, string> = {
 
 function EmailBadge({ order, now }: { order: AdminWebinarOrder; now: number }) {
     const state = ticketEmailState(order, now);
-    if (state === 'sent') return <span className="text-[12px] font-medium text-emerald-700">✓ E-tiket</span>;
-    if (state === 'failed') return <span className="text-[12px] font-medium text-amber-700">⚠ E-tiket gagal</span>;
-    if (state === 'sending') return <span className="text-[12px] text-slate-500">E-tiket dikirim…</span>;
-    if (state === 'pending') return <span className="text-[12px] text-slate-500">E-tiket belum</span>;
+    const label = purchaseEmailLabel(order);
+    if (state === 'sent') return <span className="text-[12px] font-medium text-emerald-700">✓ {label}</span>;
+    if (state === 'failed') return <span className="text-[12px] font-medium text-amber-700">⚠ {label} gagal</span>;
+    if (state === 'sending') return <span className="text-[12px] text-slate-500">{label} dikirim…</span>;
+    if (state === 'pending') return <span className="text-[12px] text-slate-500">{label} belum</span>;
     return null;
 }
 
 /** Email otomatis (pengingat, jadwal, dst.) terakhir gagal: tidak diulang, admin mengabari lewat WA. */
+/** Label baris pembeli Video kelas (C23). */
+function VideoTag() {
+    return <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">Video kelas</span>;
+}
+
 function AutoEmailBadge({ order }: { order: AdminWebinarOrder }) {
     if (order.status !== 'paid' || !order.email_error) return null;
     return <span className="text-[12px] font-medium text-amber-700">⚠ Email gagal</span>;
@@ -99,6 +105,9 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
 
     const { event } = data;
     const stats = participantStats(orders, event.webinar_offer_state);
+    // C23 (Fase 5B): satu daftar; ringkasan memisahkan tiket live (x/kuota) dan Video kelas.
+    const showVideo = stats.replay > 0 || event.offer_kind === 'replay';
+    const purchaseNoun = (order: AdminWebinarOrder) => (order.kind === 'replay' ? 'Bukti pembelian' : 'E-tiket');
     const exportCsv = () => {
         const { headers, rows } = participantCsv(visible);
         const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
@@ -108,18 +117,18 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
     const submitResend = async (order: AdminWebinarOrder, email: string) => {
         try {
             const r = await resendTicket(order.id, email !== order.buyer_email ? email : undefined);
-            toast.success(`E-tiket dikirim ke ${r.email}`);
+            toast.success(`${purchaseNoun(order)} dikirim ke ${r.email}`);
             setResendFor(null);
             void load();
         } catch (err) {
-            toast.error(errorMessage(err, 'E-tiket belum bisa dikirim ulang'));
+            toast.error(errorMessage(err, `${purchaseNoun(order)} belum bisa dikirim ulang`));
         }
     };
 
     const submitRefund = async (order: AdminWebinarOrder, note: string) => {
         try {
             await refundOrder(order.id, note);
-            toast.success('Tiket ditandai refund. Kabari pembeli sendiri.');
+            toast.success(order.kind === 'replay' ? 'Video kelas ditandai refund. Kabari pembeli sendiri.' : 'Tiket ditandai refund. Kabari pembeli sendiri.');
             setRefundFor(null);
             setSelectedId(null);
             void load();
@@ -144,7 +153,9 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
                             {event.is_test && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">UJI</span>}
                         </h1>
                         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-slate-600">
-                            {event.starts_at && <span>{adminDateLabel(event.starts_at)}</span>}
+                            {event.offer_kind === 'replay'
+                                ? event.view?.recorded_label && <span>{event.view.recorded_label}</span>
+                                : event.starts_at && <span>{adminDateLabel(event.starts_at)}</span>}
                             <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset', TONE_CLASS[tone] ?? TONE_CLASS.ended)}>{badge}</span>
                         </div>
                     </div>
@@ -159,9 +170,10 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
                     </div>
                 )}
 
-                <div className="grid grid-cols-3 gap-3 lg:grid-cols-4">
+                <div className={cn('grid gap-3', showVideo ? 'grid-cols-2 lg:grid-cols-5' : 'grid-cols-3 lg:grid-cols-4')}>
                     {[
-                        { label: 'Lunas', value: event.quota != null ? `${stats.paid} / ${event.quota}` : String(stats.paid) },
+                        { label: showVideo ? 'Tiket live' : 'Lunas', value: event.quota != null ? `${stats.live} / ${event.quota}` : String(stats.live) },
+                        ...(showVideo ? [{ label: 'Video kelas', value: String(stats.replay) }] : []),
                         { label: 'Ditahan', value: String(stats.held) },
                         { label: 'Izin kontak', value: String(stats.consent) },
                     ].map((s) => (
@@ -219,7 +231,10 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
                                     <li key={o.id}>
                                         <button type="button" onClick={() => setSelectedId(o.id)} className="block w-full px-4 py-3 text-left hover:bg-slate-50">
                                             <div className="flex items-start justify-between gap-2">
-                                                <span className="min-w-0 truncate text-[14px] font-semibold text-slate-900">{o.buyer_name || 'Peserta'}</span>
+                                                <span className="flex min-w-0 items-center gap-1.5">
+                                                    <span className="min-w-0 truncate text-[14px] font-semibold text-slate-900">{o.buyer_name || 'Peserta'}</span>
+                                                    {o.kind === 'replay' && <VideoTag />}
+                                                </span>
                                                 {alarm
                                                     ? <span className="shrink-0 text-[12px] font-medium text-amber-700">⚠ {alarm}</span>
                                                     : o.email_error && o.status === 'paid' ? <AutoEmailBadge order={o} /> : <EmailBadge order={o} now={now} />}
@@ -254,6 +269,7 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
                                             <tr key={o.id} onClick={() => setSelectedId(o.id)} className="cursor-pointer hover:bg-slate-50">
                                                 <td className="px-4 py-2.5 font-semibold text-slate-900">
                                                     {o.buyer_name || 'Peserta'}
+                                                    {o.kind === 'replay' && <span className="ml-2"><VideoTag /></span>}
                                                     {alarm && <span className="ml-2 text-[12px] font-medium text-amber-700">⚠ {alarm}</span>}
                                                 </td>
                                                 <td className="max-w-[16rem] truncate px-3 py-2.5 text-slate-700">{o.buyer_email}</td>

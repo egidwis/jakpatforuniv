@@ -113,7 +113,8 @@ export function WebinarParticipantSheet({
                         )}
 
                         <div className="mt-3">
-                            <Field label="Email e-tiket">{order.buyer_email}</Field>
+                            {order.kind === 'replay' && <Field label="Jenis">Video kelas</Field>}
+                            <Field label={order.kind === 'replay' ? 'Email bukti beli' : 'Email e-tiket'}>{order.buyer_email}</Field>
                             <Field label="Akun">{accountEmail ?? '…'}</Field>
                             {order.buyer_phone && <Field label="WhatsApp">{order.buyer_phone}</Field>}
                             <Field label="Kampus">{[order.buyer_university, order.buyer_major, order.buyer_status].filter(Boolean).join(' · ') || '–'}</Field>
@@ -155,7 +156,9 @@ export function WebinarParticipantSheet({
 
                         {group === 'paid' && (
                             <div className="mt-4 flex flex-wrap gap-2">
-                                <Button variant="outline" size="sm" className="h-9" onClick={() => onResend(order)}>Kirim ulang e-tiket</Button>
+                                <Button variant="outline" size="sm" className="h-9" onClick={() => onResend(order)}>
+                                    {order.kind === 'replay' ? 'Kirim ulang bukti pembelian' : 'Kirim ulang e-tiket'}
+                                </Button>
                                 {order.join_url && (
                                     <Button
                                         variant="outline"

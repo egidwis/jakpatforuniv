@@ -168,6 +168,10 @@ export function WebinarCheckoutPage() {
             <WebinarBadge event={event} />
             <h2 className="font-bold text-slate-900 leading-snug">{event.title}</h2>
             {event.schedule_label && <p className="text-sm text-slate-600">{event.schedule_label}</p>}
+            {/* C20 (Fase 5B): Video kelas tanpa jadwal live. */}
+            {event.kind === 'replay' && event.kind_label && (
+                <p className="text-sm text-slate-600">{[event.kind_label, event.recorded_label].filter(Boolean).join(' · ')}</p>
+            )}
             <div className="border-t border-slate-100 pt-3 space-y-1.5">
                 <div className="flex items-baseline justify-between">
                     <span className="text-sm text-slate-600">{event.kind === 'live' ? 'Tiket' : 'Video kelas'}</span>
@@ -200,13 +204,18 @@ export function WebinarCheckoutPage() {
                 <span>
                     Saya menyetujui{' '}
                     <a className="font-medium text-jfu-primary underline" href="https://jakpatforuniv.com/terms-conditions.html#webinar" target="_blank" rel="noopener noreferrer">Syarat &amp; Ketentuan</a>
-                    , termasuk bahwa sesi ini direkam dan rekamannya tersedia sebagai video kelas di JFU.
+                    {event.kind === 'replay'
+                        ? ', termasuk bahwa rekaman dan materi hanya untuk penggunaan pribadi dan tidak boleh disebarkan.'
+                        : ', termasuk bahwa sesi ini direkam dan rekamannya tersedia sebagai video kelas di JFU.'}
                 </span>
             </label>
             <label className="flex items-start gap-2.5 text-sm text-slate-700">
                 <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>Saya setuju dihubungi JFU lewat email/WhatsApp tentang webinar berikutnya (opsional).</span>
             </label>
+            {event.kind === 'replay' && (
+                <p className="text-sm text-slate-600">Setelah bayar, rekaman langsung bisa ditonton di menu Webinar.</p>
+            )}
             <AdminContactLine />
         </section>
     );
@@ -271,7 +280,10 @@ export function WebinarCheckoutPage() {
                                         <span className="flex items-start gap-1.5 text-amber-700 bg-amber-50/80 p-2 rounded-lg border border-amber-200/70 mt-1">
                                             <Info className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
                                             <span>
-                                                Email ini berbeda dari akun login kamu (<strong>{user?.email}</strong>). E-tiket dikirim ke email di atas, dan tiketnya tetap tersimpan di akun ini.
+                                                Email ini berbeda dari akun login kamu (<strong>{user?.email}</strong>).{' '}
+                                                {event.kind === 'replay'
+                                                    ? 'Bukti pembelian dikirim ke email di atas, dan videonya tetap tersimpan di akun ini.'
+                                                    : 'E-tiket dikirim ke email di atas, dan tiketnya tetap tersimpan di akun ini.'}
                                             </span>
                                         </span>
                                     ) : undefined}

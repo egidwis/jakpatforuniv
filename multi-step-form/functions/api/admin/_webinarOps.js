@@ -29,10 +29,11 @@ const ORDER_COLUMNS = [
   'reminder_sent_for', 'schedule_email_sent_at', 'cancel_email_sent_at', 'recording_email_sent_at', 'email_error',
 ].join(',');
 
-/** Token mentah tidak keluar; link gabung hanya untuk tiket yang aktif. */
+/** Token mentah tidak keluar; link gabung hanya untuk tiket live yang aktif. */
 function orderView(order) {
   const { join_token: joinToken, ...rest } = order;
-  return { ...rest, join_url: order.status === 'paid' && joinToken ? `${SITE_URL}/webinar/gabung/${joinToken}` : null };
+  const joinable = order.status === 'paid' && order.kind === 'live' && joinToken;
+  return { ...rest, join_url: joinable ? `${SITE_URL}/webinar/gabung/${joinToken}` : null };
 }
 
 async function loadOrder(sb, orderId, columns = ORDER_COLUMNS) {
@@ -47,7 +48,8 @@ async function rpc(sb, fn, args) {
 
 export async function participants(sb, body) {
   const event = await loadOrRefuse(sb, body.id);
-  const orders = await dbAll(sb, `webinar_orders?event_id=eq.${body.id}&kind=eq.live&select=${ORDER_COLUMNS}&order=created_at.desc`, 'SELECT webinar_orders (peserta)');
+  // Tiket live dan Video kelas dalam satu daftar (Fase 5B: label per baris).
+  const orders = await dbAll(sb, `webinar_orders?event_id=eq.${body.id}&select=${ORDER_COLUMNS}&order=created_at.desc,id.asc`, 'SELECT webinar_orders (peserta)');
   return { event: decorate(event, { full: false }), orders: orders.map(orderView) };
 }
 
@@ -59,12 +61,13 @@ export async function participant(sb, body) {
 
 export async function resendTicket(sb, env, body) {
   const order = await loadOrder(sb, body.orderId, 'id,event_id,kind,status,buyer_email,invoice_number');
-  if (order.status !== 'paid' || order.kind !== 'live') {
-    throw refuse(409, 'Hanya tiket live yang lunas yang bisa dikirimi e-tiket', { code: 'not_paid' });
+  const what = order.kind === 'replay' ? 'Bukti pembelian' : 'E-tiket';
+  if (order.status !== 'paid') {
+    throw refuse(409, 'Hanya order lunas yang bisa dikirimi ulang email pembelian', { code: 'not_paid' });
   }
   const [event] = (await db(sb, `webinar_events?id=eq.${order.event_id}&select=status`, {}, 'SELECT webinar_events (status)')) || [];
   if (event?.status === 'cancelled') {
-    throw refuse(409, 'Acara ini dibatalkan, jadi e-tiket tidak dikirim lagi', { code: 'event_cancelled' });
+    throw refuse(409, `Acara ini dibatalkan, jadi ${what.toLowerCase()} tidak dikirim lagi`, { code: 'event_cancelled' });
   }
 
   let email = order.buyer_email;
@@ -81,9 +84,9 @@ export async function resendTicket(sb, env, body) {
   const result = await deliverWebinarTicket({ env, sb, sbFetch, invoiceNumber: order.invoice_number, resend: true });
   if (result.sent) return { sent: true, email };
   if (result.reason === 'not_claimed') {
-    throw refuse(409, 'E-tiket untuk peserta ini sedang dikirim. Coba lagi sebentar.', { code: 'busy' });
+    throw refuse(409, `${what} untuk peserta ini sedang dikirim. Coba lagi sebentar.`, { code: 'busy' });
   }
-  throw refuse(502, `E-tiket gagal terkirim: ${result.error || 'tanpa keterangan'}`, { code: 'mail_failed' });
+  throw refuse(502, `${what} gagal terkirim: ${result.error || 'tanpa keterangan'}`, { code: 'mail_failed' });
 }
 
 export async function checkOrder(sb, env, body, waitUntil) {

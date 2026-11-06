@@ -20,8 +20,9 @@ import { cancelDokuOrder } from '../doku/_doku-cancel.js';
 import {
   adminEmails, validateWebinarRequest, normalizePatch, applySalesInvariant, slugifyTitle, pickFreeSlug,
   isSlugLocked, missingForPublish, crossFieldError, quotaError, clearedScheduleError, scheduleChanged,
+  offerSwitchError, eventEndsAt,
 } from './webinarGate.js';
-import { DbError, Refusal, refuse, db, decorate, loadOrRefuse, writeEvent } from './_webinarDb.js';
+import { DbError, Refusal, refuse, db, dbAll, decorate, loadOrRefuse, writeEvent } from './_webinarDb.js';
 import {
   participants, participant, resendTicket, checkOrder, refundOrder, LOCAL_BLOCKED_ACTIONS, buyers,
 } from './_webinarOps.js';
@@ -63,6 +64,37 @@ function normalized(body) {
   const result = normalizePatch(body.patch ?? {});
   if (result.error) throw refuse(400, result.error, { field: result.field });
   return result.patch;
+}
+
+/**
+ * "Halaman ini menjual" berubah (Fase 5B). Aturan arah & waktunya di offerSwitchError.
+ * Ubah jenis selalu memakai pilihan penjualan yang baru: sales_mode wajib ikut, dan
+ * tanggal buka/tutup lama tidak pernah terbawa (tanggal tutup tiket yang sudah lewat
+ * membuat Video kelas langsung tampil ditutup). Draft, atau acara yang belum
+ * berlangsung (pasti tanpa tiket, lihat offerSwitchError), kehilangan isian sesi live:
+ * jadwalnya tidak boleh tampil sebagai "Direkam …" padahal belum terjadi.
+ *
+ * @returns {object} kolom tambahan yang wajib ikut ditulis ({} bila jenis tidak berubah)
+ */
+function offerChange(current, patch) {
+  if (!('offer_kind' in patch) || patch.offer_kind === (current.offer_kind ?? 'live')) return {};
+  const switchError = offerSwitchError(current, { ...current, ...patch });
+  if (switchError) {
+    const { code, error, ...extra } = switchError;
+    throw refuse(409, error, { code, field: 'offer_kind', ...extra });
+  }
+  if (!('sales_mode' in patch)) {
+    throw refuse(400, 'Pilih lagi kapan penjualan dibuka', { code: 'sales_choice_required', field: 'sales_open_at' });
+  }
+  const ends = eventEndsAt(current);
+  const notHeld = current.status === 'draft' || ends === null || Date.now() < ends;
+  return {
+    sales_open_at: patch.sales_open_at ?? null,
+    sales_close_at: patch.sales_close_at ?? null,
+    ...(patch.offer_kind === 'replay' && notHeld
+      ? { starts_at: null, duration_minutes: null, quota: null, meeting_url: null }
+      : {}),
+  };
 }
 
 /** Kolom yang benar-benar ditulis: isi patch, ditambah tanggal buka yang dikosongkan oleh invarian. */
@@ -117,7 +149,21 @@ const FAILURE_MESSAGE = {
 
 async function list(sb) {
   const rows = await db(sb, `webinar_events?select=${LIST_SELECT}&order=created_at.desc`, {}, 'SELECT webinar_events (daftar)');
-  return { events: (rows || []).map((row) => decorate(row, { full: false })) };
+  // webinar_offer_state.sold hanya menghitung tiket live; Video kelas dihitung di sini.
+  const paid = await dbAll(sb, 'webinar_orders?status=eq.paid&select=event_id,kind&order=id.asc', 'SELECT webinar_orders (terjual)');
+  const sold = new Map();
+  for (const o of paid) {
+    const n = sold.get(o.event_id) ?? { live: 0, replay: 0 };
+    n[o.kind === 'replay' ? 'replay' : 'live'] += 1;
+    sold.set(o.event_id, n);
+  }
+  return {
+    events: (rows || []).map((row) => ({
+      ...decorate(row, { full: false }),
+      sold_live: sold.get(row.id)?.live ?? 0,
+      sold_replay: sold.get(row.id)?.replay ?? 0,
+    })),
+  };
 }
 
 async function get(sb, body) {
@@ -150,7 +196,8 @@ async function save(sb, body, ctx) {
     throw refuse(409, 'Acara ini baru diubah di tempat lain. Muat ulang dulu.', { code: 'stale' });
   }
 
-  const patch = normalized(body);
+  const given = normalized(body);
+  const patch = { ...given, ...offerChange(current, given) };
   const next = applySalesInvariant({ ...current, ...patch });
   // Peserta dikabari otomatis bila jadwal acara yang sudah terjual berubah: cukup
   // tandai schedule_changed_at; cron mengirim email per peserta (sql/136b).
@@ -177,7 +224,8 @@ async function publish(sb, body) {
     throw refuse(409, 'Acara ini baru diubah di tempat lain. Muat ulang dulu.', { code: 'stale' });
   }
 
-  const patch = normalized(body);
+  const given = normalized(body);
+  const patch = { ...given, ...offerChange(current, given) };
   const next = applySalesInvariant({ ...current, ...patch });
   if (next.sales_mode === 'closed') {
     throw refuse(400, 'Pilih kapan penjualan dibuka sebelum terbit', { field: 'sales_open_at' });
@@ -211,6 +259,11 @@ async function closeSales(sb, body) {
 async function cancel(sb, env, body, ctx) {
   const current = await loadOrRefuse(sb, body.id);
   if (current.status === 'draft') throw refuse(409, 'Draft dihapus, bukan dibatalkan', { code: 'draft' });
+  // Membatalkan Video kelas berarti email "Webinar dibatalkan" ke pemegang tiket dan
+  // rekamannya hilang dari mereka (Fase 5B). Untuk berhenti menjual: Tutup penjualan.
+  if ((current.offer_kind ?? 'live') === 'replay') {
+    throw refuse(409, 'Video kelas tidak dibatalkan. Pakai Tutup penjualan untuk berhenti menjual.', { code: 'replay_no_cancel' });
+  }
   // Hanya transisi pertama yang mengabari peserta (cron per peserta, sql/136b);
   // memanggil ulang hanya membersihkan.
   const notifyCancel = current.status === 'published' && soldOf(current) > 0;

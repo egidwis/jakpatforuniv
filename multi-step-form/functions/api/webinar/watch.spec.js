@@ -121,6 +121,14 @@ describe('POST /api/webinar/watch', () => {
     expect((await watch()).status).toBe(404);
   });
 
+  it('Video kelas yang di-refund: pesan akses video, bukan tiket (Fase 5B)', async () => {
+    net({ order: orderRow({ status: 'refunded', kind: 'replay' }) });
+    const r = await watch();
+    expect(r).toMatchObject({
+      status: 403, body: { code: 'inactive', kind: 'replay', error: 'Akses video ini tidak aktif. Hubungi admin bila ada pertanyaan.' },
+    });
+  });
+
   it('rekaman belum terbit → 409 not_ready; acara batal → 409 cancelled', async () => {
     net({ order: orderRow({ webinar_events: eventRow({ recording_published_at: null }) }) });
     expect((await watch()).body.code).toBe('not_ready');

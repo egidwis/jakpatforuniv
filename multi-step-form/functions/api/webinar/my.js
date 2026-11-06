@@ -66,7 +66,7 @@ export function buildOrderView(order, now = Date.now()) {
     created_at: order.created_at,
     payment_url: display === 'pending' ? order.payment_url : null,
     payment_expires_at: display === 'pending' ? order.payment_expires_at : null,
-    join_url: display === 'paid' ? `${SITE_URL}/webinar/gabung/${order.join_token}` : null,
+    join_url: display === 'paid' && order.kind === 'live' ? `${SITE_URL}/webinar/gabung/${order.join_token}` : null,
     join: buildJoinView(order, event, display, now),
     event: buildEventView({ ...event, webinar_offer_state: { state: event.status === 'cancelled' ? 'cancelled' : 'closed' } }),
     event_cancelled: event.status === 'cancelled',
@@ -96,7 +96,8 @@ export async function onRequest({ request, env, waitUntil }) {
     const rows = orders || [];
 
     for (const order of rows) {
-      if (order.status === 'paid' && order.kind === 'live' && !order.ticket_email_sent_at && order.webinar_events?.status !== 'cancelled') {
+      // Email pembelian yang tertunda: e-tiket (live) atau "Rekamanmu siap" (Video kelas).
+      if (order.status === 'paid' && !order.ticket_email_sent_at && order.webinar_events?.status !== 'cancelled') {
         const retry = deliverWebinarTicket({ env, sb, sbFetch, invoiceNumber: order.invoice_number });
         if (typeof waitUntil === 'function') waitUntil(retry); else await retry;
       }

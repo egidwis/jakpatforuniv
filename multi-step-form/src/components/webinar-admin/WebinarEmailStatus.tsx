@@ -2,7 +2,7 @@ import { AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AdminWebinarEvent } from '@/utils/webinarAdmin';
 import {
-    failedEmails, noticeStatus, reminderStatus, ticketEmailState,
+    failedEmails, noticeStatus, purchaseEmailSummary, reminderStatus,
     type AdminWebinarOrder, type EmailLine, type Tone,
 } from '@/utils/webinarParticipants';
 
@@ -31,9 +31,9 @@ export function WebinarEmailStatus({
     onOpen: (orderId: string) => void;
 }) {
     const now = Date.now();
-    const paid = orders.filter((o) => o.status === 'paid');
-    const sent = paid.filter((o) => ticketEmailState(o, now) === 'sent').length;
-    const failedTickets = paid.filter((o) => ticketEmailState(o, now) === 'failed').length;
+    // Email pembelian per jenis: e-tiket (tiket live) dan bukti beli Video kelas (Fase 5B).
+    const tickets = purchaseEmailSummary(orders, 'live', now);
+    const videos = purchaseEmailSummary(orders, 'replay', now);
     const schedule = noticeStatus('schedule_change', event, orders, now);
     const cancellation = noticeStatus('cancellation', event, orders, now);
     const recording = noticeStatus('recording_ready', event, orders, now);
@@ -45,12 +45,8 @@ export function WebinarEmailStatus({
                 <h2 className="text-[12px] font-bold uppercase tracking-wide text-slate-500">Email otomatis</h2>
                 <span className="text-[12px] text-slate-500">dikirim otomatis tiap menit</span>
             </div>
-            <Row
-                label="E-tiket"
-                line={paid.length === 0
-                    ? { text: '—', tone: 'muted' }
-                    : { text: `${sent}/${paid.length} terkirim${failedTickets ? ` · ${failedTickets} gagal (lihat peserta)` : ''}`, tone: failedTickets ? 'warn' : 'ok' }}
-            />
+            <Row label="E-tiket" line={tickets ?? { text: '—', tone: 'muted' }} />
+            {videos && <Row label="Bukti beli video" line={videos} />}
             <Row label="Pengingat H-1" line={reminderStatus(event, orders, now)} />
             {schedule && <Row label="Jadwal berubah" line={schedule} />}
             {cancellation && <Row label="Pembatalan" line={cancellation} />}

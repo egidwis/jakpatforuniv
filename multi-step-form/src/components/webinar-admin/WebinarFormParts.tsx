@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { fieldDomId, type ColumnKey } from '@/utils/webinarAdmin';
+import { fieldDomId, type FieldKey } from '@/utils/webinarAdmin';
 
 /** Pembungkus satu isian: label, petunjuk, dan galat merah. `id` dipakai untuk lompat ke isian yang kurang. */
 export function Field({
@@ -12,7 +12,7 @@ export function Field({
     aside,
     children,
 }: {
-    field: ColumnKey;
+    field: FieldKey;
     label: ReactNode;
     hint?: ReactNode;
     error?: string;

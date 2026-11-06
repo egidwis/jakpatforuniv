@@ -33,7 +33,9 @@ export function WebinarFooterRow({ onNavigate }: { onNavigate?: () => void }) {
         >
             <Ticket className="w-3.5 h-3.5 shrink-0" />
             <span className="flex-1 min-w-0 truncate">
-                Webinar: {row.title}{row.short_date ? ` · ${row.short_date}` : ''}
+                {row.kind === 'replay'
+                    ? <>Video kelas: {row.title}{row.recording_minutes ? ` · ${row.recording_minutes} menit` : ''}</>
+                    : <>Webinar: {row.title}{row.short_date ? ` · ${row.short_date}` : ''}</>}
             </span>
             <ChevronRight className="w-3.5 h-3.5 shrink-0 text-slate-300 group-hover:text-jfu-primary" />
         </Link>

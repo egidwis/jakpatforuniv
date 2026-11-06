@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
-    EMPTY_FORM, FIELD_ORDER, columnsFromForm, diffColumns, fieldDomId, formFromEvent, previewEventUrl,
-    type AdminWebinarEvent, type ColumnKey, type WebinarForm,
+    EMPTY_FORM, PUBLISH_FIELD_ORDER, columnsFromForm, diffColumns, fieldDomId, formFromEvent, previewEventUrl,
+    type AdminWebinarEvent, type ColumnKey, type FieldKey, type WebinarForm,
 } from '@/utils/webinarAdmin';
 import {
     WebinarAdminError, closeWebinarSales, createWebinarEvent, getWebinarEvent, publishWebinarEvent, saveWebinarEvent,
@@ -10,7 +10,7 @@ import {
 } from '@/utils/webinarAdminApi';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
-export type FieldErrors = Partial<Record<ColumnKey, string>>;
+export type FieldErrors = Partial<Record<FieldKey, string>>;
 
 const AUTOSAVE_MS = 1500;
 /** Batas putaran simpan berturut-turut; lebih dari ini berarti klien & server menormalisasi berbeda. */
@@ -18,7 +18,7 @@ const MAX_ROUNDS = 4;
 
 /** Isian form → kolom yang galatnya dihapus saat isian itu disunting. */
 const FORM_TO_COLUMN: Partial<Record<keyof WebinarForm, ColumnKey>> = {
-    title: 'title', summary: 'summary', poster_url: 'poster_url', description_blocks: 'description_blocks',
+    offer_kind: 'offer_kind', title: 'title', summary: 'summary', poster_url: 'poster_url', description_blocks: 'description_blocks',
     speakers: 'speakers', salesChoice: 'sales_open_at', openDate: 'sales_open_at', openTime: 'sales_open_at',
     closeAtStart: 'sales_close_at', closeDate: 'sales_close_at', closeTime: 'sales_close_at',
     startDate: 'starts_at', startTime: 'starts_at', duration: 'duration_minutes', price: 'price', quota: 'quota',
@@ -26,7 +26,7 @@ const FORM_TO_COLUMN: Partial<Record<keyof WebinarForm, ColumnKey>> = {
 };
 
 /** Gulir ke isian lalu fokuskan input pertamanya. */
-export function focusField(field: ColumnKey) {
+export function focusField(field: FieldKey) {
     requestAnimationFrame(() => {
         const box = document.getElementById(fieldDomId(field));
         if (!box) return;
@@ -36,9 +36,15 @@ export function focusField(field: ColumnKey) {
     });
 }
 
+/** Pesan isian kurang; panel Rekaman (Video kelas, Fase 5B) punya pesannya sendiri. */
+const MISSING_MESSAGE: Partial<Record<FieldKey, string>> = {
+    recording: 'Unggah lalu terbitkan rekaman dulu',
+    materials_path: 'Unggah materi dulu',
+};
+
 const errorsFrom = (err: WebinarAdminError): FieldErrors => {
     if (err.code === 'missing_fields' && err.fields?.length) {
-        return Object.fromEntries(err.fields.map((f) => [f, 'Wajib diisi untuk pilihan penjualan ini']));
+        return Object.fromEntries(err.fields.map((f) => [f, MISSING_MESSAGE[f as FieldKey] ?? 'Wajib diisi untuk pilihan penjualan ini']));
     }
     return err.field ? { [err.field]: err.message } : {};
 };
@@ -114,7 +120,7 @@ export function useWebinarEditor(eventId: string | null) {
             const errors = errorsFrom(err);
             if (Object.keys(errors).length) {
                 setFieldErrors((prev) => ({ ...prev, ...errors }));
-                const first = FIELD_ORDER.find((f) => errors[f]);
+                const first = PUBLISH_FIELD_ORDER.find((f) => errors[f]);
                 if (focus && first) focusField(first);
             }
             if (err.code === 'stale') toast.error(err.message);
@@ -289,10 +295,25 @@ export function useWebinarEditor(eventId: string | null) {
         }
     }, [flush]);
 
+    /** Baris terbaru dari aksi di luar form (rekaman/materi): updated_at ikut, form tidak berubah. */
+    const adoptRow = useCallback((next: AdminWebinarEvent) => {
+        setRow(next);
+        // Tanda merah panel Rekaman hilang begitu isinya ada; aturan lengkapnya tetap di server.
+        setFieldErrors((prev) => {
+            const clear = {
+                recording: Boolean(next.recording_object_key && next.recording_published_at),
+                materials_path: Boolean(next.materials_path),
+            };
+            if (!(clear.recording && prev.recording) && !(clear.materials_path && prev.materials_path)) return prev;
+            const copy = { ...prev };
+            if (clear.recording) delete copy.recording;
+            if (clear.materials_path) delete copy.materials_path;
+            return copy;
+        });
+    }, [setRow]);
+
     return {
         row, form, updateForm, loading, loadError, status, savedAt, fieldErrors, busy, dirty, isEditable,
-        flush, publish, saveChanges, closeSales, openPreview,
-        /** Baris terbaru dari aksi di luar form (rekaman/materi): updated_at ikut, form tidak berubah. */
-        adoptRow: setRow,
+        flush, publish, saveChanges, closeSales, openPreview, adoptRow,
     };
 }

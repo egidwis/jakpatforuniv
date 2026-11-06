@@ -35,7 +35,10 @@ function OfferCard({ event, owned }: { event: WebinarEventView; owned?: WebinarO
             <WebinarMeta event={event} />
             <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 mt-auto">
                 {owned ? (
-                    <Link to={webinarTicketHref(owned.id)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Lihat tiket</Link>
+                    // Pemilik Video kelas (atau tiket yang rekamannya terbit) langsung menonton.
+                    owned.watch_path
+                        ? <Link to={owned.watch_path} className="rounded-xl bg-jfu-primary px-4 py-2 text-sm font-semibold text-white">Tonton</Link>
+                        : <Link to={webinarTicketHref(owned.id)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Lihat tiket</Link>
                 ) : event.can_buy ? (
                     <Link to={`/dashboard/webinar/beli/${event.slug}`} className="rounded-xl bg-jfu-primary px-4 py-2 text-sm font-semibold text-white">{event.buy_label}</Link>
                 ) : <span />}
@@ -164,7 +167,7 @@ export function WebinarHubPage() {
             {!failed && (
                 <>
                     <section className="space-y-3">
-                        <h2 className="text-base font-bold text-slate-900">Tiket saya</h2>
+                        <h2 className="text-base font-bold text-slate-900">Tiket &amp; video saya</h2>
                         {focusMissing && (
                             <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                                 Tiket itu tidak ada di akun {mine?.email}. Cek akun yang tertulis di e-tiketmu.
@@ -185,7 +188,7 @@ export function WebinarHubPage() {
                             </div>
                         ) : !focusMissing && (
                             <p className="text-sm text-slate-500">
-                                Belum ada tiket di akun {mine?.email}. Beli dengan akun lain? Cek e-tiketmu untuk melihat akun yang dipakai.
+                                Belum ada tiket atau video di akun {mine?.email}. Beli dengan akun lain? Cek email pembelianmu untuk melihat akun yang dipakai.
                             </p>
                         )}
                     </section>

@@ -5,6 +5,7 @@ import {
   isEmptyDoc, hasDataImage, normalizeDoc, normalizeSpeakers, normalizePatch, applySalesInvariant,
   slugifyTitle, pickFreeSlug, isSlugLocked, missingForPublish, crossFieldError, quotaError,
   clearedScheduleError, scheduleChanged, RECORDING_ACTIONS, MAX_RECORDING_BYTES,
+  PUBLISH_FIELD_ORDER, offerSwitchError, eventEndsAt,
 } from './webinarGate.js';
 
 const ID = '33333333-3333-4333-8333-333333333333';
@@ -47,7 +48,7 @@ describe('validateWebinarRequest', () => {
     expect(validateWebinarRequest({ action: 'list', expectedUpdatedAt: 5 })).toMatch(/Versi/);
   });
 
-  it.each(['status', 'slug', 'published_at', 'preview_token', 'is_test', 'offer_kind', 'id'])(
+  it.each(['status', 'slug', 'published_at', 'preview_token', 'is_test', 'id'])(
     'kolom %s tidak bisa ditulis lewat patch',
     (column) => {
       expect(validateWebinarRequest({ action: 'save', id: ID, patch: { [column]: 'x' } })).toBe(`Kolom tidak diizinkan: ${column}`);
@@ -56,6 +57,20 @@ describe('validateWebinarRequest', () => {
 
   it('FIELD_ORDER hanya berisi kolom yang bisa diedit', () => {
     expect(FIELD_ORDER.every((f) => EDITABLE_COLUMNS.includes(f))).toBe(true);
+  });
+
+  it('Fase 5B: jenis halaman (offer_kind) bisa ditulis, hanya live/replay', () => {
+    expect(validateWebinarRequest({ action: 'save', id: ID, patch: { offer_kind: 'replay' } })).toBeNull();
+    expect(normalizePatch({ offer_kind: 'replay' })).toEqual({ patch: { offer_kind: 'replay' } });
+    expect(normalizePatch({ offer_kind: 'live' })).toEqual({ patch: { offer_kind: 'live' } });
+    expect(normalizePatch({ offer_kind: 'kelas' })).toEqual({ error: 'Jenis halaman tidak dikenali', field: 'offer_kind' });
+    expect(FIELD_ORDER[0]).toBe('offer_kind');
+  });
+
+  it('Fase 5B: urutan isian kurang diakhiri panel Rekaman (bukan kolom patch)', () => {
+    expect(PUBLISH_FIELD_ORDER).toEqual([...FIELD_ORDER, 'recording', 'materials_path']);
+    expect(EDITABLE_COLUMNS).not.toContain('recording');
+    expect(EDITABLE_COLUMNS).not.toContain('materials_path');
   });
 });
 
@@ -185,6 +200,25 @@ describe('missingForPublish', () => {
     ]);
   });
 
+  it('Video kelas dijual: tanpa jadwal/kuota, tetapi wajib rekaman terbit + materi (Fase 5B)', () => {
+    const replay = {
+      ...base, offer_kind: 'replay', sales_mode: 'open', description_blocks: doc(para('Isi')),
+      speakers: [{ name: 'Dr. Sari', title: 'Dosen' }], price: 49000,
+    };
+    expect(missingForPublish(replay)).toEqual(['recording', 'materials_path']);
+    // Kunci ada tetapi belum terbit: tetap kurang (CHECK ready_to_sell sql/136 juga menolak).
+    expect(missingForPublish({ ...replay, recording_object_key: 'rekaman/x.mp4', materials_path: 'a/b.pdf' }))
+      .toEqual(['recording']);
+    expect(missingForPublish({
+      ...replay, recording_object_key: 'rekaman/x.mp4', recording_published_at: '2026-11-18T02:30:00Z', materials_path: 'a/b.pdf',
+    })).toEqual([]);
+  });
+
+  it('Video kelas Segera hadir/ditutup tidak menunggu rekaman', () => {
+    expect(missingForPublish({ ...base, offer_kind: 'replay', sales_mode: 'coming_soon' })).toEqual([]);
+    expect(missingForPublish({ ...base, offer_kind: 'replay', sales_mode: 'closed' })).toEqual([]);
+  });
+
   it('pembicara tanpa nama dianggap kurang; deskripsi kosong dianggap kurang', () => {
     const row = {
       ...base, sales_mode: 'open', description_blocks: doc(para('')), speakers: [{ name: '', title: 'Dosen' }],
@@ -243,6 +277,51 @@ describe('kuota dan jadwal yang sudah bertiket', () => {
     expect(scheduleChanged(a, { starts_at: '2026-12-01T03:00:00.000Z', duration_minutes: 90 })).toBe(false);
     expect(scheduleChanged(a, { starts_at: '2026-12-01T04:00:00.000Z', duration_minutes: 90 })).toBe(true);
     expect(scheduleChanged(a, { ...a, duration_minutes: 120 })).toBe(true);
+  });
+});
+
+describe('ubah jenis halaman (Fase 5B)', () => {
+  const NOW = Date.parse('2026-11-17T02:00:00Z'); // 09.00 WIB
+  const live = {
+    status: 'published', offer_kind: 'live', starts_at: '2026-11-17T01:36:50Z', duration_minutes: 90,
+    webinar_offer_state: { sold: 12, held: 0 },
+  };
+  const toReplay = (row) => ({ ...row, offer_kind: 'replay' });
+
+  it('acara selesai = mulai + durasi', () => {
+    expect(eventEndsAt(live)).toBe(Date.parse('2026-11-17T03:06:50Z'));
+    expect(eventEndsAt({ starts_at: null })).toBeNull();
+  });
+
+  it('jenis sama atau draft: bebas', () => {
+    expect(offerSwitchError(live, live, NOW)).toBeNull();
+    const draft = { ...live, status: 'draft', webinar_offer_state: { sold: 0, held: 0 } };
+    expect(offerSwitchError(draft, toReplay(draft), NOW)).toBeNull();
+    expect(offerSwitchError(toReplay(draft), draft, NOW)).toBeNull();
+  });
+
+  it('acara terbit bertiket belum selesai: ditolak, dengan jam selesainya', () => {
+    expect(offerSwitchError(live, toReplay(live), NOW)).toEqual({
+      code: 'event_not_over', error: 'Video kelas bisa dipilih sesudah acara selesai', ends_at: '2026-11-17T03:06:50.000Z',
+    });
+  });
+
+  it('kursi yang sedang ditahan juga menahan ubah jenis', () => {
+    const held = { ...live, webinar_offer_state: { sold: 0, held: 1 } };
+    expect(offerSwitchError(held, toReplay(held), NOW)?.code).toBe('event_not_over');
+  });
+
+  it('sesudah acara selesai, atau tanpa tiket sama sekali: boleh', () => {
+    expect(offerSwitchError(live, toReplay(live), Date.parse('2026-11-17T03:06:51Z'))).toBeNull();
+    const empty = { ...live, webinar_offer_state: { sold: 0, held: 0 } };
+    expect(offerSwitchError(empty, toReplay(empty), NOW)).toBeNull();
+  });
+
+  it('Video kelas yang sudah terbit tidak bisa kembali menjadi tiket', () => {
+    const replay = { ...live, offer_kind: 'replay', webinar_offer_state: { sold: 0, held: 0 } };
+    expect(offerSwitchError(replay, { ...replay, offer_kind: 'live' }, NOW)).toEqual({
+      code: 'offer_locked', error: 'Video kelas yang sudah terbit tidak bisa kembali menjadi tiket',
+    });
   });
 });
 

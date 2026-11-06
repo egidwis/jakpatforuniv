@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { onRequest } from './webhook.js';
 import { deliverWebinarTicket } from './_webinar.js';
-import { buildTicketEmail, buildTicketReceipt, googleCalendarUrl } from './_webinar-ticket-email.js';
+import { buildReplayEmail, buildTicketEmail, buildTicketReceipt, googleCalendarUrl } from './_webinar-ticket-email.js';
 import { postgrestTable } from '../_fixtures/postgrestTable.js';
 
 /*
@@ -311,7 +311,8 @@ describe('deliverWebinarTicket', () => {
     expect(patch.method).toBe('PATCH');
     expect(patch.prefer).toBe('return=minimal');
     expect(patch.url).toContain('status=eq.paid');
-    expect(patch.url).toContain('kind=eq.live');
+    // Fase 5B: tiket live dan Video kelas sama-sama dikirimi email pembelian.
+    expect(patch.url).not.toContain('kind=');
     expect(patch.url).toContain('ticket_email_sent_at=is.null');
     expect(patch.url).toContain('or=(ticket_email_claimed_at.is.null,ticket_email_claimed_at.lt.');
     expect(patch.body.ticket_email_claimed_at).toMatch(/\.\d{6}Z$/);
@@ -321,7 +322,6 @@ describe('deliverWebinarTicket', () => {
 
   it.each([
     ['order belum lunas', { status: 'pending' }, false],
-    ['bukan tiket live', { kind: 'replay' }, false],
     ['e-tiket sudah terkirim', { ticket_email_sent_at: '2026-11-05T05:00:00.000Z' }, false],
     ['klaim 5 menit lalu masih dipegang', { ticket_email_claimed_at: iso(T - 5 * MIN) }, false],
     ['klaim 11 menit lalu basi dan diambil alih', { ticket_email_claimed_at: iso(T - 11 * MIN) }, true],
@@ -330,6 +330,13 @@ describe('deliverWebinarTicket', () => {
     const result = await deliver();
     expect(result.sent).toBe(sends);
     expect(net.tickets()).toHaveLength(sends ? 1 : 0);
+  });
+
+  it('Video kelas: dikirim dengan templat "Rekamanmu siap", bukan e-tiket (Fase 5B)', async () => {
+    const net = network({ row: { ...PAID_ROW, kind: 'replay' } });
+    expect((await deliver()).sent).toBe(true);
+    expect(net.tickets()).toHaveLength(0);
+    expect(net.of('api.resend.com').map((c) => c.body.subject)).toEqual(['Rekamanmu siap: Riset Cepat']);
   });
 
   it('terkirim: sent_at dicatat di baris', async () => {
@@ -380,11 +387,16 @@ describe('deliverWebinarTicket', () => {
     it.each([
       ['order belum lunas', { status: 'pending' }],
       ['tiket refund', { status: 'refunded' }],
-      ['bukan tiket live', { kind: 'replay' }],
     ])('%s: tidak dikirim', async (_n, over) => {
       const net = network({ row: { ...SENT_ROW, ...over } });
       expect((await resend()).sent).toBe(false);
       expect(net.tickets()).toHaveLength(0);
+    });
+
+    it('Video kelas: bukti pembelian dikirim ulang dengan templatnya sendiri', async () => {
+      const net = network({ row: { ...SENT_ROW, kind: 'replay' } });
+      expect((await resend()).sent).toBe(true);
+      expect(net.of('api.resend.com').map((c) => c.body.subject)).toEqual(['Rekamanmu siap: Riset Cepat']);
     });
 
     it('jalur biasa tetap tidak mengirim ulang tiket yang sudah terkirim', async () => {
@@ -465,5 +477,63 @@ describe('isi e-tiket', () => {
   it('kalender memakai jam UTC dan durasi acara', () => {
     const url = new URL(googleCalendarUrl({ title: 'A', startsAt: EVENT.starts_at, durationMinutes: 90, joinUrl: 'https://x.test/j' }));
     expect(url.searchParams.get('dates')).toBe('20261120T120000Z/20261120T133000Z');
+  });
+});
+
+describe('Video kelas (Fase 5B): email pembelian "Rekamanmu siap"', () => {
+  const REPLAY_ROW = {
+    ...PAID_ROW, kind: 'replay', amount: 1110, subtotal: 1000, ppn_amount: 110,
+    payment_channel: 'QRIS_DOKU', paid_at: '2026-11-21T03:00:00Z',
+  };
+  const replayOrder = { ...ORDER, kind: 'replay' };
+
+  it('webhook: pembeli video menerima "Rekamanmu siap" + kwitansi (bukan e-tiket), lalu sent_at dicatat', async () => {
+    const net = network({ row: REPLAY_ROW });
+    await call();
+    const mails = net.of('api.resend.com').map((c) => c.body);
+    expect(mails.map((m) => m.subject)).toEqual(['Rekamanmu siap: Riset Cepat']);
+    expect(mails[0].attachments[0].filename).toBe('Kwitansi-ABCDEF12.pdf');
+    expect(net.orders.rows[0].ticket_email_sent_at).toBeTruthy();
+  });
+
+  it('isi: link tonton per order dan akun pemilik; tanpa link gabung, kalender, URL rekaman, atau kata refund', () => {
+    const { subject, html } = buildReplayEmail({
+      order: replayOrder, event: { ...EVENT, recording_minutes: 88 }, accountEmail: 'akun@login.test',
+    });
+    expect(subject).toBe('Rekamanmu siap: Riset Cepat');
+    expect(html).toContain('https://submit.jakpatforuniv.com/dashboard/webinar/tonton/order-1');
+    expect(html).toContain('88 menit');
+    expect(html).toContain('Masuk dengan akun <strong>akun@login.test</strong>');
+    expect(html).toContain('penggunaan pribadi');
+    expect(html).toContain('product@jakpat.net');
+    expect(html).not.toContain('/webinar/gabung/');
+    expect(html).not.toContain('calendar.google.com');
+    expect(html).not.toContain('r2.cloudflarestorage.com');
+    expect(html.toLowerCase()).not.toMatch(/refund|pengembalian dana|uang kembali/);
+  });
+
+  it('isi dari database di-escape', () => {
+    const { html } = buildReplayEmail({ order: replayOrder, event: { ...EVENT, title: '<script>x</script>' } });
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('Budi &lt;b&gt;');
+    expect(html).toContain('Masuk dengan akun yang kamu pakai saat membeli');
+  });
+
+  it('kwitansi: "Video kelas: …" dengan tanggal beli; tanpa tanggal acara tidak tercetak 1970', () => {
+    const receipt = buildTicketReceipt({ order: { ...ORDER, ...REPLAY_ROW }, event: { ...EVENT, starts_at: null } });
+    const text = atob(receipt.content);
+    expect(text).toContain('Video kelas: Riset Cepat');
+    expect(text).toContain('Tanggal Beli');
+    expect(text).not.toContain('Jadwal Acara');
+    expect(text).toContain('21 Nov 2026');
+    expect(text).not.toContain('1970');
+  });
+
+  it('kwitansi tiket live tanpa tanggal acara juga tidak tercetak 1970', () => {
+    const receipt = buildTicketReceipt({
+      order: { ...ORDER, amount: 1110, subtotal: 1000, ppn_amount: 110, paid_at: '2026-11-03T02:00:00Z' },
+      event: { ...EVENT, starts_at: null },
+    });
+    expect(atob(receipt.content)).not.toContain('1970');
   });
 });

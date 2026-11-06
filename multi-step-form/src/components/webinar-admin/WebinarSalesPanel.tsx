@@ -3,6 +3,10 @@ import {
     formatRupiah, parseWholeNumber, priceBreakdown, seatsSummary,
     type AdminWebinarEvent, type SalesChoice, type WebinarForm,
 } from '@/utils/webinarAdmin';
+
+const recordedDate = (iso: string) => new Date(iso).toLocaleDateString('id-ID', {
+    timeZone: 'Asia/Jakarta', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+});
 import type { FieldErrors } from './useWebinarEditor';
 import { Field, PanelHeading, WibDateTime, inputClass } from './WebinarFormParts';
 
@@ -35,15 +39,15 @@ export function WebinarSalesPanel({
     const price = parseWholeNumber(form.price);
     const breakdown = priceBreakdown(typeof price === 'number' && !Number.isNaN(price) ? price : null);
     const seats = seatsSummary(row?.webinar_offer_state);
+    // Video kelas (Fase 5B): tanpa jadwal live, kuota, dan Zoom. Acara terbit yang diubah
+    // jenisnya menyimpan jadwalnya sebagai tanggal rekam.
+    const replay = form.offer_kind === 'replay';
+    const recordedAt = replay && row && row.status !== 'draft' ? row.starts_at : null;
 
     return (
         <div className="space-y-6">
             <section className="space-y-3">
                 <PanelHeading>Penjualan</PanelHeading>
-                <div>
-                    <p className="mb-1 text-[13px] font-semibold text-slate-800">Halaman ini menjual</p>
-                    <Radio checked onSelect={() => {}} disabled={disabled}>Tiket webinar</Radio>
-                </div>
 
                 <Field field="sales_open_at" label="Penjualan dibuka" error={errors.sales_open_at}>
                     <div className="space-y-0.5">
@@ -81,7 +85,7 @@ export function WebinarSalesPanel({
                             disabled={disabled}
                             className="h-4 w-4 accent-blue-600"
                         />
-                        Saat acara mulai
+                        {replay ? 'Tidak ditutup' : 'Saat acara mulai'}
                     </label>
                     {!form.closeAtStart && (
                         <div className="pl-8 pt-1">
@@ -98,37 +102,45 @@ export function WebinarSalesPanel({
                 </Field>
             </section>
 
+            {recordedAt && (
+                <p className="text-[13px] text-slate-600">
+                    <span className="font-semibold text-slate-800">Direkam</span> {recordedDate(recordedAt)}
+                </p>
+            )}
+
             <hr className="border-slate-200" />
 
-            <section className="space-y-4">
-                <PanelHeading>Jadwal</PanelHeading>
-                <Field field="starts_at" label="Mulai" error={errors.starts_at}>
-                    <WibDateTime
-                        label="Mulai"
-                        date={form.startDate}
-                        time={form.startTime}
-                        onChange={({ date, time }) => update({ startDate: date, startTime: time })}
-                        disabled={disabled}
-                        error={errors.starts_at}
-                    />
-                </Field>
-                <Field field="duration_minutes" label="Durasi" error={errors.duration_minutes}>
-                    <div className="flex items-center gap-2">
-                        <input
-                            inputMode="numeric"
-                            value={form.duration}
-                            onChange={(e) => update({ duration: e.target.value })}
+            {!replay && (
+                <section className="space-y-4">
+                    <PanelHeading>Jadwal</PanelHeading>
+                    <Field field="starts_at" label="Mulai" error={errors.starts_at}>
+                        <WibDateTime
+                            label="Mulai"
+                            date={form.startDate}
+                            time={form.startTime}
+                            onChange={({ date, time }) => update({ startDate: date, startTime: time })}
                             disabled={disabled}
-                            placeholder="90"
-                            className={cn(inputClass(errors.duration_minutes), '!w-24')}
+                            error={errors.starts_at}
                         />
-                        <span className="text-sm text-slate-500">menit</span>
-                    </div>
-                </Field>
-            </section>
+                    </Field>
+                    <Field field="duration_minutes" label="Durasi" error={errors.duration_minutes}>
+                        <div className="flex items-center gap-2">
+                            <input
+                                inputMode="numeric"
+                                value={form.duration}
+                                onChange={(e) => update({ duration: e.target.value })}
+                                disabled={disabled}
+                                placeholder="90"
+                                className={cn(inputClass(errors.duration_minutes), '!w-24')}
+                            />
+                            <span className="text-sm text-slate-500">menit</span>
+                        </div>
+                    </Field>
+                </section>
+            )}
 
             <section className="space-y-4">
-                <PanelHeading>Harga & kuota</PanelHeading>
+                <PanelHeading>{replay ? 'Harga' : 'Harga & kuota'}</PanelHeading>
                 <Field
                     field="price"
                     label="Harga"
@@ -149,44 +161,48 @@ export function WebinarSalesPanel({
                         />
                     </div>
                 </Field>
-                <Field
-                    field="quota"
-                    label="Kuota"
-                    error={errors.quota}
-                    hint={row && row.status !== 'draft' ? `Terjual ${seats.sold} · ditahan ${seats.held}` : undefined}
-                >
-                    <div className="flex items-center gap-2">
-                        <input
-                            inputMode="numeric"
-                            value={form.quota}
-                            onChange={(e) => update({ quota: e.target.value })}
-                            disabled={disabled}
-                            placeholder="100"
-                            className={cn(inputClass(errors.quota), '!w-28')}
-                        />
-                        <span className="text-sm text-slate-500">kursi</span>
-                    </div>
-                </Field>
+                {!replay && (
+                    <Field
+                        field="quota"
+                        label="Kuota"
+                        error={errors.quota}
+                        hint={row && row.status !== 'draft' ? `Terjual ${seats.sold} · ditahan ${seats.held}` : undefined}
+                    >
+                        <div className="flex items-center gap-2">
+                            <input
+                                inputMode="numeric"
+                                value={form.quota}
+                                onChange={(e) => update({ quota: e.target.value })}
+                                disabled={disabled}
+                                placeholder="100"
+                                className={cn(inputClass(errors.quota), '!w-28')}
+                            />
+                            <span className="text-sm text-slate-500">kursi</span>
+                        </div>
+                    </Field>
+                )}
             </section>
 
-            <section className="space-y-4">
-                <PanelHeading>Link Zoom/Meet</PanelHeading>
-                <Field
-                    field="meeting_url"
-                    label="Link rapat"
-                    error={errors.meeting_url}
-                    hint="Hanya terlihat oleh pemegang tiket lewat link gabung. Boleh menyusul."
-                >
-                    <input
-                        type="url"
-                        value={form.meeting_url}
-                        onChange={(e) => update({ meeting_url: e.target.value })}
-                        disabled={disabled}
-                        placeholder="https://zoom.us/j/..."
-                        className={inputClass(errors.meeting_url)}
-                    />
-                </Field>
-            </section>
+            {!replay && (
+                <section className="space-y-4">
+                    <PanelHeading>Link Zoom/Meet</PanelHeading>
+                    <Field
+                        field="meeting_url"
+                        label="Link rapat"
+                        error={errors.meeting_url}
+                        hint="Hanya terlihat oleh pemegang tiket lewat link gabung. Boleh menyusul."
+                    >
+                        <input
+                            type="url"
+                            value={form.meeting_url}
+                            onChange={(e) => update({ meeting_url: e.target.value })}
+                            disabled={disabled}
+                            placeholder="https://zoom.us/j/..."
+                            className={inputClass(errors.meeting_url)}
+                        />
+                    </Field>
+                </section>
+            )}
 
             <label className={cn('flex items-start gap-2.5 text-sm text-slate-700', !disabled && 'cursor-pointer')}>
                 <input

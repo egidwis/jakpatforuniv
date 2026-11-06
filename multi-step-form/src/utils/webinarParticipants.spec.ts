@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     alarmLabel, filterParticipants, groupCounts, participantCsv, participantGroup, failedEmails, noticeStatus,
-    participantStats, reminderStatus, ticketEmailState, unpaidLabel, emailHistoryFor,
+    participantStats, purchaseEmailLabel, purchaseEmailSummary, reminderStatus, ticketEmailState, unpaidLabel, emailHistoryFor,
     type AdminWebinarOrder,
 } from './webinarParticipants';
 
@@ -40,7 +40,8 @@ describe('kelompok & statistik', () => {
     });
 
     it('statistik: lunas, ditahan dari keadaan penjualan, izin kontak & pendapatan hanya tiket lunas', () => {
-        expect(participantStats(ALL, { state: 'on_sale', sold: 2, held: 1 })).toEqual({ paid: 2, held: 1, consent: 1, revenue: 88200 });
+        expect(participantStats(ALL, { state: 'on_sale', sold: 2, held: 1 }))
+            .toEqual({ paid: 2, live: 2, replay: 0, held: 1, consent: 1, revenue: 88200 });
     });
 
     it('cari nama, email, kode tiket, invoice, atau WhatsApp, tanpa peduli huruf besar', () => {
@@ -176,14 +177,59 @@ describe('CSV', () => {
         expect(headers).toEqual([
             'Nama', 'Email e-tiket', 'WhatsApp', 'Kampus', 'Jurusan', 'Status', 'Referral', 'Izin kontak', 'Waktu izin (WIB)',
             'Kode tiket', 'Invoice', 'Status order', 'Harga', 'Diskon', 'Voucher', 'Dibayar (WIB)', 'Kanal', 'E-tiket terkirim (WIB)', 'Catatan refund',
+            'Jenis',
         ]);
         expect(rows[0]).toEqual([
             'Putra Kurniawan', 'tegar@jakpat.net', '0812', 'UIU', 'Teknik', 'Mahasiswa', '', 'Ya', '2026-11-05 12:40',
             '7F3A91B2C4', 'WBN-E1642A9A-1793856539227', 'Lunas', 49000, 0, '', '2026-11-05 12:47', 'QRIS', '2026-11-05 12:48', '',
+            'Tiket live',
         ]);
         expect(rows[1][7]).toBe('Tidak');
         expect(rows[1].slice(12, 15)).toEqual([39200, 9800, 'JFU20']);
         expect(rows[2][11]).toBe('Refund');
         expect(rows[2][18]).toBe('Bentrok "jadwal"');
+    });
+});
+
+describe('Video kelas di halaman Peserta (Fase 5B: satu daftar + label)', () => {
+    const VIDEO = order({ id: 'v-1', kind: 'replay', buyer_name: 'Rina Putri', join_url: null, amount: 49000, marketing_consent: false });
+    const VIDEO_FAILED = order({
+        id: 'v-2', kind: 'replay', buyer_name: 'Dimas', join_url: null, amount: 49000, marketing_consent: true,
+        ticket_email_sent_at: null, ticket_email_error: 'resend HTTP 422',
+    });
+    const MIXED = [PAID, PAID_NO_CONSENT, VIDEO, VIDEO_FAILED, PENDING, REFUNDED];
+
+    it('statistik memisahkan tiket live dan Video kelas; pendapatan & izin kontak dari semua yang lunas', () => {
+        expect(participantStats(MIXED, { state: 'sales_ended', sold: 2, held: 0 }))
+            .toEqual({ paid: 4, live: 2, replay: 2, held: 0, consent: 2, revenue: 186200 });
+        // Satu daftar: chip tetap per status pembayaran.
+        expect(groupCounts(MIXED)).toEqual({ paid: 4, unpaid: 1, refunded: 1 });
+    });
+
+    it('email pembelian per jenis: E-tiket untuk tiket live, "Bukti beli video" hanya bila ada pembeli video', () => {
+        expect(purchaseEmailSummary(MIXED, 'live', NOW)).toEqual({ text: '2/2 terkirim', tone: 'ok' });
+        expect(purchaseEmailSummary(MIXED, 'replay', NOW)).toEqual({ text: '1/2 terkirim · 1 gagal (lihat peserta)', tone: 'warn' });
+        expect(purchaseEmailSummary([PAID], 'replay', NOW)).toBeNull();
+        expect(purchaseEmailSummary([VIDEO], 'live', NOW)).toBeNull();
+        expect(purchaseEmailLabel(PAID)).toBe('E-tiket');
+        expect(purchaseEmailLabel(VIDEO)).toBe('Bukti beli');
+    });
+
+    it('email otomatis (pengingat, jadwal, rekaman) mengabaikan pembeli video', () => {
+        const event = {
+            status: 'published' as const, offer_kind: 'live' as const, starts_at: new Date(NOW + 20 * HOUR).toISOString(), duration_minutes: 90,
+        };
+        expect(reminderStatus(event, [PAID, VIDEO], NOW)).toEqual(reminderStatus(event, [PAID], NOW));
+        expect(failedEmails([VIDEO_FAILED])).toEqual([]);
+    });
+
+    it('riwayat email pembeli video diawali "Bukti beli"', () => {
+        expect(emailHistoryFor(VIDEO)[0]).toMatchObject({ label: 'Bukti beli', status: 'sent' });
+        expect(emailHistoryFor(VIDEO_FAILED)[0]).toMatchObject({ label: 'Bukti beli', status: 'failed', error: 'resend HTTP 422' });
+    });
+
+    it('CSV: kolom Jenis', () => {
+        const { rows } = participantCsv([PAID, VIDEO]);
+        expect(rows.map((r) => r[19])).toEqual(['Tiket live', 'Video kelas']);
     });
 });

@@ -3,7 +3,8 @@ import { CheckCircle2, FileText, Loader2, Play, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/utils/supabase';
 import { ConfirmDialog, type ConfirmRequest } from '@/components/ui/confirm-dialog';
-import { seatsSummary, type AdminWebinarEvent } from '@/utils/webinarAdmin';
+import { cn } from '@/lib/utils';
+import { fieldDomId, seatsSummary, type AdminWebinarEvent } from '@/utils/webinarAdmin';
 import {
     abortRecordingUpload, completeRecordingUpload, publishRecording, recordingPartUrls, recordingPreview,
     saveWebinarMaterials, startRecordingUpload,
@@ -28,8 +29,22 @@ interface Progress {
  * C12 "Rekaman & materi" di form acara (Fase 5A). Video diunggah dari browser
  * langsung ke R2 per bagian; materi ke bucket Supabase `webinar-materials`.
  * Terbit = dua centang wajib, lalu email "Rekaman tersedia" sekali per tiket (cron, sql/136b).
+ * Video kelas (Fase 5B): rekaman terbit + materi wajib sebelum dijual; kelas tanpa sesi
+ * live menerbitkan rekamannya saat masih draft (belum ada pembeli, jadi tanpa email).
  */
-export function WebinarRecordingPanel({ row, onRow }: { row: AdminWebinarEvent; onRow: (row: AdminWebinarEvent) => void }) {
+export function WebinarRecordingPanel({
+    row,
+    onRow,
+    errors = {},
+    offerKind = row.offer_kind,
+}: {
+    row: AdminWebinarEvent;
+    onRow: (row: AdminWebinarEvent) => void;
+    /** Tanda merah dari "isian kurang" saat terbit (missing_fields). */
+    errors?: { recording?: string; materials_path?: string };
+    /** Jenis halaman yang sedang dipilih di form (bisa belum tersimpan). */
+    offerKind?: AdminWebinarEvent['offer_kind'];
+}) {
     const [progress, setProgress] = useState<Progress | null>(null);
     const [phase, setPhase] = useState<'idle' | 'reading' | 'uploading' | 'saving'>('idle');
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -46,6 +61,14 @@ export function WebinarRecordingPanel({ row, onRow }: { row: AdminWebinarEvent; 
     const hasVideo = Boolean(row.recording_object_key);
     const published = Boolean(row.recording_published_at);
     const sold = seatsSummary(row.webinar_offer_state).sold;
+    const classMode = offerKind === 'replay';
+    // Video kelas hasil ubah jenis menyimpan jadwal acaranya; pemegang tiketnya tetap dapat email.
+    const converted = classMode && Boolean(row.starts_at);
+    const emailNote = classMode
+        ? (converted
+            ? 'Pemegang tiket live acara ini menerima email "Rekaman tersedia".'
+            : 'Belum ada pembeli, jadi tanpa email.')
+        : `→ ${sold} pemegang tiket dapat email`;
     const eventEnded = row.starts_at
         ? Date.parse(row.starts_at) + (row.duration_minutes || 0) * 60_000 < Date.now()
         : true;
@@ -156,10 +179,16 @@ export function WebinarRecordingPanel({ row, onRow }: { row: AdminWebinarEvent; 
         setConfirm({
             title: 'Terbitkan rekaman?',
             lines: [
-                sold > 0
-                    ? `${sold} pemegang tiket otomatis menerima email "Rekaman tersedia" dan bisa langsung menonton.`
-                    : 'Belum ada tiket lunas, jadi belum ada email yang dikirim.',
-                !row.materials_path && 'Materi belum diunggah. Bisa menyusul; pemegang tiket melihatnya begitu tersimpan.',
+                classMode
+                    ? (converted
+                        ? 'Pemegang tiket live acara ini otomatis menerima email "Rekaman tersedia" dan bisa langsung menonton.'
+                        : 'Belum ada pembeli, jadi belum ada email yang dikirim. Sesudah terbit, Video kelas bisa dijual.')
+                    : sold > 0
+                        ? `${sold} pemegang tiket otomatis menerima email "Rekaman tersedia" dan bisa langsung menonton.`
+                        : 'Belum ada tiket lunas, jadi belum ada email yang dikirim.',
+                !row.materials_path && (classMode
+                    ? 'Materi belum diunggah. Video kelas baru bisa dijual sesudah materinya ada.'
+                    : 'Materi belum diunggah. Bisa menyusul; pemegang tiket melihatnya begitu tersimpan.'),
                 !eventEnded && 'Acara ini belum selesai menurut jadwal.',
                 'Email hanya dikirim sekali. Mengganti video sesudah terbit tidak mengirim email lagi.',
             ],
@@ -191,10 +220,13 @@ export function WebinarRecordingPanel({ row, onRow }: { row: AdminWebinarEvent; 
 
     return (
         <section className="space-y-4">
-            <PanelHeading>Rekaman & materi</PanelHeading>
+            <PanelHeading>Rekaman & materi{classMode && ' · wajib untuk Video kelas'}</PanelHeading>
 
             {/* Video */}
-            <div className="rounded-xl border border-slate-200 p-3">
+            <div
+                id={fieldDomId('recording')}
+                className={cn('scroll-mt-24 rounded-xl border border-slate-200 p-3', errors.recording && 'ring-2 ring-red-200 ring-offset-2')}
+            >
                 <p className="mb-2 text-[13px] font-semibold text-slate-800">Video rekaman</p>
                 <input
                     ref={videoInput}
@@ -273,7 +305,10 @@ export function WebinarRecordingPanel({ row, onRow }: { row: AdminWebinarEvent; 
             </div>
 
             {/* Materi */}
-            <div className="rounded-xl border border-slate-200 p-3">
+            <div
+                id={fieldDomId('materials_path')}
+                className={cn('scroll-mt-24 rounded-xl border border-slate-200 p-3', errors.materials_path && 'ring-2 ring-red-200 ring-offset-2')}
+            >
                 <p className="mb-2 text-[13px] font-semibold text-slate-800">Materi (PPT/PDF)</p>
                 <input
                     ref={materialInput}
@@ -305,14 +340,17 @@ export function WebinarRecordingPanel({ row, onRow }: { row: AdminWebinarEvent; 
                             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
                             {materialBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />} Unggah materi
                         </button>
-                        <p className="text-[12px] text-slate-500">PDF, PPT/PPTX, DOC/DOCX, atau ZIP · maks. 50 MB. Boleh menyusul.</p>
+                        <p className="text-[12px] text-slate-500">
+                            PDF, PPT/PPTX, DOC/DOCX, atau ZIP · maks. 50 MB. {classMode ? 'Wajib sebelum Video kelas dijual.' : 'Boleh menyusul.'}
+                        </p>
                     </div>
                 )}
+                {errors.materials_path && <p className="mt-2 text-xs font-medium text-red-600" role="alert">{errors.materials_path}</p>}
             </div>
 
             {/* Terbit */}
-            <div className="rounded-xl border border-slate-200 p-3">
-                <p className="mb-2 text-[13px] font-semibold text-slate-800">Terbitkan ke pemegang tiket</p>
+            <div className={cn('rounded-xl border border-slate-200 p-3', errors.recording && 'ring-2 ring-red-200 ring-offset-2')}>
+                <p className="mb-2 text-[13px] font-semibold text-slate-800">{classMode ? 'Terbitkan rekaman' : 'Terbitkan ke pemegang tiket'}</p>
                 {published ? (
                     <p className="flex items-start gap-1.5 text-[13px] text-emerald-700">
                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
@@ -339,8 +377,9 @@ export function WebinarRecordingPanel({ row, onRow }: { row: AdminWebinarEvent; 
                             {publishing && <Loader2 className="h-4 w-4 animate-spin" />} Terbitkan rekaman
                         </button>
                         <p className="text-[12px] text-slate-500">
-                            {hasVideo ? `→ ${sold} pemegang tiket dapat email` : 'Unggah video dulu.'}
+                            {hasVideo ? emailNote : 'Unggah video dulu.'}
                         </p>
+                        {errors.recording && <p className="text-xs font-medium text-red-600" role="alert">{errors.recording}</p>}
                     </div>
                 )}
             </div>

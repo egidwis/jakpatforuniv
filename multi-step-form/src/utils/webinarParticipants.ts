@@ -123,6 +123,9 @@ export function participantStats(orders: AdminWebinarOrder[], offer: WebinarOffe
     const paid = orders.filter((o) => o.status === 'paid');
     return {
         paid: paid.length,
+        // Fase 5B: tiket live (dibandingkan kuota) dan Video kelas dihitung terpisah.
+        live: paid.filter((o) => o.kind !== 'replay').length,
+        replay: paid.filter((o) => o.kind === 'replay').length,
         held: Number(offer?.held) || 0,
         consent: paid.filter((o) => o.marketing_consent).length,
         revenue: paid.reduce((sum, o) => sum + (Number(o.amount) || 0), 0),
@@ -138,6 +141,22 @@ export function ticketEmailState(order: AdminWebinarOrder, now = Date.now()): 's
     if (order.ticket_email_claimed_at && now - Date.parse(order.ticket_email_claimed_at) < CLAIM_TTL_MS) return 'sending';
     if (order.ticket_email_error) return 'failed';
     return 'pending';
+}
+
+/** Email pembelian: e-tiket untuk tiket live, bukti pembelian untuk Video kelas (Fase 5B). */
+export const purchaseEmailLabel = (order: Pick<AdminWebinarOrder, 'kind'>): string =>
+    (order.kind === 'replay' ? 'Bukti beli' : 'E-tiket');
+
+/** Ringkasan email pembelian per jenis untuk "Email otomatis"; null bila tidak ada order lunas jenis itu. */
+export function purchaseEmailSummary(orders: AdminWebinarOrder[], kind: 'live' | 'replay', now = Date.now()): EmailLine | null {
+    const paid = orders.filter((o) => o.status === 'paid' && (o.kind === 'replay') === (kind === 'replay'));
+    if (paid.length === 0) return null;
+    const sent = paid.filter((o) => ticketEmailState(o, now) === 'sent').length;
+    const failed = paid.filter((o) => ticketEmailState(o, now) === 'failed').length;
+    return {
+        text: `${sent}/${paid.length} terkirim${failed ? ` · ${failed} gagal (lihat peserta)` : ''}`,
+        tone: failed ? 'warn' : 'ok',
+    };
 }
 
 const ALARMS: Record<string, string> = {
@@ -264,7 +283,7 @@ export function emailHistoryFor(order: AdminWebinarOrder): EmailHistoryItem[] {
         ({ label, status: (order.email_error || '').startsWith(`${label} ·`) ? 'failed' : 'sent', at, note, error: null });
     if (order.status === 'paid' || order.status === 'refunded') {
         items.push({
-            label: 'E-tiket',
+            label: purchaseEmailLabel(order),
             status: order.ticket_email_sent_at ? 'sent' : order.ticket_email_error ? 'failed' : 'pending',
             at: order.ticket_email_sent_at,
             note: null,
@@ -286,6 +305,8 @@ export function emailHistoryFor(order: AdminWebinarOrder): EmailHistoryItem[] {
 const CSV_HEADERS = [
     'Nama', 'Email e-tiket', 'WhatsApp', 'Kampus', 'Jurusan', 'Status', 'Referral', 'Izin kontak', 'Waktu izin (WIB)',
     'Kode tiket', 'Invoice', 'Status order', 'Harga', 'Diskon', 'Voucher', 'Dibayar (WIB)', 'Kanal', 'E-tiket terkirim (WIB)', 'Catatan refund',
+    // Fase 5B, di ujung supaya kolom spreadsheet lama tidak bergeser.
+    'Jenis',
 ];
 
 export function participantCsv(orders: AdminWebinarOrder[], now = Date.now()): { headers: string[]; rows: (string | number)[][] } {
@@ -296,6 +317,7 @@ export function participantCsv(orders: AdminWebinarOrder[], now = Date.now()): {
             o.buyer_status || '', o.buyer_referral || '', o.marketing_consent ? 'Ya' : 'Tidak', csvTime(o.consent_at),
             o.ticket_code || '', o.invoice_number, statusLabel(o, now), Number(o.amount) || 0, Number(o.discount_amount) || 0,
             o.voucher_code || '', csvTime(o.paid_at), o.payment_channel || '', csvTime(o.ticket_email_sent_at), o.refund_note || '',
+            o.kind === 'replay' ? 'Video kelas' : 'Tiket live',
         ]),
     };
 }

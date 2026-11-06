@@ -21,9 +21,12 @@ export const WEBINAR_ALERT_OUTCOMES = new Set([
 // Sesudah ini klaim dianggap mati: pengirimnya berhenti sebelum sempat mencatat.
 const EMAIL_CLAIM_TTL_MS = 10 * 60_000;
 
-/** Kolom order yang dipakai e-tiket dan kwitansinya. meeting_url tidak ada di tabel ini. */
+/**
+ * Kolom order yang dipakai email pembelian (e-tiket / "Rekamanmu siap") dan
+ * kwitansinya. meeting_url tidak ada di tabel ini. `id` untuk link tonton Video kelas.
+ */
 export const TICKET_ORDER_COLUMNS = [
-  'event_id', 'auth_user_id', 'invoice_number', 'amount', 'subtotal', 'ppn_amount', 'paid_at',
+  'id', 'kind', 'event_id', 'auth_user_id', 'invoice_number', 'amount', 'subtotal', 'ppn_amount', 'paid_at',
   'payment_channel', 'buyer_name', 'buyer_email', 'buyer_university', 'ticket_code', 'join_token',
 ].join(',');
 
@@ -134,8 +137,9 @@ export async function accountEmailOf({ sb, userId }) {
 }
 
 /**
- * Mengirim e-tiket tepat satu kali walau webhook, Check Status, dan halaman pembeli
- * berjalan bersamaan. Tidak pernah melempar: tiketnya sudah terbit, dan DOKU tidak
+ * Mengirim email pembelian tepat satu kali walau webhook, Check Status, dan halaman
+ * pembeli berjalan bersamaan: e-tiket untuk tiket live, "Rekamanmu siap" untuk Video
+ * kelas (Fase 5B; kolom ticket_email_* dipakai kedua jenis). Tidak pernah melempar: tiketnya sudah terbit, dan DOKU tidak
  * akan mengulang sesudah menerima 200.
  *
  * `resend: true` = "Kirim ulang e-tiket" dari admin: tidak mensyaratkan e-tiket
@@ -154,7 +158,8 @@ export async function deliverWebinarTicket({ env, sb, sbFetch, invoiceNumber, no
       sbFetch,
       table: 'webinar_orders',
       match: `invoice_number=eq.${encodedInvoice}`,
-      where: resend ? 'status=eq.paid&kind=eq.live' : 'status=eq.paid&kind=eq.live&ticket_email_sent_at=is.null',
+      // Kedua jenis order (Fase 5B): templat dipilih dari order.kind.
+      where: resend ? 'status=eq.paid' : 'status=eq.paid&ticket_email_sent_at=is.null',
       column: 'ticket_email_claimed_at',
       staleBefore: new Date(startedAt.getTime() - EMAIL_CLAIM_TTL_MS).toISOString(),
       select: TICKET_ORDER_COLUMNS,
@@ -168,7 +173,7 @@ export async function deliverWebinarTicket({ env, sb, sbFetch, invoiceNumber, no
     // meeting_url sengaja tidak diambil, jadi tidak mungkin masuk email.
     const eventRes = await sbFetch(
       `${sb.url}/rest/v1/webinar_events?id=eq.${encodeURIComponent(order.event_id)}` +
-        `&select=title,starts_at,duration_minutes,speakers`,
+        `&select=title,starts_at,duration_minutes,speakers,recording_minutes`,
       { headers: sb.headers },
       'SELECT webinar_events (e-tiket)'
     );

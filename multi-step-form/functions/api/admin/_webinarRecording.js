@@ -9,7 +9,8 @@
 //   recording-upload-abort    → batalkan multipart (tombol Batal)
 // Lalu recording-preview (URL baca 1 jam), materials-save, dan recording-publish
 // (dua centang wajib; email "Rekaman tersedia" dikirim cron per peserta, sql/136b,
-// sekali per tiket lewat penanda recording_email_sent_at).
+// sekali per tiket lewat penanda recording_email_sent_at). Draft Video kelas boleh
+// menerbitkan rekaman (Fase 5B).
 //
 // Aturan tulis sama dengan webinar.js: PATCH acara memfilter id saja dan meminta
 // barisnya kembali. Kunci R2 hanya dikirim ke admin, tidak pernah ke pembeli.
@@ -133,7 +134,11 @@ export async function saveMaterials(sb, body) {
 
 export async function publishRecording(sb, body, ctx) {
   const current = await loadEditable(sb, body.id);
-  if (current.status !== 'published') throw refuse(409, 'Terbitkan acaranya dulu', { code: 'not_published' });
+  // Video kelas tanpa sesi live (Fase 5B): rekaman terbit di draft lebih dulu, karena
+  // halaman Video kelas baru bisa dijual sesudah rekamannya terbit. Draft belum
+  // punya pembeli, jadi tidak ada email.
+  const draftClass = current.status === 'draft' && current.offer_kind === 'replay';
+  if (current.status !== 'published' && !draftClass) throw refuse(409, 'Terbitkan acaranya dulu', { code: 'not_published' });
   if (!current.recording_object_key) throw refuse(409, 'Unggah video rekaman dulu', { code: 'no_recording' });
   // Sekali terbit: menekan lagi tidak mengubah apa pun (penanda per tiket juga menjaga).
   if (current.recording_published_at) return { event: decorate(current), already: true };

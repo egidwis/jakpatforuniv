@@ -22,7 +22,10 @@ export const recordingReady = (event) => Boolean(event?.recording_published_at &
 export function recordingAccess(order) {
   if (!order) return { ok: false, status: 404, code: 'not_owner', error: 'Rekaman ini untuk pemilik tiket' };
   if (order.status === 'refunded') {
-    return { ok: false, status: 403, code: 'inactive', error: 'Tiket tidak aktif. Hubungi admin bila ada pertanyaan.' };
+    const error = order.kind === 'replay'
+      ? 'Akses video ini tidak aktif. Hubungi admin bila ada pertanyaan.'
+      : 'Tiket tidak aktif. Hubungi admin bila ada pertanyaan.';
+    return { ok: false, status: 403, code: 'inactive', error };
   }
   if (order.status !== 'paid') return { ok: false, status: 404, code: 'not_owner', error: 'Rekaman ini untuk pemilik tiket' };
   const event = order.webinar_events || {};
@@ -59,6 +62,9 @@ export async function ownedOrderRequest(env, request, label) {
   );
   const order = rows?.[0] ?? null;
   const access = recordingAccess(order);
-  if (!access.ok) return { response: json(access.status, { error: access.error, code: access.code, slug: order?.webinar_events?.slug ?? null }) };
+  if (!access.ok) {
+    // `kind` supaya halaman tonton memilih kalimat tiket atau Video kelas (Fase 5B).
+    return { response: json(access.status, { error: access.error, code: access.code, slug: order?.webinar_events?.slug ?? null, kind: order?.kind ?? null }) };
+  }
   return { user, sb, order };
 }

@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
-    EMPTY_FORM, FIELD_ORDER, adminDateLabel, columnsFromForm, diffColumns, formFromEvent, isEmptyDoc,
-    isoToWibParts, normalizeDoc, normalizeSpeakers, parseWholeNumber, priceBreakdown, publishConsequence,
-    salesChoiceOf, slugifyTitle, sortAdminEvents, stableStringify, wibPartsToIso, zoomWarning,
+    EMPTY_FORM, FIELD_ORDER, PUBLISH_FIELD_ORDER, adminDateLabel, columnsFromForm, diffColumns, formFromEvent, isEmptyDoc,
+    isoToWibParts, normalizeDoc, normalizeSpeakers, offerLock, parseWholeNumber, priceBreakdown, publishConsequence,
+    salesChoiceOf, slugifyTitle, soldLabel, sortAdminEvents, stableStringify, switchOffer, wibPartsToIso, zoomWarning,
+    clearsLiveFields,
     type AdminWebinarEvent, type WebinarForm,
 } from './webinarAdmin';
 // @ts-expect-error — gerbang server ditulis JS polos (Pages Functions), sengaja tanpa tipe.
@@ -215,5 +216,84 @@ describe('daftar admin', () => {
 
     it('label tanggal memakai WIB', () => {
         expect(adminDateLabel('2026-11-21T12:00:00Z')).toBe('21 Nov 2026 · 19.00 WIB');
+    });
+});
+
+describe('Video kelas (Fase 5B)', () => {
+    const published = (over: Partial<AdminWebinarEvent> = {}) => row({
+        status: 'published', published_at: '2026-11-01T00:00:00Z', starts_at: '2026-11-17T01:36:50+00:00', duration_minutes: 90,
+        sales_open_at: null, webinar_offer_state: { state: 'sales_ended', sold: 12, held: 0 }, ...over,
+    });
+
+    it('jenis halaman ikut form ↔ kolom; muat lalu diff kosong', () => {
+        const r = row({ offer_kind: 'replay', starts_at: null, duration_minutes: null, quota: null, meeting_url: null, sales_open_at: null });
+        const form = formFromEvent(r);
+        expect(form.offer_kind).toBe('replay');
+        expect(columnsOf(form).offer_kind).toBe('replay');
+        expect(diffColumns(r, columnsOf(form))).toEqual({});
+        expect(EMPTY_FORM.offer_kind).toBe('live');
+    });
+
+    it('draft → Video kelas: pilihan penjualan diulang, isian sesi live dikosongkan, harga terbawa', () => {
+        const form = switchOffer(formFromEvent(row()), 'replay', { clearLive: true });
+        expect(form).toMatchObject({
+            offer_kind: 'replay', salesChoice: 'undecided', openDate: '', openTime: '', closeAtStart: true, closeDate: '', closeTime: '',
+            startDate: '', startTime: '', duration: '', quota: '', meeting_url: '', price: '50000',
+        });
+    });
+
+    it('acara terbit → Video kelas: jadwal & kuota tetap (tampil "Direkam …")', () => {
+        const before = formFromEvent(published());
+        const form = switchOffer(before, 'replay', { clearLive: false });
+        expect(form).toMatchObject({ offer_kind: 'replay', salesChoice: 'undecided', startDate: before.startDate, duration: '90', quota: '100' });
+    });
+
+    it('isian sesi live dikosongkan untuk draft dan acara yang belum berlangsung (cermin server)', () => {
+        const NOW = Date.parse('2026-11-17T02:00:00Z');
+        expect(clearsLiveFields(row(), NOW)).toBe(true);
+        const empty = published({ webinar_offer_state: { state: 'on_sale', sold: 0, held: 0 } });
+        expect(clearsLiveFields(empty, NOW)).toBe(true);
+        expect(clearsLiveFields(published(), Date.parse('2026-11-17T03:07:00Z'))).toBe(false);
+        expect(clearsLiveFields(null, NOW)).toBe(true);
+    });
+
+    it('ubah jenis selalu mengirim pilihan penjualan lengkap (server menolak tanpa itu)', () => {
+        const r = published({ sales_mode: 'open' });
+        const form: WebinarForm = { ...switchOffer(formFromEvent(r), 'replay', { clearLive: false }), salesChoice: 'now' };
+        expect(diffColumns(r, columnsOf(form))).toEqual({ offer_kind: 'replay', sales_mode: 'open', sales_open_at: null, sales_close_at: null });
+    });
+
+    it('kunci pilihan jenis, sama dengan aturan server', () => {
+        const NOW = Date.parse('2026-11-17T02:00:00Z');
+        const AFTER = Date.parse('2026-11-17T03:07:00Z');
+        expect(offerLock(null, NOW)).toBeNull();
+        expect(offerLock(row(), NOW)).toBeNull();
+        expect(offerLock(published(), NOW)).toEqual({
+            locked: 'replay', reason: 'Video kelas bisa dipilih sesudah acara selesai: Sel, 17 Nov · 10.06 WIB (12 tiket terjual).',
+        });
+        expect(offerLock(published({ webinar_offer_state: { state: 'on_sale', sold: 0, held: 2 } }), NOW)?.reason)
+            .toBe('Video kelas bisa dipilih sesudah acara selesai: Sel, 17 Nov · 10.06 WIB (2 kursi sedang ditahan).');
+        expect(offerLock(published(), AFTER)).toBeNull();
+        expect(offerLock(published({ offer_kind: 'replay' }), NOW)).toEqual({
+            locked: 'live', reason: 'Video kelas yang sudah terbit tidak bisa kembali menjadi tiket.',
+        });
+        const cases: [AdminWebinarEvent, number][] = [
+            [published(), NOW], [published(), AFTER], [row(), NOW],
+            [published({ webinar_offer_state: { state: 'on_sale', sold: 0, held: 2 } }), NOW],
+            [published({ webinar_offer_state: { state: 'on_sale', sold: 0, held: 0 } }), NOW],
+        ];
+        for (const [r, now] of cases) {
+            expect(offerLock(r, now)?.locked === 'replay').toBe(Boolean(gate.offerSwitchError(r, { ...r, offer_kind: 'replay' }, now)));
+        }
+    });
+
+    it('label terjual di daftar admin per jenis', () => {
+        expect(soldLabel(published({ quota: 25, webinar_offer_state: { state: 'on_sale', sold: 12, held: 2 } }))).toBe('Terjual 12 / 25 · ditahan 2');
+        expect(soldLabel(published({ offer_kind: 'replay', sold_live: 12, sold_replay: 5 }))).toBe('Terjual 5 video · 12 tiket live');
+        expect(soldLabel(published({ offer_kind: 'replay', sold_live: 0, sold_replay: 0 }))).toBe('Terjual 0 video');
+    });
+
+    it('urutan isian kurang sama dengan server (panel Rekaman di ujung)', () => {
+        expect(PUBLISH_FIELD_ORDER).toEqual(gate.PUBLISH_FIELD_ORDER);
     });
 });

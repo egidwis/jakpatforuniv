@@ -109,13 +109,23 @@ const TAKES_PATCH = new Set(['create', 'save', 'publish']);
 export const EDITABLE_COLUMNS = [
   'title', 'summary', 'poster_url', 'description_blocks', 'speakers', 'starts_at', 'duration_minutes',
   'sales_mode', 'sales_open_at', 'sales_close_at', 'price', 'quota', 'meeting_url', 'is_listed',
+  // Fase 5B: "Halaman ini menjual". Aturan ubah jenis di offerSwitchError.
+  'offer_kind',
 ];
 
 /** Urutan isian di form; juga urutan lompatan ke isian pertama yang kurang. */
 export const FIELD_ORDER = [
-  'title', 'summary', 'poster_url', 'description_blocks', 'speakers',
+  'offer_kind', 'title', 'summary', 'poster_url', 'description_blocks', 'speakers',
   'sales_open_at', 'sales_close_at', 'starts_at', 'duration_minutes', 'price', 'quota', 'meeting_url',
 ];
+
+/**
+ * Urutan isian kurang saat terbit: isian form, lalu panel Rekaman & materi.
+ * `recording` dan `materials_path` bukan kolom patch; keduanya diisi lewat aksi rekaman.
+ */
+export const PUBLISH_FIELD_ORDER = [...FIELD_ORDER, 'recording', 'materials_path'];
+
+const OFFER_KINDS = ['live', 'replay'];
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SALES_MODES = ['open', 'coming_soon', 'closed'];
@@ -283,6 +293,10 @@ export function normalizePatch(patch = {}) {
         if (typeof raw !== 'boolean') return { error: 'Tampil di daftar harus ya/tidak', field: key };
         r = { value: raw };
         break;
+      case 'offer_kind':
+        if (!OFFER_KINDS.includes(raw)) return { error: 'Jenis halaman tidak dikenali', field: key };
+        r = { value: raw };
+        break;
       default:
         return { error: `Kolom tidak diizinkan: ${key}`, field: key };
     }
@@ -348,9 +362,14 @@ export function missingForPublish(row) {
       if (!row.starts_at) missing.add('starts_at');
       if (!row.duration_minutes) missing.add('duration_minutes');
       if (!row.quota) missing.add('quota');
+    } else {
+      // Video kelas menjanjikan rekaman + materi ("Yang kamu dapat"), jadi keduanya
+      // wajib sebelum dijual. CHECK ready_to_sell (sql/136) hanya menjaga rekaman.
+      if (!row.recording_object_key || !row.recording_published_at) missing.add('recording');
+      if (!row.materials_path) missing.add('materials_path');
     }
   }
-  return FIELD_ORDER.filter((key) => missing.has(key));
+  return PUBLISH_FIELD_ORDER.filter((key) => missing.has(key));
 }
 
 const ms = (iso) => (iso ? Date.parse(iso) : null);
@@ -392,6 +411,36 @@ export function clearedScheduleError(current, next, offer) {
   if (current.starts_at && !next.starts_at) return { field: 'starts_at', error: 'Jadwal tidak bisa dikosongkan karena sudah ada tiket' };
   if (current.duration_minutes && !next.duration_minutes) {
     return { field: 'duration_minutes', error: 'Durasi tidak bisa dikosongkan karena sudah ada tiket' };
+  }
+  return null;
+}
+
+/** Saat acara selesai menurut jadwal (mulai + durasi), dalam milidetik; null bila belum berjadwal. */
+export function eventEndsAt(row) {
+  const start = ms(row?.starts_at);
+  return start === null ? null : start + (Number(row?.duration_minutes) || 0) * 60_000;
+}
+
+/**
+ * Aturan "Halaman ini menjual" (Fase 5B). Draft bebas dua arah. Halaman terbit hanya
+ * Tiket → Video kelas, dan bila sudah ada tiket terjual/ditahan baru sesudah acara
+ * selesai: halaman Video kelas menghentikan pengingat H-1 & email jadwal (sql/136b
+ * hanya untuk offer_kind='live'), jadi pemegang tiket tidak boleh kehilangannya.
+ *
+ * @returns {{ code: string, error: string, ends_at?: string|null } | null}
+ */
+export function offerSwitchError(current, next, now = Date.now()) {
+  const from = current.offer_kind ?? 'live';
+  const to = next.offer_kind ?? 'live';
+  if (from === to || current.status === 'draft') return null;
+  if (from === 'replay') return { code: 'offer_locked', error: 'Video kelas yang sudah terbit tidak bisa kembali menjadi tiket' };
+  const ends = eventEndsAt(current);
+  if (seatsTaken(current.webinar_offer_state) > 0 && (ends === null || now < ends)) {
+    return {
+      code: 'event_not_over',
+      error: 'Video kelas bisa dipilih sesudah acara selesai',
+      ends_at: ends === null ? null : new Date(ends).toISOString(),
+    };
   }
   return null;
 }

@@ -151,12 +151,21 @@ ${/^https:\/\//i.test(s?.photo_url || '') ? `<img src="${e(s.photo_url)}" alt=""
   // Rancangan A2 (3 Nov): di HP info acara ada di bawah judul dan tombol di bar bawah;
   // di desktop info acara + tombol pindah ke kartu kanan yang ikut di-scroll.
   const [dateLine, timeLine] = (view.schedule_label || '').split(' · ');
+  // C19 (Fase 5B): Video kelas menyebut durasi rekaman dan tanggal rekamnya, bukan jam live.
+  const replayFacts = view.kind === 'replay'
+    ? `<li>🎬 Video kelas${view.recording_minutes ? ` · ▶ ${Number(view.recording_minutes)} menit` : ''}</li>
+${view.recorded_label ? `<li>📅 ${e(view.recorded_label)}</li>` : ''}<li>💻 Tonton kapan saja di menu Webinar</li>`
+    : '';
   const facts = `<ul class="meta">
 ${dateLine ? `<li>📅 ${e(dateLine)}</li>` : ''}${timeLine ? `<li>🕖 ${e(timeLine)}</li>` : ''}
-${view.kind === 'live' ? '<li>💻 Online via Zoom</li>' : ''}
-${view.kind === 'replay' && view.recording_minutes ? `<li>▶ ${Number(view.recording_minutes)} menit</li>` : ''}
+${view.kind === 'live' ? '<li>💻 Online via Zoom</li>' : ''}${replayFacts}
 ${view.seats_label ? `<li>🎟 ${e(view.seats_label)}</li>` : ''}</ul>`;
-  const replayNote = view.kind === 'live' ? '<p class="note">Tidak bisa hadir? Tiket sudah termasuk rekaman.</p>' : '';
+  // Tiket: rekaman sudah termasuk. Video kelas hasil ubah jenis: pemegang tiket tidak perlu membeli lagi.
+  const replayNote = view.kind === 'live'
+    ? '<p class="note">Tidak bisa hadir? Tiket sudah termasuk rekaman.</p>'
+    : (view.recorded_label
+      ? '<p class="note">Sudah punya tiket acara ini? Rekamannya sudah ada di menu Webinar, tidak perlu membeli lagi.</p>'
+      : '');
   const prose = renderBlocks(event.description_blocks);
 
   const body = `${preview ? '<div class="preview">Pratinjau — belum tentu terlihat publik</div>' : ''}${navbar()}<main><div class="layout"><div class="stack" style="gap:16px">

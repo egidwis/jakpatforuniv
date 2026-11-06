@@ -54,7 +54,12 @@ export const WebinarTicketCard = forwardRef<HTMLDivElement, Props>(function Webi
 
     let hint: { text: string; tone: string } | null = null;
     if (order.event_cancelled) hint = { text: 'Acara dibatalkan. Tim JFU akan menghubungimu.', tone: 'text-slate-500' };
-    else if (order.status === 'refunded') hint = { text: 'Tiket tidak aktif. Hubungi admin bila ada pertanyaan.', tone: 'text-slate-500' };
+    else if (order.status === 'refunded') {
+        hint = {
+            text: order.kind === 'replay' ? 'Akses tidak aktif. Hubungi admin bila ada pertanyaan.' : 'Tiket tidak aktif. Hubungi admin bila ada pertanyaan.',
+            tone: 'text-slate-500',
+        };
+    }
     else if (order.status === 'expired' || (isPending && payLeft <= 0)) hint = { text: 'Waktu bayar habis', tone: 'text-slate-500' };
     else if (order.status === 'paid' && isPast && !order.recording?.available) hint = { text: 'Rekaman segera tersedia', tone: 'text-slate-500' };
     const recording = order.status === 'paid' && !order.event_cancelled && order.recording?.available && order.watch_path
@@ -73,14 +78,18 @@ export const WebinarTicketCard = forwardRef<HTMLDivElement, Props>(function Webi
     };
 
     const ringClass = highlighted ? 'ring-2 ring-jfu-primary/60 ring-offset-2' : '';
+    // C21 (Fase 5B): Video kelas tanpa jadwal live. Tiket live di halaman yang sudah
+    // menjadi Video kelas menampilkan tanggal rekamnya.
+    const subline = event.schedule_label ?? (order.kind === 'replay' ? event.kind_label : event.recorded_label) ?? null;
+    const KindIcon = order.kind === 'replay' ? Play : Ticket;
 
     return (
         <div ref={ref} className={`${CARD_CLASS} ${ringClass} scroll-mt-24 transition-shadow`}>
             <div className="flex items-start gap-3 px-4 py-3">
-                <Ticket className="w-4 h-4 mt-0.5 shrink-0 text-jfu-primary" />
+                <KindIcon className="w-4 h-4 mt-0.5 shrink-0 text-jfu-primary" />
                 <div className="flex-1 min-w-0 text-sm">
                     <p className="font-semibold text-slate-900">{event.title}</p>
-                    {event.schedule_label && <p className="text-xs text-slate-500">{event.schedule_label}</p>}
+                    {subline && <p className="text-xs text-slate-500">{subline}</p>}
                     {hint && <p className={`text-xs ${hint.tone}`}>{hint.text}</p>}
                 </div>
                 {order.status === 'paid' && order.ticket_code && !hint && !recording && (
@@ -141,7 +150,11 @@ export const WebinarTicketCard = forwardRef<HTMLDivElement, Props>(function Webi
                     <p className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
                         <span className="font-semibold text-slate-700">Bayar di HP ini?</span> Screenshot kode QR → buka e-wallet atau m-banking → scan dari galeri.
                     </p>
-                    <p className="text-sm text-slate-600">{order.amount_label} · Setelah bayar, tiket otomatis masuk email. Kamu boleh menutup halaman ini.</p>
+                    <p className="text-sm text-slate-600">
+                        {order.amount_label} · {order.kind === 'replay'
+                            ? 'Setelah bayar, rekaman langsung bisa ditonton di menu Webinar.'
+                            : 'Setelah bayar, tiket otomatis masuk email.'} Kamu boleh menutup halaman ini.
+                    </p>
                 </div>
             )}
 

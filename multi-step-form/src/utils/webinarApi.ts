@@ -18,12 +18,18 @@ export interface WebinarEventView {
     buy_url: string;
     detail_url: string;
     price_label: string | null;
+    /** Null untuk Video kelas: tidak ada jadwal live (Fase 5B). */
     schedule_label: string | null;
     short_date: string | null;
     starts_at: string | null;
     duration_minutes: number | null;
     seats_label: string | null;
     benefits: string[];
+    recording_minutes?: number | null;
+    /** Video kelas hasil ubah jenis: "Direkam Sel, 17 Nov 2026". */
+    recorded_label?: string | null;
+    /** Video kelas: "Video kelas · 88 menit". */
+    kind_label?: string | null;
 }
 
 export interface WebinarListing {
@@ -84,13 +90,16 @@ export class WebinarApiError extends Error {
     code?: string;
     state?: string;
     orderId?: string;
+    /** Jenis order pada penolakan halaman tonton (Fase 5B). */
+    kind?: 'live' | 'replay' | null;
     status: number;
-    constructor(message: string, status: number, data?: { code?: string; state?: string; orderId?: string }) {
+    constructor(message: string, status: number, data?: { code?: string; state?: string; orderId?: string; kind?: 'live' | 'replay' | null }) {
         super(message);
         this.status = status;
         this.code = data?.code;
         this.state = data?.state;
         this.orderId = data?.orderId;
+        this.kind = data?.kind;
     }
 }
 

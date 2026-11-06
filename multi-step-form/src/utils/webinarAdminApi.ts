@@ -1,15 +1,15 @@
 import { supabase } from './supabase';
-import type { AdminWebinarEvent, ColumnKey, WebinarColumns } from './webinarAdmin';
+import type { AdminWebinarEvent, FieldKey, WebinarColumns } from './webinarAdmin';
 import type { AdminWebinarOrder } from './webinarParticipants';
 
 /** Galat bertipe dari /api/admin/webinar; `field`/`fields` menunjuk isian form. */
 export class WebinarAdminError extends Error {
     status: number;
     code?: string;
-    field?: ColumnKey;
-    fields?: ColumnKey[];
+    field?: FieldKey;
+    fields?: FieldKey[];
     sold?: number;
-    constructor(message: string, status: number, data?: { code?: string; field?: ColumnKey; fields?: ColumnKey[]; sold?: number }) {
+    constructor(message: string, status: number, data?: { code?: string; field?: FieldKey; fields?: FieldKey[]; sold?: number }) {
         super(message);
         this.status = status;
         this.code = data?.code;

@@ -70,6 +70,19 @@ describe('_view', () => {
     expect(buildEventView(event({ offer_kind: 'replay' })).benefits).toEqual(['Rekaman video webinar', 'Materi PPT']);
   });
 
+  it('Video kelas (Fase 5B): tanpa jadwal live; label rekaman dan jenis', () => {
+    const converted = buildEventView(event({ offer_kind: 'replay', starts_at: '2026-11-17T01:30:00Z', recording_minutes: 88 }));
+    expect(converted.schedule_label).toBeNull();
+    expect(converted.recorded_label).toBe('Direkam Sel, 17 Nov 2026');
+    expect(converted.kind_label).toBe('Video kelas · 88 menit');
+    const standalone = buildEventView(event({ offer_kind: 'replay', starts_at: null, duration_minutes: null, recording_minutes: null }));
+    expect(standalone.recorded_label).toBeNull();
+    expect(standalone.kind_label).toBe('Video kelas');
+    // Tiket live tidak berubah.
+    expect(buildEventView(event())).toMatchObject({ recorded_label: null, kind_label: null });
+    expect(buildEventView(event()).schedule_label).toMatch(/WIB$/);
+  });
+
   it('tidak ada kalimat yang menyebut pengembalian dana', () => {
     for (const state of ['on_sale', 'coming_soon', 'seats_held', 'sold_out', 'closed', 'sales_ended', 'cancelled']) {
       const text = JSON.stringify(buildEventView(event({}, state)));
@@ -193,6 +206,26 @@ describe('halaman publik', () => {
     expect(html).not.toContain('tok-rahasia');
     expect(html.toLowerCase()).not.toMatch(/refund|pengembalian dana/);
     expect(calls[0]).not.toContain('meeting_url');
+  });
+
+  it('Video kelas (Fase 5B): fakta rekaman tanpa jam live; catatan pemegang tiket hanya untuk hasil ubah jenis', async () => {
+    net([event({ offer_kind: 'replay', starts_at: '2026-11-17T01:30:00Z', recording_minutes: 88, recording_published_at: future(-DAY) })]);
+    let html = await (await open('olah-data')).text();
+    expect(html).toContain('Video kelas · ▶ 88 menit');
+    expect(html).toContain('Direkam Sel, 17 Nov 2026');
+    expect(html).toContain('Tonton kapan saja di menu Webinar');
+    expect(html).toContain('Beli rekaman');
+    expect(html).toContain('Sudah punya tiket acara ini?');
+    expect(html).not.toContain('08.30');
+    expect(html).not.toContain('Online via Zoom');
+    expect(html).not.toContain('Tidak bisa hadir?');
+    expect(html).not.toContain('r2.cloudflarestorage.com');
+
+    net([event({ offer_kind: 'replay', starts_at: null, duration_minutes: null, recording_minutes: 45 })]);
+    html = await (await open('olah-data')).text();
+    expect(html).toContain('Video kelas · ▶ 45 menit');
+    expect(html).not.toContain('Direkam');
+    expect(html).not.toContain('Sudah punya tiket acara ini?');
   });
 
   it('segera hadir: tanpa tombol beli, ada hitung mundur dari sisa detik server', async () => {
@@ -592,6 +625,24 @@ describe('my', () => {
     calls = authedNet(unsent({ webinar_events: { ...event(), status: 'cancelled' } }));
     await call();
     expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+  });
+
+  it('Video kelas (Fase 5B): tanpa link gabung; email pembelian yang tertunda dicoba lagi', async () => {
+    const replay = (over = {}) => order({ kind: 'replay', webinar_events: event({ offer_kind: 'replay' }), ...over });
+    authedNet({ '/webinar_orders': () => json([replay()]) });
+    const [view] = (await (await call()).json()).orders;
+    expect(view.join_url).toBeNull();
+    expect(view.join).toBeNull();
+
+    const calls = authedNet({
+      '/webinar_orders': ({ url, method }) => {
+        if (method === 'PATCH') return new Response(null, { status: 204 });
+        if (url.includes('webinar_events(')) return json([replay({ ticket_email_sent_at: null })]);
+        return json([]);
+      },
+    });
+    await call();
+    expect(calls.some((c) => c.method === 'PATCH' && c.url.includes('ticket_email_sent_at=is.null'))).toBe(true);
   });
 
   it('jendela gabung dari jam server, tanpa link Zoom di respons', async () => {

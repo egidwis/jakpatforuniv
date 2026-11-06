@@ -5,12 +5,14 @@ import { BannerPicker } from '@/components/PageBuilder/BannerPicker';
 import { ConfirmDialog, type ConfirmRequest } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import {
-    WEBINAR_PUBLIC_BUCKET, publishConsequence, slugifyTitle, webinarImageUrl,
+    WEBINAR_PUBLIC_BUCKET, clearsLiveFields, formFromEvent, offerLock, publishConsequence, seatsSummary, slugifyTitle,
+    switchOffer, webinarImageUrl, type OfferKind,
 } from '@/utils/webinarAdmin';
 import { useWebinarEditor, type SaveStatus } from './useWebinarEditor';
 import { WebinarSalesPanel } from './WebinarSalesPanel';
 import { WebinarSpeakersField } from './WebinarSpeakersField';
 import { WebinarRecordingPanel } from './WebinarRecordingPanel';
+import { WebinarOfferKindField } from './WebinarOfferKindField';
 import { Field, inputClass } from './WebinarFormParts';
 
 const timeLabel = (d: Date) => d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -47,6 +49,8 @@ export function WebinarEventForm({
     const isDraft = !row || row.status === 'draft';
     const isPublished = row?.status === 'published';
     const disabled = !isEditable;
+    // Draft Video kelas memakai panel Rekaman setelah jenisnya tersimpan (server menolak terbit rekaman draft tiket).
+    const showRecording = Boolean(row) && (isPublished || (isDraft && row?.offer_kind === 'replay'));
 
     useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
     useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
@@ -77,6 +81,42 @@ export function WebinarEventForm({
 
     const slug = row && row.status !== 'draft' ? row.slug : (row?.slug ?? slugifyTitle(form.title));
     const summaryLength = [...form.summary].length;
+
+    /**
+     * C17 (Fase 5B). Draft: pindah jenis langsung (simpan otomatis). Acara terbit:
+     * dialog dulu; tersimpan lewat Simpan perubahan. Kembali ke jenis yang tersimpan
+     * memulihkan pilihan penjualannya, jadi tidak ada perubahan yang tertinggal.
+     */
+    const chooseOffer = (kind: OfferKind) => {
+        if (row && !isDraft && kind === row.offer_kind) {
+            const saved = formFromEvent(row);
+            updateForm({
+                offer_kind: kind, salesChoice: saved.salesChoice, openDate: saved.openDate, openTime: saved.openTime,
+                closeAtStart: saved.closeAtStart, closeDate: saved.closeDate, closeTime: saved.closeTime,
+            });
+            return;
+        }
+        const clearLive = clearsLiveFields(row);
+        if (isDraft) {
+            updateForm(switchOffer(form, kind, { clearLive }));
+            return;
+        }
+        const sold = seatsSummary(row?.webinar_offer_state).sold;
+        setConfirm({
+            title: 'Ubah jadi Video kelas?',
+            lines: [
+                `Tombol halaman menjadi "Beli rekaman". URL tetap: /webinar/${slug}`,
+                sold > 0 && `${sold} pemegang tiket tetap bisa menonton dan tidak perlu membeli lagi.`,
+                clearLive && 'Acaranya belum berlangsung, jadi jadwal, kuota, dan link Zoom dikosongkan.',
+                'Pilih lagi kapan penjualan dibuka; tanggal buka/tutup lama dikosongkan.',
+                'Tersimpan setelah Simpan perubahan.',
+            ],
+            confirmLabel: 'Ubah jadi Video kelas',
+            cancelLabel: 'Kembali',
+            tone: 'neutral',
+            onConfirm: () => { updateForm(switchOffer(form, kind, { clearLive })); },
+        });
+    };
 
     if (editor.loading) {
         return <div className="flex flex-1 items-center justify-center p-10"><Loader2 className="h-6 w-6 animate-spin text-blue-600" /></div>;
@@ -114,6 +154,16 @@ export function WebinarEventForm({
 
             {/* Isi: satu kolom di HP, dua kolom di desktop */}
             <div className="flex-1 px-5 pb-8 pt-5">
+                {/* C17: jenis halaman di atas segalanya, karena menentukan isian lainnya. */}
+                <div className="mx-auto mb-6 max-w-6xl rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <WebinarOfferKindField
+                        value={form.offer_kind}
+                        lock={offerLock(row)}
+                        disabled={disabled}
+                        error={errors.offer_kind}
+                        onChoose={chooseOffer}
+                    />
+                </div>
                 <div className="mx-auto [display:grid] max-w-6xl gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
                     <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                         <Field
@@ -178,14 +228,20 @@ export function WebinarEventForm({
                         </Field>
                     </div>
 
-                    {/* Rekaman (Fase 5A) di bawah panel penjualan; tanpa sticky supaya kolom kanan bisa digulir. */}
+                    {/* Rekaman (Fase 5A) di bawah panel penjualan; tanpa sticky supaya kolom kanan bisa digulir.
+                        Draft Video kelas juga memakainya: rekaman wajib terbit sebelum dijual (Fase 5B). */}
                     <div className="space-y-6">
-                        <aside className={cn('h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm', !isPublished && 'lg:sticky lg:top-20')}>
+                        <aside className={cn('h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm', !showRecording && 'lg:sticky lg:top-20')}>
                             <WebinarSalesPanel form={form} update={updateForm} errors={errors} row={row} disabled={disabled} />
                         </aside>
-                        {isPublished && row && (
+                        {showRecording && row && (
                             <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <WebinarRecordingPanel row={row} onRow={editor.adoptRow} />
+                                <WebinarRecordingPanel
+                                    row={row}
+                                    onRow={editor.adoptRow}
+                                    errors={{ recording: errors.recording, materials_path: errors.materials_path }}
+                                    offerKind={form.offer_kind}
+                                />
                             </aside>
                         )}
                     </div>
@@ -233,7 +289,9 @@ export function WebinarEventForm({
                                         onClick={() => setConfirm({
                                             title: 'Tutup penjualan?',
                                             lines: [
-                                                'Tombol beli hilang dari halaman acara. Tiket yang sudah terjual tetap berlaku.',
+                                                row?.offer_kind === 'replay'
+                                                    ? 'Tombol beli hilang dari halaman. Video yang sudah dibeli tetap bisa ditonton.'
+                                                    : 'Tombol beli hilang dari halaman acara. Tiket yang sudah terjual tetap berlaku.',
                                                 'Buka lagi kapan saja dengan memilih Sekarang atau Pada tanggal, lalu Simpan perubahan.',
                                             ],
                                             confirmLabel: 'Tutup penjualan',
