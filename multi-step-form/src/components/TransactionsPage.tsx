@@ -12,17 +12,30 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Search, RefreshCw, Download, Filter, ChevronDown, ReceiptText, Wallet, ListFilter, X } from 'lucide-react';
-import { formatPaymentChannel } from '../utils/paymentChannel';
-import { isPaidTx } from '../utils/analytics/revenue';
 import { cn, useMediaQuery } from '@/lib/utils';
+import { downloadCsv } from '@/utils/csv';
+import { toWibYmd } from '@/utils/airing-window';
 import {
   type Transaction,
-  parseTransactionNote,
   formatIDR,
   matchesStatusFilter,
   statusFilterLabel,
   STATUS_FILTER_IDS,
 } from './transactions/types';
+import {
+  type Product,
+  PRODUCT_IDS,
+  PRODUCT_LABELS,
+  productOfTransaction,
+  isRevenueTx,
+  txMonthWib,
+  productCounts,
+  revenueByProduct,
+  categoryRevenue as categoryRevenueOf,
+  matchesTransactionSearch,
+  isCancellableInvoice,
+  transactionCsv,
+} from './transactions/product';
 import { ConfirmDialog, type ConfirmRequest } from '@/components/ui/confirm-dialog';
 import { TransactionListRow } from './transactions/TransactionListRow';
 import { buildTxGroupIndex } from './transactions/types';
@@ -50,6 +63,8 @@ export function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  /** Fase 4: Semua / Iklan / Kilat / Webinar — aturannya di `productOfTransaction`. */
+  const [productFilter, setProductFilter] = useState<'all' | Product>('all');
   const [selectedMonth, setSelectedMonth] = useState<number>(-1);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [openTransactionId, setOpenTransactionId] = useState<string | null>(null);
@@ -84,21 +99,35 @@ export function TransactionsPage() {
         sama sekali (papan Schedule gagal memuat sejak hari pertama karenanya).
         Menyaring di sisi `invoices` menghindarinya sepenuhnya.
       */
+      /*
+        Fase 4 webinar: embed BIASA (bukan `!inner`) supaya baris tiket — yang
+        memang tanpa order iklan (CHECK `transactions_webinar_has_no_ad_order`)
+        — ikut termuat. Saringan `.or()` menjaga perilaku lama untuk baris iklan:
+        3 baris yatim tanpa order (uji lama Rp 1.110) tetap tersembunyi seperti
+        di bawah `!inner`. Ini BACAAN, jadi jebakan `or=` + PATCH representasi
+        (insiden e-tiket 5 Nov) tidak berlaku.
+
+        `ad_schedules(distribution_type)` lewat FK tunggal `schedule_id` — sumber
+        utama aturan Kilat; `form_submissions.distribution_type` cadangannya.
+      */
       const [txRows, invRes] = await Promise.all([
         fetchAllRows<Transaction>(() =>
           supabase
             .from('transactions')
             .select(`
             *,
-            form_submissions!inner(
+            form_submissions(
               id,
               title,
               full_name,
               email,
               start_date,
-              end_date
-            )
+              end_date,
+              distribution_type
+            ),
+            ad_schedules(distribution_type)
           `)
+            .or('form_submission_id.not.is.null,entity_type.eq.webinar')
             .order('created_at', { ascending: false })
             .order('id', { ascending: true }),
         ),
@@ -140,24 +169,40 @@ export function TransactionsPage() {
     fetchTransactions();
   }, []);
 
-  const filteredTransactions = useMemo(() => {
-    const searchLower = searchTerm.toLowerCase().trim();
-    const cleanSearch = searchLower.replace(/^#/, '');
-    return transactions.filter((t) => {
-      const date = new Date(t.created_at || '');
-      const isSameMonth = selectedMonth === -1 || date.getMonth() === selectedMonth;
-      const isSameYear = date.getFullYear() === selectedYear;
+  /**
+   * Cakupan CHIP produk: periode + status + cari, TANPA produk. Angka di chip =
+   * jumlah baris yang tampil saat chip itu diklik; rincian per produk di
+   * dropdown Pendapatan memakai cakupan yang sama.
+   *
+   * Periode menurut kalender WIB (`txMonthWib`), bukan jam perangkat — sama
+   * dengan kueri SQL gerbang Fase 4. Sebelumnya `getMonth()` lokal: admin di
+   * luar WIB melihat transaksi tengah malam di bulan yang salah.
+   */
+  const scopeTransactions = useMemo(
+    () =>
+      transactions.filter((t) => {
+        const { year, month } = txMonthWib(t);
+        return (
+          year === selectedYear &&
+          (selectedMonth === -1 || month === selectedMonth) &&
+          matchesStatusFilter(t, statusFilter) &&
+          matchesTransactionSearch(t, searchTerm)
+        );
+      }),
+    [transactions, searchTerm, selectedMonth, selectedYear, statusFilter]
+  );
 
-      const matchesSearch =
-        !searchLower ||
-        t.form_submissions?.title.toLowerCase().includes(searchLower) ||
-        t.form_submissions?.full_name.toLowerCase().includes(searchLower) ||
-        t.payment_id?.toLowerCase().includes(cleanSearch) ||
-        (t.form_submission_id && t.form_submission_id.toLowerCase().includes(cleanSearch));
+  /** Daftar = cakupan chip + produk. Footer, Pendapatan, dan rincian kategori mengikuti ini. */
+  const filteredTransactions = useMemo(
+    () =>
+      productFilter === 'all'
+        ? scopeTransactions
+        : scopeTransactions.filter((t) => productOfTransaction(t) === productFilter),
+    [scopeTransactions, productFilter]
+  );
 
-      return matchesSearch && isSameMonth && isSameYear && matchesStatusFilter(t, statusFilter);
-    });
-  }, [transactions, searchTerm, selectedMonth, selectedYear, statusFilter]);
+  const productChipCounts = useMemo(() => productCounts(scopeTransactions), [scopeTransactions]);
+  const productRevenue = useMemo(() => revenueByProduct(scopeTransactions), [scopeTransactions]);
 
   /**
    * Tagihan gabungan di dalam daftar ini, dikunci `payment_id`.
@@ -172,35 +217,16 @@ export function TransactionsPage() {
   const totalRevenue = useMemo(
     () =>
       filteredTransactions
-        // DOKU menulis lunas dengan dua kata: 'completed' dan 'paid'. Menyaring
-        // 'completed' saja membuang 8 pembayaran nyata senilai Rp 4.469.810 dan
-        // membuat halaman ini melaporkan uang yang berbeda dari Analytics &
-        // Customers untuk order yang sama. `isPaidTx` adalah definisi bersamanya.
-        .filter(isPaidTx)
+        // `isRevenueTx` = `isPaidTx` (DOKU menulis lunas sebagai 'completed' DAN
+        // 'paid' — menyaring 'completed' saja pernah membuang 8 pembayaran nyata)
+        // dan BUKAN transaksi uji (`note.is_test`). Refund tidak lunas.
+        .filter(isRevenueTx)
         .reduce((sum, t) => sum + t.amount, 0),
     [filteredTransactions]
   );
 
-  // Revenue per category from transaction notes
-  const categoryRevenue = useMemo(
-    () =>
-      filteredTransactions
-        .filter(isPaidTx)
-        .reduce((acc, t) => {
-          const { items } = parseTransactionNote(t.note);
-          if (items.length > 0) {
-            items.forEach((item) => {
-              const cat = item.category || 'Lainnya';
-              const total = (item.price || 0) * (item.qty || 1);
-              acc[cat] = (acc[cat] || 0) + total;
-            });
-          } else {
-            acc['Lainnya'] = (acc['Lainnya'] || 0) + t.amount;
-          }
-          return acc;
-        }, {} as Record<string, number>),
-    [filteredTransactions]
-  );
+  // Revenue per category from transaction notes — aturan pendapatan yang sama.
+  const categoryRevenue = useMemo(() => categoryRevenueOf(filteredTransactions), [filteredTransactions]);
 
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = { all: transactions.length };
@@ -216,19 +242,8 @@ export function TransactionsPage() {
       null
     : null;
 
-  /**
-   * Tagihan sungguhan yang masih hidup — satu-satunya yang boleh dibatalkan.
-   *
-   * Cerminan `canCancel` di `ScheduleCardList` (`!isPaid && !isDead &&
-   * source === 'invoice' && !!paymentId`). Seperti di sana, tagihan yang
-   * TERLEWAT batas bayar, tersusul, atau basi TETAP boleh dibatalkan — justru
-   * itu yang paling ingin dibersihkan admin. Menggerbangnya dengan "sudah
-   * lewat/dicoret" adalah bug yang sudah ditemukan sekali di kartu jadwal.
-   */
-  const canCancelInvoice = (t: Transaction): boolean =>
-    (t.status ?? '').trim().toLowerCase() === 'pending' &&
-    !!t.payment_id &&
-    liveInvoiceIds.has(t.payment_id);
+  /** Aturannya (dan alasannya) di `isCancellableInvoice` — baris webinar tidak pernah. */
+  const canCancelInvoice = (t: Transaction): boolean => isCancellableInvoice(t, liveInvoiceIds);
 
   /**
    * ⚠️ KATA-KATANYA SENGAJA IDENTIK dengan tab Reservasi Jadwal
@@ -322,36 +337,10 @@ export function TransactionsPage() {
     });
   };
 
+  /** Header lama utuh + Produk/Uji di ujung; lewat `downloadCsv` (BOM + kutip ganda). */
   const handleExportCsv = () => {
-    const headers = ['Transaction ID', 'Survey Title', 'Researcher', 'Payment Method', 'Payment Channel', 'Amount', 'Status', 'Created At', 'Invoice Number'];
-    const csvContent = [
-      headers.join(','),
-      ...filteredTransactions.map((t) =>
-        [
-          `"${t.id}"`,
-          `"${(t.form_submissions?.title || '').replace(/"/g, '""')}"`,
-          `"${(t.form_submissions?.full_name || '').replace(/"/g, '""')}"`,
-          `"${t.payment_method}"`,
-          `"${t.payment_channel ? formatPaymentChannel(t.payment_channel) : ''}"`,
-          `"${t.amount}"`,
-          `"${t.status}"`,
-          `"${new Date(t.created_at).toLocaleString()}"`,
-          `"${t.payment_id || ''}"`,
-        ].join(',')
-      ),
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    if (link.download !== undefined) {
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `transactions_export_${new Date().toISOString().split('T')[0]}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
+    const { headers, rows } = transactionCsv(filteredTransactions);
+    downloadCsv(`transactions_export_${toWibYmd(new Date())}.csv`, headers, rows);
   };
 
   return (
@@ -429,7 +418,7 @@ export function TransactionsPage() {
               <div className="flex-1 min-w-[200px] max-w-md relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
-                  placeholder="Cari ID transaksi, nama, atau email..."
+                  placeholder="Cari invoice, judul, nama, email..."
                   className="w-full pl-9 bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 transition-all h-9 text-sm"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -467,9 +456,31 @@ export function TransactionsPage() {
                         <span className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Breakdown Pendapatan</span>
                         <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">Lunas</Badge>
                       </div>
-                      <div className="text-3xl font-extrabold text-gray-900 mb-6 tracking-tight">{formatIDR(totalRevenue)}</div>
-                      <div className="h-px bg-gray-100 w-full mb-5" />
-                      <div className="space-y-4">
+                      <div className="text-3xl font-extrabold text-gray-900 mb-5 tracking-tight">{formatIDR(totalRevenue)}</div>
+
+                      {/* Per produk — cakupan chip (tanpa filter produk), jadi saat
+                          "Semua" aktif ketiganya berjumlah sama dengan total di atas.
+                          Produk yang sedang dipilih ditebalkan. */}
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Per produk</p>
+                      <div className="space-y-2 mb-5">
+                        {PRODUCT_IDS.map((id) => {
+                          const r = productRevenue[id];
+                          const active = productFilter === id;
+                          return (
+                            <div key={id} className="flex justify-between items-center gap-3 text-sm">
+                              <span className={cn(active ? 'font-bold text-gray-900' : 'text-gray-600')}>{PRODUCT_LABELS[id]}</span>
+                              <span className={cn('mono text-right', active ? 'font-bold text-gray-900' : 'font-semibold text-gray-800')}>
+                                {formatIDR(r.amount)}
+                                {r.tests > 0 && <span className="ml-1 text-xs font-normal text-gray-500">· {r.tests} uji</span>}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="h-px bg-gray-100 w-full mb-4" />
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Per kategori item</p>
+                      <div className="space-y-3">
                         {Object.entries(categoryRevenue).map(([cat, amount]) => (
                           <div key={cat} className="flex justify-between items-center text-sm group">
                             <span className="text-gray-600 group-hover:text-gray-900 transition-colors">{cat}</span>
@@ -482,8 +493,8 @@ export function TransactionsPage() {
                           </div>
                         )}
                       </div>
-                      <div className="mt-6 pt-4 border-t border-gray-50">
-                        <p className="text-[10px] text-gray-400 text-center">Data diperbarui secara real-time</p>
+                      <div className="mt-5 pt-3 border-t border-gray-100">
+                        <p className="text-[11px] text-gray-500 text-center">Transaksi uji dan refund tidak dihitung.</p>
                       </div>
                     </div>
                   </DropdownMenuContent>
@@ -544,13 +555,43 @@ export function TransactionsPage() {
               </div>
             </div>
 
+            {/* Toolbar row 2: chip produk (Fase 4). Angka = baris yang tampil bila
+                chip diklik. Di HP digeser ke samping, tidak membungkus. */}
+            <div className="shrink-0 overflow-x-auto px-4 pb-3" role="tablist" aria-label="Filter produk">
+              <div className="flex w-max gap-2">
+                {(['all', ...PRODUCT_IDS] as const).map((id) => {
+                  const active = productFilter === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setProductFilter(id)}
+                      className={cn(
+                        'h-7 shrink-0 whitespace-nowrap rounded-full border px-3 text-xs font-semibold transition-colors',
+                        active
+                          ? 'border-slate-800 bg-slate-800 text-white'
+                          : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                      )}
+                    >
+                      {id === 'all' ? 'Semua' : PRODUCT_LABELS[id]}
+                      <span className={cn('ml-1.5 tabular-nums', active ? 'text-white/80' : 'text-gray-500')}>
+                        {productChipCounts[id]}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Scrollable rows & sticky header region */}
             <div className="flex-1 min-h-0 overflow-y-auto">
               {/* Sticky column header */}
               <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 px-4 h-10 flex items-center gap-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
                 <span className="hidden sm:block w-[76px] shrink-0">Tanggal</span>
                 <span className="hidden md:block w-[200px] shrink-0">Invoice</span>
-                <span className="flex-1">Survei</span>
+                <span className="flex-1">Pesanan</span>
                 <span className="shrink-0 sm:w-[110px] text-right">Total</span>
                 <span className="shrink-0 sm:w-[88px]">Status</span>
                 <span className="hidden sm:block w-[110px] shrink-0">Metode</span>

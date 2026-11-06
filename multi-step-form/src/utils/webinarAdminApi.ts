@@ -109,3 +109,24 @@ export const refundOrder = (orderId: string, note: string) =>
     webinarAdmin<{ outcome: 'ok' | 'already_refunded'; refunded_at?: string }>('refund', { orderId, note });
 
 export const retryEmail = (broadcastId: string) => webinarAdmin<{ requeued: number }>('email-retry', { broadcastId });
+
+// ── Fase 4: pembeli webinar untuk halaman Customers ──────────────────────
+
+/**
+ * Satu tiket lunas/refund milik sebuah akun. Sengaja TANPA data pribadi
+ * pembeli (nama, email, WA): profil akunnya sudah ada di Customers.
+ */
+export interface WebinarBuyerTicket {
+    order_id: string;
+    auth_user_id: string;
+    kind: 'live' | 'replay';
+    status: 'paid' | 'refunded';
+    amount: number;
+    paid_at: string | null;
+    invoice_number: string;
+    event_title: string;
+    event_starts_at: string | null;
+    is_test: boolean;
+}
+
+export const getWebinarBuyers = () => webinarAdmin<{ tickets: WebinarBuyerTicket[] }>('buyers', {});

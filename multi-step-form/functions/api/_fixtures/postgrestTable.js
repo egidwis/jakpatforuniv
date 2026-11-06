@@ -1,5 +1,6 @@
 // KHUSUS TES. Satu tabel di memori yang menjawab seperti PostgREST, sebatas sintaks
-// yang dipakai kode kita: filter `kolom=op.nilai` (eq, neq, lt, gt, lte, gte, is, like, in),
+// yang dipakai kode kita: filter `kolom=op.nilai` (eq, neq, lt, gt, lte, gte, is, like, in;
+// boleh diawali `not.`),
 // `or=(kolom.op.nilai,…)`, `select=a,b` (termasuk `*` dan kolom terhitung), serta
 // GET/PATCH/POST/DELETE.
 //
@@ -90,14 +91,17 @@ function parseQuery(url) {
     } else if (key === 'order' || key === 'limit' || key === 'offset') {
       // Tidak memengaruhi tes yang memakai emulator ini.
     } else {
-      const dot = value.indexOf('.');
-      filters.push({ column: key, op: value.slice(0, dot), value: value.slice(dot + 1) });
+      // `kolom=not.op.nilai` membalik satu kondisi (dipakai `auth_user_id=not.is.null`).
+      const negate = value.startsWith('not.');
+      const rest = negate ? value.slice(4) : value;
+      const dot = rest.indexOf('.');
+      filters.push({ column: key, op: rest.slice(0, dot), value: rest.slice(dot + 1), negate });
     }
   }
   return { filters, or, select };
 }
 
-const passesFilters = (row, filters) => filters.every((f) => compare(row[f.column], f.op, f.value));
+const passesFilters = (row, filters) => filters.every((f) => compare(row[f.column], f.op, f.value) !== Boolean(f.negate));
 const passesOr = (row, or) => !or || or.some((c) => compare(row[c.column], c.op, c.value));
 
 function project(row, select, computed) {

@@ -13,6 +13,15 @@ import {
   methodChipInfo,
 } from './types';
 import { isPaidTx } from '@/utils/analytics/revenue';
+import {
+  productOfTransaction,
+  isTestTransaction,
+  transactionTitle,
+  transactionPerson,
+  transactionEmail,
+  showsAdPaymentActions,
+  webinarKindOf,
+} from './product';
 import { payLinkUrl } from '@/utils/payLink';
 
 interface TransactionDetailSheetProps {
@@ -87,18 +96,18 @@ export function TransactionDetailSheet({
   if (!transaction) return null;
 
   const { items, memo } = parseTransactionNote(transaction.note);
+  const isWebinar = productOfTransaction(transaction) === 'webinar';
+  const isTest = isTestTransaction(transaction);
+  const isRefunded = (transaction.status ?? '').trim().toLowerCase() === 'refunded';
+  const person = transactionPerson(transaction);
+  const email = transactionEmail(transaction);
   const method = methodChipInfo(transaction.payment_method, transaction.payment_channel, transaction.status);
   const statusChip = transactionStatusChip(transaction.status);
   const isPaid = isPaidTx(transaction);
   const isGroup = !!group && group.count > 1;
-  const title = transaction.form_submissions?.title || 'Judul tidak tersedia';
+  const title = transactionTitle(transaction);
 
-  const subtitle = (
-    <>
-      {transaction.form_submissions?.full_name}
-      {transaction.form_submissions?.email ? ` · ${transaction.form_submissions.email}` : ''}
-    </>
-  );
+  const subtitle = <>{[person, email].filter(Boolean).join(' · ')}</>;
 
   const chips = (
     <>
@@ -108,11 +117,49 @@ export function TransactionDetailSheet({
       <Chip variant={method.variant} size="sm">
         {method.label}
       </Chip>
+      {isTest && (
+        <Chip variant="slate" size="sm" title="Transaksi uji — tidak dihitung pendapatan">
+          Uji
+        </Chip>
+      )}
     </>
+  );
+
+  /*
+    Fase 4 (C10): baris tiket tidak punya order iklan, jadi bagian "Submission
+    yang Dibayar" diganti ringkasan tiket. Peserta, e-tiket, dan refund
+    dikelola di menu Webinar — halaman ini hanya buku uang.
+  */
+  const webinarKind = webinarKindOf(transaction);
+  const webinarSection = (
+    <DetailSheetSection title="Tiket webinar">
+      <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-4 space-y-2 text-sm">
+        <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3">
+          <span className="text-slate-500">Acara</span>
+          <span className="font-semibold text-slate-800 break-words">{title}</span>
+        </div>
+        <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3">
+          <span className="text-slate-500">Jenis</span>
+          <span className="text-slate-800">{webinarKind === 'replay' ? 'Video kelas' : webinarKind === 'live' ? 'Tiket live' : '—'}</span>
+        </div>
+        <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3">
+          <span className="text-slate-500">Pembeli</span>
+          <span className="text-slate-800 break-words">{[person, email].filter(Boolean).join(' · ') || '—'}</span>
+        </div>
+        {isTest && (
+          <p className="text-[13px] text-slate-700">ⓘ Transaksi uji — tidak dihitung pendapatan.</p>
+        )}
+        {isRefunded && (
+          <p className="text-[13px] text-purple-800">Ditandai refund di menu Webinar. Uang dikembalikan di luar sistem.</p>
+        )}
+        <p className="text-[12px] text-slate-500">Peserta, e-tiket, dan refund dikelola di menu Webinar.</p>
+      </div>
+    </DetailSheetSection>
   );
 
   const body = (
     <>
+      {isWebinar ? webinarSection : (
       <DetailSheetSection title="Submission yang Dibayar">
         {transaction.form_submissions ? (
           <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-4 space-y-3.5 shadow-sm">
@@ -141,6 +188,7 @@ export function TransactionDetailSheet({
           <p className="text-sm text-gray-400 italic">Data submission tidak tersedia</p>
         )}
       </DetailSheetSection>
+      )}
 
       <DetailSheetSection title="Rincian Item">
         {items.length > 0 ? (
@@ -181,6 +229,12 @@ export function TransactionDetailSheet({
             {formatIDR(transaction.amount)}
           </span>
         </div>
+        {/* Harga tiket sudah termasuk PPN 11%; rinciannya dari snapshot sql/131. */}
+        {isWebinar && transaction.subtotal != null && transaction.ppn_amount != null && (
+          <p className="text-right text-[11px] text-gray-500">
+            DPP {formatIDR(transaction.subtotal)} · PPN 11% {formatIDR(transaction.ppn_amount)}
+          </p>
+        )}
 
         {/*
           ⚠️ ANGKA GRUP DISEBUT DI SEBELAH ANGKA BARIS. Keduanya benar untuk
@@ -260,9 +314,15 @@ export function TransactionDetailSheet({
   */
   const payLink = transaction.schedule_id ? payLinkUrl(transaction.schedule_id) : null;
 
-  const footer = transaction.payment_url || onCancelInvoice ? (
+  /*
+    Fase 4: `showsAdPaymentActions` — Download Invoice (/invoices/<id>) dan
+    Salin Link Bayar milik alur bayar IKLAN. Baris webinar tidak pernah punya
+    keduanya (invoice `WBN-` tidak ada di `invoices`), jadi footernya kosong.
+  */
+  const adActions = showsAdPaymentActions(transaction);
+  const footer = adActions || onCancelInvoice ? (
     <div className="flex flex-col gap-2">
-      {transaction.payment_url && (
+      {adActions && (
         <div className="flex gap-2">
           {transaction.status === 'pending' && payLink && (
             <Button

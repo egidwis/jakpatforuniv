@@ -15,6 +15,8 @@ export const WEBINAR_ADMIN_ACTIONS = [
   'list', 'get', 'create', 'save', 'publish', 'close-sales', 'cancel', 'delete',
   // Fase 3: peserta, refund, email otomatis
   'participants', 'participant', 'resend-ticket', 'check-order', 'refund', 'email-retry',
+  // Fase 4: pembeli webinar untuk halaman Customers (baca saja)
+  'buyers',
 ];
 const NEEDS_ID = new Set(['get', 'save', 'publish', 'close-sales', 'cancel', 'delete', 'participants']);
 const NEEDS_ORDER = new Set(['participant', 'resend-ticket', 'check-order', 'refund']);

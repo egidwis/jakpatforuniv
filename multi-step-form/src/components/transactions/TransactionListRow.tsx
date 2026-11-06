@@ -9,6 +9,13 @@ import {
   transactionStatusChip,
   methodChipInfo,
 } from './types';
+import {
+  PRODUCT_LABELS,
+  productOfTransaction,
+  isTestTransaction,
+  transactionTitle,
+  transactionPerson,
+} from './product';
 
 interface TransactionListRowProps {
   transaction: Transaction;
@@ -36,7 +43,13 @@ export function TransactionListRow({ transaction, onOpen, active, group }: Trans
   const date = new Date(transaction.created_at);
   const method = methodChipInfo(transaction.payment_method, transaction.payment_channel, transaction.status);
   const statusChip = transactionStatusChip(transaction.status);
-  const title = transaction.form_submissions?.title || 'Judul tidak tersedia';
+  const title = transactionTitle(transaction);
+  const product = productOfTransaction(transaction);
+  // Iklan tanpa awalan (tampilan lama); Kilat & Webinar diberi awalan produk.
+  const subtitle = [product === 'iklan' ? null : PRODUCT_LABELS[product], transactionPerson(transaction) || null]
+    .filter(Boolean)
+    .join(' · ');
+  const isTest = isTestTransaction(transaction);
 
   return (
     <div
@@ -100,12 +113,19 @@ export function TransactionListRow({ transaction, onOpen, active, group }: Trans
 
       {/* Judul survei, peneliti subtitle below (no leading chip) */}
       <div className="flex-1 min-w-0 flex flex-col leading-tight">
-        <span className="text-sm font-semibold text-gray-900 truncate" title={title}>
-          {title}
+        <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+          <span className="text-sm font-semibold text-gray-900 truncate" title={title}>
+            {title}
+          </span>
+          {isTest && (
+            <Chip variant="slate" size="xs" className="shrink-0" title="Transaksi uji — tidak dihitung pendapatan">
+              Uji
+            </Chip>
+          )}
         </span>
         <span className="text-[11px] text-gray-500 truncate mt-0.5">
-          {transaction.form_submissions?.full_name}
-          <span className="sm:hidden"> · {date.toLocaleDateString('id-ID')}</span>
+          {subtitle}
+          <span className="sm:hidden">{subtitle ? ' · ' : ''}{date.toLocaleDateString('id-ID')}</span>
         </span>
       </div>
 

@@ -23,7 +23,7 @@ import {
 } from './webinarGate.js';
 import { DbError, Refusal, refuse, db, decorate, loadEvent, loadOrRefuse } from './_webinarDb.js';
 import {
-  participants, participant, resendTicket, checkOrder, refundOrder, retryEmail, notifyParticipants, LOCAL_BLOCKED_ACTIONS,
+  participants, participant, resendTicket, checkOrder, refundOrder, retryEmail, notifyParticipants, LOCAL_BLOCKED_ACTIONS, buyers,
 } from './_webinarOps.js';
 
 // meeting_url hanya dibaca untuk has_meeting_url lalu dibuang; deskripsi tidak perlu di daftar.
@@ -107,6 +107,7 @@ const FAILURE_MESSAGE = {
   'check-order': 'Status pembayaran belum bisa dicek. Coba lagi sebentar.',
   refund: 'Refund belum bisa dicatat. Coba lagi sebentar.',
   'email-retry': 'Email belum bisa dikirim ulang. Coba lagi sebentar.',
+  buyers: 'Data pembeli webinar belum bisa dimuat. Coba lagi sebentar.',
 };
 
 // ── Aksi ───────────────────────────────────────────────────────────────────
@@ -297,6 +298,7 @@ export async function onRequest({ request, env, waitUntil }) {
       case 'check-order': return json(200, await checkOrder(sb, env, body, waitUntil));
       case 'refund': return json(200, await refundOrder(sb, body, user.email));
       case 'email-retry': return json(200, await retryEmail(sb, env, body, waitUntil));
+      case 'buyers': return json(200, await buyers(sb));
       default: return json(400, { error: 'Tindakan tidak diizinkan' });
     }
   } catch (err) {

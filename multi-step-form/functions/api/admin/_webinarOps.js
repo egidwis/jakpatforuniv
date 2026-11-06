@@ -158,3 +158,42 @@ export async function retryEmail(sb, env, body, waitUntil) {
   if (requeued > 0) await kickDispatch(sb, env, waitUntil);
   return { requeued };
 }
+
+// ── Fase 4: pembeli webinar untuk halaman Customers ───────────────────────
+
+const BUYER_ORDER_COLUMNS = 'id,auth_user_id,event_id,kind,status,amount,paid_at,invoice_number';
+
+/**
+ * Tiket lunas/refund per akun, untuk chip "Webinar" dan tier "Pembeli webinar".
+ * Sengaja TANPA data pribadi pembeli (nama, email, WA), token, atau link bayar:
+ * profil akunnya sudah tampil di Customers dari `get_customer_profiles`.
+ * Baca saja, jadi boleh dari uji lokal.
+ */
+export async function buyers(sb) {
+  const [orders, events] = await Promise.all([
+    dbAll(
+      sb,
+      `webinar_orders?status=in.(paid,refunded)&auth_user_id=not.is.null&select=${BUYER_ORDER_COLUMNS}&order=paid_at.desc.nullslast,id.asc`,
+      'SELECT webinar_orders (pembeli)'
+    ),
+    dbAll(sb, 'webinar_events?select=id,title,starts_at,is_test&order=id.asc', 'SELECT webinar_events (pembeli)'),
+  ]);
+  const eventById = new Map(events.map((e) => [e.id, e]));
+  return {
+    tickets: orders.map((o) => {
+      const event = eventById.get(o.event_id);
+      return {
+        order_id: o.id,
+        auth_user_id: o.auth_user_id,
+        kind: o.kind,
+        status: o.status,
+        amount: o.amount,
+        paid_at: o.paid_at,
+        invoice_number: o.invoice_number,
+        event_title: event?.title ?? 'Acara',
+        event_starts_at: event?.starts_at ?? null,
+        is_test: Boolean(event?.is_test),
+      };
+    }),
+  };
+}

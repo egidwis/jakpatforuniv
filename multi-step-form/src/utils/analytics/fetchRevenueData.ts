@@ -125,7 +125,8 @@ export async function fetchRevenueData(range: DateRange): Promise<RevenueDataset
     // Riwayat penuh untuk segmentasi baru vs repeat. Dua query ringan, bukan join
     // yang ditanam — bentuk embed PostgREST diam-diam berubah kalau nama FK-nya
     // berubah, sementara dua SELECT kolom-sempit ini tidak bisa gagal separuh.
-    // Webinar punya jalur laporan sendiri (Fase 4). Tanpa saringan ini total
+    // Webinar dilaporkan di halaman Transaksi (chip Webinar, Fase 4); Analytics
+    // sengaja khusus iklan (keputusan 6 Nov 2026). Tanpa saringan ini total
     // pendapatan naik tanpa masuk rincian mana pun.
     const adTransactions = transactions.filter(isNotWebinar);
     const adPreviousTransactions = previousTransactions.filter(isNotWebinar);

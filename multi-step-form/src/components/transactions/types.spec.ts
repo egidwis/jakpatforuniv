@@ -29,6 +29,10 @@ describe('transactionStatusChip', () => {
     expect(transactionStatusChip('paid')).toEqual(transactionStatusChip('completed'));
   });
 
+  it('menamai `refunded` (Fase 3 webinar) — dulu tampil sebagai teks mentah', () => {
+    expect(transactionStatusChip('refunded')).toEqual({ label: 'Refund', variant: 'purple' });
+  });
+
   it('membedakan dibatalkan dari kedaluwarsa', () => {
     // "tidak ada yang kedaluwarsa, ada yang memutuskan" — bedanya dijaga
     // di seluruh repo, jadi chipnya tidak boleh menyamakannya.
@@ -46,7 +50,7 @@ describe('transactionStatusChip', () => {
   it('MENAMPILKAN status tak dikenal apa adanya, tidak pernah kosong', () => {
     // Inti perbaikannya. Kata status berikutnya yang lahir hanya di satu sisi
     // harus terbaca di layar sebagai teks mentah — jelek, tapi terlihat.
-    expect(transactionStatusChip('refunded')).toEqual({ label: 'refunded', variant: 'slate' });
+    expect(transactionStatusChip('dikembalikan_sebagian')).toEqual({ label: 'dikembalikan_sebagian', variant: 'slate' });
     expect(transactionStatusChip('sesuatu_yang_baru').label).toBeTruthy();
   });
 
@@ -91,6 +95,12 @@ describe('daftar filter', () => {
   it('menawarkan justru tiga status yang dulu bisu', () => {
     expect(STATUS_FILTER_IDS).toContain('cancelled');
     expect(STATUS_FILTER_IDS).toContain('expired');
+  });
+
+  it('menawarkan Refund, dan refund TIDAK lolos filter Lunas', () => {
+    expect(STATUS_FILTER_IDS).toContain('refunded');
+    expect(matchesStatusFilter({ status: 'refunded' }, 'refunded')).toBe(true);
+    expect(matchesStatusFilter({ status: 'refunded' }, 'completed')).toBe(false);
   });
 
   it('setiap filter punya label yang bukan kosong', () => {

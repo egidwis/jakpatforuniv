@@ -38,7 +38,18 @@ export interface Transaction {
   note?: string;
   created_at: string;
   updated_at: string;
-  form_submission_id: string;
+  /**
+   * NULL untuk baris webinar (CHECK `transactions_webinar_has_no_ad_order`,
+   * sql/131): tiket tidak punya order iklan. Sebelum Fase 4 tipenya `string`
+   * karena query memakai `form_submissions!inner` yang membuang baris itu.
+   */
+  form_submission_id: string | null;
+  /** `submission` | `extend` | `webinar` — tanpa CHECK di tabel, jadi longgar. */
+  entity_type?: string | null;
+  subtotal?: number | null;
+  ppn_amount?: number | null;
+  /** Embed lewat `schedule_id`; sumber utama aturan Kilat (lihat `productOfTransaction`). */
+  ad_schedules?: { distribution_type?: string | null } | null;
   form_submissions?: {
     id: string;
     title: string;
@@ -46,7 +57,8 @@ export interface Transaction {
     email: string;
     start_date?: string | null;
     end_date?: string | null;
-  };
+    distribution_type?: string | null;
+  } | null;
 }
 
 export interface TransactionItem {
@@ -59,19 +71,31 @@ export interface TransactionItem {
 export interface ParsedNote {
   items: TransactionItem[];
   memo: string;
+  /** Hanya `is_test === true` yang eksplisit (sejauh ini baru ditulis webinar, sql/131). */
+  isTest: boolean;
+  /** Snapshot pembeli webinar `{ name, email }`; null untuk baris iklan. */
+  buyer: { name: string; email: string } | null;
 }
 
-/** `note` is either plain text (memo) or JSON `{ items, memo }`. */
-export function parseTransactionNote(note?: string): ParsedNote {
-  if (note?.startsWith('{')) {
-    try {
-      const parsed = JSON.parse(note);
-      return { items: parsed.items || [], memo: parsed.memo || '' };
-    } catch {
-      return { items: [], memo: note || '' };
-    }
+/** `note` is either plain text (memo) or JSON `{ items, memo, buyer?, is_test? }`. */
+export function parseTransactionNote(note?: string | null): ParsedNote {
+  const plain: ParsedNote = { items: [], memo: note || '', isTest: false, buyer: null };
+  if (!note?.startsWith('{')) return plain;
+  try {
+    const parsed = JSON.parse(note);
+    if (!parsed || typeof parsed !== 'object') return plain;
+    const b = parsed.buyer;
+    return {
+      items: Array.isArray(parsed.items) ? parsed.items : [],
+      memo: typeof parsed.memo === 'string' ? parsed.memo : '',
+      isTest: parsed.is_test === true,
+      buyer: b && typeof b === 'object'
+        ? { name: typeof b.name === 'string' ? b.name : '', email: typeof b.email === 'string' ? b.email : '' }
+        : null,
+    };
+  } catch {
+    return plain;
   }
-  return { items: [], memo: note || '' };
 }
 
 // Rumahnya sekarang di @/utils/currency. Di-re-ekspor supaya pemakai lama
@@ -111,6 +135,9 @@ const STATUS_CHIPS: Record<string, { label: string; variant: ChipVariant }> = {
   pending: { label: 'Menunggu', variant: 'amber' },
   cancelled: { label: 'Dibatalkan', variant: 'slate' },
   expired: { label: 'Kedaluwarsa', variant: 'red' },
+  // Fase 3 webinar (sql/135): admin menandai refund di menu Webinar. Ungu,
+  // bukan hijau/merah: uangnya pernah masuk lalu dikembalikan di luar sistem.
+  refunded: { label: 'Refund', variant: 'purple' },
   // Nol baris di produksi, dan karena itu TIDAK ditawarkan di dropdown filter.
   // Tetap dipetakan: webhook masih boleh menulisnya kapan saja.
   failed: { label: 'Gagal', variant: 'red' },
@@ -131,7 +158,7 @@ export function transactionStatusChip(
  * `cancelled`/`expired` (17 baris) tidak pernah punya entri. Daftar lamanya
  * mencerminkan union tipe yang salah, bukan data yang ada.
  */
-export const STATUS_FILTER_IDS = ['pending', 'completed', 'cancelled', 'expired'] as const;
+export const STATUS_FILTER_IDS = ['pending', 'completed', 'cancelled', 'expired', 'refunded'] as const;
 
 /** Label filter — diturunkan dari chip supaya keduanya tidak bisa menyimpang. */
 export const statusFilterLabel = (id: string): string =>

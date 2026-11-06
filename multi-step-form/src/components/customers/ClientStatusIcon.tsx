@@ -1,9 +1,9 @@
 import React from 'react';
-import { Crown, Star, User, UserCheck, UserPlus } from 'lucide-react';
+import { Crown, Presentation, Star, User, UserCheck, UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 
-export type ClientTier = 'vvip' | 'vip' | 'returning' | 'new' | 'unpaid';
+export type ClientTier = 'vvip' | 'vip' | 'returning' | 'new' | 'unpaid' | 'webinar';
 
 interface ClientStatusIconProps {
   tier?: ClientTier;
@@ -45,6 +45,15 @@ const TIER_CONFIG: Record<ClientTier, {
     containerClass: 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/20 ring-1 ring-emerald-300/40',
     iconClass: '',
     dotClass: 'bg-emerald-500 ring-1 ring-emerald-300/40',
+  },
+  // Fase 4: akun yang hanya membeli tiket webinar (tanpa pesanan iklan).
+  // Ikon sama dengan menu Webinar di admin.
+  webinar: {
+    label: 'Pembeli webinar',
+    icon: Presentation,
+    containerClass: 'bg-teal-600 text-white shadow-sm shadow-teal-600/20 ring-1 ring-teal-300/40',
+    iconClass: '',
+    dotClass: 'bg-teal-600 ring-1 ring-teal-300/40',
   },
   unpaid: {
     label: 'Belum Paid (Rp 0)',

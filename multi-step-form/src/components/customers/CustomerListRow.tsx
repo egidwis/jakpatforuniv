@@ -1,7 +1,8 @@
 import { ChevronRight, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { type Customer, customerDisplayId } from './types';
+import { type Customer, customerDisplayId, webinarTicketCount } from './types';
+import { Chip } from '../ui/chip';
 import { CustomerTierChip } from './CustomerTierChip';
 import { formatIDR } from '@/utils/currency';
 
@@ -64,8 +65,16 @@ export function CustomerListRow({ customer, onOpen, active }: CustomerListRowPro
 
       {/* Customer: name, email subtitle below */}
       <div className="flex-[1.5] min-w-0 flex flex-col leading-tight">
-        <span className="text-sm font-semibold text-gray-900 truncate" title={customer.name}>
-          {customer.name}
+        <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+          <span className="text-sm font-semibold text-gray-900 truncate" title={customer.name}>
+            {customer.name}
+          </span>
+          {/* Fase 4: setiap akun bertiket webinar, apa pun tier iklannya. */}
+          {webinarTicketCount(customer) > 0 && (
+            <Chip variant="outline" size="xs" className="shrink-0 border-teal-300 text-teal-800">
+              Webinar
+            </Chip>
+          )}
         </span>
         <span className="text-[11px] text-gray-500 truncate mt-0.5">{customer.email}</span>
       </div>

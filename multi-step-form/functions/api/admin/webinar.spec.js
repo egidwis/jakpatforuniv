@@ -482,6 +482,60 @@ describe('participants', () => {
   });
 });
 
+describe('buyers (Fase 4: pembeli webinar di Customers)', () => {
+  const OTHER = '88888888-8888-4888-8888-888888888888';
+  function seedBuyers() {
+    setup({
+      orderSeed: [
+        orderRow({ id: ORDER_PAID }),
+        orderRow({ id: OTHER, status: 'refunded', auth_user_id: STRANGER.id, event_id: CANCELLED_ID, invoice_number: 'WBN-DDDDDDDD-1793856539227', refunded_at: '2026-11-07T03:02:00Z', refund_note: 'Bentrok' }),
+        orderRow({ id: ORDER_PENDING, status: 'pending', paid_at: null }),
+        orderRow({ id: ORDER_REPLAY, kind: 'replay', status: 'expired' }),
+        orderRow({ id: crypto.randomUUID(), auth_user_id: null }),
+      ],
+    });
+    rowOf(CANCELLED_ID).is_test = true;
+  }
+
+  it('bukan admin → 401 tanpa satu pun panggilan REST', async () => {
+    seedBuyers();
+    session = STRANGER;
+    expect((await call({ action: 'buyers' })).status).toBe(401);
+    expect(restCalls()).toHaveLength(0);
+  });
+
+  it('hanya tiket lunas/refund yang punya akun, dengan judul & jadwal acara', async () => {
+    seedBuyers();
+    const r = await call({ action: 'buyers' });
+    expect(r.status).toBe(200);
+    expect(r.body.tickets).toHaveLength(2);
+    const byOrder = Object.fromEntries(r.body.tickets.map((t) => [t.order_id, t]));
+    expect(byOrder[ORDER_PAID]).toEqual({
+      order_id: ORDER_PAID, auth_user_id: ADMIN.id, kind: 'live', status: 'paid', amount: 49000,
+      paid_at: '2026-11-05T05:47:00Z', invoice_number: 'WBN-E1642A9A-1793856539227',
+      event_title: 'Statistik', event_starts_at: READY.starts_at, is_test: false,
+    });
+    expect(byOrder[OTHER]).toMatchObject({ status: 'refunded', auth_user_id: STRANGER.id, event_title: 'Batal', is_test: true });
+  });
+
+  it('tanpa data pribadi pembeli, token, link bayar, atau link Zoom', async () => {
+    seedBuyers();
+    const text = JSON.stringify((await call({ action: 'buyers' })).body);
+    for (const leak of ['putra@example.test', '0812', 'Putra', 'a'.repeat(64), 'doku.test/pay', 'req-9', 'zoom.us', 'Bentrok']) {
+      expect(text).not.toContain(leak);
+    }
+  });
+
+  it('dibaca per halaman 1000 dengan urutan stabil, dan boleh dari uji lokal', async () => {
+    seedBuyers();
+    expect((await call({ action: 'buyers' }, LOCAL)).status).toBe(200);
+    const read = calls.find((c) => c.url.includes('/rest/v1/webinar_orders'));
+    expect(read.url).toContain('limit=1000&offset=0');
+    expect(read.url).toMatch(/order=paid_at\.desc[^&]*,id\.asc/);
+    expect(read.method).toBe('GET');
+  });
+});
+
 describe('participant', () => {
   it('satu order + email akun pemiliknya', async () => {
     seedOps();

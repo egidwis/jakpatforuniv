@@ -15,16 +15,28 @@ import {
   customerTier,
   customerDisplayId,
   orderTime,
+  attachWebinarTickets,
 } from './customers/types';
+import { getWebinarBuyers, type WebinarBuyerTicket } from '@/utils/webinarAdminApi';
 import { CustomerListRow } from './customers/CustomerListRow';
 import { CustomerDetailSheet } from './customers/CustomerDetailSheet';
 import { fetchProfileNames } from '../utils/profileNames';
 
-type TierTab = 'all' | 'vip' | 'returning' | 'new' | 'unpaid';
+type TierTab = 'all' | 'vip' | 'returning' | 'new' | 'unpaid' | 'webinar';
+
+const TIER_TAB_LABEL: Record<Exclude<TierTab, 'all'>, string> = {
+  vip: 'VIP/VVIP',
+  returning: 'Returning',
+  new: 'Client Baru (Paid)',
+  unpaid: 'Belum Paid',
+  webinar: 'Pembeli webinar',
+};
 
 export function CustomersPage() {
   const [submissions, setSubmissions] = useState<RawSubmission[]>([]);
   const [profileRows, setProfileRows] = useState<CustomerProfileRow[]>([]);
+  /** Fase 4: tiket webinar per akun. `null` = gagal dimuat (halaman tetap jalan tanpa chip/tier webinar). */
+  const [webinarTickets, setWebinarTickets] = useState<WebinarBuyerTicket[] | null>(null);
   const [authNames, setAuthNames] = useState<Map<string, { name: string; email: string }>>(new Map());
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -37,12 +49,20 @@ export function CustomersPage() {
   const fetchSubmissions = async () => {
     try {
       setLoading(true);
-      // 1. Fetch form submissions
-      const { data: formData, error: formError } = await supabase
-        .from('form_submissions')
-        .select('id, auth_user_id, full_name, email, phone_number, university, department, status, total_cost, payment_status, submission_status, title, created_at')
-        .order('created_at', { ascending: false });
-      if (formError) throw formError;
+      /*
+        1. Fetch form submissions — DIPAGINASI (Fase 4). Sebelumnya satu query
+        polos: PostgREST memotong di 1.000 baris tanpa error, jadi dengan 1.220
+        pesanan (6 Nov 2026) 220 pesanan tertua — dan total belanja pelanggan
+        lamanya — hilang diam-diam. Urutan stabil (created_at lalu id) wajib
+        untuk `.range()`.
+      */
+      const formData = await fetchAllRows<Omit<RawSubmission, 'actual_paid'>>(() =>
+        supabase
+          .from('form_submissions')
+          .select('id, auth_user_id, full_name, email, phone_number, university, department, status, total_cost, payment_status, submission_status, title, created_at')
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: true }),
+      );
 
       // 2. Fetch actual paid amounts from transactions (source of truth for revenue)
       // Tiket webinar ikut terhitung di tabel ini, jadi batas 1.000 baris PostgREST
@@ -63,18 +83,34 @@ export function CustomersPage() {
       });
 
       // 3. Merge actual_paid into submissions
-      const merged: RawSubmission[] = (formData || []).map((sub: any) => ({
+      const merged: RawSubmission[] = formData.map((sub) => ({
         ...sub,
         actual_paid: paidMap.get(sub.id) || 0,
       }));
 
       // 4. Semua profil customer (akun terdaftar) — termasuk yang belum pernah
-      // submit, agar customer pra-submission ikut tampil (sql/32).
-      const { data: profileData, error: profileError } = await supabase.rpc('get_customer_profiles');
-      if (profileError) console.error('Error fetching customer profiles:', profileError);
+      // submit, agar customer pra-submission ikut tampil (sql/32). Dipaginasi:
+      // 2.299 akun per 6 Nov 2026, jadi query polos terpotong di 1.000.
+      // Gagal = lanjut tanpa profil (perilaku lama), bukan seluruh halaman kosong.
+      // 5. Pembeli webinar (Fase 4) — gagal = halaman tetap jalan tanpa chip.
+      const [profileData, buyers] = await Promise.all([
+        fetchAllRows<CustomerProfileRow>(() => supabase.rpc('get_customer_profiles').order('id', { ascending: true }))
+          .catch((profileError) => {
+            console.error('Error fetching customer profiles:', profileError);
+            return [] as CustomerProfileRow[];
+          }),
+        getWebinarBuyers()
+          .then((r) => r.tickets)
+          .catch((err) => {
+            console.error('Error fetching webinar buyers:', err);
+            toast.warning('Data pembeli webinar gagal dimuat');
+            return null;
+          }),
+      ]);
 
       setSubmissions(merged);
-      setProfileRows((profileData as CustomerProfileRow[]) || []);
+      setProfileRows(profileData);
+      setWebinarTickets(buyers);
       setAuthNames(await fetchProfileNames(merged.map((s) => s.auth_user_id)));
     } catch (error) {
       console.error('Error fetching submissions:', error);
@@ -86,14 +122,14 @@ export function CustomersPage() {
 
   useEffect(() => { fetchSubmissions(); }, []);
 
-  const customers = useMemo(
-    () => mergeProfileOnlyCustomers(aggregateCustomers(submissions, authNames), profileRows),
-    [submissions, authNames, profileRows]
-  );
+  const customers = useMemo(() => {
+    const all = mergeProfileOnlyCustomers(aggregateCustomers(submissions, authNames), profileRows);
+    return webinarTickets ? attachWebinarTickets(all, webinarTickets) : all;
+  }, [submissions, authNames, profileRows, webinarTickets]);
 
   // Tab counts come from the full list — search must not change them
   const tierCounts = useMemo(() => {
-    const counts = { vip: 0, returning: 0, new: 0, unpaid: 0 };
+    const counts = { vip: 0, returning: 0, new: 0, unpaid: 0, webinar: 0 };
     customers.forEach((c) => {
       const tier = customerTier(c);
       if (tier === 'vvip' || tier === 'vip') counts.vip += 1;
@@ -186,7 +222,7 @@ export function CustomersPage() {
                 className="flex items-center gap-1 rounded-full bg-slate-800 text-white text-[11px] font-semibold pl-2.5 pr-1.5 py-1 transition-colors hover:bg-slate-700"
                 title="Hapus filter tier"
               >
-                Tier: {tierTab === 'vip' ? 'VIP/VVIP' : tierTab === 'returning' ? 'Returning' : tierTab === 'new' ? 'Client Baru (Paid)' : 'Belum Paid'}
+                Tier: {TIER_TAB_LABEL[tierTab]}
                 <X className="w-3 h-3 ml-0.5" />
               </button>
             )}
@@ -258,6 +294,19 @@ export function CustomersPage() {
                     <span>Belum Paid (Rp 0)</span>
                     <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md font-bold">
                       {tierCounts.unpaid}
+                    </span>
+                  </DropdownMenuItem>
+                  {/* Fase 4: akun yang hanya membeli tiket webinar (tanpa pesanan iklan). */}
+                  <DropdownMenuItem
+                    onClick={() => setTierTab('webinar')}
+                    className={cn(
+                      'px-2.5 py-2 text-xs rounded cursor-pointer transition-colors hover:bg-slate-100/80 outline-none flex justify-between items-center',
+                      tierTab === 'webinar' ? 'font-semibold text-blue-600 bg-blue-50/50' : 'text-slate-700'
+                    )}
+                  >
+                    <span>Pembeli webinar</span>
+                    <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md font-bold">
+                      {tierCounts.webinar}
                     </span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
