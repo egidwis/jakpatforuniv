@@ -118,7 +118,7 @@ export function TransactionDetailSheet({
         {method.label}
       </Chip>
       {isTest && (
-        <Chip variant="slate" size="sm" title="Transaksi uji — tidak dihitung pendapatan">
+        <Chip variant="slate" size="sm" title="Transaksi uji (uangnya tetap dihitung)">
           Uji
         </Chip>
       )}
@@ -147,7 +147,7 @@ export function TransactionDetailSheet({
           <span className="text-slate-800 break-words">{[person, email].filter(Boolean).join(' · ') || '—'}</span>
         </div>
         {isTest && (
-          <p className="text-[13px] text-slate-700">ⓘ Transaksi uji — tidak dihitung pendapatan.</p>
+          <p className="text-[13px] text-slate-700">ⓘ Transaksi uji — tetap dihitung pendapatan karena uangnya masuk.</p>
         )}
         {isRefunded && (
           <p className="text-[13px] text-purple-800">Ditandai refund di menu Webinar. Uang dikembalikan di luar sistem.</p>

@@ -118,7 +118,7 @@ export function TransactionListRow({ transaction, onOpen, active, group }: Trans
             {title}
           </span>
           {isTest && (
-            <Chip variant="slate" size="xs" className="shrink-0" title="Transaksi uji — tidak dihitung pendapatan">
+            <Chip variant="slate" size="xs" className="shrink-0" title="Transaksi uji (uangnya tetap dihitung)">
               Uji
             </Chip>
           )}

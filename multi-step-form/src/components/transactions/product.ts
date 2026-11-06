@@ -10,11 +10,13 @@
  *     `form_submissions.distribution_type` saat jadwal tidak terbaca (aturan
  *     `functions/api/doku/_kilat-paid-alert.js:138`); selain itu `iklan`,
  *     termasuk perpanjangan.
- *   - **Uji**: hanya penanda eksplisit `note.is_test === true`. Heuristik
- *     Rp 10.000 milik Analytics SENGAJA tidak dipakai, supaya angka iklan sama
- *     persis dengan sebelum Fase 4.
- *   - **Pendapatan**: lunas (`isPaidTx`: `paid`/`completed`) dan bukan uji.
- *     `refunded` tidak lunas, jadi refund mengurangi bulan pembayaran aslinya.
+ *   - **Uji**: hanya penanda eksplisit `note.is_test === true` — LABEL saja
+ *     (chip [Uji], kolom CSV, jumlah "n uji" di dropdown). Heuristik Rp 10.000
+ *     milik Analytics tidak dipakai.
+ *   - **Pendapatan**: lunas (`isPaidTx`: `paid`/`completed`), TERMASUK uji:
+ *     uangnya sungguh masuk dompet DOKU, jadi halaman keuangan wajib mencatatnya
+ *     (keputusan pemilik produk 6 Nov 2026). `refunded` tidak lunas, jadi refund
+ *     mengurangi bulan pembayaran aslinya.
  *   - **Periode**: kalender WIB (`toWibYmd`), bukan jam perangkat.
  */
 import { isPaidTx } from '@/utils/analytics/revenue';
@@ -39,7 +41,7 @@ export function productOfTransaction(
 
 export const isTestTransaction = (t: Pick<Transaction, 'note'>): boolean => parseTransactionNote(t.note).isTest;
 
-export const isRevenueTx = (t: Pick<Transaction, 'status' | 'note'>): boolean => isPaidTx(t) && !isTestTransaction(t);
+export const isRevenueTx = (t: Pick<Transaction, 'status' | 'note'>): boolean => isPaidTx(t);
 
 const isWebinar = (t: Pick<Transaction, 'entity_type'>): boolean => norm(t.entity_type) === 'webinar';
 
@@ -85,7 +87,7 @@ export function productCounts(rows: Transaction[]): Record<Product | 'all', numb
   return out;
 }
 
-/** Pendapatan per produk + jumlah transaksi uji yang lunas (tidak dihitung). */
+/** Pendapatan per produk + berapa transaksi uji lunas yang ada DI DALAM angka itu. */
 export function revenueByProduct(rows: Transaction[]): Record<Product, { amount: number; tests: number }> {
   const out: Record<Product, { amount: number; tests: number }> = {
     iklan: { amount: 0, tests: 0 },
@@ -96,7 +98,7 @@ export function revenueByProduct(rows: Transaction[]): Record<Product, { amount:
     if (!isPaidTx(t)) continue;
     const bucket = out[productOfTransaction(t)];
     if (isTestTransaction(t)) bucket.tests += 1;
-    else bucket.amount += Number(t.amount) || 0;
+    bucket.amount += Number(t.amount) || 0;
   }
   return out;
 }

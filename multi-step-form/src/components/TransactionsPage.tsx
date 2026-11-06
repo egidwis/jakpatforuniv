@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase, cancelInvoice, fetchInvoiceGroups, tempoCancelBlockReason } from '../utils/supabase';
 import { fetchAllRows } from '@/utils/fetchAllRows';
 import { toast } from 'sonner';
@@ -11,7 +11,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Search, RefreshCw, Download, Filter, ChevronDown, ReceiptText, Wallet, ListFilter, X } from 'lucide-react';
+import { Search, RefreshCw, Download, Filter, ChevronDown, ChevronLeft, ChevronRight, ReceiptText, Wallet, ListFilter, X } from 'lucide-react';
+import { paginate } from '@/components/publish-pages/catalogSearch';
 import { cn, useMediaQuery } from '@/lib/utils';
 import { downloadCsv } from '@/utils/csv';
 import { toWibYmd } from '@/utils/airing-window';
@@ -203,6 +204,24 @@ export function TransactionsPage() {
 
   const productChipCounts = useMemo(() => productCounts(scopeTransactions), [scopeTransactions]);
   const productRevenue = useMemo(() => revenueByProduct(scopeTransactions), [scopeTransactions]);
+  /** "Nov 2026 · Webinar" — cakupan angka di kartu Pendapatan. */
+  const revenueScopeLabel = [
+    selectedMonth === -1 ? `${selectedYear}` : `${MONTHS[selectedMonth].slice(0, 3)} ${selectedYear}`,
+    productFilter === 'all' ? null : PRODUCT_LABELS[productFilter],
+  ].filter(Boolean).join(' · ');
+
+  /*
+    Paginasi TAMPILAN, 50 baris per halaman (helper & ukuran yang sama dengan
+    katalog Pages). Datanya tetap dimuat utuh: chip, Pendapatan, rincian, dan
+    CSV harus menghitung SELURUH periode — paginasi di server akan membuat
+    angka-angka itu hanya menghitung satu halaman. Yang berat adalah merender
+    ratusan baris sekaligus, bukan ~1.000 baris JSON.
+  */
+  const [page, setPage] = useState(1);
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { setPage(1); }, [searchTerm, selectedMonth, selectedYear, statusFilter, productFilter]);
+  const paged = useMemo(() => paginate(filteredTransactions, page), [filteredTransactions, page]);
+  useEffect(() => { listRef.current?.scrollTo({ top: 0 }); }, [paged.page]);
 
   /**
    * Tagihan gabungan di dalam daftar ini, dikunci `payment_id`.
@@ -219,7 +238,7 @@ export function TransactionsPage() {
       filteredTransactions
         // `isRevenueTx` = `isPaidTx` (DOKU menulis lunas sebagai 'completed' DAN
         // 'paid' — menyaring 'completed' saja pernah membuang 8 pembayaran nyata)
-        // dan BUKAN transaksi uji (`note.is_test`). Refund tidak lunas.
+        // — termasuk transaksi uji, karena uangnya sungguh masuk. Refund tidak lunas.
         .filter(isRevenueTx)
         .reduce((sum, t) => sum + t.amount, 0),
     [filteredTransactions]
@@ -436,18 +455,24 @@ export function TransactionsPage() {
                 </button>
               )}
 
-              <div className="flex items-center gap-1 ml-auto">
-                {/* Total Pendapatan — compact trigger, breakdown in dropdown */}
+              {/* Pendapatan — kartu hijau; label menyebut cakupan aktif (periode · produk). */}
+              <div className="ml-auto">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-emerald-700 hover:bg-emerald-50 transition-colors select-none"
+                      className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-1.5 text-left transition-colors hover:border-emerald-300 hover:bg-emerald-100/70 select-none"
                       title="Breakdown pendapatan"
                     >
-                      <span className="text-[10px] uppercase font-bold tracking-wide text-emerald-600">Pendapatan</span>
-                      <span className="text-sm font-bold">{formatIDR(totalRevenue)}</span>
-                      <ChevronDown className="w-3.5 h-3.5 text-emerald-500" />
+                      <span className="flex flex-col leading-tight">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                          Pendapatan · {revenueScopeLabel}
+                        </span>
+                        <span className="text-lg font-extrabold tabular-nums tracking-tight text-emerald-800">
+                          {formatIDR(totalRevenue)}
+                        </span>
+                      </span>
+                      <ChevronDown className="h-4 w-4 shrink-0 text-emerald-600" />
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-[340px] p-0 shadow-2xl border-gray-100 rounded-xl mt-2 animate-in fade-in zoom-in-95 duration-200">
@@ -471,7 +496,7 @@ export function TransactionsPage() {
                               <span className={cn(active ? 'font-bold text-gray-900' : 'text-gray-600')}>{PRODUCT_LABELS[id]}</span>
                               <span className={cn('mono text-right', active ? 'font-bold text-gray-900' : 'font-semibold text-gray-800')}>
                                 {formatIDR(r.amount)}
-                                {r.tests > 0 && <span className="ml-1 text-xs font-normal text-gray-500">· {r.tests} uji</span>}
+                                {r.tests > 0 && <span className="ml-1 text-xs font-normal text-gray-500">· termasuk {r.tests} uji</span>}
                               </span>
                             </div>
                           );
@@ -494,12 +519,46 @@ export function TransactionsPage() {
                         )}
                       </div>
                       <div className="mt-5 pt-3 border-t border-gray-100">
-                        <p className="text-[11px] text-gray-500 text-center">Transaksi uji dan refund tidak dihitung.</p>
+                        <p className="text-[11px] text-gray-500 text-center">Refund tidak dihitung. Transaksi uji ikut dihitung karena uangnya masuk.</p>
                       </div>
                     </div>
                   </DropdownMenuContent>
                 </DropdownMenu>
+              </div>
+            </div>
 
+            {/* Toolbar row 2: chip produk (Fase 4) · filter status · export · reload.
+                Angka chip = baris yang tampil bila chip diklik. Di HP chip digeser
+                ke samping; ikon tetap diam di kanan (di luar area geser). */}
+            <div className="shrink-0 flex items-center gap-2 px-4 pb-3">
+              <div className="min-w-0 flex-1 overflow-x-auto" role="tablist" aria-label="Filter produk">
+                <div className="flex w-max gap-2">
+                {(['all', ...PRODUCT_IDS] as const).map((id) => {
+                  const active = productFilter === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setProductFilter(id)}
+                      className={cn(
+                        'h-7 shrink-0 whitespace-nowrap rounded-full border px-3 text-xs font-semibold transition-colors',
+                        active
+                          ? 'border-slate-800 bg-slate-800 text-white'
+                          : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                      )}
+                    >
+                      {id === 'all' ? 'Semua' : PRODUCT_LABELS[id]}
+                      <span className={cn('ml-1.5 tabular-nums', active ? 'text-white/80' : 'text-gray-500')}>
+                        {productChipCounts[id]}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+              <div className="flex shrink-0 items-center gap-1">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -555,38 +614,8 @@ export function TransactionsPage() {
               </div>
             </div>
 
-            {/* Toolbar row 2: chip produk (Fase 4). Angka = baris yang tampil bila
-                chip diklik. Di HP digeser ke samping, tidak membungkus. */}
-            <div className="shrink-0 overflow-x-auto px-4 pb-3" role="tablist" aria-label="Filter produk">
-              <div className="flex w-max gap-2">
-                {(['all', ...PRODUCT_IDS] as const).map((id) => {
-                  const active = productFilter === id;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      role="tab"
-                      aria-selected={active}
-                      onClick={() => setProductFilter(id)}
-                      className={cn(
-                        'h-7 shrink-0 whitespace-nowrap rounded-full border px-3 text-xs font-semibold transition-colors',
-                        active
-                          ? 'border-slate-800 bg-slate-800 text-white'
-                          : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-                      )}
-                    >
-                      {id === 'all' ? 'Semua' : PRODUCT_LABELS[id]}
-                      <span className={cn('ml-1.5 tabular-nums', active ? 'text-white/80' : 'text-gray-500')}>
-                        {productChipCounts[id]}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
             {/* Scrollable rows & sticky header region */}
-            <div className="flex-1 min-h-0 overflow-y-auto">
+            <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto">
               {/* Sticky column header */}
               <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 px-4 h-10 flex items-center gap-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
                 <span className="hidden sm:block w-[76px] shrink-0">Tanggal</span>
@@ -627,7 +656,7 @@ export function TransactionsPage() {
                 </div>
               ) : (
                 <div className="divide-y divide-gray-100">
-                  {filteredTransactions.map((transaction) => (
+                  {paged.slice.map((transaction) => (
                     <TransactionListRow
                       key={transaction.id}
                       transaction={transaction}
@@ -641,8 +670,43 @@ export function TransactionsPage() {
             </div>
 
             {/* Footer count */}
-            <div className="shrink-0 border-t border-gray-200 px-4 py-3 text-sm text-gray-500">
-              Total: <span className="font-bold text-gray-900">{filteredTransactions.length}</span> transaksi
+            <div className="shrink-0 flex items-center justify-between gap-3 border-t border-gray-200 px-4 py-2.5 text-sm text-gray-500">
+              <span className="min-w-0 truncate tabular-nums">
+                {paged.total === 0 ? (
+                  <>Total: <span className="font-bold text-gray-900">0</span> transaksi</>
+                ) : (
+                  <>
+                    {paged.from}–{paged.to} dari <span className="font-bold text-gray-900">{paged.total}</span> transaksi
+                  </>
+                )}
+              </span>
+              {paged.totalPages > 1 && (
+                <div className="flex items-center gap-2.5 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7 rounded-lg border-gray-200 text-gray-500 hover:text-gray-900 hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => setPage(paged.page - 1)}
+                    disabled={paged.page <= 1}
+                    title="Halaman sebelumnya"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </Button>
+                  <div className="text-xs font-semibold text-gray-700 min-w-[64px] text-center tabular-nums">
+                    Hal. {paged.page}/{paged.totalPages}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7 rounded-lg border-gray-200 text-gray-500 hover:text-gray-900 hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => setPage(paged.page + 1)}
+                    disabled={paged.page >= paged.totalPages}
+                    title="Halaman berikutnya"
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 

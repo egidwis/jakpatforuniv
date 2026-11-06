@@ -24,7 +24,8 @@ import type { Transaction } from './types';
   Aturan produk = `_kilat-paid-alert.js:138` (jadwal dulu, lalu submission).
   Angka gerbangnya dicocokkan dengan kueri SQL di rencana — jadi aturan di sini
   WAJIB sama dengan kueri itu: periode WIB, uji = `note.is_test === true`
-  saja, pendapatan = lunas (`paid`/`completed`) dan bukan uji.
+  saja, pendapatan = lunas (`paid`/`completed`), TERMASUK uji — uangnya sungguh
+  masuk dompet DOKU (keputusan pemilik produk 6 Nov). Refund tidak lunas.
 */
 
 const tx = (o: Partial<Transaction> = {}): Transaction => ({
@@ -105,8 +106,11 @@ describe('isRevenueTx', () => {
     expect(isRevenueTx(tx({ status: 'completed' }))).toBe(true);
   });
 
-  it('uji, refund, dan belum lunas tidak dihitung', () => {
-    expect(isRevenueTx(WEBINAR)).toBe(false);
+  it('uji yang lunas DIHITUNG — uangnya sungguh masuk dompet', () => {
+    expect(isRevenueTx(WEBINAR)).toBe(true);
+  });
+
+  it('refund dan belum lunas tidak dihitung', () => {
     expect(isRevenueTx(tx({ status: 'refunded' }))).toBe(false);
     expect(isRevenueTx(tx({ status: 'pending' }))).toBe(false);
   });
@@ -173,11 +177,11 @@ describe('angka per produk', () => {
     expect(productCounts(ROWS)).toEqual({ all: 7, iklan: 3, kilat: 1, webinar: 3 });
   });
 
-  it('revenueByProduct: uji dan refund tidak dihitung; uji lunas dicatat terpisah', () => {
+  it('revenueByProduct: uji lunas ikut dihitung (dan dihitung jumlahnya), refund tidak', () => {
     expect(revenueByProduct(ROWS)).toEqual({
       iklan: { amount: 1_500_000, tests: 0 },
       kilat: { amount: 910_200, tests: 0 },
-      webinar: { amount: 49_000, tests: 1 },
+      webinar: { amount: 50_000, tests: 1 },
     });
   });
 
@@ -187,14 +191,14 @@ describe('angka per produk', () => {
     expect(r.iklan.amount + r.kilat.amount + r.webinar.amount).toBe(total);
   });
 
-  it('categoryRevenue memakai aturan pendapatan yang sama (uji & refund keluar)', () => {
+  it('categoryRevenue memakai aturan pendapatan yang sama (uji masuk, refund keluar)', () => {
     const cats = categoryRevenue([
       tx({ note: JSON.stringify({ items: [{ name: 'Iklan', category: 'Jakpat for Universities (ads)', price: 1_000_000, qty: 1 }] }) }),
       tx({ note: 'memo saja', amount: 300_000 }),
       WEBINAR,
       tx({ ...WEBINAR, id: 'w3', amount: 49_000, note: webinarNote({ is_test: false, items: [{ qty: 1, name: 'Tiket webinar: X', price: 49_000, category: 'Webinar' }] }) }),
     ]);
-    expect(cats).toEqual({ 'Jakpat for Universities (ads)': 1_000_000, Lainnya: 300_000, Webinar: 49_000 });
+    expect(cats).toEqual({ 'Jakpat for Universities (ads)': 1_000_000, Lainnya: 300_000, Webinar: 50_000 });
   });
 });
 
