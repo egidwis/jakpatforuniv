@@ -52,10 +52,43 @@ let calls;
 let session;
 let dokuReply;
 let overrideEventsPatch;
-let broadcasts;
-let deliveries;
 let rpcReply;
 let dokuStatusReply;
+let r2;
+let storageNames;
+
+// R2 palsu (API S3 lewat presigned URL): objek & unggahan multipart di memori.
+function r2Handle(url, init) {
+  const u = new URL(url);
+  const method = (init.method || 'GET').toUpperCase();
+  const key = decodeURIComponent(u.pathname.split('/').slice(2).join('/'));
+  r2.calls.push({ method, key, query: Object.fromEntries(u.searchParams), body: init.body });
+  if (!u.searchParams.get('X-Amz-Signature')) return new Response('<Error><Code>AccessDenied</Code></Error>', { status: 403 });
+  if (r2.fail) return new Response(`<Error><Code>${r2.fail}</Code></Error>`, { status: 500 });
+  const uploadId = u.searchParams.get('uploadId');
+  if (method === 'POST' && u.searchParams.has('uploads')) {
+    const id = `UP-${r2.uploads.size + 1}`;
+    r2.uploads.set(id, key);
+    return new Response(`<InitiateMultipartUploadResult><UploadId>${id}</UploadId></InitiateMultipartUploadResult>`);
+  }
+  if (method === 'POST' && uploadId) {
+    if (r2.uploads.get(uploadId) !== key) return new Response('<Error><Code>NoSuchUpload</Code></Error>', { status: 404 });
+    r2.uploads.delete(uploadId);
+    r2.objects.set(key, r2.sizeOnComplete);
+    return new Response('<CompleteMultipartUploadResult/>');
+  }
+  if (method === 'DELETE' && uploadId) {
+    if (!r2.uploads.delete(uploadId)) return new Response('<Error><Code>NoSuchUpload</Code></Error>', { status: 404 });
+    return new Response(null, { status: 204 });
+  }
+  if (method === 'DELETE') { r2.objects.delete(key); return new Response(null, { status: 204 }); }
+  if (method === 'HEAD') {
+    return r2.objects.has(key)
+      ? new Response(null, { status: 200, headers: { 'content-length': String(r2.objects.get(key)) } })
+      : new Response(null, { status: 404 });
+  }
+  throw new Error(`R2 palsu: ${method} ${url}`);
+}
 
 function setup({ eventSeed, orderSeed = [] } = {}) {
   offers = {};
@@ -81,8 +114,6 @@ function setup({ eventSeed, orderSeed = [] } = {}) {
     onUpdate: (row) => { row.updated_at = stamp(); },
   });
   orders = postgrestTable(orderSeed);
-  broadcasts = postgrestTable([]);
-  deliveries = postgrestTable([]);
 }
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -92,27 +123,31 @@ beforeEach(() => {
   dokuReply = () => json({ ok: true });
   dokuStatusReply = () => json({ transaction: { status: 'PENDING' }, order: { amount: 50000 } });
   rpcReply = (name) => {
-    if (name === 'webinar_enqueue_broadcast') return json({ outcome: 'queued', broadcast_id: 'b-1', total: 4 });
-    if (name === 'webinar_claim_deliveries') return json({ token: 't', rows: [] });
     if (name === 'webinar_mark_refunded') return json({ outcome: 'ok', refunded_at: '2026-11-06T03:00:00Z' });
-    if (name === 'webinar_retry_broadcast') return json(2);
     return json({});
   };
   overrideEventsPatch = null;
+  r2 = { objects: new Map(), uploads: new Map(), calls: [], sizeOnComplete: 432_013_312, fail: null };
+  storageNames = [];
   calls = [];
   setup();
   vi.stubGlobal('fetch', vi.fn(async (input, init = {}) => {
     const url = String(input);
     const method = (init.method || 'GET').toUpperCase();
-    calls.push({ url, method, body: init.body ? JSON.parse(init.body) : undefined, headers: init.headers });
+    let parsed;
+    try { parsed = init.body ? JSON.parse(init.body) : undefined; } catch { parsed = init.body; } // XML R2
+    calls.push({ url, method, body: parsed, headers: init.headers });
     if (url.endsWith('/auth/v1/user')) return session ? json(session) : json({}, 401);
     if (url.includes('/checkout/v3/cancellations')) return dokuReply(JSON.parse(init.body));
     if (url.includes('/orders/v1/status/')) return dokuStatusReply(url);
     if (url.includes('/rest/v1/rpc/')) return rpcReply(url.split('/rpc/')[1], init.body ? JSON.parse(init.body) : null);
     if (url.includes('/auth/v1/admin/users/')) return json({ email: 'akun@example.test' });
     if (url.includes('api.resend.com')) return json({ id: 'mail-1' });
-    if (url.includes('/rest/v1/webinar_broadcast_deliveries')) return deliveries.respond(url, init);
-    if (url.includes('/rest/v1/webinar_broadcasts')) return broadcasts.respond(url, init);
+    if (url.includes('.r2.cloudflarestorage.com/')) return r2Handle(url, init);
+    if (url.includes('/storage/v1/object/list/webinar-materials')) {
+      const q = JSON.parse(init.body);
+      return json(storageNames.filter((n) => n.startsWith(`${q.prefix}/`)).map((n) => ({ name: n.split('/')[1] })).filter((r) => r.name.includes(q.search)));
+    }
     if (url.includes('/rest/v1/webinar_events')) {
       if (method === 'PATCH' && overrideEventsPatch) return overrideEventsPatch();
       return events.respond(url, init);
@@ -453,8 +488,6 @@ function seedOps() {
 describe('participants', () => {
   it('order live acara ini; link gabung hanya untuk lunas; tanpa link bayar, request DOKU, atau token mentah', async () => {
     seedOps();
-    broadcasts.rows.push({ id: 'b-1', event_id: PUB_ID, kind: 'reminder_day', event_starts_at: READY.starts_at, recipient_total: 1, skipped_reason: null, created_by: null, created_at: '2026-11-16T01:30:00Z' });
-    deliveries.rows.push({ broadcast_id: 'b-1', order_id: ORDER_PAID, status: 'sent', attempts: 1, sent_at: '2026-11-16T01:31:00Z', error: null, claimed_at: null, retry_after: null });
     const r = await call({ action: 'participants', id: PUB_ID });
     expect(r.status).toBe(200);
     expect(r.body.orders.map((o) => o.id).sort()).toEqual([ORDER_PAID, ORDER_PENDING].sort());
@@ -467,8 +500,12 @@ describe('participants', () => {
     expect(text).not.toContain('zoom.us');
     expect(paid.join_token).toBeUndefined();
     expect(r.body.event.has_meeting_url).toBe(true);
-    expect(r.body.broadcasts).toEqual([expect.objectContaining({ id: 'b-1', kind: 'reminder_day', counts: { queued: 0, sending: 0, sent: 1, failed: 0, skipped: 0 } })]);
-    expect(r.body.deliveries).toEqual([expect.objectContaining({ broadcast_id: 'b-1', order_id: ORDER_PAID, status: 'sent' })]);
+    // Iterasi 4: status email dibaca dari kolom penanda order, tanpa tabel antrean.
+    expect(Object.keys(r.body).sort()).toEqual(['event', 'orders']);
+    const read = calls.find((c) => c.method === 'GET' && c.url.includes('/rest/v1/webinar_orders?event_id='));
+    for (const col of ['reminder_sent_for', 'schedule_email_sent_at', 'cancel_email_sent_at', 'recording_email_sent_at', 'email_error']) {
+      expect(read.url).toContain(col);
+    }
   });
 
   it('acara tak ada → 404', async () => {
@@ -650,64 +687,61 @@ describe('refund', () => {
   });
 });
 
-describe('email-retry', () => {
-  it('antre ulang yang gagal lalu langsung mengirim batch', async () => {
-    const id = '88888888-8888-4888-8888-888888888888';
-    const r = await call({ action: 'email-retry', broadcastId: id });
-    expect(r).toMatchObject({ status: 200, body: { requeued: 2 } });
-    expect(rpcCalls('webinar_retry_broadcast')).toEqual([{ p_broadcast_id: id }]);
-    expect(rpcCalls('webinar_claim_deliveries')).toHaveLength(1);
+describe('email-retry (dihapus di Iterasi 4)', () => {
+  it('aksi tidak dikenal lagi → 400 tanpa panggilan database', async () => {
+    const r = await call({ action: 'email-retry', broadcastId: '88888888-8888-4888-8888-888888888888' });
+    expect(r.status).toBe(400);
+    expect(calls.filter((c) => c.url.includes('/rest/v1/'))).toHaveLength(0);
   });
 });
 
-describe('email otomatis ikut aksi admin', () => {
-  it('jadwal berubah + sudah terjual: antrekan schedule_change sesudah tersimpan, lalu kirim', async () => {
+describe('email otomatis ikut aksi admin (dikirim cron per peserta, sql/136b)', () => {
+  const rpcAny = () => calls.filter((c) => c.url.includes('/rest/v1/rpc/'));
+
+  it('jadwal berubah + sudah terjual: schedule_changed_at ditulis di PATCH yang sama; tanpa antrean/email langsung', async () => {
     offers[PUB_ID] = { state: 'on_sale', sold: 4, held: 0 };
+    const before = Date.now();
     const r = await call({ action: 'save', id: PUB_ID, patch: { starts_at: at(12 * DAY) }, confirmScheduleChange: true });
     expect(r.status).toBe(200);
-    expect(r.body.notified).toBe(4);
-    expect(rpcCalls('webinar_enqueue_broadcast')).toEqual([{ p_event_id: PUB_ID, p_kind: 'schedule_change', p_created_by: 'admin@example.test' }]);
-    expect(rpcCalls('webinar_claim_deliveries')).toHaveLength(1);
-    const enqueueAt = calls.findIndex((c) => c.url.endsWith('/rpc/webinar_enqueue_broadcast'));
-    const patchAt = calls.findIndex((c) => c.method === 'PATCH' && c.url.includes('/webinar_events'));
-    expect(patchAt).toBeGreaterThan(-1);
-    expect(enqueueAt).toBeGreaterThan(patchAt);
+    expect(r.body.notify_scheduled).toBe(4);
+    const patches = calls.filter((c) => c.method === 'PATCH' && c.url.includes('/webinar_events'));
+    expect(patches).toHaveLength(1);
+    expect(patches[0].url).toMatch(new RegExp(`webinar_events\\?id=eq\\.${PUB_ID}&select=id$`));
+    expect(Object.keys(patches[0].body).sort()).toEqual(['schedule_changed_at', 'starts_at']);
+    expect(Date.parse(rowOf(PUB_ID).schedule_changed_at)).toBeGreaterThanOrEqual(before - 1000);
+    expect(rpcAny()).toHaveLength(0);
+    expect(mails()).toHaveLength(0);
   });
 
-  it('bukan perubahan jadwal → tanpa email', async () => {
+  it('bukan perubahan jadwal → schedule_changed_at tidak disentuh', async () => {
     offers[PUB_ID] = { state: 'on_sale', sold: 4, held: 0 };
-    await call({ action: 'save', id: PUB_ID, patch: { summary: 'Baru' } });
-    expect(rpcCalls('webinar_enqueue_broadcast')).toHaveLength(0);
+    const r = await call({ action: 'save', id: PUB_ID, patch: { summary: 'Baru' } });
+    expect(rowOf(PUB_ID).schedule_changed_at).toBeUndefined();
+    expect(r.body.notify_scheduled).toBeUndefined();
   });
 
-  it('jadwal berubah tanpa tiket terjual → tanpa email', async () => {
-    await call({ action: 'save', id: PUB_ID, patch: { starts_at: at(12 * DAY) } });
-    expect(rpcCalls('webinar_enqueue_broadcast')).toHaveLength(0);
-  });
-
-  it('antrean gagal tidak menggagalkan simpan', async () => {
-    offers[PUB_ID] = { state: 'on_sale', sold: 4, held: 0 };
-    rpcReply = (name) => (name === 'webinar_enqueue_broadcast' ? json({ message: 'down' }, 500) : json({ token: 't', rows: [] }));
-    const r = await call({ action: 'save', id: PUB_ID, patch: { starts_at: at(12 * DAY) }, confirmScheduleChange: true });
+  it('jadwal berubah tanpa tiket terjual → tanpa schedule_changed_at', async () => {
+    const r = await call({ action: 'save', id: PUB_ID, patch: { starts_at: at(12 * DAY) } });
     expect(r.status).toBe(200);
-    expect(r.body.notify_error).toBe(true);
-    expect(Date.parse(rowOf(PUB_ID).starts_at)).toBe(Date.parse(r.body.event.starts_at));
+    expect(rowOf(PUB_ID).schedule_changed_at).toBeUndefined();
+    expect(r.body.notify_scheduled).toBeUndefined();
   });
 
-  it('batalkan acara yang sudah terjual: antrekan pembatalan sekali', async () => {
+  it('batalkan acara yang sudah terjual: hanya status acara; cron mengirim pembatalan', async () => {
     offers[PUB_ID] = { state: 'on_sale', sold: 3, held: 0 };
     const r = await call({ action: 'cancel', id: PUB_ID });
     expect(r.status).toBe(200);
-    expect(rpcCalls('webinar_enqueue_broadcast')).toEqual([{ p_event_id: PUB_ID, p_kind: 'cancellation', p_created_by: 'admin@example.test' }]);
-    expect(r.body.notified).toBe(4);
-    calls = [];
-    await call({ action: 'cancel', id: PUB_ID });
-    expect(rpcCalls('webinar_enqueue_broadcast')).toHaveLength(0);
+    expect(r.body.notify_scheduled).toBe(3);
+    expect(rowOf(PUB_ID).status).toBe('cancelled');
+    expect(rpcAny()).toHaveLength(0);
+    expect(mails()).toHaveLength(0);
+    const again = await call({ action: 'cancel', id: PUB_ID });
+    expect(again.body.notify_scheduled).toBeUndefined();
   });
 
-  it('batalkan acara tanpa tiket terjual → tanpa email', async () => {
-    await call({ action: 'cancel', id: PUB_ID });
-    expect(rpcCalls('webinar_enqueue_broadcast')).toHaveLength(0);
+  it('batalkan acara tanpa tiket terjual → tanpa notify_scheduled', async () => {
+    const r = await call({ action: 'cancel', id: PUB_ID });
+    expect(r.body.notify_scheduled).toBeUndefined();
   });
 });
 
@@ -716,7 +750,6 @@ describe('uji lokal (database produksi)', () => {
     ['refund', { action: 'refund', orderId: ORDER_PAID, note: 'catatan' }],
     ['resend-ticket', { action: 'resend-ticket', orderId: ORDER_PAID }],
     ['check-order', { action: 'check-order', orderId: ORDER_PENDING }],
-    ['email-retry', { action: 'email-retry', broadcastId: '88888888-8888-4888-8888-888888888888' }],
   ])('%s → 403 local_test tanpa tulisan', async (_n, body) => {
     seedOps();
     const r = await call(body, LOCAL);
@@ -743,5 +776,169 @@ describe('uji lokal (database produksi)', () => {
   it('ubah isi lain tetap boleh dari lokal', async () => {
     offers[PUB_ID] = { state: 'on_sale', sold: 4, held: 0 };
     expect((await call({ action: 'save', id: PUB_ID, patch: { summary: 'Baru' } }, LOCAL)).status).toBe(200);
+  });
+});
+
+describe('rekaman & materi (Fase 5A)', () => {
+  const R2_ENV = { ...ENV, R2_ACCOUNT_ID: 'acct', R2_ACCESS_KEY_ID: 'AKID', R2_SECRET_ACCESS_KEY: 'SECRET', R2_RECORDINGS_BUCKET: 'rek' };
+  const R2 = { env: R2_ENV };
+  const R2_LOCAL = { host: LOCAL.host, env: { ...R2_ENV, WEBINAR_LOCAL_OPEN: 'true' } };
+  const OLD_KEY = `rekaman/${PUB_ID}/lama-00000000.mp4`;
+  const parts = [{ partNumber: 1, etag: '"e1"' }, { partNumber: 2, etag: '"e2"' }];
+
+  async function upload(opts = R2) {
+    const start = await call({ action: 'recording-upload-start', id: PUB_ID, fileName: 'Rekaman SPSS.mp4', size: 90 * 1024 ** 2 }, opts);
+    return start;
+  }
+
+  it('bukan admin → 401 tanpa REST maupun R2', async () => {
+    session = STRANGER;
+    expect((await call({ action: 'recording-upload-start', id: PUB_ID, fileName: 'a.mp4', size: 10 }, R2)).status).toBe(401);
+    expect(restCalls()).toHaveLength(0);
+    expect(r2.calls).toHaveLength(0);
+  });
+
+  it('secret R2 belum diisi → 503 storage_unconfigured', async () => {
+    const r = await call({ action: 'recording-upload-start', id: PUB_ID, fileName: 'a.mp4', size: 10 });
+    expect(r).toMatchObject({ status: 503, body: { code: 'storage_unconfigured' } });
+  });
+
+  it('non-MP4, > 4 GB, atau kunci di luar folder acara → 400 tanpa REST/R2', async () => {
+    expect((await call({ action: 'recording-upload-start', id: PUB_ID, fileName: 'a.mov', size: 10 }, R2)).status).toBe(400);
+    expect((await call({ action: 'recording-upload-start', id: PUB_ID, fileName: 'a.mp4', size: 5 * 1024 ** 3 }, R2)).status).toBe(400);
+    const r = await call({ action: 'recording-part-urls', id: PUB_ID, key: `rekaman/${DRAFT_ID}/a-1.mp4`, uploadId: 'UP', partNumbers: [1] }, R2);
+    expect(r.status).toBe(400);
+    expect(restCalls()).toHaveLength(0);
+    expect(r2.calls).toHaveLength(0);
+  });
+
+  it('acara batal → 409, tanpa unggahan dibuat', async () => {
+    const r = await call({ action: 'recording-upload-start', id: CANCELLED_ID, fileName: 'a.mp4', size: 10 }, R2);
+    expect(r).toMatchObject({ status: 409, body: { code: 'cancelled' } });
+    expect(r2.calls).toHaveLength(0);
+  });
+
+  it('alur penuh: mulai → URL bagian → selesai → PATCH id saja → objek lama dihapus SESUDAH PATCH', async () => {
+    rowOf(PUB_ID).recording_object_key = OLD_KEY;
+    r2.objects.set(OLD_KEY, 100);
+    const start = await upload();
+    expect(start.status).toBe(200);
+    expect(start.body.key).toMatch(new RegExp(`^rekaman/${PUB_ID}/rekaman-spss-[0-9a-f]{8}\\.mp4$`));
+    expect(start.body.partSize).toBe(50 * 1024 ** 2);
+
+    const urls = await call({ action: 'recording-part-urls', id: PUB_ID, key: start.body.key, uploadId: start.body.uploadId, partNumbers: [1, 2] }, R2);
+    expect(urls.body.urls.map((u) => u.partNumber)).toEqual([1, 2]);
+    const u1 = new URL(urls.body.urls[0].url);
+    expect(u1.host).toBe('acct.r2.cloudflarestorage.com');
+    expect(u1.searchParams.get('X-Amz-Expires')).toBe('7200');
+    expect(u1.searchParams.get('uploadId')).toBe(start.body.uploadId);
+
+    const done = await call({ action: 'recording-upload-complete', id: PUB_ID, key: start.body.key, uploadId: start.body.uploadId, parts, minutes: 88 }, R2);
+    expect(done.status).toBe(200);
+    expect(done.body).toMatchObject({ size: 432_013_312, old_deleted: true });
+    expect(rowOf(PUB_ID)).toMatchObject({ recording_object_key: start.body.key, recording_minutes: 88 });
+    expect(r2.objects.has(OLD_KEY)).toBe(false);
+    expect(r2.objects.has(start.body.key)).toBe(true);
+
+    const patch = eventPatches().at(-1);
+    expect(new URL(patch.url).search).toBe(`?id=eq.${PUB_ID}&select=id`);
+    // Urutan: PATCH acara terjadi sebelum DELETE objek lama.
+    const patchAt = calls.indexOf(patch);
+    const deleteAt = calls.findIndex((c) => c.method === 'DELETE' && c.url.includes(encodeURIComponent('lama-00000000').replace(/%2D/g, '-')));
+    expect(deleteAt).toBeGreaterThan(patchAt);
+  });
+
+  it('PATCH gagal (nol baris) → objek lama TIDAK dihapus', async () => {
+    rowOf(PUB_ID).recording_object_key = OLD_KEY;
+    r2.objects.set(OLD_KEY, 100);
+    const start = await upload();
+    overrideEventsPatch = () => json([]);
+    const done = await call({ action: 'recording-upload-complete', id: PUB_ID, key: start.body.key, uploadId: start.body.uploadId, parts, minutes: 88 }, R2);
+    expect(done.status).toBe(500);
+    expect(r2.objects.has(OLD_KEY)).toBe(true);
+  });
+
+  it('objek tersimpan kosong → 400 dan objek baru dihapus, acara tidak berubah', async () => {
+    r2.sizeOnComplete = 0;
+    const start = await upload();
+    const done = await call({ action: 'recording-upload-complete', id: PUB_ID, key: start.body.key, uploadId: start.body.uploadId, parts, minutes: 88 }, R2);
+    expect(done).toMatchObject({ status: 400, body: { code: 'bad_object' } });
+    expect(r2.objects.has(start.body.key)).toBe(false);
+    expect(rowOf(PUB_ID).recording_object_key).toBeUndefined();
+  });
+
+  it('R2 gagal → 502 storage_failed', async () => {
+    r2.fail = 'InternalError';
+    const r = await upload();
+    expect(r).toMatchObject({ status: 502, body: { code: 'storage_failed' } });
+  });
+
+  it('batal unggah: abort multipart; unggahan yang sudah tak ada tetap sukses', async () => {
+    const start = await upload();
+    expect((await call({ action: 'recording-upload-abort', id: PUB_ID, key: start.body.key, uploadId: start.body.uploadId }, R2)).status).toBe(200);
+    expect(r2.uploads.size).toBe(0);
+    expect((await call({ action: 'recording-upload-abort', id: PUB_ID, key: start.body.key, uploadId: start.body.uploadId }, R2)).status).toBe(200);
+  });
+
+  it('pratinjau: URL baca 1 jam; tanpa rekaman → 404', async () => {
+    expect((await call({ action: 'recording-preview', id: PUB_ID }, R2)).status).toBe(404);
+    rowOf(PUB_ID).recording_object_key = OLD_KEY;
+    const r = await call({ action: 'recording-preview', id: PUB_ID }, R2);
+    const u = new URL(r.body.url);
+    expect(u.pathname).toBe(`/rek/${OLD_KEY}`);
+    expect(u.searchParams.get('X-Amz-Expires')).toBe('3600');
+  });
+
+  it('materi: berkas wajib ada di bucket, lalu materials_path ditulis', async () => {
+    const path = `${PUB_ID}/materi-spss-1a2b.pdf`;
+    expect((await call({ action: 'materials-save', id: PUB_ID, path })).body.code).toBe('no_material');
+    storageNames.push(path);
+    const r = await call({ action: 'materials-save', id: PUB_ID, path });
+    expect(r.status).toBe(200);
+    expect(rowOf(PUB_ID).materials_path).toBe(path);
+  });
+
+  it('terbitkan: wajib dua centang + video; sekali saja; email dikirim cron (tanpa antrean)', async () => {
+    const conf = { speakerPermission: true, facesTrimmed: true };
+    offers[PUB_ID] = { state: 'on_sale', sold: 4, held: 0 };
+    expect((await call({ action: 'recording-publish', id: PUB_ID, confirmations: { speakerPermission: true } })).status).toBe(400);
+    expect((await call({ action: 'recording-publish', id: PUB_ID, confirmations: conf })).body.code).toBe('no_recording');
+    rowOf(PUB_ID).recording_object_key = OLD_KEY;
+    const r = await call({ action: 'recording-publish', id: PUB_ID, confirmations: conf });
+    expect(r.status).toBe(200);
+    expect(r.body.notify_scheduled).toBe(4);
+    expect(rowOf(PUB_ID).recording_published_at).toBeTruthy();
+    expect(calls.filter((c) => c.url.includes('/rest/v1/rpc/'))).toHaveLength(0);
+
+    const again = await call({ action: 'recording-publish', id: PUB_ID, confirmations: conf });
+    expect(again.body.already).toBe(true);
+    expect(again.body.notify_scheduled).toBeUndefined();
+  });
+
+  it('draft tidak bisa menerbitkan rekaman', async () => {
+    rowOf(DRAFT_ID).recording_object_key = `rekaman/${DRAFT_ID}/a-1.mp4`;
+    const r = await call({ action: 'recording-publish', id: DRAFT_ID, confirmations: { speakerPermission: true, facesTrimmed: true } });
+    expect(r.body.code).toBe('not_published');
+  });
+
+  it('uji lokal: unggah & pratinjau boleh; terbit ditolak bila ada tiket lunas; ganti video terbit ditolak', async () => {
+    setup({ orderSeed: [orderRow({ id: ORDER_PAID })] });
+    expect((await upload(R2_LOCAL)).status).toBe(200);
+    rowOf(PUB_ID).recording_object_key = OLD_KEY;
+    expect((await call({ action: 'recording-preview', id: PUB_ID }, R2_LOCAL)).status).toBe(200);
+    const pub = await call({ action: 'recording-publish', id: PUB_ID, confirmations: { speakerPermission: true, facesTrimmed: true } }, R2_LOCAL);
+    expect(pub).toMatchObject({ status: 403, body: { code: 'local_test' } });
+    expect(rowOf(PUB_ID).recording_published_at).toBeUndefined();
+
+    rowOf(PUB_ID).recording_published_at = '2026-11-18T02:00:00Z';
+    const start = await upload(R2_LOCAL);
+    const done = await call({ action: 'recording-upload-complete', id: PUB_ID, key: start.body.key, uploadId: start.body.uploadId, parts, minutes: 88 }, R2_LOCAL);
+    expect(done).toMatchObject({ status: 403, body: { code: 'local_test' } });
+  });
+
+  it('daftar acara membawa kolom rekaman untuk admin', async () => {
+    rowOf(PUB_ID).recording_object_key = OLD_KEY;
+    const r = await call({ action: 'list' });
+    expect(r.body.events.find((e) => e.id === PUB_ID).recording_object_key).toBe(OLD_KEY);
   });
 });

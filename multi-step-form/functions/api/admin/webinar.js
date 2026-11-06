@@ -21,10 +21,14 @@ import {
   adminEmails, validateWebinarRequest, normalizePatch, applySalesInvariant, slugifyTitle, pickFreeSlug,
   isSlugLocked, missingForPublish, crossFieldError, quotaError, clearedScheduleError, scheduleChanged,
 } from './webinarGate.js';
-import { DbError, Refusal, refuse, db, decorate, loadEvent, loadOrRefuse } from './_webinarDb.js';
+import { DbError, Refusal, refuse, db, decorate, loadOrRefuse, writeEvent } from './_webinarDb.js';
 import {
-  participants, participant, resendTicket, checkOrder, refundOrder, retryEmail, notifyParticipants, LOCAL_BLOCKED_ACTIONS, buyers,
+  participants, participant, resendTicket, checkOrder, refundOrder, LOCAL_BLOCKED_ACTIONS, buyers,
 } from './_webinarOps.js';
+import {
+  uploadStart, partUrls, uploadComplete, uploadAbort, preview, saveMaterials, publishRecording,
+} from './_webinarRecording.js';
+import { StorageError } from '../webinar/_recording.js';
 
 // meeting_url hanya dibaca untuk has_meeting_url lalu dibuang; deskripsi tidak perlu di daftar.
 const LIST_SELECT = [
@@ -32,18 +36,11 @@ const LIST_SELECT = [
   'sales_mode', 'sales_open_at', 'sales_close_at', 'price', 'quota', 'status', 'offer_kind',
   'is_listed', 'is_test', 'preview_token', 'published_at', 'created_at', 'updated_at',
   'meeting_url', 'webinar_offer_state',
+  // Fase 5A: kunci R2 hanya untuk admin; pembeli tidak pernah menerimanya.
+  'recording_object_key', 'recording_minutes', 'recording_published_at', 'materials_path',
 ].join(',');
 
 const LOCAL_TEST = 'Dimatikan di uji lokal karena memakai database produksi dan bisa mengirim email ke peserta sungguhan. Uji di produksi.';
-
-/** PATCH berfilter id saja, minta barisnya kembali, lalu baca ulang bersama keadaan penjualan. */
-async function writeEvent(sb, id, write, label) {
-  const rows = await db(sb, `webinar_events?id=eq.${id}&select=id`, { method: 'PATCH', body: JSON.stringify(write) }, label);
-  if (!Array.isArray(rows) || rows.length === 0) throw new Error(`${label}: nol baris berubah`);
-  const fresh = await loadEvent(sb, id);
-  if (!fresh) throw new Error(`${label}: baris hilang sesudah ditulis`);
-  return fresh;
-}
 
 async function freeSlug(sb, title, excludeId) {
   const base = slugifyTitle(title);
@@ -106,8 +103,14 @@ const FAILURE_MESSAGE = {
   'resend-ticket': 'E-tiket belum bisa dikirim ulang. Coba lagi sebentar.',
   'check-order': 'Status pembayaran belum bisa dicek. Coba lagi sebentar.',
   refund: 'Refund belum bisa dicatat. Coba lagi sebentar.',
-  'email-retry': 'Email belum bisa dikirim ulang. Coba lagi sebentar.',
   buyers: 'Data pembeli webinar belum bisa dimuat. Coba lagi sebentar.',
+  'recording-upload-start': 'Unggahan belum bisa dimulai. Coba lagi sebentar.',
+  'recording-part-urls': 'Unggahan terputus. Coba lagi sebentar.',
+  'recording-upload-complete': 'Video belum bisa disimpan. Coba lagi sebentar.',
+  'recording-upload-abort': 'Unggahan belum bisa dibatalkan.',
+  'recording-preview': 'Pratinjau belum bisa dimuat. Coba lagi sebentar.',
+  'materials-save': 'Materi belum bisa disimpan. Coba lagi sebentar.',
+  'recording-publish': 'Rekaman belum bisa diterbitkan. Coba lagi sebentar.',
 };
 
 // ── Aksi ───────────────────────────────────────────────────────────────────
@@ -149,7 +152,8 @@ async function save(sb, body, ctx) {
 
   const patch = normalized(body);
   const next = applySalesInvariant({ ...current, ...patch });
-  // Peserta dikabari otomatis bila jadwal acara yang sudah terjual berubah.
+  // Peserta dikabari otomatis bila jadwal acara yang sudah terjual berubah: cukup
+  // tandai schedule_changed_at; cron mengirim email per peserta (sql/136b).
   const notifySchedule = current.status === 'published' && soldOf(current) > 0 && scheduleChanged(current, next);
   if (notifySchedule && ctx.local) throw refuse(403, LOCAL_TEST, { code: 'local_test' });
   checkRules(current, next, { confirmScheduleChange: body.confirmScheduleChange === true });
@@ -161,10 +165,9 @@ async function save(sb, body, ctx) {
   const event = await withSlugRetry(async () => writeEvent(sb, body.id, {
     ...write,
     ...(followTitle ? { slug: await freeSlug(sb, next.title, body.id) } : {}),
+    ...(notifySchedule ? { schedule_changed_at: new Date().toISOString() } : {}),
   }, 'PATCH webinar_events (simpan)'));
-  // Sesudah tersimpan: email yang gagal diantrekan tidak membatalkan simpanan.
-  const notice = notifySchedule ? await notifyParticipants({ ...ctx, sb, eventId: body.id, kind: 'schedule_change' }) : {};
-  return { event: decorate(event), ...notice };
+  return { event: decorate(event), ...(notifySchedule ? { notify_scheduled: soldOf(current) } : {}) };
 }
 
 async function publish(sb, body) {
@@ -208,7 +211,8 @@ async function closeSales(sb, body) {
 async function cancel(sb, env, body, ctx) {
   const current = await loadOrRefuse(sb, body.id);
   if (current.status === 'draft') throw refuse(409, 'Draft dihapus, bukan dibatalkan', { code: 'draft' });
-  // Hanya transisi pertama yang mengabari peserta; memanggil ulang hanya membersihkan.
+  // Hanya transisi pertama yang mengabari peserta (cron per peserta, sql/136b);
+  // memanggil ulang hanya membersihkan.
   const notifyCancel = current.status === 'published' && soldOf(current) > 0;
   if (notifyCancel && ctx.local) throw refuse(403, LOCAL_TEST, { code: 'local_test' });
 
@@ -241,13 +245,12 @@ async function cancel(sb, env, body, ctx) {
     }, 'PATCH webinar_orders (batal)');
   }
 
-  const notice = notifyCancel ? await notifyParticipants({ ...ctx, sb, eventId: body.id, kind: 'cancellation' }) : {};
   return {
     event: decorate(event),
     pending_cancelled: pending.length,
     doku_cancelled: results.length - failed.length,
     doku_failed: failed,
-    ...notice,
+    ...(notifyCancel ? { notify_scheduled: soldOf(current) } : {}),
   };
 }
 
@@ -297,12 +300,22 @@ export async function onRequest({ request, env, waitUntil }) {
       case 'resend-ticket': return json(200, await resendTicket(sb, env, body));
       case 'check-order': return json(200, await checkOrder(sb, env, body, waitUntil));
       case 'refund': return json(200, await refundOrder(sb, body, user.email));
-      case 'email-retry': return json(200, await retryEmail(sb, env, body, waitUntil));
       case 'buyers': return json(200, await buyers(sb));
+      case 'recording-upload-start': return json(200, await uploadStart(sb, env, body));
+      case 'recording-part-urls': return json(200, await partUrls(sb, env, body));
+      case 'recording-upload-complete': return json(200, await uploadComplete(sb, env, body, ctx));
+      case 'recording-upload-abort': return json(200, await uploadAbort(sb, env, body));
+      case 'recording-preview': return json(200, await preview(sb, env, body));
+      case 'materials-save': return json(200, await saveMaterials(sb, body));
+      case 'recording-publish': return json(200, await publishRecording(sb, body, ctx));
       default: return json(400, { error: 'Tindakan tidak diizinkan' });
     }
   } catch (err) {
     if (err instanceof Refusal) return json(err.status, { error: err.message, ...err.extra });
+    if (err instanceof StorageError) {
+      console.error('[admin/webinar]', body.action, err.message);
+      return json(502, { error: 'Penyimpanan rekaman tidak menjawab. Coba lagi sebentar.', code: 'storage_failed' });
+    }
     if (err instanceof DbError && err.code === '23503') {
       return json(409, { error: 'Acara ini sudah punya order, jadi tidak bisa dihapus', code: 'has_orders' });
     }

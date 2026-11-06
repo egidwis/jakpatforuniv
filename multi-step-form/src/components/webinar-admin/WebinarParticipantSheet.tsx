@@ -9,7 +9,7 @@ import { errorMessage } from '@/utils/webinarParticipants';
 import { checkOrder, getParticipant, type CheckOrderResult } from '@/utils/webinarAdminApi';
 import {
     alarmLabel, emailHistoryFor, participantGroup, shortStamp, unpaidLabel,
-    type AdminBroadcast, type AdminDelivery, type AdminWebinarOrder,
+    type AdminWebinarOrder,
 } from '@/utils/webinarParticipants';
 
 const ALARM_HELP: Record<string, string> = {
@@ -19,7 +19,7 @@ const ALARM_HELP: Record<string, string> = {
 };
 
 const DELIVERY_TEXT: Record<string, string> = {
-    sent: '✓', failed: 'gagal', queued: 'antre', sending: 'dikirim…', skipped: 'dilewati', pending: 'belum',
+    sent: '✓', failed: 'gagal', skipped: 'dilewati', pending: 'belum',
 };
 
 function checkText(r: CheckOrderResult): string {
@@ -42,11 +42,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 /** C5. Detail peserta: panel kanan di desktop, lembar bawah di HP. */
 export function WebinarParticipantSheet({
-    order, broadcasts, deliveries, onClose, onResend, onRefund, onChanged,
+    order, onClose, onResend, onRefund, onChanged,
 }: {
     order: AdminWebinarOrder | null;
-    broadcasts: AdminBroadcast[];
-    deliveries: AdminDelivery[];
     onClose: () => void;
     onResend: (order: AdminWebinarOrder) => void;
     onRefund: (order: AdminWebinarOrder) => void;
@@ -69,7 +67,7 @@ export function WebinarParticipantSheet({
 
     const group = order ? participantGroup(order) : null;
     const alarm = order ? alarmLabel(order.alarm_outcome) : null;
-    const history = order ? emailHistoryFor(order, broadcasts, deliveries) : [];
+    const history = order ? emailHistoryFor(order) : [];
 
     const runCheck = async () => {
         if (!order) return;
@@ -135,11 +133,16 @@ export function WebinarParticipantSheet({
                                     <ul className="space-y-0.5">
                                         {history.map((h, i) => (
                                             <li key={i} className={cn(h.status === 'failed' && 'text-amber-700')}>
-                                                {h.label} {DELIVERY_TEXT[h.status]}{h.at ? ` ${shortStamp(h.at)}` : ''}
+                                                {h.label} {DELIVERY_TEXT[h.status]}{h.at ? ` ${shortStamp(h.at)}` : ''}{h.note ? ` (${h.note})` : ''}
                                                 {h.error && <span className="block text-[12px] font-normal text-slate-500">{h.error}</span>}
                                             </li>
                                         ))}
                                     </ul>
+                                    {order.email_error && (
+                                        <p className="mt-1 text-[12px] font-normal text-red-600">
+                                            Email otomatis gagal: {order.email_error}. Tidak diulang otomatis; kabari peserta lewat WA.
+                                        </p>
+                                    )}
                                 </Field>
                             )}
                             {group === 'refunded' && (

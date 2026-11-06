@@ -2,10 +2,13 @@ import { webinarOpenFor } from './_access.js';
 import { deliverWebinarTicket } from '../doku/_webinar.js';
 import { SITE_URL, buildEventView, formatPrice, formatTimeWib, joinWindow } from './_view.js';
 import { caller, CORS, json, resolveService, rest, sbFetch } from './_server.js';
+import { recordingReady } from './_recordingAccess.js';
 
 // meeting_url hanya dibaca untuk `join.meeting_ready` (boolean); nilainya tidak pernah
 // ikut ke browser, karena buildEventView memilih kolomnya sendiri. Pembeli masuk lewat link gabung.
-const EVENT_COLUMNS = 'id,slug,title,summary,poster_url,speakers,starts_at,duration_minutes,price,status,offer_kind,sales_mode,is_listed,is_test,recording_minutes,recording_published_at,meeting_url';
+// Sama halnya recording_object_key & materials_path: hanya menjadi boolean di `recording`.
+// URL tonton hanya keluar dari /api/webinar/watch.
+const EVENT_COLUMNS = 'id,slug,title,summary,poster_url,speakers,starts_at,duration_minutes,price,status,offer_kind,sales_mode,is_listed,is_test,recording_minutes,recording_published_at,meeting_url,recording_object_key,materials_path';
 
 /**
  * Jendela gabung untuk halaman tiket. Hitungan dalam detik dari jam server, supaya jam
@@ -33,10 +36,25 @@ export function orderDisplayStatus(order, now = Date.now()) {
   return order.status;
 }
 
+/** Keadaan rekaman di kartu tiket; tanpa URL dan tanpa kunci objek. */
+export function buildRecordingView(order, display) {
+  const event = order.webinar_events || {};
+  const available = display === 'paid' && event.status !== 'cancelled' && recordingReady(event);
+  return {
+    recording: {
+      available,
+      minutes: available ? event.recording_minutes ?? null : null,
+      has_materials: available && Boolean(event.materials_path),
+    },
+    watch_path: available ? `/dashboard/webinar/tonton/${order.id}` : null,
+  };
+}
+
 export function buildOrderView(order, now = Date.now()) {
   const display = orderDisplayStatus(order, now);
   const event = order.webinar_events || {};
   return {
+    ...buildRecordingView(order, display),
     id: order.id,
     kind: order.kind,
     status: display,

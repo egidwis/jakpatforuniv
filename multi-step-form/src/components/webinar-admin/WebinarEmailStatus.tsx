@@ -1,85 +1,78 @@
-import { Loader2 } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AdminWebinarEvent } from '@/utils/webinarAdmin';
 import {
-    broadcastSummary, reminderStatus, ticketEmailState,
-    type AdminBroadcast, type AdminWebinarOrder, type BroadcastKind, type Tone,
+    failedEmails, noticeStatus, reminderStatus, ticketEmailState,
+    type AdminWebinarOrder, type EmailLine, type Tone,
 } from '@/utils/webinarParticipants';
 
 const TONE: Record<Tone, string> = { ok: 'text-emerald-700', warn: 'text-amber-700', muted: 'text-slate-500' };
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function Row({ label, line }: { label: string; line: EmailLine }) {
     return (
         <div className="flex flex-col gap-0.5 py-1.5 sm:flex-row sm:items-start sm:gap-3">
             <span className="shrink-0 text-[13px] font-medium text-slate-700 sm:w-36">{label}</span>
-            <div className="min-w-0 flex-1 text-[13px]">{children}</div>
+            <span className={cn('min-w-0 flex-1 text-[13px] tabular-nums', TONE[line.tone])}>{line.text}</span>
         </div>
     );
 }
 
 /**
- * Bagian "Email otomatis" di halaman Peserta. Admin tidak mengirim email dari sini:
- * pengingat H-1 dikirim cron, jadwal berubah & pembatalan ikut aksi di form/daftar.
- * Yang bisa dilakukan hanya "Kirim ulang yang gagal".
+ * C4' bagian "Email otomatis" di halaman Peserta (Iterasi 4). Admin tidak mengirim
+ * email dari sini: cron memanggil pengirim per peserta tiap menit (sql/136b), dan
+ * statusnya dibaca dari kolom penanda di setiap order. Email yang gagal tidak diulang.
  */
 export function WebinarEmailStatus({
-    event, orders, broadcasts, retryingId, onRetry,
+    event, orders, onOpen,
 }: {
     event: AdminWebinarEvent;
     orders: AdminWebinarOrder[];
-    broadcasts: AdminBroadcast[];
-    retryingId: string | null;
-    onRetry: (broadcastId: string) => void;
+    /** Buka detail peserta (untuk daftar email gagal). */
+    onOpen: (orderId: string) => void;
 }) {
     const now = Date.now();
     const paid = orders.filter((o) => o.status === 'paid');
     const sent = paid.filter((o) => ticketEmailState(o, now) === 'sent').length;
-    const failed = paid.filter((o) => ticketEmailState(o, now) === 'failed').length;
-    const reminder = reminderStatus(event, broadcasts, now);
-
-    const history = (kind: BroadcastKind) => {
-        const list = broadcasts.filter((b) => b.kind === kind);
-        if (list.length === 0) return <span className="text-slate-500">—</span>;
-        return (
-            <ul className="space-y-1">
-                {list.slice(0, 3).map((b) => {
-                    const s = broadcastSummary(b);
-                    return (
-                        <li key={b.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                            <span className={cn('tabular-nums', TONE[s.tone])}>{s.text}</span>
-                            {s.retryable && (
-                                <button
-                                    type="button"
-                                    disabled={retryingId === b.id}
-                                    onClick={() => onRetry(b.id)}
-                                    className="inline-flex items-center gap-1 text-[13px] font-semibold text-blue-700 hover:underline disabled:opacity-60"
-                                >
-                                    {retryingId === b.id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                                    Kirim ulang yang gagal
-                                </button>
-                            )}
-                        </li>
-                    );
-                })}
-            </ul>
-        );
-    };
+    const failedTickets = paid.filter((o) => ticketEmailState(o, now) === 'failed').length;
+    const schedule = noticeStatus('schedule_change', event, orders, now);
+    const cancellation = noticeStatus('cancellation', event, orders, now);
+    const recording = noticeStatus('recording_ready', event, orders, now);
+    const failed = failedEmails(orders);
 
     return (
         <section className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-            <h2 className="mb-1 text-[12px] font-bold uppercase tracking-wide text-slate-500">Email otomatis</h2>
-            <Row label="E-tiket">
-                {paid.length === 0
-                    ? <span className="text-slate-500">—</span>
-                    : <span className={cn('tabular-nums', failed ? TONE.warn : TONE.ok)}>
-                        {sent}/{paid.length} terkirim{failed ? ` · ${failed} gagal (lihat peserta)` : ''}
-                    </span>}
-            </Row>
-            <Row label="Pengingat H-1"><span className={TONE[reminder.tone]}>{reminder.text}</span></Row>
-            <Row label="Jadwal berubah">{history('schedule_change')}</Row>
-            {(event.status === 'cancelled' || broadcasts.some((b) => b.kind === 'cancellation')) && (
-                <Row label="Pembatalan">{history('cancellation')}</Row>
+            <div className="mb-1 flex items-baseline justify-between gap-3">
+                <h2 className="text-[12px] font-bold uppercase tracking-wide text-slate-500">Email otomatis</h2>
+                <span className="text-[12px] text-slate-500">dikirim otomatis tiap menit</span>
+            </div>
+            <Row
+                label="E-tiket"
+                line={paid.length === 0
+                    ? { text: '—', tone: 'muted' }
+                    : { text: `${sent}/${paid.length} terkirim${failedTickets ? ` · ${failedTickets} gagal (lihat peserta)` : ''}`, tone: failedTickets ? 'warn' : 'ok' }}
+            />
+            <Row label="Pengingat H-1" line={reminderStatus(event, orders, now)} />
+            {schedule && <Row label="Jadwal berubah" line={schedule} />}
+            {cancellation && <Row label="Pembatalan" line={cancellation} />}
+            {recording && <Row label="Rekaman tersedia" line={recording} />}
+
+            {failed.length > 0 && (
+                <div className="mt-2 flex gap-2 rounded-xl bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>
+                        <strong>{failed.length} email gagal</strong> · lihat peserta:{' '}
+                        {failed.map((o, i) => (
+                            <span key={o.id}>
+                                {i > 0 && ', '}
+                                <button type="button" onClick={() => onOpen(o.id)} className="font-semibold underline-offset-2 hover:underline">
+                                    {o.buyer_name || o.buyer_email}
+                                </button>
+                            </span>
+                        ))}
+                    </span>
+                </div>
             )}
+            <p className="mt-2 text-[12px] text-slate-500">Email yang gagal tidak diulang otomatis; kabari pesertanya lewat WA.</p>
         </section>
     );
 }

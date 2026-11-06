@@ -4,7 +4,7 @@ import {
   WEBINAR_ADMIN_ACTIONS, EDITABLE_COLUMNS, FIELD_ORDER, adminEmails, validateWebinarRequest,
   isEmptyDoc, hasDataImage, normalizeDoc, normalizeSpeakers, normalizePatch, applySalesInvariant,
   slugifyTitle, pickFreeSlug, isSlugLocked, missingForPublish, crossFieldError, quotaError,
-  clearedScheduleError, scheduleChanged,
+  clearedScheduleError, scheduleChanged, RECORDING_ACTIONS, MAX_RECORDING_BYTES,
 } from './webinarGate.js';
 
 const ID = '33333333-3333-4333-8333-333333333333';
@@ -13,8 +13,9 @@ const para = (text) => ({ type: 'paragraph', content: text ? [{ type: 'text', te
 
 describe('validateWebinarRequest', () => {
   it('menerima setiap aksi yang terdaftar dengan bentuk benar', () => {
-    for (const action of WEBINAR_ADMIN_ACTIONS) {
-      expect(validateWebinarRequest({ action, id: ID, patch: {}, orderId: ID, broadcastId: ID, note: 'Bentrok jadwal' })).toBeNull();
+    // Aksi rekaman punya isian sendiri; bentuk sahnya diuji di "aksi rekaman (Fase 5A)".
+    for (const action of WEBINAR_ADMIN_ACTIONS.filter((a) => !RECORDING_ACTIONS.includes(a))) {
+      expect(validateWebinarRequest({ action, id: ID, patch: {}, orderId: ID, note: 'Bentrok jadwal' })).toBeNull();
     }
   });
 
@@ -24,7 +25,7 @@ describe('validateWebinarRequest', () => {
     expect(validateWebinarRequest({ action: 'refund', orderId: ID, note: 'x'.repeat(501) })).toMatch(/Catatan refund/);
     expect(validateWebinarRequest({ action: 'resend-ticket', orderId: ID, email: 'bukan email' })).toMatch(/email tidak valid/);
     expect(validateWebinarRequest({ action: 'resend-ticket', orderId: ID, email: '' })).toBeNull();
-    expect(validateWebinarRequest({ action: 'email-retry', broadcastId: 'x' })).toMatch(/Email tidak dikenali/);
+    expect(validateWebinarRequest({ action: 'email-retry', broadcastId: ID })).toMatch(/Tindakan tidak diizinkan/);
     expect(validateWebinarRequest({ action: 'participants', id: 'x' })).toMatch(/Acara tidak dikenali/);
   });
 
@@ -242,5 +243,62 @@ describe('kuota dan jadwal yang sudah bertiket', () => {
     expect(scheduleChanged(a, { starts_at: '2026-12-01T03:00:00.000Z', duration_minutes: 90 })).toBe(false);
     expect(scheduleChanged(a, { starts_at: '2026-12-01T04:00:00.000Z', duration_minutes: 90 })).toBe(true);
     expect(scheduleChanged(a, { ...a, duration_minutes: 120 })).toBe(true);
+  });
+});
+
+describe('aksi rekaman (Fase 5A)', () => {
+  const ID = '8ea66d4e-429f-4e98-a716-4bbc92b6ee39';
+  const KEY = `rekaman/${ID}/spss-a1b2c3d4.mp4`;
+  const ok = (body) => expect(validateWebinarRequest({ id: ID, ...body })).toBeNull();
+  const bad = (body, re) => expect(validateWebinarRequest({ id: ID, ...body })).toMatch(re);
+
+  it('unggah mulai: hanya .mp4, 1 B–4 GB', () => {
+    ok({ action: 'recording-upload-start', fileName: 'Rekaman.MP4', size: 432_013_312 });
+    ok({ action: 'recording-upload-start', fileName: 'a.mp4', size: MAX_RECORDING_BYTES });
+    bad({ action: 'recording-upload-start', fileName: 'a.mov', size: 10 }, /MP4/);
+    bad({ action: 'recording-upload-start', fileName: 'a.mp4', size: MAX_RECORDING_BYTES + 1 }, /4 GB/);
+    bad({ action: 'recording-upload-start', fileName: 'a.mp4', size: 0 }, /4 GB/);
+    bad({ action: 'recording-upload-start', fileName: 'a.mp4', size: '10' }, /4 GB/);
+  });
+
+  it('acara wajib UUID untuk semua aksi rekaman', () => {
+    for (const action of RECORDING_ACTIONS) {
+      expect(validateWebinarRequest({ action, id: 'x' })).toBe('Acara tidak dikenali');
+    }
+  });
+
+  it('URL bagian: kunci milik acara ini, 1–20 nomor bagian unik 1..10000', () => {
+    ok({ action: 'recording-part-urls', key: KEY, uploadId: 'UP-1', partNumbers: [1, 2, 3] });
+    bad({ action: 'recording-part-urls', key: 'rekaman/0d41c7ac-71e9-4e11-9a80-5fee6494f602/a-1.mp4', uploadId: 'UP', partNumbers: [1] }, /Rekaman tidak dikenali/);
+    bad({ action: 'recording-part-urls', key: KEY, uploadId: '', partNumbers: [1] }, /Unggahan tidak dikenali/);
+    bad({ action: 'recording-part-urls', key: KEY, uploadId: 'UP', partNumbers: [] }, /Bagian/);
+    bad({ action: 'recording-part-urls', key: KEY, uploadId: 'UP', partNumbers: Array.from({ length: 21 }, (_, i) => i + 1) }, /Bagian/);
+    bad({ action: 'recording-part-urls', key: KEY, uploadId: 'UP', partNumbers: [0] }, /Bagian/);
+    bad({ action: 'recording-part-urls', key: KEY, uploadId: 'UP', partNumbers: [10001] }, /Bagian/);
+    bad({ action: 'recording-part-urls', key: KEY, uploadId: 'UP', partNumbers: [2, 2] }, /Bagian/);
+  });
+
+  it('selesai unggah: bagian urut tanpa celah, ETag wajar, durasi 1–1440 menit', () => {
+    const parts = [{ partNumber: 1, etag: '"a1"' }, { partNumber: 2, etag: '"b2"' }];
+    ok({ action: 'recording-upload-complete', key: KEY, uploadId: 'UP', parts, minutes: 88 });
+    bad({ action: 'recording-upload-complete', key: KEY, uploadId: 'UP', parts: [parts[1], parts[0]], minutes: 88 }, /Bagian/);
+    bad({ action: 'recording-upload-complete', key: KEY, uploadId: 'UP', parts: [parts[0], { partNumber: 3, etag: '"c"' }], minutes: 88 }, /Bagian/);
+    bad({ action: 'recording-upload-complete', key: KEY, uploadId: 'UP', parts: [{ partNumber: 1, etag: '<x>' }], minutes: 88 }, /Bagian/);
+    bad({ action: 'recording-upload-complete', key: KEY, uploadId: 'UP', parts, minutes: 0 }, /Durasi/);
+    bad({ action: 'recording-upload-complete', key: KEY, uploadId: 'UP', parts, minutes: 1441 }, /Durasi/);
+  });
+
+  it('materi: path di folder acara, ekstensi dokumen', () => {
+    ok({ action: 'materials-save', path: `${ID}/materi-spss-1a2b.pdf` });
+    ok({ action: 'materials-save', path: `${ID}/slide.pptx` });
+    bad({ action: 'materials-save', path: 'lain/materi.pdf' }, /Materi/);
+    bad({ action: 'materials-save', path: `${ID}/../x.pdf` }, /Materi/);
+    bad({ action: 'materials-save', path: `${ID}/x.exe` }, /Materi/);
+  });
+
+  it('terbitkan rekaman: dua centang wajib true', () => {
+    ok({ action: 'recording-publish', confirmations: { speakerPermission: true, facesTrimmed: true } });
+    bad({ action: 'recording-publish', confirmations: { speakerPermission: true } }, /centang/);
+    bad({ action: 'recording-publish' }, /centang/);
   });
 });

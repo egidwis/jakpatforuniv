@@ -60,3 +60,12 @@ export async function loadOrRefuse(sb, id) {
   if (!row) throw refuse(404, 'Acara tidak ditemukan');
   return row;
 }
+
+/** PATCH berfilter id saja, minta barisnya kembali, lalu baca ulang bersama keadaan penjualan. */
+export async function writeEvent(sb, id, write, label) {
+  const rows = await db(sb, `webinar_events?id=eq.${id}&select=id`, { method: 'PATCH', body: JSON.stringify(write) }, label);
+  if (!Array.isArray(rows) || rows.length === 0) throw new Error(`${label}: nol baris berubah`);
+  const fresh = await loadEvent(sb, id);
+  if (!fresh) throw new Error(`${label}: baris hilang sesudah ditulis`);
+  return fresh;
+}

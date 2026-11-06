@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import {
-    fetchMyWebinarOrders, fetchWebinarListing, syncWebinarOrder, webinarTicketHref,
+    fetchMyWebinarOrders, fetchWebinarListing, purchaseHistory, syncWebinarOrder, webinarTicketHref,
     type MyWebinarOrders, type WebinarEventView, type WebinarListing, type WebinarOrderView,
 } from '@/utils/webinarApi';
 import { AdminContactLine, CARD_CLASS, WebinarBadge, WebinarMeta, WebinarPoster } from '@/components/webinar/WebinarParts';
@@ -42,6 +42,38 @@ function OfferCard({ event, owned }: { event: WebinarEventView; owned?: WebinarO
                 <a href={event.detail_url} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-jfu-primary">Detail →</a>
             </div>
         </article>
+    );
+}
+
+const historyDate = (iso: string | null | undefined) => (iso
+    ? new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', timeZone: 'Asia/Jakarta' })
+    : '—');
+
+/** C15: hanya order lunas & refund. Refund ditulis "Tidak aktif", tanpa kata refund. */
+function PurchaseHistory({ orders }: { orders: WebinarOrderView[] }) {
+    const rows = purchaseHistory(orders);
+    if (rows.length === 0) return null;
+    return (
+        <section className="space-y-3">
+            <h2 className="text-base font-bold text-slate-900">Riwayat pembelian</h2>
+            <ul className={`${CARD_CLASS} divide-y divide-slate-100`}>
+                {rows.map((o) => (
+                    <li key={o.id} className="px-4 py-3 text-sm">
+                        <div className="flex items-baseline justify-between gap-3">
+                            <p className="min-w-0 truncate font-semibold text-slate-900">{o.event.title}</p>
+                            <span className="shrink-0 tabular-nums font-semibold text-slate-900">{o.amount_label}</span>
+                        </div>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                            {historyDate(o.paid_at || o.created_at)} · {o.kind === 'replay' ? 'Video kelas' : 'Tiket live'} ·{' '}
+                            <span className={o.status === 'paid' ? 'text-emerald-700' : 'text-slate-500'}>
+                                {o.status === 'paid' ? 'Lunas' : 'Tidak aktif'}
+                            </span>
+                        </p>
+                        <p className="truncate font-mono text-[11px] text-slate-400">{o.invoice_number}</p>
+                    </li>
+                ))}
+            </ul>
+        </section>
     );
 }
 
@@ -157,6 +189,8 @@ export function WebinarHubPage() {
                             </p>
                         )}
                     </section>
+
+                    <PurchaseHistory orders={mine?.orders ?? []} />
 
                     <section className="space-y-3">
                         <h2 className="text-base font-bold text-slate-900">Webinar &amp; kelas</h2>

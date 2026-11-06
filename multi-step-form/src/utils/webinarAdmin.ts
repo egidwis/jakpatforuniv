@@ -59,6 +59,13 @@ export interface AdminWebinarEvent {
     updated_at: string;
     webinar_offer_state: WebinarOfferState | null;
     view: WebinarEventView;
+    /** Fase 5A (sql/136): kunci objek R2, hanya untuk admin. */
+    recording_object_key?: string | null;
+    recording_minutes?: number | null;
+    recording_published_at?: string | null;
+    materials_path?: string | null;
+    /** Iterasi 4 (sql/136): jadwal acara yang sudah terjual terakhir berubah. */
+    schedule_changed_at?: string | null;
     has_meeting_url: boolean;
 }
 

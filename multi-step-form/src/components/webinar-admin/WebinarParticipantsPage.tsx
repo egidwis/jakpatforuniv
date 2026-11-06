@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { downloadCsv } from '@/utils/csv';
 import { adminDateLabel, formatRupiah } from '@/utils/webinarAdmin';
 import { errorMessage } from '@/utils/webinarParticipants';
-import { listParticipants, refundOrder, resendTicket, retryEmail, type ParticipantsResult } from '@/utils/webinarAdminApi';
+import { listParticipants, refundOrder, resendTicket, type ParticipantsResult } from '@/utils/webinarAdminApi';
 import {
     alarmLabel, filterParticipants, groupCounts, participantCsv, participantStats, ticketEmailState, unpaidLabel,
     type AdminWebinarOrder, type ParticipantGroup,
@@ -37,6 +37,12 @@ function EmailBadge({ order, now }: { order: AdminWebinarOrder; now: number }) {
     return null;
 }
 
+/** Email otomatis (pengingat, jadwal, dst.) terakhir gagal: tidak diulang, admin mengabari lewat WA. */
+function AutoEmailBadge({ order }: { order: AdminWebinarOrder }) {
+    if (order.status !== 'paid' || !order.email_error) return null;
+    return <span className="text-[12px] font-medium text-amber-700">⚠ Email gagal</span>;
+}
+
 function rowNote(order: AdminWebinarOrder, now: number): string | null {
     if (order.status === 'refunded') {
         const when = order.refunded_at ? adminDateLabel(order.refunded_at)?.split(' · ')[0] : '';
@@ -56,7 +62,6 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [resendFor, setResendFor] = useState<AdminWebinarOrder | null>(null);
     const [refundFor, setRefundFor] = useState<AdminWebinarOrder | null>(null);
-    const [retryingId, setRetryingId] = useState<string | null>(null);
 
     const load = useCallback(async () => {
         try {
@@ -92,7 +97,7 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
         );
     }
 
-    const { event, broadcasts, deliveries } = data;
+    const { event } = data;
     const stats = participantStats(orders, event.webinar_offer_state);
     const exportCsv = () => {
         const { headers, rows } = participantCsv(visible);
@@ -120,19 +125,6 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
             void load();
         } catch (err) {
             toast.error(errorMessage(err, 'Refund belum bisa dicatat'));
-        }
-    };
-
-    const retry = async (broadcastId: string) => {
-        setRetryingId(broadcastId);
-        try {
-            const r = await retryEmail(broadcastId);
-            toast.success(r.requeued ? `${r.requeued} email dikirim ulang` : 'Tidak ada email gagal yang bisa dikirim ulang');
-            void load();
-        } catch (err) {
-            toast.error(errorMessage(err, 'Email belum bisa dikirim ulang'));
-        } finally {
-            setRetryingId(null);
         }
     };
 
@@ -185,7 +177,7 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
                 </div>
                 <p className="text-[13px] text-slate-600 lg:hidden">Pendapatan{event.is_test ? ' (uji)' : ''} <strong className="tabular-nums">{formatRupiah(stats.revenue)}</strong></p>
 
-                <WebinarEmailStatus event={event} orders={orders} broadcasts={broadcasts} retryingId={retryingId} onRetry={retry} />
+                <WebinarEmailStatus event={event} orders={orders} onOpen={setSelectedId} />
 
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="-mx-1 flex gap-2 overflow-x-auto px-1">
@@ -228,7 +220,9 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
                                         <button type="button" onClick={() => setSelectedId(o.id)} className="block w-full px-4 py-3 text-left hover:bg-slate-50">
                                             <div className="flex items-start justify-between gap-2">
                                                 <span className="min-w-0 truncate text-[14px] font-semibold text-slate-900">{o.buyer_name || 'Peserta'}</span>
-                                                {alarm ? <span className="shrink-0 text-[12px] font-medium text-amber-700">⚠ {alarm}</span> : <EmailBadge order={o} now={now} />}
+                                                {alarm
+                                                    ? <span className="shrink-0 text-[12px] font-medium text-amber-700">⚠ {alarm}</span>
+                                                    : o.email_error && o.status === 'paid' ? <AutoEmailBadge order={o} /> : <EmailBadge order={o} now={now} />}
                                             </div>
                                             <p className="truncate text-[13px] text-slate-600">{o.buyer_email}</p>
                                             <p className="text-[12px] text-slate-500">
@@ -249,7 +243,7 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
                                         <th className="px-3 py-2.5">Email e-tiket</th>
                                         <th className="px-3 py-2.5">Kampus</th>
                                         <th className="px-3 py-2.5">{group === 'paid' ? 'Kode tiket' : 'Keterangan'}</th>
-                                        {group === 'paid' && <th className="px-3 py-2.5">E-tiket</th>}
+                                        {group === 'paid' && <th className="px-3 py-2.5">Email</th>}
                                         <th className="px-3 py-2.5">Izin</th>
                                     </tr>
                                 </thead>
@@ -265,7 +259,11 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
                                                 <td className="max-w-[16rem] truncate px-3 py-2.5 text-slate-700">{o.buyer_email}</td>
                                                 <td className="px-3 py-2.5 text-slate-700">{o.buyer_university || '–'}</td>
                                                 <td className="px-3 py-2.5 tabular-nums text-slate-700">{group === 'paid' ? o.ticket_code : rowNote(o, now)}</td>
-                                                {group === 'paid' && <td className="px-3 py-2.5"><EmailBadge order={o} now={now} /></td>}
+                                                {group === 'paid' && (
+                                                    <td className="px-3 py-2.5">
+                                                        <div className="flex flex-col gap-0.5"><EmailBadge order={o} now={now} /><AutoEmailBadge order={o} /></div>
+                                                    </td>
+                                                )}
                                                 <td className="px-3 py-2.5 text-slate-700">{o.marketing_consent ? '✓' : '–'}</td>
                                             </tr>
                                         );
@@ -286,8 +284,6 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
 
             <WebinarParticipantSheet
                 order={selected}
-                broadcasts={broadcasts}
-                deliveries={deliveries}
                 onClose={() => setSelectedId(null)}
                 onResend={setResendFor}
                 onRefund={setRefundFor}

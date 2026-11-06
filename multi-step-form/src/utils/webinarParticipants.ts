@@ -6,8 +6,7 @@ import type { WebinarOfferState } from './webinarAdmin';
 
 export type OrderStatus = 'pending' | 'paid' | 'expired' | 'cancelled' | 'refunded';
 export type ParticipantGroup = 'paid' | 'unpaid' | 'refunded';
-export type BroadcastKind = 'reminder_day' | 'schedule_change' | 'cancellation';
-export type DeliveryStatus = 'queued' | 'sending' | 'sent' | 'failed' | 'skipped';
+export type NotifyKind = 'reminder_day' | 'schedule_change' | 'cancellation' | 'recording_ready';
 export type Tone = 'ok' | 'warn' | 'muted';
 
 /** Order seperti dikirim aksi `participants` (tanpa link bayar dan token mentah). */
@@ -46,37 +45,25 @@ export interface AdminWebinarOrder {
     refunded_by: string | null;
     refund_note: string | null;
     last_status_check_at: string | null;
-}
-
-export interface AdminBroadcast {
-    id: string;
-    kind: BroadcastKind;
-    event_starts_at: string | null;
-    recipient_total: number;
-    skipped_reason: string | null;
-    created_by: string | null;
-    created_at: string;
-    counts: Record<DeliveryStatus, number>;
-}
-
-export interface AdminDelivery {
-    broadcast_id: string;
-    order_id: string;
-    status: DeliveryStatus;
-    attempts: number;
-    sent_at: string | null;
-    error: string | null;
-    retry_after: string | null;
+    /** Email otomatis (sql/136): penanda per jenis, diisi cron saat Function dipanggil. */
+    reminder_sent_for: string | null;
+    schedule_email_sent_at: string | null;
+    cancel_email_sent_at: string | null;
+    recording_email_sent_at: string | null;
+    /** Galat email otomatis terakhir: "<jenis> · <waktu WIB> · <pesan>". */
+    email_error: string | null;
 }
 
 /** Pesan galat untuk toast; `fallback` bila galatnya tanpa pesan. */
 export const errorMessage = (err: unknown, fallback: string): string =>
     (err instanceof Error && err.message) ? err.message : fallback;
 
-export const BROADCAST_LABEL: Record<BroadcastKind, string> = {
+/** Sama dengan NOTIFY_LABEL di functions/api/webinar/_notify.js (awalan email_error). */
+export const NOTIFY_LABEL: Record<NotifyKind, string> = {
     reminder_day: 'Pengingat H-1',
     schedule_change: 'Jadwal berubah',
     cancellation: 'Pembatalan',
+    recording_ready: 'Rekaman tersedia',
 };
 
 const MIN = 60_000;
@@ -175,77 +162,122 @@ function statusLabel(order: AdminWebinarOrder, now: number): string {
     return order.status === 'pending' && Date.parse(order.payment_expires_at) > now ? 'Menunggu bayar' : 'Kedaluwarsa';
 }
 
-// ── Email otomatis ────────────────────────────────────────────────────────
+// ── Email otomatis (Iterasi 4: kolom penanda per order, sql/136b) ──────────
 
 interface EventTiming {
     status: 'draft' | 'published' | 'cancelled';
     offer_kind: 'live' | 'replay';
     starts_at: string | null;
     duration_minutes: number | null;
+    schedule_changed_at?: string | null;
+    recording_published_at?: string | null;
 }
 
-const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
+export interface EmailLine { text: string; tone: Tone }
 
-/** Baris "Pengingat H-1" untuk jadwal acara yang sekarang. Aturan waktunya = sql/135. */
-export function reminderStatus(event: EventTiming, broadcasts: AdminBroadcast[], now = Date.now()): { text: string; tone: Tone } {
+const SEVEN_DAYS = 7 * 24 * HOUR;
+const ms = (iso: string | null | undefined) => (iso ? Date.parse(iso) : NaN);
+const paidOnly = (orders: AdminWebinarOrder[]) => orders.filter((o) => o.status === 'paid' && o.kind === 'live');
+const failedFor = (orders: AdminWebinarOrder[], kind: NotifyKind) =>
+    orders.filter((o) => (o.email_error || '').startsWith(`${NOTIFY_LABEL[kind]} ·`)).length;
+
+/** Pengingat dianggap "dilewati" bila email jadwal baru diserahkan < 12 jam sebelum jendela H-1 berjalan. */
+const reminderSkipped = (o: AdminWebinarOrder) =>
+    Boolean(o.reminder_sent_for && o.schedule_email_sent_at && ms(o.schedule_email_sent_at) > ms(o.reminder_sent_for) - 36 * HOUR);
+
+function summary(prefix: string, sent: number, total: number, waiting: number, failed: number, lost: boolean, lostWord = 'tidak terkirim'): EmailLine {
+    const parts = [`${sent}/${total} dikirim`];
+    if (waiting) parts.push(`${waiting} ${lost ? lostWord : 'menyusul'}`);
+    if (failed) parts.push(`${failed} gagal`);
+    const tone: Tone = failed || (waiting && lost) ? 'warn' : waiting ? 'muted' : 'ok';
+    return { text: prefix ? `${prefix} · ${parts.join(' · ')}` : parts.join(' · '), tone };
+}
+
+/** Baris "Pengingat H-1" untuk jadwal acara yang sekarang. Aturan waktunya = sql/136b. */
+export function reminderStatus(event: EventTiming, orders: AdminWebinarOrder[], now = Date.now()): EmailLine {
     if (event.status !== 'published' || event.offer_kind !== 'live' || !event.starts_at) return { text: '—', tone: 'muted' };
-    const start = Date.parse(event.starts_at);
+    const start = ms(event.starts_at);
     if (now >= start + (Number(event.duration_minutes) || 0) * MIN) return { text: '—', tone: 'muted' };
-
-    const b = broadcasts.find((x) => x.kind === 'reminder_day' && x.event_starts_at && Date.parse(x.event_starts_at) === start);
-    if (!b) {
-        if (now >= start - 3 * HOUR) return { text: 'Terlewat', tone: 'warn' };
-        if (now >= start - 24 * HOUR) return { text: 'Segera dikirim', tone: 'muted' };
+    if (now < start - 24 * HOUR) {
         const at = new Date(start - 24 * HOUR).toISOString();
         const d = wibParts(at, { weekday: 'short', day: 'numeric', month: 'short' });
         return { text: `Dijadwalkan ${d.weekday}, ${d.day} ${d.month} · ${clock(at)} WIB`, tone: 'muted' };
     }
-    if (b.skipped_reason) return { text: `Dilewati: ${lowerFirst(b.skipped_reason)}`, tone: 'muted' };
-    if (b.recipient_total === 0) return { text: 'Tidak ada penerima', tone: 'muted' };
-    const { sent, failed, queued, sending } = b.counts;
-    if (queued + sending > 0) return { text: `Sedang dikirim ${sent}/${b.recipient_total}`, tone: 'muted' };
-    if (failed > 0) return { text: `${sent}/${b.recipient_total} terkirim · ${failed} gagal`, tone: 'warn' };
-    return { text: `${sent}/${b.recipient_total} terkirim · ${shortStamp(b.created_at)}`, tone: 'ok' };
+
+    const paid = paidOnly(orders);
+    const marked = paid.filter((o) => ms(o.reminder_sent_for) === start);
+    const skipped = marked.filter(reminderSkipped).length;
+    const sent = marked.length - skipped;
+    const closed = now >= start - 3 * HOUR;
+    // Penerima yang belum: lunas ≥ 6 jam sebelum (sekarang, atau batas 3 jam bila sudah lewat).
+    const cutoff = Math.min(now, start - 3 * HOUR) - 6 * HOUR;
+    const waiting = paid.filter((o) => ms(o.reminder_sent_for) !== start && ms(o.paid_at) < cutoff).length;
+
+    if (marked.length === 0 && waiting === 0) return { text: 'Tidak ada penerima', tone: 'muted' };
+    if (sent === 0 && waiting === 0) return { text: 'Dilewati: email jadwal baru dikirim kurang dari 12 jam sebelumnya', tone: 'muted' };
+    const line = summary('', sent, sent + waiting, waiting, failedFor(marked, 'reminder_day'), closed, 'terlewat');
+    return skipped ? { ...line, text: `${line.text} · ${skipped} dilewati` } : line;
 }
 
-/** Baris riwayat untuk email jadwal berubah / pembatalan. */
-export function broadcastSummary(b: AdminBroadcast): { text: string; tone: Tone; retryable: boolean } {
-    const date = shortStamp(b.created_at);
-    if (b.skipped_reason) return { text: `${date} · dilewati`, tone: 'muted', retryable: false };
-    const { sent, failed, queued, sending } = b.counts;
-    if (queued + sending > 0) return { text: `${date} · sedang dikirim ${sent}/${b.recipient_total}`, tone: 'muted', retryable: false };
-    if (failed > 0) return { text: `${date} · ${sent}/${b.recipient_total} terkirim · ${failed} gagal`, tone: 'warn', retryable: true };
-    return { text: `${date} · ${sent}/${b.recipient_total} terkirim`, tone: 'ok', retryable: false };
+/** Baris "Jadwal berubah" / "Pembatalan" / "Rekaman tersedia"; null = tidak relevan untuk acara ini. */
+export function noticeStatus(kind: Exclude<NotifyKind, 'reminder_day'>, event: EventTiming, orders: AdminWebinarOrder[], now = Date.now()): EmailLine | null {
+    const paid = paidOnly(orders);
+    if (kind === 'schedule_change') {
+        const changed = ms(event.schedule_changed_at);
+        if (!Number.isFinite(changed)) return null;
+        const recipients = paid.filter((o) => ms(o.paid_at) < changed);
+        const done = recipients.filter((o) => ms(o.schedule_email_sent_at) >= changed);
+        // Dibatalkan sebelum email jadwal berangkat: pembatalan menggantikannya, jangan tampil sebagai masalah.
+        if (event.status === 'cancelled' && done.length === 0) return null;
+        const lost = event.status !== 'published' || ms(event.starts_at) <= now || changed < now - SEVEN_DAYS;
+        return summary(shortStamp(event.schedule_changed_at!), done.length, recipients.length, recipients.length - done.length, failedFor(done, kind), lost);
+    }
+    if (kind === 'cancellation') {
+        if (event.status !== 'cancelled') return null;
+        const done = paid.filter((o) => o.cancel_email_sent_at);
+        const lost = ms(event.starts_at) < now - SEVEN_DAYS;
+        return summary('', done.length, paid.length, paid.length - done.length, failedFor(done, kind), lost);
+    }
+    if (!event.recording_published_at) return null;
+    const done = paid.filter((o) => o.recording_email_sent_at);
+    const lost = event.status !== 'published' || ms(event.recording_published_at) < now - SEVEN_DAYS;
+    return summary(shortStamp(event.recording_published_at), done.length, paid.length, paid.length - done.length, failedFor(done, kind), lost);
 }
+
+/** Tiket lunas yang email otomatis terakhirnya gagal (tidak diulang otomatis). */
+export const failedEmails = (orders: AdminWebinarOrder[]): AdminWebinarOrder[] =>
+    paidOnly(orders).filter((o) => o.email_error);
 
 export interface EmailHistoryItem {
     label: string;
-    status: DeliveryStatus | 'pending';
+    status: 'sent' | 'failed' | 'pending' | 'skipped';
     at: string | null;
+    note: string | null;
     error: string | null;
 }
 
-/** Email yang diterima satu peserta: e-tiket lalu email otomatis, urut waktu. */
-export function emailHistoryFor(order: AdminWebinarOrder, broadcasts: AdminBroadcast[], deliveries: AdminDelivery[]): EmailHistoryItem[] {
+/** Email yang diterima satu peserta, dari kolom order. Galat terakhir ada di order.email_error. */
+export function emailHistoryFor(order: AdminWebinarOrder): EmailHistoryItem[] {
     const items: EmailHistoryItem[] = [];
+    // Penanda diisi saat Function dipanggil, juga bila gagal; email_error berawalan jenisnya = yang terakhir gagal.
+    const sent = (label: string, at: string | null, note: string | null = null): EmailHistoryItem =>
+        ({ label, status: (order.email_error || '').startsWith(`${label} ·`) ? 'failed' : 'sent', at, note, error: null });
     if (order.status === 'paid' || order.status === 'refunded') {
         items.push({
             label: 'E-tiket',
             status: order.ticket_email_sent_at ? 'sent' : order.ticket_email_error ? 'failed' : 'pending',
             at: order.ticket_email_sent_at,
+            note: null,
             error: order.ticket_email_sent_at ? null : order.ticket_email_error,
         });
     }
-    const byId = new Map(broadcasts.map((b) => [b.id, b]));
-    deliveries
-        .filter((d) => d.order_id === order.id && byId.has(d.broadcast_id))
-        .sort((a, b) => Date.parse(byId.get(a.broadcast_id)!.created_at) - Date.parse(byId.get(b.broadcast_id)!.created_at))
-        .forEach((d) => items.push({
-            label: BROADCAST_LABEL[byId.get(d.broadcast_id)!.kind],
-            status: d.status,
-            at: d.sent_at,
-            error: d.status === 'sent' ? null : d.error,
-        }));
+    if (order.schedule_email_sent_at) items.push(sent(NOTIFY_LABEL.schedule_change, order.schedule_email_sent_at));
+    if (order.reminder_sent_for) {
+        const item = sent(NOTIFY_LABEL.reminder_day, null, `jadwal ${shortStamp(order.reminder_sent_for)}`);
+        items.push(reminderSkipped(order) ? { ...item, status: 'skipped' } : item);
+    }
+    if (order.cancel_email_sent_at) items.push(sent(NOTIFY_LABEL.cancellation, order.cancel_email_sent_at));
+    if (order.recording_email_sent_at) items.push(sent(NOTIFY_LABEL.recording_ready, order.recording_email_sent_at));
     return items;
 }
 

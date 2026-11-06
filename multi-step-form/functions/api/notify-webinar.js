@@ -1,9 +1,10 @@
-import { dispatchWebinarNotifications } from './webinar/_notify.js';
-import { resolveService } from './webinar/_server.js';
+import { NOTIFY_KINDS, sendOrderNotification } from './webinar/_notify.js';
+import { resolveService, UUID_RE } from './webinar/_server.js';
 
-// Dipanggil pg_cron/pg_net (webinar_notify_tick, sql/135 + sql/135b), bukan dari
-// frontend, jadi wajib membawa ?k=<CRON_NOTIFY_SECRET>. Pola sama dengan
-// notify-ad-live.js. Satu panggilan = satu batch; sisanya diambil tick berikutnya.
+// Dipanggil pg_cron/pg_net (webinar_notify_tick, sql/136b) sekali per peserta, bukan
+// dari frontend, jadi wajib membawa ?k=<CRON_NOTIFY_SECRET>. Pola sama dengan
+// notify-ad-live.js. Body: { order_id, kind }. Penanda di webinar_orders sudah diisi
+// tick sebelum memanggil; di sini hanya mengirim dan mencatat galat.
 
 const respond = (status, body) => new Response(JSON.stringify(body), {
   status,
@@ -18,11 +19,24 @@ export async function onRequestPost({ request, env }) {
     return respond(401, { error: 'Unauthorized' });
   }
 
+  let body;
+  try { body = await request.json(); } catch { body = null; }
+  const orderId = body?.order_id;
+  const kind = body?.kind;
+  if (typeof orderId !== 'string' || !UUID_RE.test(orderId) || !NOTIFY_KINDS.includes(kind)) {
+    console.error('[notify-webinar] Body tidak dikenali', JSON.stringify(body).slice(0, 200));
+    return respond(400, { error: 'Body harus { order_id, kind }' });
+  }
+
   try {
-    const result = await dispatchWebinarNotifications({ env, sb: resolveService(env), limit: 20 });
+    const result = await sendOrderNotification({ env, sb: resolveService(env), orderId, kind });
+    if (result.sent === false) {
+      console.error('[notify-webinar]', orderId, result.error);
+      return respond(502, { error: 'Email gagal dikirim', detail: result.error });
+    }
     return respond(200, result);
   } catch (err) {
-    console.error('[notify-webinar]', err?.message || err);
-    return respond(500, { error: 'Antrean email belum bisa diproses' });
+    console.error('[notify-webinar]', orderId, kind, err?.message || err);
+    return respond(500, { error: 'Email belum bisa diproses' });
   }
 }

@@ -86,13 +86,12 @@ export function WebinarAdminPage({ onDirtyChange }: { onDirtyChange?: (dirty: bo
                 onConfirm: () => run(async () => {
                     const result = await cancelWebinarEvent(event.id);
                     replace(result.event);
-                    if (result.notify_error) {
-                        toast.warning('Acara dibatalkan, tetapi email pembatalan gagal diantrekan. Kabari peserta lewat WA.', { duration: 10000 });
-                    }
                     if (result.doku_failed.length) {
                         toast.warning(`Acara dibatalkan, tetapi ${result.doku_failed.length} link bayar gagal dimatikan di DOKU. Pilih "Batalkan acara" lagi untuk mencoba ulang.`, { duration: 10000 });
-                    } else if (!result.notify_error) {
-                        toast.success(result.notified ? `Acara dibatalkan. ${result.notified} peserta dikabari lewat email.` : 'Acara dibatalkan');
+                    } else {
+                        toast.success(result.notify_scheduled
+                            ? `Acara dibatalkan. Email pembatalan ke ${result.notify_scheduled} peserta berangkat dalam ±1 menit.`
+                            : 'Acara dibatalkan');
                     }
                 }),
             });

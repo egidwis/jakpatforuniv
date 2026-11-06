@@ -68,6 +68,11 @@ export interface WebinarOrderView {
     event: WebinarEventView;
     event_cancelled: boolean;
     event_is_past: boolean;
+    paid_at?: string | null;
+    created_at?: string;
+    /** Fase 5A: keadaan rekaman (tanpa URL; URL hanya dari /api/webinar/watch). */
+    recording?: { available: boolean; minutes: number | null; has_materials: boolean };
+    watch_path?: string | null;
 }
 
 export interface MyWebinarOrders {
@@ -194,6 +199,37 @@ export function webinarContactError(c: WebinarContact): string | null {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email.trim())) return 'Email belum benar';
     if (!/^\+?[0-9\s-]+$/.test(c.phone.trim()) || digits.length < 8 || digits.length > 16) return 'No telepon belum benar';
     return null;
+}
+
+// ── Fase 5A: rekaman & materi ─────────────────────────────────────────────
+
+export interface WebinarWatchView {
+    /** Presigned URL R2, berlaku 3 jam; diminta ulang bila pemutar galat. */
+    video_url: string;
+    expires_at: string;
+    minutes: number | null;
+    has_materials: boolean;
+    /** "email · 7F3A", dirender di atas video. */
+    watermark: string;
+    event: WebinarEventView;
+}
+
+export const fetchWatch = (orderId: string) =>
+    call<WebinarWatchView>('watch', { method: 'POST', body: JSON.stringify({ orderId }) }, true);
+
+export const fetchMaterialUrl = (orderId: string) =>
+    call<{ url: string; file_name: string; expires_at: string }>('material', { method: 'POST', body: JSON.stringify({ orderId }) }, true);
+
+/** Unduh materi tanpa membuka tab baru (signed URL membawa Content-Disposition attachment). */
+export async function downloadMaterial(orderId: string): Promise<void> {
+    const { url } = await fetchMaterialUrl(orderId);
+    window.location.assign(url);
+}
+
+/** Riwayat pembelian (C15): hanya order lunas & refund, terbaru dulu. */
+export function purchaseHistory(orders: WebinarOrderView[]): WebinarOrderView[] {
+    const at = (o: WebinarOrderView) => Date.parse(o.paid_at || o.created_at || '') || 0;
+    return orders.filter((o) => o.status === 'paid' || o.status === 'refunded').sort((a, b) => at(b) - at(a));
 }
 
 export const syncWebinarOrder = (orderId: string) =>

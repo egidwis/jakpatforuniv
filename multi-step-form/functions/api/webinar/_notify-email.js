@@ -49,15 +49,21 @@ const p = (html, extra = '') => `<p style="margin:0 0 12px;font-size:14px;${extr
 const row = (label, value) =>
   `<tr><td style="padding:4px 12px 4px 0;color:#666;white-space:nowrap;vertical-align:top;">${escapeHtml(label)}</td>` +
   `<td style="padding:4px 0;font-weight:600;">${escapeHtml(value)}</td></tr>`;
-const button = (href) =>
-  `<p style="margin:16px 0 12px;"><a href="${escapeHtml(href)}" style="display:inline-block;background:#1976D2;color:#fff;text-decoration:none;font-weight:700;padding:12px 24px;border-radius:8px;">Gabung ke webinar</a></p>`;
+const button = (href, label = 'Gabung ke webinar') =>
+  `<p style="margin:16px 0 12px;"><a href="${escapeHtml(href)}" style="display:inline-block;background:#1976D2;color:#fff;text-decoration:none;font-weight:700;padding:12px 24px;border-radius:8px;">${escapeHtml(label)}</a></p>`;
+
+/** "Selasa, 17 November 2026" untuk email rekaman. */
+function longDate(startsAt) {
+  const d = parts(new Date(startsAt), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return `${d.weekday}, ${d.day} ${d.month} ${d.year}`;
+}
 const contact = p(`Ada kendala? Hubungi admin di <a href="mailto:${ADMIN_CONTACT}">${ADMIN_CONTACT}</a>.`);
 const wrap = (inner) => `<div style="font-family: Arial, sans-serif; line-height:1.6; color:#333; max-width:600px;">${inner}</div>`;
 
 /**
- * @param {{ kind: 'reminder_day'|'schedule_change'|'cancellation',
+ * @param {{ kind: 'reminder_day'|'schedule_change'|'cancellation'|'recording_ready',
  *           event: { title, starts_at, duration_minutes, speakers },
- *           recipient: { buyer_name, ticket_code, join_token } }} input
+ *           recipient: { buyer_name, ticket_code, join_token, order_id } }} input
  * @returns {{ subject: string, html: string }}
  */
 export function buildWebinarNotifyEmail({ kind, event, recipient }) {
@@ -112,6 +118,24 @@ export function buildWebinarNotifyEmail({ kind, event, recipient }) {
         p(`Halo ${name}, mohon maaf, webinar <strong>${title}</strong> yang dijadwalkan ${escapeHtml(schedule)} dibatalkan.`) +
         p(`Untuk pertanyaan tentang tiketmu (kode ${escapeHtml(code)}), hubungi admin di <a href="mailto:${ADMIN_CONTACT}">${ADMIN_CONTACT}</a>.`) +
         p('Terima kasih atas pengertianmu.')
+      ),
+    };
+  }
+
+  if (kind === 'recording_ready') {
+    // Link ke halaman tonton per order (wajib login sebagai pemilik). Tanpa URL video:
+    // URL R2 hanya diterbitkan /api/webinar/watch.
+    if (!/^[0-9a-f-]{36}$/i.test(String(recipient?.order_id ?? ''))) throw new Error('order_id wajib untuk email rekaman');
+    const watchUrl = `${SITE_URL}/dashboard/webinar/tonton/${recipient.order_id}`;
+    const when = event.starts_at ? ` (${escapeHtml(longDate(event.starts_at))})` : '';
+    return {
+      subject: `Rekaman tersedia: ${event.title}`,
+      html: wrap(
+        p(`Halo ${name}, rekaman webinar <strong>${title}</strong>${when} sudah bisa ditonton.`) +
+        button(watchUrl, 'Tonton rekaman') +
+        p('Materi presentasi bisa diunduh di halaman yang sama. Masuk dengan akun yang dipakai saat membeli tiket.') +
+        p('Rekaman ini untuk penggunaan pribadi, jadi jangan disebarkan.') +
+        contact
       ),
     };
   }

@@ -3,19 +3,19 @@
 //
 // Aturan yang sama dengan webinar.js: tulisan memfilter kunci saja (id), tidak
 // pernah kolom yang diubahnya sendiri, dan meminta barisnya kembali; nol baris = galat.
-// Email ke peserta tidak pernah dikirim dari sini secara langsung: ia diantrekan
-// (sql/135) lalu dikirim _notify.js, supaya cron dan aksi admin tidak dobel.
+// Email otomatis ke peserta tidak dikirim dari sini: cron Postgres memanggil
+// /api/notify-webinar per peserta (sql/136b). Statusnya dibaca dari kolom penanda
+// di webinar_orders (pola email iklan, Iterasi 4).
 
 import { SITE_URL } from '../webinar/_view.js';
 import { sbFetch } from '../webinar/_server.js';
 import { checkOrderAtDoku } from '../webinar/_checkStatus.js';
-import { dispatchWebinarNotifications } from '../webinar/_notify.js';
 import { accountEmailOf, deliverWebinarTicket } from '../doku/_webinar.js';
 import { db, dbAll, decorate, loadOrRefuse, refuse } from './_webinarDb.js';
 import { normalizeRefundNote, normalizeTicketEmail } from './webinarGate.js';
 
 /** Aksi yang menulis ke produksi atau mengirim email: ditolak dari uji lokal. */
-export const LOCAL_BLOCKED_ACTIONS = ['resend-ticket', 'check-order', 'refund', 'email-retry'];
+export const LOCAL_BLOCKED_ACTIONS = ['resend-ticket', 'check-order', 'refund'];
 
 // payment_url & doku_request_id sengaja tidak dibaca: tidak dibutuhkan admin.
 const ORDER_COLUMNS = [
@@ -25,9 +25,9 @@ const ORDER_COLUMNS = [
   'payment_expires_at', 'hold_until', 'created_at', 'ticket_code', 'join_token', 'alarm_outcome',
   'ticket_email_sent_at', 'ticket_email_error', 'ticket_email_claimed_at', 'refunded_at', 'refunded_by',
   'refund_note', 'last_status_check_at',
+  // Email otomatis (sql/136): penanda per jenis + galat terakhir.
+  'reminder_sent_for', 'schedule_email_sent_at', 'cancel_email_sent_at', 'recording_email_sent_at', 'email_error',
 ].join(',');
-
-const DELIVERY_STATUSES = ['queued', 'sending', 'sent', 'failed', 'skipped'];
 
 /** Token mentah tidak keluar; link gabung hanya untuk tiket yang aktif. */
 function orderView(order) {
@@ -45,55 +45,10 @@ async function rpc(sb, fn, args) {
   return db(sb, `rpc/${fn}`, { method: 'POST', body: JSON.stringify(args) }, `RPC ${fn}`);
 }
 
-/** Kirim batch pertama seketika; sisanya diambil cron tiap menit. Tidak pernah melempar. */
-function kickDispatch(sb, env, waitUntil) {
-  const run = dispatchWebinarNotifications({ env, sb })
-    .catch((err) => console.error('[admin/webinar] kirim email otomatis:', err?.message || err));
-  if (typeof waitUntil === 'function') { waitUntil(run); return Promise.resolve(); }
-  return run;
-}
-
-/**
- * Antrekan email otomatis untuk acara ini. Dipanggil SESUDAH acara tersimpan:
- * kegagalan di sini dilaporkan (`notify_error`) tetapi tidak membatalkan aksinya.
- */
-export async function notifyParticipants({ sb, env, waitUntil, adminEmail, eventId, kind }) {
-  try {
-    const result = await rpc(sb, 'webinar_enqueue_broadcast', { p_event_id: eventId, p_kind: kind, p_created_by: adminEmail });
-    await kickDispatch(sb, env, waitUntil);
-    return { notified: Number(result?.total) || 0 };
-  } catch (err) {
-    console.error(`[admin/webinar] email ${kind} gagal diantrekan:`, err?.message || err);
-    return { notify_error: true };
-  }
-}
-
 export async function participants(sb, body) {
   const event = await loadOrRefuse(sb, body.id);
-  const [orders, broadcasts] = await Promise.all([
-    dbAll(sb, `webinar_orders?event_id=eq.${body.id}&kind=eq.live&select=${ORDER_COLUMNS}&order=created_at.desc`, 'SELECT webinar_orders (peserta)'),
-    db(sb, `webinar_broadcasts?event_id=eq.${body.id}&select=id,kind,event_starts_at,recipient_total,skipped_reason,created_by,created_at&order=created_at.desc`, {}, 'SELECT webinar_broadcasts'),
-  ]);
-
-  const list = broadcasts || [];
-  const deliveries = list.length
-    ? await dbAll(
-      sb,
-      `webinar_broadcast_deliveries?broadcast_id=in.(${list.map((b) => b.id).join(',')})&select=broadcast_id,order_id,status,attempts,sent_at,error,retry_after&order=broadcast_id,order_id`,
-      'SELECT webinar_broadcast_deliveries'
-    )
-    : [];
-
-  return {
-    event: decorate(event, { full: false }),
-    orders: orders.map(orderView),
-    broadcasts: list.map((b) => {
-      const counts = Object.fromEntries(DELIVERY_STATUSES.map((s) => [s, 0]));
-      for (const d of deliveries) if (d.broadcast_id === b.id && d.status in counts) counts[d.status] += 1;
-      return { ...b, counts };
-    }),
-    deliveries,
-  };
+  const orders = await dbAll(sb, `webinar_orders?event_id=eq.${body.id}&kind=eq.live&select=${ORDER_COLUMNS}&order=created_at.desc`, 'SELECT webinar_orders (peserta)');
+  return { event: decorate(event, { full: false }), orders: orders.map(orderView) };
 }
 
 export async function participant(sb, body) {
@@ -151,12 +106,6 @@ export async function refundOrder(sb, body, adminEmail) {
     throw new Error(`RPC webinar_mark_refunded membalas bentuk tak dikenal: ${JSON.stringify(result).slice(0, 200)}`);
   }
   return result;
-}
-
-export async function retryEmail(sb, env, body, waitUntil) {
-  const requeued = Number(await rpc(sb, 'webinar_retry_broadcast', { p_broadcast_id: body.broadcastId })) || 0;
-  if (requeued > 0) await kickDispatch(sb, env, waitUntil);
-  return { requeued };
 }
 
 // ── Fase 4: pembeli webinar untuk halaman Customers ───────────────────────

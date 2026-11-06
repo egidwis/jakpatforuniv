@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-    alarmLabel, broadcastSummary, filterParticipants, groupCounts, participantCsv, participantGroup,
+    alarmLabel, filterParticipants, groupCounts, participantCsv, participantGroup, failedEmails, noticeStatus,
     participantStats, reminderStatus, ticketEmailState, unpaidLabel, emailHistoryFor,
-    type AdminBroadcast, type AdminDelivery, type AdminWebinarOrder,
+    type AdminWebinarOrder,
 } from './webinarParticipants';
 
 const NOW = Date.parse('2026-11-10T03:00:00Z'); // Sel 10 Nov 10.00 WIB
@@ -20,6 +20,7 @@ function order(over: Partial<AdminWebinarOrder> = {}): AdminWebinarOrder {
         created_at: '2026-11-05T05:45:00Z', ticket_code: '7F3A91B2C4', join_url: 'https://x/webinar/gabung/a',
         alarm_outcome: null, ticket_email_sent_at: '2026-11-05T05:48:00Z', ticket_email_error: null,
         ticket_email_claimed_at: null, refunded_at: null, refunded_by: null, refund_note: null, last_status_check_at: null,
+        reminder_sent_for: null, schedule_email_sent_at: null, cancel_email_sent_at: null, recording_email_sent_at: null, email_error: null,
         ...over,
     };
 }
@@ -75,52 +76,97 @@ describe('label', () => {
     });
 });
 
-describe('email otomatis', () => {
-    const event = { status: 'published' as const, offer_kind: 'live' as const, starts_at: '2026-11-17T01:30:00Z', duration_minutes: 90 };
-    const counts = (over: Partial<AdminBroadcast['counts']> = {}) => ({ queued: 0, sending: 0, sent: 0, failed: 0, skipped: 0, ...over });
-    const reminder = (over: Partial<AdminBroadcast> = {}): AdminBroadcast => ({
-        id: 'b-1', kind: 'reminder_day', event_starts_at: event.starts_at, recipient_total: 12, skipped_reason: null,
-        created_by: null, created_at: '2026-11-16T01:30:00Z', counts: counts({ sent: 12 }), ...over,
-    });
+describe('email otomatis (kolom penanda per order, Iterasi 4)', () => {
+    const START = '2026-11-17T01:30:00Z'; // Sel 17 Nov 08.30 WIB
+    const start = Date.parse(START);
+    const event = {
+        status: 'published' as const, offer_kind: 'live' as const, starts_at: START, duration_minutes: 90,
+        schedule_changed_at: null as string | null, recording_published_at: null as string | null,
+    };
+    const iso = (ms: number) => new Date(ms).toISOString();
+    const paid = (id: string, over: Partial<AdminWebinarOrder> = {}) => order({ id, paid_at: '2026-11-05T05:47:00Z', ...over });
 
     it('pengingat belum waktunya: dijadwalkan 24 jam sebelum mulai (WIB)', () => {
-        expect(reminderStatus(event, [], NOW)).toEqual({ text: 'Dijadwalkan Sen, 16 Nov · 08.30 WIB', tone: 'muted' });
+        expect(reminderStatus(event, [paid('a')], NOW)).toEqual({ text: 'Dijadwalkan Sen, 16 Nov · 08.30 WIB', tone: 'muted' });
     });
 
-    it('pengingat terkirim / sedang dikirim / ada gagal', () => {
-        expect(reminderStatus(event, [reminder()], NOW).text).toBe('12/12 terkirim · 16 Nov 08.30');
-        expect(reminderStatus(event, [reminder({ counts: counts({ sent: 7, queued: 5 }) })], NOW).text).toBe('Sedang dikirim 7/12');
-        expect(reminderStatus(event, [reminder({ counts: counts({ sent: 11, failed: 1 }) })], NOW)).toMatchObject({ text: '11/12 terkirim · 1 gagal', tone: 'warn' });
+    it('di jendela: dikirim, menyusul, gagal (dari email_error berawalan Pengingat H-1)', () => {
+        const at = start - 20 * HOUR;
+        const orders = [
+            paid('a', { reminder_sent_for: START }),
+            paid('b', { reminder_sent_for: START, email_error: 'Pengingat H-1 · 16 Nov 08.31 · resend HTTP 429' }),
+            paid('c'),
+            paid('d', { paid_at: iso(at - 2 * HOUR) }), // lunas < 6 jam: bukan penerima
+            order({ id: 'e', status: 'refunded' }),
+        ];
+        expect(reminderStatus(event, orders, at)).toEqual({ text: '2/3 dikirim · 1 menyusul · 1 gagal', tone: 'warn' });
+        expect(reminderStatus(event, orders.slice(0, 1), at)).toEqual({ text: '1/1 dikirim', tone: 'ok' });
     });
 
-    it('pengingat untuk jadwal lama tidak dihitung; dilewati & tanpa penerima punya teks sendiri', () => {
-        expect(reminderStatus(event, [reminder({ event_starts_at: '2026-11-12T01:30:00Z' })], NOW).text).toMatch(/^Dijadwalkan/);
-        expect(reminderStatus(event, [reminder({ skipped_reason: 'Email jadwal/pengingat sudah terkirim kurang dari 12 jam sebelumnya', recipient_total: 0, counts: counts() })], NOW).text)
-            .toBe('Dilewati: email jadwal/pengingat sudah terkirim kurang dari 12 jam sebelumnya');
-        expect(reminderStatus(event, [reminder({ recipient_total: 0, counts: counts() })], NOW).text).toBe('Tidak ada penerima');
+    it('penanda untuk jadwal lama tidak dihitung; lewat batas 3 jam = terlewat', () => {
+        const old = [paid('a', { reminder_sent_for: '2026-11-12T01:30:00Z' })];
+        expect(reminderStatus(event, old, start - 20 * HOUR).text).toBe('0/1 dikirim · 1 menyusul');
+        expect(reminderStatus(event, old, start - 3 * HOUR + 1)).toEqual({ text: '0/1 dikirim · 1 terlewat', tone: 'warn' });
     });
 
-    it('batas 3 jam: lewat tanpa pengingat = terlewat; acara lewat atau batal = tanda pisah', () => {
-        const start = Date.parse(event.starts_at);
-        expect(reminderStatus(event, [], start - 3 * HOUR + 1).text).toBe('Terlewat');
-        expect(reminderStatus(event, [], start - 3 * HOUR - 1).text).toBe('Segera dikirim');
-        expect(reminderStatus(event, [], start - 24 * HOUR - 1).text).toBe('Dijadwalkan Sen, 16 Nov · 08.30 WIB');
-        expect(reminderStatus(event, [], start + 2 * HOUR).text).toBe('—');
-        expect(reminderStatus({ ...event, status: 'cancelled' }, [], NOW).text).toBe('—');
+    it('dilewati karena email jadwal baru < 12 jam; tanpa penerima; acara lewat atau batal', () => {
+        const skipped = [paid('a', { reminder_sent_for: START, schedule_email_sent_at: iso(start - 30 * HOUR) })];
+        expect(reminderStatus(event, skipped, start - 10 * HOUR).text).toBe('Dilewati: email jadwal baru dikirim kurang dari 12 jam sebelumnya');
+        expect(reminderStatus(event, [], start - 10 * HOUR).text).toBe('Tidak ada penerima');
+        expect(reminderStatus(event, [paid('a')], start + 2 * HOUR).text).toBe('—');
+        expect(reminderStatus({ ...event, status: 'cancelled' }, [paid('a')], NOW).text).toBe('—');
     });
 
-    it('ringkasan baris jadwal berubah / pembatalan', () => {
-        const b = reminder({ kind: 'schedule_change', created_at: '2026-11-10T02:12:00Z', counts: counts({ sent: 11, failed: 1 }) });
-        expect(broadcastSummary(b)).toEqual({ text: '10 Nov 09.12 · 11/12 terkirim · 1 gagal', tone: 'warn', retryable: true });
-        expect(broadcastSummary({ ...b, counts: counts({ sent: 12 }) })).toEqual({ text: '10 Nov 09.12 · 12/12 terkirim', tone: 'ok', retryable: false });
+    it('jadwal berubah: hanya pembeli sebelum perubahan; dikirim bila penanda ≥ waktu perubahan', () => {
+        const changed = '2026-11-10T02:12:00Z';
+        const ev = { ...event, schedule_changed_at: changed };
+        const orders = [
+            paid('a', { schedule_email_sent_at: '2026-11-10T02:13:00Z' }),
+            paid('b', { schedule_email_sent_at: '2026-11-08T00:00:00Z' }), // perubahan sebelumnya
+            paid('c', { paid_at: '2026-11-10T02:30:00Z' }),                 // beli sesudahnya
+        ];
+        expect(noticeStatus('schedule_change', ev, orders, NOW)).toEqual({ text: '10 Nov 09.12 · 1/2 dikirim · 1 menyusul', tone: 'muted' });
+        expect(noticeStatus('schedule_change', event, orders, NOW)).toBeNull();
+        expect(noticeStatus('schedule_change', ev, orders.slice(0, 1), NOW)).toEqual({ text: '10 Nov 09.12 · 1/1 dikirim', tone: 'ok' });
+        // Acara sudah mulai: yang belum tidak akan dikirim lagi.
+        expect(noticeStatus('schedule_change', ev, orders, start + HOUR)?.tone).toBe('warn');
+        // Acara lalu dibatalkan sebelum email jadwal berangkat: baris disembunyikan (pembatalan menggantikan).
+        expect(noticeStatus('schedule_change', { ...ev, status: 'cancelled' }, orders.slice(1), NOW)).toBeNull();
     });
 
-    it('riwayat email satu peserta', () => {
-        const deliveries: AdminDelivery[] = [{ broadcast_id: 'b-1', order_id: 'o-1', status: 'sent', attempts: 1, sent_at: '2026-11-16T01:31:00Z', error: null, retry_after: null }];
-        expect(emailHistoryFor(PAID, [reminder()], deliveries)).toEqual([
-            { label: 'E-tiket', status: 'sent', at: '2026-11-05T05:48:00Z', error: null },
-            { label: 'Pengingat H-1', status: 'sent', at: '2026-11-16T01:31:00Z', error: null },
+    it('pembatalan & rekaman: hanya bila relevan, gagal dari email_error', () => {
+        const cancelled = { ...event, status: 'cancelled' as const };
+        const orders = [paid('a', { cancel_email_sent_at: '2026-11-10T03:01:00Z' }), paid('b', { cancel_email_sent_at: '2026-11-10T03:01:00Z', email_error: 'Pembatalan · 10 Nov 10.01 · x' })];
+        expect(noticeStatus('cancellation', event, orders, NOW)).toBeNull();
+        expect(noticeStatus('cancellation', cancelled, orders, NOW)).toEqual({ text: '2/2 dikirim · 1 gagal', tone: 'warn' });
+        const rec = { ...event, recording_published_at: '2026-11-18T02:30:00Z' };
+        expect(noticeStatus('recording_ready', event, orders, NOW)).toBeNull();
+        expect(noticeStatus('recording_ready', rec, [paid('a', { recording_email_sent_at: '2026-11-18T02:31:00Z' })], Date.parse('2026-11-18T03:00:00Z')))
+            .toEqual({ text: '18 Nov 09.30 · 1/1 dikirim', tone: 'ok' });
+    });
+
+    it('daftar email gagal hanya tiket lunas', () => {
+        const list = failedEmails([paid('a', { email_error: 'x' }), paid('b'), order({ id: 'c', status: 'refunded', email_error: 'x' })]);
+        expect(list.map((o) => o.id)).toEqual(['a']);
+    });
+
+    it('riwayat email satu peserta dari kolom', () => {
+        const o = paid('a', {
+            schedule_email_sent_at: '2026-11-10T02:13:00Z',
+            reminder_sent_for: START,
+            recording_email_sent_at: '2026-11-18T02:31:00Z',
+        });
+        expect(emailHistoryFor(o)).toEqual([
+            { label: 'E-tiket', status: 'sent', at: '2026-11-05T05:48:00Z', note: null, error: null },
+            { label: 'Jadwal berubah', status: 'sent', at: '2026-11-10T02:13:00Z', note: null, error: null },
+            { label: 'Pengingat H-1', status: 'sent', at: null, note: 'jadwal 17 Nov 08.30', error: null },
+            { label: 'Rekaman tersedia', status: 'sent', at: '2026-11-18T02:31:00Z', note: null, error: null },
         ]);
+        const skipped = paid('b', { reminder_sent_for: START, schedule_email_sent_at: iso(start - 30 * HOUR) });
+        expect(emailHistoryFor(skipped)[2]).toMatchObject({ label: 'Pengingat H-1', status: 'skipped' });
+        // Penanda terisi walau gagal (diisi saat dipanggil): email_error berawalan jenisnya = gagal.
+        const failed = paid('c', { schedule_email_sent_at: '2026-11-10T02:13:00Z', email_error: 'Jadwal berubah · 10 Nov 09.13 · x' });
+        expect(emailHistoryFor(failed)[1]).toMatchObject({ label: 'Jadwal berubah', status: 'failed' });
     });
 });
 

@@ -239,15 +239,11 @@ export function useWebinarEditor(eventId: string | null) {
         if (Object.keys(diff).length === 0) return {};
         setBusy('save');
         try {
-            const { event, notified, notify_error: notifyError } = await saveWebinarEventWithNotice(current.id, diff, current.updated_at, confirmScheduleChange);
+            const { event, notify_scheduled: notified } = await saveWebinarEventWithNotice(current.id, diff, current.updated_at, confirmScheduleChange);
             setRow(event);
             setSavedAt(new Date());
             setStatus('saved');
-            if (notifyError) {
-                toast.warning('Perubahan disimpan, tetapi email jadwal baru gagal diantrekan. Kabari peserta lewat WA.', { duration: 10000 });
-            } else {
-                toast.success(notified ? `Perubahan disimpan. ${notified} peserta dikabari lewat email.` : 'Perubahan disimpan');
-            }
+            toast.success(notified ? `Perubahan disimpan. Email jadwal baru ke ${notified} peserta berangkat dalam ±1 menit.` : 'Perubahan disimpan');
             return {};
         } catch (err) {
             if (err instanceof WebinarAdminError && err.code === 'confirm_schedule') return { confirmSold: err.sold ?? 0 };
@@ -296,5 +292,7 @@ export function useWebinarEditor(eventId: string | null) {
     return {
         row, form, updateForm, loading, loadError, status, savedAt, fieldErrors, busy, dirty, isEditable,
         flush, publish, saveChanges, closeSales, openPreview,
+        /** Baris terbaru dari aksi di luar form (rekaman/materi): updated_at ikut, form tidak berubah. */
+        adoptRow: setRow,
     };
 }

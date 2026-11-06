@@ -10,6 +10,7 @@ import {
 import { useWebinarEditor, type SaveStatus } from './useWebinarEditor';
 import { WebinarSalesPanel } from './WebinarSalesPanel';
 import { WebinarSpeakersField } from './WebinarSpeakersField';
+import { WebinarRecordingPanel } from './WebinarRecordingPanel';
 import { Field, inputClass } from './WebinarFormParts';
 
 const timeLabel = (d: Date) => d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -177,9 +178,17 @@ export function WebinarEventForm({
                         </Field>
                     </div>
 
-                    <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:sticky lg:top-20">
-                        <WebinarSalesPanel form={form} update={updateForm} errors={errors} row={row} disabled={disabled} />
-                    </aside>
+                    {/* Rekaman (Fase 5A) di bawah panel penjualan; tanpa sticky supaya kolom kanan bisa digulir. */}
+                    <div className="space-y-6">
+                        <aside className={cn('h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm', !isPublished && 'lg:sticky lg:top-20')}>
+                            <WebinarSalesPanel form={form} update={updateForm} errors={errors} row={row} disabled={disabled} />
+                        </aside>
+                        {isPublished && row && (
+                            <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <WebinarRecordingPanel row={row} onRow={editor.adoptRow} />
+                            </aside>
+                        )}
+                    </div>
                 </div>
             </div>
 

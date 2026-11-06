@@ -1,7 +1,8 @@
-import { forwardRef } from 'react';
+import { forwardRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Loader2, Ticket } from 'lucide-react';
-import { formatJoinCountdown, joinPhaseAt, type WebinarOrderView } from '@/utils/webinarApi';
+import { Download, Loader2, Play, Ticket } from 'lucide-react';
+import { toast } from 'sonner';
+import { downloadMaterial, formatJoinCountdown, joinPhaseAt, type WebinarOrderView } from '@/utils/webinarApi';
 import { CARD_CLASS, useNow } from './WebinarParts';
 
 const formatPayCountdown = (ms: number) => {
@@ -55,7 +56,21 @@ export const WebinarTicketCard = forwardRef<HTMLDivElement, Props>(function Webi
     if (order.event_cancelled) hint = { text: 'Acara dibatalkan. Tim JFU akan menghubungimu.', tone: 'text-slate-500' };
     else if (order.status === 'refunded') hint = { text: 'Tiket tidak aktif. Hubungi admin bila ada pertanyaan.', tone: 'text-slate-500' };
     else if (order.status === 'expired' || (isPending && payLeft <= 0)) hint = { text: 'Waktu bayar habis', tone: 'text-slate-500' };
-    else if (order.status === 'paid' && isPast) hint = { text: 'Rekaman segera tersedia', tone: 'text-slate-500' };
+    else if (order.status === 'paid' && isPast && !order.recording?.available) hint = { text: 'Rekaman segera tersedia', tone: 'text-slate-500' };
+    const recording = order.status === 'paid' && !order.event_cancelled && order.recording?.available && order.watch_path
+        ? order.recording
+        : null;
+    const [materialBusy, setMaterialBusy] = useState(false);
+    const getMaterial = async () => {
+        setMaterialBusy(true);
+        try {
+            await downloadMaterial(order.id);
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Materi belum bisa diunduh.');
+        } finally {
+            setMaterialBusy(false);
+        }
+    };
 
     const ringClass = highlighted ? 'ring-2 ring-jfu-primary/60 ring-offset-2' : '';
 
@@ -68,13 +83,34 @@ export const WebinarTicketCard = forwardRef<HTMLDivElement, Props>(function Webi
                     {event.schedule_label && <p className="text-xs text-slate-500">{event.schedule_label}</p>}
                     {hint && <p className={`text-xs ${hint.tone}`}>{hint.text}</p>}
                 </div>
-                {order.status === 'paid' && order.ticket_code && !hint && (
+                {order.status === 'paid' && order.ticket_code && !hint && !recording && (
                     <span className="shrink-0 text-xs text-slate-500">Kode <strong className="tracking-wide text-slate-700">{order.ticket_code}</strong></span>
                 )}
                 {hint?.text === 'Waktu bayar habis' && (
                     <Link to={`/dashboard/webinar/beli/${event.slug}`} className="shrink-0 text-sm font-semibold text-jfu-primary">Pesan lagi →</Link>
                 )}
             </div>
+
+            {!hint && recording && (
+                <div className="flex flex-wrap gap-2 border-t border-slate-100 px-4 py-3">
+                    <Link
+                        to={order.watch_path as string}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-jfu-primary px-4 py-2.5 text-sm font-semibold text-white"
+                    >
+                        <Play className="w-4 h-4" /> Tonton rekaman
+                    </Link>
+                    {recording.has_materials && (
+                        <button
+                            type="button"
+                            onClick={() => { void getMaterial(); }}
+                            disabled={materialBusy}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-60"
+                        >
+                            {materialBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Materi
+                        </button>
+                    )}
+                </div>
+            )}
 
             {!hint && isPending && (
                 <div className="border-t border-slate-100 px-4 py-4 space-y-3">

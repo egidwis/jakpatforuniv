@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import type { AdminWebinarEvent, ColumnKey, WebinarColumns } from './webinarAdmin';
-import type { AdminBroadcast, AdminDelivery, AdminWebinarOrder } from './webinarParticipants';
+import type { AdminWebinarOrder } from './webinarParticipants';
 
 /** Galat bertipe dari /api/admin/webinar; `field`/`fields` menunjuk isian form. */
 export class WebinarAdminError extends Error {
@@ -19,10 +19,12 @@ export class WebinarAdminError extends Error {
     }
 }
 
-/** Email otomatis ke peserta yang ikut aksi simpan-jadwal / batalkan acara. */
+/**
+ * Simpan jadwal / batalkan acara / terbitkan rekaman: jumlah peserta lunas yang akan
+ * menerima email. Email dikirim cron per peserta dalam ±1 menit (sql/136b).
+ */
 export interface NotifyNotice {
-    notified?: number;
-    notify_error?: boolean;
+    notify_scheduled?: number;
 }
 
 export interface CancelResult extends NotifyNotice {
@@ -35,8 +37,6 @@ export interface CancelResult extends NotifyNotice {
 export interface ParticipantsResult {
     event: AdminWebinarEvent;
     orders: AdminWebinarOrder[];
-    broadcasts: AdminBroadcast[];
-    deliveries: AdminDelivery[];
 }
 
 export interface CheckOrderResult {
@@ -108,8 +108,6 @@ export const checkOrder = (orderId: string) => webinarAdmin<CheckOrderResult>('c
 export const refundOrder = (orderId: string, note: string) =>
     webinarAdmin<{ outcome: 'ok' | 'already_refunded'; refunded_at?: string }>('refund', { orderId, note });
 
-export const retryEmail = (broadcastId: string) => webinarAdmin<{ requeued: number }>('email-retry', { broadcastId });
-
 // ── Fase 4: pembeli webinar untuk halaman Customers ──────────────────────
 
 /**
@@ -130,3 +128,29 @@ export interface WebinarBuyerTicket {
 }
 
 export const getWebinarBuyers = () => webinarAdmin<{ tickets: WebinarBuyerTicket[] }>('buyers', {});
+
+// ── Fase 5A: rekaman (R2) & materi ─────────────────────────────────────────
+
+export interface RecordingStart {
+    key: string;
+    uploadId: string;
+    partSize: number;
+}
+
+export const startRecordingUpload = (id: string, fileName: string, size: number) =>
+    webinarAdmin<RecordingStart>('recording-upload-start', { id, fileName, size });
+export const recordingPartUrls = (id: string, key: string, uploadId: string, partNumbers: number[]) =>
+    webinarAdmin<{ urls: { partNumber: number; url: string }[] }>('recording-part-urls', { id, key, uploadId, partNumbers }).then((r) => r.urls);
+export const completeRecordingUpload = (
+    id: string, req: { key: string; uploadId: string; parts: { partNumber: number; etag: string }[]; minutes: number },
+) => webinarAdmin<{ event: AdminWebinarEvent; size: number; old_deleted: boolean | null }>('recording-upload-complete', { id, ...req });
+export const abortRecordingUpload = (id: string, key: string, uploadId: string) =>
+    webinarAdmin<{ aborted: true }>('recording-upload-abort', { id, key, uploadId });
+export const recordingPreview = (id: string) =>
+    webinarAdmin<{ url: string; expires_at: string }>('recording-preview', { id });
+export const saveWebinarMaterials = (id: string, path: string) =>
+    webinarAdmin<{ event: AdminWebinarEvent }>('materials-save', { id, path }).then((r) => r.event);
+export const publishRecording = (id: string) =>
+    webinarAdmin<{ event: AdminWebinarEvent; already?: boolean } & NotifyNotice>('recording-publish', {
+        id, confirmations: { speakerPermission: true, facesTrimmed: true },
+    });

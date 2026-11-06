@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { buildWebinarNotifyEmail, formatWibRange } from './_notify-email.js';
-import { dispatchWebinarNotifications } from './_notify.js';
+import { sendOrderNotification } from './_notify.js';
 import { onRequestPost } from '../notify-webinar.js';
 
 /*
-  Email otomatis ke peserta (Fase 3, 6 Nov): templat tetap, antrean di database
-  (sql/135). Di sini dikunci: isi ketiga templat, cara pengirim memakai antrean
-  (claim → kirim → catat), dan gerbang rahasia endpoint cron.
+  Email otomatis ke peserta: templat tetap (Fase 3). Sejak Iterasi 4 tanpa antrean:
+  cron memanggil Function per peserta (sql/136b). Di sini dikunci: isi templat, pengirim
+  per order (baca → periksa keadaan → kirim → catat galat), dan gerbang endpoint cron.
 */
 
 const EVENT = {
@@ -83,9 +83,28 @@ describe('templat email otomatis', () => {
   it('jenis tak dikenal melempar', () => {
     expect(() => build('promosi')).toThrow();
   });
+
+  it('rekaman tersedia (Fase 5A): link tonton per order, tanpa URL video/R2, tanpa refund', () => {
+    const ORDER = '55555555-5555-4555-8555-555555555555';
+    const m = build('recording_ready', { recipient: { order_id: ORDER } });
+    expect(m.subject).toBe('Rekaman tersedia: Olah Data SPSS untuk Skripsi');
+    expect(m.html).toContain('Halo Putra');
+    expect(m.html).toContain('Selasa, 17 November 2026');
+    expect(m.html).toContain(`https://submit.jakpatforuniv.com/dashboard/webinar/tonton/${ORDER}`);
+    expect(m.html).toContain('Tonton rekaman');
+    expect(m.html).toContain('Materi presentasi bisa diunduh');
+    expect(m.html).toContain('jangan disebarkan');
+    expect(m.html).toContain('product@jakpat.net');
+    expect(m.html).not.toMatch(/r2\.cloudflarestorage\.com|X-Amz-|\.mp4|gabung/);
+    expect(m.html).not.toMatch(FORBIDDEN);
+
+    const x = build('recording_ready', { recipient: { order_id: ORDER }, event: { title: '<script>x</script>' } });
+    expect(x.html).not.toContain('<script>x');
+    expect(() => build('recording_ready')).toThrow(/order_id/);
+  });
 });
 
-// ── pengirim antrean ──
+// ── pengirim per peserta (Iterasi 4: pola email iklan, tanpa antrean) ──
 
 const ENV = {
   VITE_SUPABASE_URL: 'https://db.example.test',
@@ -94,103 +113,113 @@ const ENV = {
   RESEND_API_KEY: 'resend-key',
   CRON_NOTIFY_SECRET: 'rahasia',
 };
+const ORDER_ID = '11111111-1111-4111-8111-111111111111';
+const EVENT_ID = '22222222-2222-4222-8222-222222222222';
+const NOW = new Date('2026-11-16T02:00:00Z'); // Sen 16 Nov 09.00 WIB, acara mulai besok 08.30
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-const row = (i, kind = 'reminder_day') => ({
-  broadcast_id: 'b-1', order_id: `o-${i}`, kind, email: `p${i}@t.test`,
-  buyer_name: `Peserta ${i}`, ticket_code: `CODE${i}`, join_token: String(i).repeat(64).slice(0, 64), event: EVENT,
-});
 
-function network({ rows = [row(1), row(2)], mail = () => json({ id: 'm' }), claimStatus = 200 } = {}) {
+function network({ order = {}, event = {}, mail = () => json({ id: 'm' }), orderStatus = 200, patchRows = null } = {}) {
   const calls = [];
+  const orderRow = order === null ? null : {
+    id: ORDER_ID, event_id: EVENT_ID, kind: 'live', status: 'paid', buyer_name: 'Putra', buyer_email: 'putra@t.test',
+    ticket_code: '7F3A91B2C4', join_token: 'a'.repeat(64), email_error: null, ...order,
+  };
+  const eventRow = { ...EVENT, id: EVENT_ID, offer_kind: 'live', recording_published_at: null, ...event };
   global.fetch = vi.fn(async (url, init = {}) => {
     const u = String(url);
+    const method = init.method || 'GET';
     const body = init.body ? JSON.parse(init.body) : null;
-    calls.push({ url: u, body });
-    if (u.endsWith('/rpc/webinar_claim_deliveries')) return json({ token: 'tok-1', rows }, claimStatus);
-    if (u.endsWith('/rpc/webinar_record_deliveries')) return json(body.p_results.length);
+    calls.push({ url: u, method, body });
+    if (u.includes('/rest/v1/webinar_orders') && method === 'GET') return json(orderRow ? [orderRow] : [], orderStatus);
+    if (u.includes('/rest/v1/webinar_events') && method === 'GET') return json([eventRow]);
+    if (u.includes('/rest/v1/webinar_orders') && method === 'PATCH') return json(patchRows ?? [{ id: ORDER_ID }]);
     if (u.includes('api.resend.com')) return mail(body);
     return json({}, 404);
   });
   return {
     calls,
-    rpc: (name) => calls.filter((c) => c.url.endsWith(`/rpc/${name}`)).map((c) => c.body),
     mails: () => calls.filter((c) => c.url.includes('api.resend.com')).map((c) => c.body),
+    patches: () => calls.filter((c) => c.method === 'PATCH'),
   };
 }
 
 afterEach(() => { vi.restoreAllMocks(); });
 
-describe('dispatchWebinarNotifications', () => {
+describe('sendOrderNotification', () => {
   const sb = { url: ENV.VITE_SUPABASE_URL, headers: { apikey: 'k' } };
+  const send = (kind, extra = {}) => sendOrderNotification({ env: ENV, sb, orderId: ORDER_ID, kind, now: NOW, ...extra });
 
-  it('claim → satu email per peserta ke alamatnya sendiri → catat hasil dengan token klaim', async () => {
+  it('pengingat: satu email ke alamat order, isi dari baris terbaru, tanpa PATCH bila tak ada galat lama', async () => {
     const net = network();
-    const result = await dispatchWebinarNotifications({ env: ENV, sb, limit: 20 });
-    expect(net.rpc('webinar_claim_deliveries')).toEqual([{ p_limit: 20 }]);
-    const mails = net.mails();
-    expect(mails.map((m) => m.to)).toEqual([['p1@t.test'], ['p2@t.test']]);
-    expect(mails[0].html).toContain('Halo Peserta 1');
-    expect(mails[1].html).toContain('CODE2');
-    const [record] = net.rpc('webinar_record_deliveries');
-    expect(record.p_token).toBe('tok-1');
-    expect(record.p_results).toEqual([
-      { broadcast_id: 'b-1', order_id: 'o-1', ok: true },
-      { broadcast_id: 'b-1', order_id: 'o-2', ok: true },
-    ]);
-    expect(result).toEqual({ claimed: 2, sent: 2, failed: 0 });
+    expect(await send('reminder_day')).toEqual({ sent: true });
+    const [mail] = net.mails();
+    expect(mail.to).toEqual(['putra@t.test']);
+    expect(mail.subject).toBe('Pengingat: Olah Data SPSS untuk Skripsi · Sel, 17 Nov, 08.30 WIB');
+    expect(mail.html).toContain('7F3A91B2C4');
+    expect(net.patches()).toHaveLength(0);
+    // Baca memfilter id saja.
+    expect(net.calls[0].url).toContain(`webinar_orders?id=eq.${ORDER_ID}&select=`);
   });
 
-  it('antrean kosong: tidak mengirim dan tidak mencatat', async () => {
-    const net = network({ rows: [] });
-    expect(await dispatchWebinarNotifications({ env: ENV, sb })).toEqual({ claimed: 0, sent: 0, failed: 0 });
+  it('sukses mengosongkan email_error lama, PATCH memfilter id saja', async () => {
+    const net = network({ order: { email_error: 'Pengingat H-1 · kemarin · 429' } });
+    expect(await send('schedule_change')).toEqual({ sent: true });
+    const [patch] = net.patches();
+    expect(patch.url).toBe(`${ENV.VITE_SUPABASE_URL}/rest/v1/webinar_orders?id=eq.${ORDER_ID}&select=id`);
+    expect(patch.body).toEqual({ email_error: null });
+  });
+
+  it('gagal kirim: email_error berisi jenis, waktu WIB, dan galat; PATCH memfilter id saja', async () => {
+    const net = network({ mail: () => json({ message: 'rate limit' }, 429) });
+    const result = await send('reminder_day');
+    expect(result.sent).toBe(false);
+    const [patch] = net.patches();
+    expect(patch.url).toBe(`${ENV.VITE_SUPABASE_URL}/rest/v1/webinar_orders?id=eq.${ORDER_ID}&select=id`);
+    expect(patch.body.email_error).toMatch(/^Pengingat H-1 · 16 Nov 09\.00 · resend HTTP 429/);
+    expect(patch.body.email_error.length).toBeLessThanOrEqual(500);
+  });
+
+  it('galat tak bisa dicatat (nol baris) → melempar', async () => {
+    network({ mail: () => json({ message: 'x' }, 500), patchRows: [] });
+    await expect(send('reminder_day')).rejects.toThrow(/email_error/);
+  });
+
+  it.each([
+    ['refund', { order: { status: 'refunded' } }, 'reminder_day', 'not_paid'],
+    ['order tidak ada', { order: null }, 'reminder_day', 'not_found'],
+    ['pembatalan untuk acara yang tidak batal', {}, 'cancellation', 'wrong_state'],
+    ['pengingat untuk acara batal', { event: { status: 'cancelled' } }, 'reminder_day', 'wrong_state'],
+    ['pengingat untuk acara yang sudah mulai', { event: { starts_at: '2026-11-16T01:00:00Z' } }, 'reminder_day', 'wrong_state'],
+    ['jadwal berubah untuk acara yang sudah mulai', { event: { starts_at: '2026-11-16T01:00:00Z' } }, 'schedule_change', 'wrong_state'],
+    ['rekaman yang belum terbit', {}, 'recording_ready', 'wrong_state'],
+  ])('%s → dilewati tanpa email', async (_, setup, kind, reason) => {
+    const net = network(setup);
+    expect(await send(kind)).toEqual({ skipped: reason });
     expect(net.mails()).toHaveLength(0);
-    expect(net.rpc('webinar_record_deliveries')).toHaveLength(0);
+    expect(net.patches()).toHaveLength(0);
   });
 
-  it('galat sementara vs bounce permanen tercatat berbeda', async () => {
-    const net = network({
-      mail: (b) => (b.to[0] === 'p1@t.test' ? json({ message: 'rate limit' }, 429) : json({ message: 'x' }, 500)),
-    });
-    // resend tidak punya permanent_bounces; jadikan p2 bounce lewat provider cloudflare di tes berikutnya
-    await dispatchWebinarNotifications({ env: ENV, sb });
-    const [record] = net.rpc('webinar_record_deliveries');
-    expect(record.p_results[0]).toMatchObject({ order_id: 'o-1', ok: false, permanent: false });
-    expect(record.p_results[0].error).toContain('429');
+  it('pembatalan: hanya untuk acara batal; rekaman: link tonton per order', async () => {
+    let net = network({ event: { status: 'cancelled' } });
+    expect(await send('cancellation')).toEqual({ sent: true });
+    expect(net.mails()[0].subject).toBe('Webinar dibatalkan: Olah Data SPSS untuk Skripsi');
+
+    net = network({ event: { starts_at: '2026-11-10T01:30:00Z', recording_published_at: '2026-11-15T03:00:00Z' } });
+    expect(await send('recording_ready')).toEqual({ sent: true });
+    expect(net.mails()[0].html).toContain(`/dashboard/webinar/tonton/${ORDER_ID}`);
   });
 
-  it('bounce permanen Cloudflare: permanent=true', async () => {
-    const env = { ...ENV, MAIL_PROVIDER: 'cloudflare', CF_EMAIL_API_TOKEN: 't', CF_ACCOUNT_ID: 'acc' };
-    const calls = [];
-    global.fetch = vi.fn(async (url, init = {}) => {
-      const u = String(url);
-      const body = init.body ? JSON.parse(init.body) : null;
-      calls.push({ url: u, body });
-      if (u.endsWith('/rpc/webinar_claim_deliveries')) return json({ token: 'tok-1', rows: [row(1)] });
-      if (u.endsWith('/rpc/webinar_record_deliveries')) return json(1);
-      if (u.includes('api.cloudflare.com')) return json({ success: true, result: { delivered: [], queued: [], permanent_bounces: ['p1@t.test'] } });
-      return json({}, 404);
-    });
-    await dispatchWebinarNotifications({ env, sb });
-    const record = calls.find((c) => c.url.endsWith('/rpc/webinar_record_deliveries')).body;
-    expect(record.p_results[0]).toMatchObject({ ok: false, permanent: true });
-  });
-
-  it('templat gagal dirender untuk satu baris: baris itu gagal permanen, sisanya tetap terkirim', async () => {
-    const net = network({ rows: [{ ...row(1), kind: 'promosi' }, row(2)] });
-    const result = await dispatchWebinarNotifications({ env: ENV, sb });
-    expect(net.mails()).toHaveLength(1);
-    expect(result).toEqual({ claimed: 2, sent: 1, failed: 1 });
-    expect(net.rpc('webinar_record_deliveries')[0].p_results[0]).toMatchObject({ ok: false, permanent: true });
-  });
-
-  it('claim gagal: melempar (endpoint membalas 500)', async () => {
-    network({ claimStatus: 500 });
-    await expect(dispatchWebinarNotifications({ env: ENV, sb })).rejects.toThrow(/webinar_claim_deliveries/);
+  it('database gagal dibaca → melempar', async () => {
+    network({ orderStatus: 500 });
+    await expect(send('reminder_day')).rejects.toThrow(/webinar_orders/);
   });
 });
 
 describe('POST /api/notify-webinar', () => {
-  const req = (k) => new Request(`https://submit.jakpatforuniv.com/api/notify-webinar${k === undefined ? '' : `?k=${k}`}`, { method: 'POST', body: '{}' });
+  const req = (k, body = { order_id: ORDER_ID, kind: 'reminder_day' }) => new Request(
+    `https://submit.jakpatforuniv.com/api/notify-webinar${k === undefined ? '' : `?k=${k}`}`,
+    { method: 'POST', body: typeof body === 'string' ? body : JSON.stringify(body) },
+  );
 
   it.each([[undefined], ['salah']])('rahasia %s → 401 tanpa menyentuh database', async (k) => {
     const net = network();
@@ -205,16 +234,35 @@ describe('POST /api/notify-webinar', () => {
     expect(res.status).toBe(401);
   });
 
-  it('rahasia benar → kirim satu batch dan laporkan jumlahnya', async () => {
-    network();
-    const res = await onRequestPost({ request: req('rahasia'), env: ENV });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ claimed: 2, sent: 2, failed: 0 });
+  it.each([
+    ['bukan JSON', '{'],
+    ['tanpa order_id', { kind: 'reminder_day' }],
+    ['order_id bukan UUID', { order_id: 'x', kind: 'reminder_day' }],
+    ['jenis tak dikenal', { order_id: ORDER_ID, kind: 'promosi' }],
+    ['body kosong (tick lama)', {}],
+  ])('%s → 400 tanpa menyentuh database', async (_, body) => {
+    const net = network();
+    const res = await onRequestPost({ request: req('rahasia', body), env: ENV });
+    expect(res.status).toBe(400);
+    expect(net.calls).toHaveLength(0);
   });
 
-  it('database gagal → 500', async () => {
-    network({ claimStatus: 500 });
-    const res = await onRequestPost({ request: req('rahasia'), env: ENV });
-    expect(res.status).toBe(500);
+  it('terkirim → 200 {sent}; dilewati → 200 {skipped}', async () => {
+    network();
+    let res = await onRequestPost({ request: req('rahasia'), env: ENV });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ sent: true });
+
+    network({ order: { status: 'refunded' } });
+    res = await onRequestPost({ request: req('rahasia'), env: ENV });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ skipped: 'not_paid' });
+  });
+
+  it('penyedia email gagal → 502; database gagal → 500', async () => {
+    network({ mail: () => json({ message: 'x' }, 500) });
+    expect((await onRequestPost({ request: req('rahasia'), env: ENV })).status).toBe(502);
+    network({ orderStatus: 500 });
+    expect((await onRequestPost({ request: req('rahasia'), env: ENV })).status).toBe(500);
   });
 });

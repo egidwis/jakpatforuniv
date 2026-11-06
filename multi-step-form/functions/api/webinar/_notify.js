@@ -1,72 +1,88 @@
-// Pengirim antrean email otomatis webinar (sql/135). Dipanggil:
-// - cron tiap menit lewat /api/notify-webinar (webinar_notify_tick),
-// - aksi admin simpan-jadwal / batalkan acara / kirim ulang yang gagal, lewat
-//   waitUntil supaya batch pertama berangkat seketika.
+// Email otomatis webinar untuk SATU peserta (Iterasi 4, sql/136b). Pola email iklan
+// (notify-ad-live.js): cron Postgres (webinar_notify_tick) memanggil
+// /api/notify-webinar sekali per order dan langsung mengisi kolom penanda di
+// webinar_orders. Di sini hanya: baca order + acara terbaru → periksa keadaannya
+// masih cocok → kirim → catat galat bila gagal.
 //
-// Satu panggilan = satu batch (default 20) supaya aman dari batas subrequest
-// Workers Free (50): 1 claim + 20 email + 1 catat. Sisanya diambil tick berikutnya.
-// Klaim memakai SKIP LOCKED + claim_token, jadi cron dan aksi admin yang berjalan
-// bersamaan tidak pernah mengirim baris yang sama.
+// Tidak ada ulang otomatis. Gagal = webinar_orders.email_error terisi dan tampil di
+// halaman Peserta; email otomatis berikutnya yang sukses mengosongkannya.
+//
+// Aturan tulis (pelajaran 3 & 5 Nov): PATCH memfilter id saja dan meminta barisnya
+// kembali; nol baris = galat.
 
 import { sendMail } from '../_mail.js';
 import { buildWebinarNotifyEmail } from './_notify-email.js';
+import { rest } from './_server.js';
 
-const CONCURRENCY = 4; // Workers: maks. 6 koneksi keluar bersamaan per permintaan
+export const NOTIFY_KINDS = ['reminder_day', 'schedule_change', 'cancellation', 'recording_ready'];
 
-async function rpc(sb, fn, args) {
-  const res = await fetch(`${sb.url}/rest/v1/rpc/${fn}`, {
-    method: 'POST',
-    headers: { ...sb.headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify(args),
-  });
-  const raw = await res.text();
-  if (!res.ok) throw new Error(`RPC ${fn} gagal — HTTP ${res.status}: ${raw.slice(0, 300)}`);
-  return raw ? JSON.parse(raw) : null;
+export const NOTIFY_LABEL = {
+  reminder_day: 'Pengingat H-1',
+  schedule_change: 'Jadwal berubah',
+  cancellation: 'Pembatalan',
+  recording_ready: 'Rekaman tersedia',
+};
+
+const ORDER_COLUMNS = 'id,event_id,kind,status,buyer_name,buyer_email,ticket_code,join_token,email_error';
+const EVENT_COLUMNS = 'id,title,starts_at,duration_minutes,speakers,status,offer_kind,recording_published_at';
+
+/** "16 Nov 09.00" (WIB) */
+function wibStamp(date) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('id-ID', {
+    timeZone: 'Asia/Jakarta', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(date).map((x) => [x.type, x.value]));
+  return `${p.day} ${p.month} ${p.hour}.${p.minute}`;
+}
+
+/** Keadaan acara saat ini masih cocok dengan jenis email? (tick bisa basi beberapa detik) */
+function stillDue(kind, event, now) {
+  const started = !event.starts_at || Date.parse(event.starts_at) <= now.getTime();
+  if (kind === 'cancellation') return event.status === 'cancelled';
+  if (kind === 'recording_ready') return event.status === 'published' && Boolean(event.recording_published_at);
+  return event.status === 'published' && event.offer_kind === 'live' && !started;
 }
 
 function describeError(mail) {
   const detail = typeof mail?.error === 'string' ? mail.error : JSON.stringify(mail?.error ?? null);
-  return `${mail?.provider ?? '?'} HTTP ${mail?.status ?? 0}: ${detail}`.slice(0, 500);
+  return `${mail?.provider ?? '?'} HTTP ${mail?.status ?? 0}: ${detail}`;
 }
 
-async function sendOne(env, row) {
-  const base = { broadcast_id: row.broadcast_id, order_id: row.order_id };
-  let message;
+async function patchOrder(sb, orderId, write, label) {
+  const rows = await rest(sb, `webinar_orders?id=eq.${orderId}&select=id`, { method: 'PATCH', body: JSON.stringify(write) }, label);
+  if (!Array.isArray(rows) || rows.length !== 1) throw new Error(`${label}: bukan tepat satu baris`);
+}
+
+/**
+ * @returns {Promise<{sent: true} | {sent: false, error: string} | {skipped: string}>}
+ * Melempar bila database gagal dibaca atau galat tidak bisa dicatat.
+ */
+export async function sendOrderNotification({ env, sb, orderId, kind, now = new Date() }) {
+  const [order] = (await rest(sb, `webinar_orders?id=eq.${orderId}&select=${ORDER_COLUMNS}`, {}, 'SELECT webinar_orders (email otomatis)')) || [];
+  if (!order) return { skipped: 'not_found' };
+  if (order.status !== 'paid' || order.kind !== 'live') return { skipped: 'not_paid' };
+
+  const [event] = (await rest(sb, `webinar_events?id=eq.${order.event_id}&select=${EVENT_COLUMNS}`, {}, 'SELECT webinar_events (email otomatis)')) || [];
+  if (!event || !stillDue(kind, event, now)) return { skipped: 'wrong_state' };
+
+  let error;
   try {
-    message = buildWebinarNotifyEmail({ kind: row.kind, event: row.event, recipient: row });
+    const message = buildWebinarNotifyEmail({ kind, event, recipient: { ...order, order_id: order.id } });
+    const mail = await sendMail(env, { to: [order.buyer_email], subject: message.subject, html: message.html });
+    if (!mail?.ok) error = describeError(mail);
   } catch (err) {
-    // Data tidak bisa dirender: mengulang tidak akan menolong.
-    return { ...base, ok: false, permanent: true, error: `Templat gagal: ${err?.message || err}`.slice(0, 500) };
+    error = `Templat gagal: ${err?.message || err}`;
   }
-  const mail = await sendMail(env, { to: [row.email], subject: message.subject, html: message.html });
-  if (mail?.ok) return { ...base, ok: true };
-  const permanent = Array.isArray(mail?.error?.permanent_bounces) && mail.error.permanent_bounces.length > 0;
-  return { ...base, ok: false, permanent, error: describeError(mail) };
-}
 
-/** @returns {Promise<{claimed: number, sent: number, failed: number}>} Melempar bila database gagal. */
-export async function dispatchWebinarNotifications({ env, sb, limit = 20 }) {
-  const claim = await rpc(sb, 'webinar_claim_deliveries', { p_limit: limit });
-  const rows = Array.isArray(claim?.rows) ? claim.rows : [];
-  if (rows.length === 0) return { claimed: 0, sent: 0, failed: 0 };
-
-  const results = new Array(rows.length);
-  let next = 0;
-  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, rows.length) }, async () => {
-    while (next < rows.length) {
-      const i = next++;
-      results[i] = await sendOne(env, rows[i]);
+  if (!error) {
+    if (order.email_error) {
+      // Email sudah berangkat: gagal mengosongkan catatan lama tidak boleh membuatnya terlihat gagal.
+      await patchOrder(sb, order.id, { email_error: null }, 'PATCH webinar_orders (kosongkan email_error)')
+        .catch((err) => console.error('[webinar/notify]', err?.message || err));
     }
-  }));
-
-  // Gagal mencatat = baris tetap `sending`, lalu basi 10 menit dan dicoba lagi.
-  // Lebih baik dobel daripada peserta tidak dikabari; tetap dicatat di log.
-  try {
-    await rpc(sb, 'webinar_record_deliveries', { p_token: claim.token, p_results: results });
-  } catch (err) {
-    console.error('[webinar/notify] hasil kirim gagal dicatat:', err?.message || err);
+    return { sent: true };
   }
 
-  const sent = results.filter((r) => r.ok).length;
-  return { claimed: rows.length, sent, failed: rows.length - sent };
+  const note = `${NOTIFY_LABEL[kind]} · ${wibStamp(now)} · ${error}`.slice(0, 500);
+  await patchOrder(sb, order.id, { email_error: note }, 'PATCH webinar_orders (email_error)');
+  return { sent: false, error: note };
 }

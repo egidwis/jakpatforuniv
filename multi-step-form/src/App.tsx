@@ -17,6 +17,7 @@ import { DashboardLayout } from './components/DashboardLayout';
 import { StatusPage } from './pages/dashboard/StatusPage';
 import { WebinarHubPage, WebinarTicketRedirect } from './pages/dashboard/webinar/WebinarHubPage';
 import { WebinarCheckoutPage } from './pages/dashboard/webinar/WebinarCheckoutPage';
+import { WebinarWatchPage } from './pages/dashboard/webinar/WebinarWatchPage';
 import { WebinarGate } from './components/webinar/WebinarGate';
 import { ChatPage } from './pages/dashboard/ChatPage';
 import { ProfilePage } from './pages/dashboard/ProfilePage';
@@ -161,6 +162,7 @@ function AppContent() {
             <Route path="webinar" element={<WebinarHubPage />} />
             <Route path="webinar/beli/:slug" element={<WebinarCheckoutPage />} />
             <Route path="webinar/tiket/:orderId" element={<WebinarTicketRedirect />} />
+            <Route path="webinar/tonton/:orderId" element={<WebinarWatchPage />} />
           </Route>
           <Route path="chat" element={<ChatPage />} />
           <Route path="profile" element={<ProfilePage />} />

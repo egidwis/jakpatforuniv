@@ -13,12 +13,81 @@
 
 export const WEBINAR_ADMIN_ACTIONS = [
   'list', 'get', 'create', 'save', 'publish', 'close-sales', 'cancel', 'delete',
-  // Fase 3: peserta, refund, email otomatis
-  'participants', 'participant', 'resend-ticket', 'check-order', 'refund', 'email-retry',
+  // Fase 3: peserta, refund (email otomatis dikirim cron per peserta, sql/136b)
+  'participants', 'participant', 'resend-ticket', 'check-order', 'refund',
   // Fase 4: pembeli webinar untuk halaman Customers (baca saja)
   'buyers',
+  // Fase 5A: rekaman (R2) & materi untuk pemegang tiket
+  'recording-upload-start', 'recording-part-urls', 'recording-upload-complete', 'recording-upload-abort',
+  'recording-preview', 'materials-save', 'recording-publish',
 ];
-const NEEDS_ID = new Set(['get', 'save', 'publish', 'close-sales', 'cancel', 'delete', 'participants']);
+export const RECORDING_ACTIONS = WEBINAR_ADMIN_ACTIONS.filter((a) => a.startsWith('recording-') || a === 'materials-save');
+const NEEDS_ID = new Set(['get', 'save', 'publish', 'close-sales', 'cancel', 'delete', 'participants', ...RECORDING_ACTIONS]);
+
+// ── Rekaman (Fase 5A) ──────────────────────────────────────────────────────
+
+export const MAX_RECORDING_BYTES = 4 * 1024 ** 3;
+/** Ukuran bagian multipart: sama besar kecuali terakhir, ≥ 5 MiB (aturan R2/S3). */
+export const RECORDING_PART_SIZE = 50 * 1024 ** 2;
+const MAX_PARTS_PER_CALL = 20;
+const MAX_PARTS = 10_000;
+const RECORDING_KEY_RE = /^rekaman\/[0-9a-f-]{36}\/[a-z0-9-]{1,80}\.mp4$/;
+const ETAG_RE = /^"?[A-Za-z0-9-]{1,128}"?$/;
+const MATERIAL_NAME_RE = /^[a-z0-9][a-z0-9._-]{0,150}\.(pdf|ppt|pptx|doc|docx|zip)$/;
+
+const isPartNumber = (n) => Number.isInteger(n) && n >= 1 && n <= MAX_PARTS;
+const keyOf = (body) => typeof body.key === 'string' && RECORDING_KEY_RE.test(body.key)
+  && body.key.startsWith(`rekaman/${String(body.id).toLowerCase()}/`);
+const uploadIdOk = (v) => typeof v === 'string' && v.length > 0 && v.length <= 1024 && /^[\x21-\x7e]+$/.test(v);
+
+/** Path materi di bucket webinar-materials: `<eventId>/<nama-aman>.<ekstensi dokumen>`. */
+export function materialPathOk(path, eventId) {
+  if (typeof path !== 'string') return false;
+  const prefix = `${String(eventId).toLowerCase()}/`;
+  return path.startsWith(prefix) && MATERIAL_NAME_RE.test(path.slice(prefix.length)) && !path.includes('..');
+}
+
+/** @returns {string|null} */
+function validateRecordingRequest(body) {
+  switch (body.action) {
+    case 'recording-upload-start':
+      if (typeof body.fileName !== 'string' || !/\.mp4$/i.test(body.fileName.trim()) || body.fileName.length > 255) return 'Hanya berkas MP4';
+      if (!Number.isInteger(body.size) || body.size < 1 || body.size > MAX_RECORDING_BYTES) return 'Ukuran video maks. 4 GB';
+      return null;
+    case 'recording-part-urls': {
+      if (!keyOf(body)) return 'Rekaman tidak dikenali';
+      if (!uploadIdOk(body.uploadId)) return 'Unggahan tidak dikenali';
+      const nums = body.partNumbers;
+      if (!Array.isArray(nums) || nums.length < 1 || nums.length > MAX_PARTS_PER_CALL
+        || !nums.every(isPartNumber) || new Set(nums).size !== nums.length) return 'Bagian unggahan tidak dikenali';
+      return null;
+    }
+    case 'recording-upload-complete': {
+      if (!keyOf(body)) return 'Rekaman tidak dikenali';
+      if (!uploadIdOk(body.uploadId)) return 'Unggahan tidak dikenali';
+      const parts = body.parts;
+      if (!Array.isArray(parts) || parts.length < 1 || parts.length > MAX_PARTS
+        || !parts.every((p, i) => isPlainObject(p) && p.partNumber === i + 1 && typeof p.etag === 'string' && ETAG_RE.test(p.etag))) {
+        return 'Bagian unggahan tidak lengkap';
+      }
+      if (!Number.isInteger(body.minutes) || body.minutes < 1 || body.minutes > 1440) return 'Durasi video tidak terbaca (1–1440 menit)';
+      return null;
+    }
+    case 'recording-upload-abort':
+      if (!keyOf(body)) return 'Rekaman tidak dikenali';
+      if (!uploadIdOk(body.uploadId)) return 'Unggahan tidak dikenali';
+      return null;
+    case 'materials-save':
+      return materialPathOk(body.path, body.id) ? null : 'Materi tidak dikenali';
+    case 'recording-publish': {
+      const c = body.confirmations;
+      if (!isPlainObject(c) || c.speakerPermission !== true || c.facesTrimmed !== true) return 'Kedua centang wajib diisi sebelum terbit';
+      return null;
+    }
+    default:
+      return null;
+  }
+}
 const NEEDS_ORDER = new Set(['participant', 'resend-ticket', 'check-order', 'refund']);
 const EMAIL_RE = /^[^\s@<>(),;:"]+@[^\s@<>(),;:"]+\.[^\s@<>(),;:"]+$/;
 
@@ -67,8 +136,9 @@ export function validateWebinarRequest(body) {
   if (!WEBINAR_ADMIN_ACTIONS.includes(body.action)) return 'Tindakan tidak diizinkan';
   if (NEEDS_ID.has(body.action) && (typeof body.id !== 'string' || !UUID_RE.test(body.id))) return 'Acara tidak dikenali';
   if (NEEDS_ORDER.has(body.action) && (typeof body.orderId !== 'string' || !UUID_RE.test(body.orderId))) return 'Order tidak dikenali';
-  if (body.action === 'email-retry' && (typeof body.broadcastId !== 'string' || !UUID_RE.test(body.broadcastId))) return 'Email tidak dikenali';
   if (body.action === 'refund' && !normalizeRefundNote(body.note)) return 'Catatan refund wajib diisi (3–500 karakter)';
+  const recording = validateRecordingRequest(body);
+  if (recording) return recording;
   if (body.action === 'resend-ticket' && body.email !== undefined && body.email !== null && body.email !== ''
     && !normalizeTicketEmail(body.email)) return 'Alamat email tidak valid';
   if (TAKES_PATCH.has(body.action)) {
