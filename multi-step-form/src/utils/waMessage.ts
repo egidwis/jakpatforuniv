@@ -225,10 +225,10 @@ export interface InvoiceReadyInput {
   isKilat?: boolean;
 }
 
-const formatScheduleSuffix = (b: InvoiceBundleSummary): string => {
-  if (!b.startDate) return '';
+export const formatScheduleValue = (b: InvoiceBundleSummary): string | null => {
+  if (!b.startDate) return null;
   if (b.kilatSlotHour != null) {
-    return ` — gelombang ${formatWibShort(b.startDate)} pukul ${String(b.kilatSlotHour).padStart(2, '0')}.00 WIB`;
+    return `gelombang ${formatWibShort(b.startDate)} pukul ${String(b.kilatSlotHour).padStart(2, '0')}.00 WIB`;
   }
   try {
     const startDay = formatWibShort(b.startDate);
@@ -237,39 +237,59 @@ const formatScheduleSuffix = (b: InvoiceBundleSummary): string => {
       const endDay = formatWibShort(b.endDate);
       const endTime = `${formatWibTime(b.endDate)} WIB`;
       if (endDay === startDay) {
-        return ` — tayang ${startDay} pukul ${formatWibTime(b.startDate)} s/d ${endTime}`;
+        return `${startDay} pukul ${formatWibTime(b.startDate)} s/d ${endTime}`;
       }
-      return ` — tayang ${startDay} pukul ${startTime} s/d ${endDay} pukul ${endTime}`;
+      return `${startDay} pukul ${startTime} s/d ${endDay} pukul ${endTime}`;
     }
-    return ` — tayang ${startDay} pukul ${startTime}`;
+    return `${startDay} pukul ${startTime}`;
   } catch {
-    return ` — tayang ${formatWibShort(b.startDate)}`;
+    return formatWibShort(b.startDate);
   }
 };
 
+export function normalizeItemName(name: string): string {
+  let n = name.trim();
+  if (/respondent'?s?\s*incentive\s*\(new\s*batch\)/i.test(n)) {
+    return 'Reward Responden (Batch Baru)';
+  }
+  if (/^respondent'?s?\s*incentive/i.test(n) || /^insentif\s*responden/i.test(n)) {
+    return 'Reward Responden';
+  }
+  if (/insentif/i.test(n)) {
+    n = n.replace(/insentif/gi, 'Reward');
+  } else if (/incentive/i.test(n)) {
+    n = n.replace(/incentive/gi, 'Reward');
+  }
+  return n;
+}
+
 const formatItemLine = (it: InvoiceItemDetail, indent = ''): string => {
+  const name = normalizeItemName(it.name);
   const itemTotal = it.total ?? (it.price != null && it.qty != null ? it.price * it.qty : null);
-  const qtySuffix = it.qty != null && it.qty > 1 ? ` (${it.qty}x)` : '';
+  const qtySuffix = it.qty != null && it.qty > 1 && !/\(\d+[x\s]/i.test(name) ? ` (${it.qty}x)` : '';
   return itemTotal != null
-    ? `${indent}• ${it.name}${qtySuffix}: ${rupiah(itemTotal)}`
-    : `${indent}• ${it.name}`;
+    ? `${indent}${name}${qtySuffix}: ${rupiah(itemTotal)}`
+    : `${indent}${name}`;
 };
 
 const bundleBlock = (b: InvoiceBundleSummary, index: number, totalBundles: number): string => {
   if (totalBundles <= 1) {
-    const lines = [`• ${b.title}${formatScheduleSuffix(b)}`];
+    const lines = [`Judul survei: ${b.title}`];
+    const sched = formatScheduleValue(b);
+    if (sched) {
+      lines.push(`Jadwal tayang: ${sched}`);
+    }
     if (b.surveyUrl?.trim()) {
-      lines.push(`  Link survei: ${b.surveyUrl.trim()}`);
+      lines.push(`Link survei: ${b.surveyUrl.trim()}`);
     }
     return lines.join('\n');
   }
 
-  const hasDetail = (b.items && b.items.length > 0) || b.subtotal != null || b.amount != null || !!b.surveyUrl?.trim();
-  if (!hasDetail) {
-    return `• ${b.title}${formatScheduleSuffix(b)}`;
+  const lines = [`${index + 1}. ${b.title}`];
+  const sched = formatScheduleValue(b);
+  if (sched) {
+    lines.push(`   Jadwal tayang: ${sched}`);
   }
-
-  const lines = [`${index + 1}. ${b.title}${formatScheduleSuffix(b)}`];
   if (b.surveyUrl?.trim()) {
     lines.push(`   Link survei: ${b.surveyUrl.trim()}`);
   }
@@ -277,8 +297,10 @@ const bundleBlock = (b: InvoiceBundleSummary, index: number, totalBundles: numbe
     for (const it of b.items) {
       lines.push(formatItemLine(it, '   '));
     }
-  }
-  if (b.subtotal != null) {
+    if (b.items.length > 1 && b.subtotal != null) {
+      lines.push(`   Subtotal pesanan: ${rupiah(b.subtotal)}`);
+    }
+  } else if (b.subtotal != null) {
     lines.push(`   Subtotal pesanan: ${rupiah(b.subtotal)}`);
   } else if (b.amount != null) {
     lines.push(`   Nominal pesanan: ${rupiah(b.amount)}`);
@@ -300,7 +322,9 @@ export function invoiceReadyMessage(input: InvoiceReadyInput): string {
     ?? paymentDeadline(bundles.map((b) => b.startDate), input.issuedAt, firstKilatHour);
 
   const heading = input.topUp
-    ? 'Tagihan susulan untuk pesanan Anda sudah kami terbitkan:'
+    ? (bundles.length > 1
+        ? `Tagihan susulan untuk ${bundles.length} pesanan Anda sudah kami terbitkan:`
+        : 'Tagihan susulan untuk pesanan Anda sudah kami terbitkan:')
     : bundles.length > 1
       ? `Tagihan untuk ${bundles.length} pesanan Anda sudah kami terbitkan:`
       : 'Tagihan untuk pesanan Anda sudah kami terbitkan:';
@@ -317,12 +341,9 @@ export function invoiceReadyMessage(input: InvoiceReadyInput): string {
           ? `Mohon diselesaikan paling lambat ${formatDeadline(deadline)} agar survei Kilat bisa disiarkan sesuai jadwal.`
           : `Mohon diselesaikan paling lambat ${formatDeadline(deadline)} agar iklan bisa tayang sesuai jadwal.`);
 
-  const isMultiWithDetail = bundles.length > 1 && bundles.some(
-    (b) => (b.items && b.items.length > 0) || b.subtotal != null || b.amount != null || !!b.surveyUrl?.trim(),
-  );
   const renderedBundles = bundles
     .map((b, i) => bundleBlock(b, i, bundles.length))
-    .join(isMultiWithDetail ? '\n\n' : '\n');
+    .join(bundles.length > 1 ? '\n\n' : '\n');
 
   const costLines: string[] = [];
   const singleItems = bundles.length <= 1
@@ -331,40 +352,58 @@ export function invoiceReadyMessage(input: InvoiceReadyInput): string {
   const sub = input.subtotal ?? (bundles.length === 1 ? bundles[0]?.subtotal : undefined);
   const ppnVal = input.ppn ?? (bundles.length === 1 ? bundles[0]?.ppn : undefined);
 
-  if (singleItems && singleItems.length > 0) {
+  if (bundles.length > 1) {
+    costLines.push('Rincian total:');
+    if (sub != null) {
+      costLines.push(`Subtotal (${bundles.length} pesanan): ${rupiah(sub)}`);
+    }
+    if (ppnVal != null) {
+      costLines.push(`PPN (11%): ${rupiah(ppnVal)}`);
+    }
+    costLines.push('────────────────────────');
+    costLines.push(`Total: ${rupiah(amount)}`);
+  } else if (singleItems && singleItems.length > 0) {
     costLines.push('Rincian biaya:');
     for (const it of singleItems) {
       costLines.push(formatItemLine(it));
     }
-    if (sub != null && ppnVal != null) {
-      costLines.push('────────────────────────');
+    if (singleItems.length > 1 && sub != null) {
       costLines.push(`Subtotal: ${rupiah(sub)}`);
+    }
+    if (ppnVal != null) {
       costLines.push(`PPN (11%): ${rupiah(ppnVal)}`);
     }
-    costLines.push(`Total: ${rupiah(amount)}${bundles.length > 1 ? ' (dibayar sekaligus dalam satu link)' : ''}`);
+    costLines.push('────────────────────────');
+    costLines.push(`Total: ${rupiah(amount)}`);
   } else if (sub != null && ppnVal != null) {
-    costLines.push(bundles.length > 1 ? 'Rincian total gabungan:' : 'Rincian biaya:');
+    costLines.push('Rincian biaya:');
     costLines.push(`Subtotal: ${rupiah(sub)}`);
     costLines.push(`PPN (11%): ${rupiah(ppnVal)}`);
     costLines.push('────────────────────────');
-    costLines.push(`Total: ${rupiah(amount)}${bundles.length > 1 ? ' (dibayar sekaligus dalam satu link)' : ''}`);
+    costLines.push(`Total: ${rupiah(amount)}`);
   } else {
-    costLines.push(`Total: ${rupiah(amount)}${bundles.length > 1 ? ' (dibayar sekaligus dalam satu link)' : ''}`);
+    costLines.push(`Total: ${rupiah(amount)}`);
   }
+
+  const payLinkLabel = bundles.length > 1 ? 'Link pembayaran gabungan:' : 'Link pembayaran:';
 
   return [
     greet(researcherName),
     '',
     heading,
+    ...(bundles.length > 1 ? [''] : []),
     renderedBundles,
     '',
     ...costLines,
-    `Link pembayaran: ${invoiceUrl}`,
+    `${payLinkLabel} ${invoiceUrl}`,
     '',
     closing,
     '',
     SIGNATURE,
-  ].join('\n');
+  ].filter((line, i, arr) => {
+    if (line === '' && arr[i - 1] === '') return false;
+    return true;
+  }).join('\n');
 }
 
 export interface SlotBookedInput {
