@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   ADMIN_INVOICE_LIFETIME_MS,
   invoiceReadyMessage,
+  normalizeItemName,
   normalizePhone,
   paymentDeadline,
   slotBookedMessage,
@@ -102,8 +103,63 @@ describe('invoiceReadyMessage', () => {
     expect(msg).toContain('Rp 1.165.500');
     expect(msg).toContain('https://pay.example/abc');
     expect(msg).toContain('pukul 14.00 WIB');
-    // Tunggal tidak boleh menjanjikan "dibayar sekaligus".
-    expect(msg).not.toContain('sekaligus');
+    expect(msg).toContain('agar iklan bisa tayang sesuai jadwal');
+    expect(msg).toContain('Judul survei: Persepsi Mahasiswa');
+    expect(msg).toContain('Jadwal tayang: Kam, 3 Sep pukul 15.00 WIB');
+    // Tunggal tidak boleh memakai link pembayaran gabungan.
+    expect(msg).toContain('Link pembayaran: https://pay.example/abc');
+    expect(msg).not.toContain('Link pembayaran gabungan:');
+  });
+
+  it('mengubah istilah Insentif / Respondent\'s Incentive ke Reward', () => {
+    expect(normalizeItemName("Respondent's Incentive")).toBe('Reward Responden');
+    expect(normalizeItemName('Insentif Responden')).toBe('Reward Responden');
+    expect(normalizeItemName('Insentif')).toBe('Reward');
+    expect(normalizeItemName("Respondent's Incentive (New Batch)")).toBe('Reward Responden (Batch Baru)');
+  });
+
+  it('menyertakan rincian biaya jika ada items, subtotal, dan ppn dengan istilah Reward', () => {
+    const msg = invoiceReadyMessage({
+      researcherName: 'Tri',
+      bundles: [{ title: 'Survei Tri', startDate: airing('2026-11-11') }],
+      items: [
+        { name: 'Iklan Kuesioner', qty: 3, price: 45000, total: 135000 },
+        { name: 'Insentif Responden', qty: 1, price: 50000, total: 50000 },
+      ],
+      subtotal: 185000,
+      ppn: 20350,
+      amount: 205350,
+      invoiceUrl: 'https://pay.example/tri',
+      issuedAt: issued,
+    });
+    expect(msg).toContain('Rincian biaya:');
+    expect(msg).toContain('Iklan Kuesioner (3x): Rp 135.000');
+    expect(msg).toContain('Reward Responden: Rp 50.000');
+    expect(msg).not.toContain('• Iklan Kuesioner');
+    expect(msg).not.toContain('Insentif');
+    expect(msg).toContain('Subtotal: Rp 185.000');
+    expect(msg).toContain('PPN (11%): Rp 20.350');
+    expect(msg).toContain('Total: Rp 205.350');
+    expect(msg).toContain('agar iklan bisa tayang sesuai jadwal');
+  });
+
+  it('Kilat: menyebut jam gelombang, tenggat H-1 jam, dan kalimat siaran Kilat', () => {
+    const msg = invoiceReadyMessage({
+      researcherName: 'Siti',
+      bundles: [{
+        title: 'Survei Kilat A',
+        startDate: '2026-11-11T04:00:00.000Z', // 11.00 WIB
+        kilatSlotHour: 11,
+      }],
+      amount: 350000,
+      invoiceUrl: 'https://pay.example/kilat',
+      issuedAt: new Date('2026-11-10T02:00:00.000Z'),
+      isKilat: true,
+    });
+    expect(msg).toContain('gelombang Rab, 11 Nov pukul 11.00 WIB');
+    // Gelombang 11.00 WIB -> batas bayar 10.00 WIB (H-1 jam)
+    expect(msg).toContain('pukul 10.00 WIB');
+    expect(msg).toContain('agar survei Kilat bisa disiarkan sesuai jadwal');
   });
 
   it('grup: menyebut SEMUA survei dan tenggat paling awal', () => {
@@ -120,10 +176,88 @@ describe('invoiceReadyMessage', () => {
     expect(msg).toContain('Survei A');
     expect(msg).toContain('Survei B');
     expect(msg).toContain('2 pesanan');
-    expect(msg).toContain('sekaligus dalam satu link');
+    expect(msg).toContain('Link pembayaran gabungan: https://pay.example/xyz');
     // Tenggat 4 Sep, bukan 10 Sep — satu link tidak bisa dibayar sebagian.
     expect(msg).toContain('4 September 2026');
     expect(msg).not.toContain('10 September 2026');
+  });
+
+  it('menyertakan link survei, jam tayang, dan tanggal berakhirnya iklan', () => {
+    const msg = invoiceReadyMessage({
+      researcherName: 'Tri Hartono Rianto',
+      bundles: [{
+        title: 'Survei Perilaku Konsumen',
+        surveyUrl: 'https://forms.gle/abc123xyz',
+        startDate: airing('2026-11-11'),
+        endDate: airing('2026-11-12'),
+      }],
+      items: [{ name: 'Biaya Iklan', qty: 1, price: 125000, total: 125000 }],
+      subtotal: 125000,
+      ppn: 13750,
+      amount: 138750,
+      invoiceUrl: 'https://pay.example/abc',
+      issuedAt: issued,
+    });
+    expect(msg).toContain('Judul survei: Survei Perilaku Konsumen');
+    expect(msg).toContain('Jadwal tayang: Rab, 11 Nov pukul 15.00 WIB s/d Kam, 12 Nov pukul 15.00 WIB');
+    expect(msg).toContain('Link survei: https://forms.gle/abc123xyz');
+    // Karena hanya 1 item, tidak menduplikasi Subtotal
+    expect(msg).not.toContain('Subtotal:');
+    expect(msg).toContain('Biaya Iklan: Rp 125.000');
+    expect(msg).toContain('PPN (11%): Rp 13.750');
+    expect(msg).toContain('Total: Rp 138.750');
+  });
+
+  it('tagihan gabungan menampilkan rincian per pesanan, link survei, dan total gabungan', () => {
+    const msg = invoiceReadyMessage({
+      researcherName: 'Siti',
+      bundles: [
+        {
+          title: 'Survei Satu',
+          surveyUrl: 'https://forms.gle/satu',
+          startDate: airing('2026-09-04'),
+          items: [
+            { name: 'Biaya Iklan (1 hari)', qty: 1, price: 125000, total: 125000 },
+            { name: 'Insentif Responden', qty: 2, price: 30000, total: 60000 },
+          ],
+          subtotal: 185000,
+          ppn: 20350,
+          amount: 205350,
+        },
+        {
+          title: 'Riset UMKM',
+          surveyUrl: 'https://forms.gle/dua',
+          startDate: airing('2026-09-10'),
+          items: [
+            { name: 'Biaya Iklan (2 hari)', qty: 2, price: 125000, total: 250000 },
+          ],
+          subtotal: 250000,
+          ppn: 27500,
+          amount: 277500,
+        },
+      ],
+      subtotal: 435000,
+      ppn: 47850,
+      amount: 482850,
+      invoiceUrl: 'https://pay.example/bulk',
+      issuedAt: issued,
+    });
+    expect(msg).toContain('1. Survei Satu');
+    expect(msg).toContain('   Jadwal tayang: Jum, 4 Sep pukul 15.00 WIB');
+    expect(msg).toContain('   Link survei: https://forms.gle/satu');
+    expect(msg).toContain('   Biaya Iklan (1 hari): Rp 125.000');
+    expect(msg).toContain('   Reward Responden (2x): Rp 60.000');
+    expect(msg).toContain('   Subtotal pesanan: Rp 185.000');
+    expect(msg).toContain('2. Riset UMKM');
+    expect(msg).toContain('   Jadwal tayang: Kam, 10 Sep pukul 15.00 WIB');
+    expect(msg).toContain('   Link survei: https://forms.gle/dua');
+    expect(msg).toContain('   Biaya Iklan (2 hari): Rp 250.000');
+    expect(msg).toContain('Rincian total:');
+    expect(msg).toContain('Subtotal (2 pesanan): Rp 435.000');
+    expect(msg).toContain('PPN (11%): Rp 47.850');
+    expect(msg).toContain('Total: Rp 482.850');
+    expect(msg).toContain('Link pembayaran gabungan: https://pay.example/bulk');
+    expect(msg).toContain('4 September 2026');
   });
 
   it('jatuh ke sapaan netral tanpa nama', () => {

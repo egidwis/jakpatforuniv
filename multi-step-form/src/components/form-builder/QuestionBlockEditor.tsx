@@ -651,15 +651,31 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                     )}
                   </div>
                 ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleAddOption}
-                  className="h-6 text-[11px] text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400"
-                >
-                  <Plus className="w-3 h-3 mr-1" /> Add Option
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAddOption}
+                    className="h-6 text-[11px] text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400"
+                  >
+                    <Plus className="w-3 h-3 mr-1" /> Add Option
+                  </Button>
+                  {!(block.options || []).some(o => /lainnya|other/i.test(o)) && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const opts = block.options || [];
+                        onChange({ ...block, options: [...opts, 'Lainnya (Sebutkan)'] });
+                      }}
+                      className="h-6 text-[11px] text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-400"
+                    >
+                      <Plus className="w-3 h-3 mr-1" /> + Opsi "Lainnya"
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -667,18 +683,46 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
 
         {/* Rating Scale Config */}
         {block.type === 'rating' && (
-          <div className="pt-1 flex items-center gap-2">
-            <label className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Scale Range:
-            </label>
-            <select
-              value={block.maxScale || 5}
-              onChange={(e) => onChange({ ...block, maxScale: Number(e.target.value) })}
-              className="text-xs bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md py-1 px-1.5 font-medium"
-            >
-              <option value={5}>1 to 5 Stars</option>
-              <option value={10}>1 to 10 Scale</option>
-            </select>
+          <div className="pt-1 space-y-2">
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Scale Range:
+              </label>
+              <select
+                value={block.maxScale || 5}
+                onChange={(e) => onChange({ ...block, maxScale: Number(e.target.value) })}
+                className="text-xs bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md py-1 px-1.5 font-medium text-gray-800 dark:text-gray-200"
+              >
+                <option value={5}>Skala 1 sampai 5</option>
+                <option value={10}>Skala 1 sampai 10</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
+              <div>
+                <label className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider block mb-1">
+                  Label Nilai 1 (Terendah)
+                </label>
+                <input
+                  type="text"
+                  value={block.minScaleLabel || ''}
+                  onChange={(e) => onChange({ ...block, minScaleLabel: e.target.value })}
+                  placeholder="Default: Sangat Tidak Setuju"
+                  className="w-full text-xs bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-md px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-800 dark:text-gray-200"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider block mb-1">
+                  Label Nilai {block.maxScale || 5} (Tertinggi)
+                </label>
+                <input
+                  type="text"
+                  value={block.maxScaleLabel || ''}
+                  onChange={(e) => onChange({ ...block, maxScaleLabel: e.target.value })}
+                  placeholder="Default: Sangat Setuju"
+                  className="w-full text-xs bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-md px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-800 dark:text-gray-200"
+                />
+              </div>
+            </div>
           </div>
         )}
 

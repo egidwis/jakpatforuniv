@@ -1,5 +1,5 @@
 import { toast } from 'sonner';
-import { formatWibDay, formatWibShort, paymentCutoffInstant, toWibYmd } from './airing-window';
+import { formatWibDay, formatWibShort, formatWibTime, payDeadlineFor, toWibYmd } from './airing-window';
 import { formatRupiah } from './currency';
 import { MAX_INVOICE_MINUTES } from './payment';
 
@@ -134,20 +134,21 @@ export function closeTab(tab: Window | null): void {
 export function paymentDeadline(
   startDates: Array<string | null | undefined>,
   issuedAt: Date = new Date(),
+  kilatHour?: number | null,
 ): Date {
   const candidates: number[] = [issuedAt.getTime() + ADMIN_INVOICE_LIFETIME_MS];
   for (const iso of startDates) {
     if (!iso) continue;
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) continue;
-    candidates.push(paymentCutoffInstant(toWibYmd(d)).getTime());
+    candidates.push(payDeadlineFor(toWibYmd(d), kilatHour).getTime());
   }
   return new Date(Math.min(...candidates));
 }
 
 /** "Jumat, 5 September 2026 pukul 14.00 WIB" — tenggat yang tidak bisa salah baca. */
 export function formatDeadline(deadline: Date): string {
-  return `${formatWibDay(deadline.toISOString())} pukul 14.00 WIB`;
+  return `${formatWibDay(deadline.toISOString())} pukul ${formatWibTime(deadline.toISOString())} WIB`;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -157,16 +158,40 @@ export function formatDeadline(deadline: Date): string {
 const greet = (name: string | null | undefined) => `Halo Kak ${name?.trim() || 'Peneliti'},`;
 const SIGNATURE = 'Terima kasih! 🙏\nTim Jakpat for Universities';
 
+export interface InvoiceItemDetail {
+  name: string;
+  qty?: number;
+  price?: number;
+  total?: number;
+}
+
 export interface InvoiceBundleSummary {
   title: string;
+  /** Link form / kuesioner asli peneliti (opsional). */
+  surveyUrl?: string | null;
   /** Instant ISO mulai tayang, atau null kalau jadwalnya belum bertanggal. */
   startDate?: string | null;
+  /** Instant ISO selesai tayang, atau null kalau belum bertanggal. */
+  endDate?: string | null;
+  /** Jam gelombang Kilat (11 atau 15), jika pesanan Kilat. */
+  kilatSlotHour?: number | null;
+  /** Rincian item untuk pesanan ini (digunakan pada tagihan gabungan). */
+  items?: InvoiceItemDetail[];
+  /** Subtotal pesanan ini sebelum PPN (opsional). */
+  subtotal?: number;
+  /** PPN pesanan ini (opsional). */
+  ppn?: number;
+  /** Total/nominal pesanan ini (opsional). */
+  amount?: number;
 }
 
 export interface InvoiceReadyInput {
   researcherName?: string | null;
   bundles: InvoiceBundleSummary[];
   amount: number;
+  subtotal?: number;
+  ppn?: number;
+  items?: InvoiceItemDetail[];
   /**
    * ⚠️ HARUS LINK PERANTARA `/bayar/<ad_schedules.id>` (`payLinkUrl`), BUKAN
    * URL DOKU MENTAH.
@@ -192,16 +217,96 @@ export interface InvoiceReadyInput {
   tempo?: boolean;
   /**
    * Tagihan SUSULAN — jadwalnya sudah lunas, ini tambahan di atasnya. Iklannya
-   * tidak menunggu tagihan ini, jadi "agar jadwal tayangnya tidak bergeser" dan
+   * tidak menunggu tagihan ini, jadi "agar iklan bisa tayang sesuai jadwal" dan
    * "tetap tayang sesuai jadwal" dua-duanya salah alamat di sini.
    */
   topUp?: boolean;
+  /** Apakah ini pesanan JFU Kilat */
+  isKilat?: boolean;
 }
 
-const bundleLine = (b: InvoiceBundleSummary) =>
-  b.startDate
-    ? `• ${b.title} — tayang ${formatWibShort(b.startDate)}`
-    : `• ${b.title}`;
+export const formatScheduleValue = (b: InvoiceBundleSummary): string | null => {
+  if (!b.startDate) return null;
+  if (b.kilatSlotHour != null) {
+    return `gelombang ${formatWibShort(b.startDate)} pukul ${String(b.kilatSlotHour).padStart(2, '0')}.00 WIB`;
+  }
+  try {
+    const startDay = formatWibShort(b.startDate);
+    const startTime = `${formatWibTime(b.startDate)} WIB`;
+    if (b.endDate) {
+      const endDay = formatWibShort(b.endDate);
+      const endTime = `${formatWibTime(b.endDate)} WIB`;
+      if (endDay === startDay) {
+        return `${startDay} pukul ${formatWibTime(b.startDate)} s/d ${endTime}`;
+      }
+      return `${startDay} pukul ${startTime} s/d ${endDay} pukul ${endTime}`;
+    }
+    return `${startDay} pukul ${startTime}`;
+  } catch {
+    return formatWibShort(b.startDate);
+  }
+};
+
+export function normalizeItemName(name: string): string {
+  let n = name.trim();
+  if (/respondent'?s?\s*incentive\s*\(new\s*batch\)/i.test(n)) {
+    return 'Reward Responden (Batch Baru)';
+  }
+  if (/^respondent'?s?\s*incentive/i.test(n) || /^insentif\s*responden/i.test(n)) {
+    return 'Reward Responden';
+  }
+  if (/insentif/i.test(n)) {
+    n = n.replace(/insentif/gi, 'Reward');
+  } else if (/incentive/i.test(n)) {
+    n = n.replace(/incentive/gi, 'Reward');
+  }
+  return n;
+}
+
+const formatItemLine = (it: InvoiceItemDetail, indent = ''): string => {
+  const name = normalizeItemName(it.name);
+  const itemTotal = it.total ?? (it.price != null && it.qty != null ? it.price * it.qty : null);
+  const qtySuffix = it.qty != null && it.qty > 1 && !/\(\d+[x\s]/i.test(name) ? ` (${it.qty}x)` : '';
+  return itemTotal != null
+    ? `${indent}${name}${qtySuffix}: ${rupiah(itemTotal)}`
+    : `${indent}${name}`;
+};
+
+const bundleBlock = (b: InvoiceBundleSummary, index: number, totalBundles: number): string => {
+  if (totalBundles <= 1) {
+    const lines = [`Judul survei: ${b.title}`];
+    const sched = formatScheduleValue(b);
+    if (sched) {
+      lines.push(`Jadwal tayang: ${sched}`);
+    }
+    if (b.surveyUrl?.trim()) {
+      lines.push(`Link survei: ${b.surveyUrl.trim()}`);
+    }
+    return lines.join('\n');
+  }
+
+  const lines = [`${index + 1}. ${b.title}`];
+  const sched = formatScheduleValue(b);
+  if (sched) {
+    lines.push(`   Jadwal tayang: ${sched}`);
+  }
+  if (b.surveyUrl?.trim()) {
+    lines.push(`   Link survei: ${b.surveyUrl.trim()}`);
+  }
+  if (b.items && b.items.length > 0) {
+    for (const it of b.items) {
+      lines.push(formatItemLine(it, '   '));
+    }
+    if (b.items.length > 1 && b.subtotal != null) {
+      lines.push(`   Subtotal pesanan: ${rupiah(b.subtotal)}`);
+    }
+  } else if (b.subtotal != null) {
+    lines.push(`   Subtotal pesanan: ${rupiah(b.subtotal)}`);
+  } else if (b.amount != null) {
+    lines.push(`   Nominal pesanan: ${rupiah(b.amount)}`);
+  }
+  return lines.join('\n');
+};
 
 /**
  * "Tagihan sudah terbit" — satu pesan, satu link, N survei.
@@ -211,12 +316,15 @@ const bundleLine = (b: InvoiceBundleSummary) =>
  * penerimanya.
  */
 export function invoiceReadyMessage(input: InvoiceReadyInput): string {
-  const { researcherName, bundles, amount, invoiceUrl } = input;
+  const { researcherName, bundles, amount, invoiceUrl, isKilat } = input;
+  const firstKilatHour = bundles.find((b) => b.kilatSlotHour != null)?.kilatSlotHour;
   const deadline = input.deadline
-    ?? paymentDeadline(bundles.map((b) => b.startDate), input.issuedAt);
+    ?? paymentDeadline(bundles.map((b) => b.startDate), input.issuedAt, firstKilatHour);
 
   const heading = input.topUp
-    ? 'Tagihan susulan untuk pesanan Anda sudah kami terbitkan:'
+    ? (bundles.length > 1
+        ? `Tagihan susulan untuk ${bundles.length} pesanan Anda sudah kami terbitkan:`
+        : 'Tagihan susulan untuk pesanan Anda sudah kami terbitkan:')
     : bundles.length > 1
       ? `Tagihan untuk ${bundles.length} pesanan Anda sudah kami terbitkan:`
       : 'Tagihan untuk pesanan Anda sudah kami terbitkan:';
@@ -226,22 +334,76 @@ export function invoiceReadyMessage(input: InvoiceReadyInput): string {
         ? 'Tagihan susulan ini tidak punya batas waktu. Link di atas selalu bisa dipakai, kapan pun Anda siap membayar.'
         : `Mohon diselesaikan paling lambat ${formatDeadline(deadline)}.`)
     : input.tempo
-      ? 'Iklan Anda tetap tayang sesuai jadwal — pembayarannya boleh menyusul. Link di atas selalu bisa dipakai, kapan pun Anda siap membayar.'
-      : `Mohon diselesaikan paling lambat ${formatDeadline(deadline)} agar jadwal tayangnya tidak bergeser.`;
+      ? (isKilat
+          ? 'Survei Kilat Anda tetap disiarkan sesuai jadwal — pembayarannya boleh menyusul. Link di atas selalu bisa dipakai, kapan pun Anda siap membayar.'
+          : 'Iklan Anda tetap tayang sesuai jadwal — pembayarannya boleh menyusul. Link di atas selalu bisa dipakai, kapan pun Anda siap membayar.')
+      : (isKilat
+          ? `Mohon diselesaikan paling lambat ${formatDeadline(deadline)} agar survei Kilat bisa disiarkan sesuai jadwal.`
+          : `Mohon diselesaikan paling lambat ${formatDeadline(deadline)} agar iklan bisa tayang sesuai jadwal.`);
+
+  const renderedBundles = bundles
+    .map((b, i) => bundleBlock(b, i, bundles.length))
+    .join(bundles.length > 1 ? '\n\n' : '\n');
+
+  const costLines: string[] = [];
+  const singleItems = bundles.length <= 1
+    ? (input.items && input.items.length > 0 ? input.items : bundles[0]?.items)
+    : input.items;
+  const sub = input.subtotal ?? (bundles.length === 1 ? bundles[0]?.subtotal : undefined);
+  const ppnVal = input.ppn ?? (bundles.length === 1 ? bundles[0]?.ppn : undefined);
+
+  if (bundles.length > 1) {
+    costLines.push('Rincian total:');
+    if (sub != null) {
+      costLines.push(`Subtotal (${bundles.length} pesanan): ${rupiah(sub)}`);
+    }
+    if (ppnVal != null) {
+      costLines.push(`PPN (11%): ${rupiah(ppnVal)}`);
+    }
+    costLines.push('────────────────────────');
+    costLines.push(`Total: ${rupiah(amount)}`);
+  } else if (singleItems && singleItems.length > 0) {
+    costLines.push('Rincian biaya:');
+    for (const it of singleItems) {
+      costLines.push(formatItemLine(it));
+    }
+    if (singleItems.length > 1 && sub != null) {
+      costLines.push(`Subtotal: ${rupiah(sub)}`);
+    }
+    if (ppnVal != null) {
+      costLines.push(`PPN (11%): ${rupiah(ppnVal)}`);
+    }
+    costLines.push('────────────────────────');
+    costLines.push(`Total: ${rupiah(amount)}`);
+  } else if (sub != null && ppnVal != null) {
+    costLines.push('Rincian biaya:');
+    costLines.push(`Subtotal: ${rupiah(sub)}`);
+    costLines.push(`PPN (11%): ${rupiah(ppnVal)}`);
+    costLines.push('────────────────────────');
+    costLines.push(`Total: ${rupiah(amount)}`);
+  } else {
+    costLines.push(`Total: ${rupiah(amount)}`);
+  }
+
+  const payLinkLabel = bundles.length > 1 ? 'Link pembayaran gabungan:' : 'Link pembayaran:';
 
   return [
     greet(researcherName),
     '',
     heading,
-    bundles.map(bundleLine).join('\n'),
+    ...(bundles.length > 1 ? [''] : []),
+    renderedBundles,
     '',
-    `Total: ${rupiah(amount)}${bundles.length > 1 ? ' (dibayar sekaligus dalam satu link)' : ''}`,
-    `Link pembayaran: ${invoiceUrl}`,
+    ...costLines,
+    `${payLinkLabel} ${invoiceUrl}`,
     '',
     closing,
     '',
     SIGNATURE,
-  ].join('\n');
+  ].filter((line, i, arr) => {
+    if (line === '' && arr[i - 1] === '') return false;
+    return true;
+  }).join('\n');
 }
 
 export interface SlotBookedInput {

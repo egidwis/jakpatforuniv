@@ -52,14 +52,72 @@ describe('auditViewOf — bentuk dari 59 audit produksi', () => {
     expect(auditViewOf(audit(), sub()).count.source).toBe('ai');
   });
 
-  it('PII diurutkan per confidence, 3 teratas + sisa', () => {
+  it('PII diurutkan per confidence, 3 teratas + sisa (hanya high/medium yang dihitung)', () => {
     const f = (confidence: 'high' | 'medium' | 'low', snippet: string) => ({ type: 'phone' as const, snippet, context: '', confidence });
     const v = auditViewOf(audit({
-      pii: { has_pii: true, status: 'warning', findings: [f('low', 'a'), f('high', 'b'), f('medium', 'c'), f('high', 'd')] },
+      pii: { has_pii: true, status: 'warning', findings: [f('low', 'a'), f('high', 'b'), f('medium', 'c'), f('high', 'd'), f('medium', 'e')] },
     }), sub());
+    expect(v.pii.total).toBe(4);
     expect(v.pii.top.map((x) => x.snippet)).toEqual(['b', 'd', 'c']);
     expect(v.pii.rest).toBe(1);
     expect(v.pii.types).toEqual(['phone']);
+    // `low` tidak dibuang — pindah ke `minor`, tetap terlihat di rincian.
+    expect(v.pii.minor.map((x) => x.snippet)).toEqual(['a']);
+  });
+
+  // Bentuk NYATA dari produksi (order Listya Ningrum, 9 Nov 2026): LLM mencatat
+  // dua pertanyaan demografi sebagai temuan `low`, dengan catatannya sendiri
+  // "bukan nama pribadi" / "bukan alamat lengkap", dan pii.status = 'clean'.
+  // Kartu dulu menulis "2 data pribadi".
+  describe('temuan low-confidence bukan "data pribadi"', () => {
+    const lowOnly = () => audit({
+      question_count: { reported: 7, actual_detected: 7, diff: 0, status: 'match' },
+      count_source: 'parser',
+      pii: {
+        has_pii: true,
+        status: 'clean',
+        findings: [
+          { type: 'name', snippet: 'Apa nama perusahaan yang Bapak/Ibu pilih?', context: 'Pertanyaan ini menanyakan nama perusahaan, bukan nama pribadi responden.', confidence: 'low' },
+          { type: 'address', snippet: 'Kota atau kabupaten tempat tinggal', context: 'Data demografi umum dan bukan alamat lengkap.', confidence: 'low' },
+        ],
+      },
+    });
+
+    it('hanya low → tidak dihitung, tapi tetap tersimpan di `minor`', () => {
+      const v = auditViewOf(lowOnly(), sub({ questionCount: 7 }));
+      expect(v.pii.total).toBe(0);
+      expect(v.pii.top).toEqual([]);
+      expect(v.pii.rest).toBe(0);
+      expect(v.pii.types).toEqual([]);
+      expect(v.pii.minor.map((x) => x.snippet)).toEqual([
+        'Apa nama perusahaan yang Bapak/Ibu pilih?',
+        'Kota atau kabupaten tempat tinggal',
+      ]);
+    });
+
+    it('baris ringkas bilang "tanpa data pribadi", kartu dianggap bersih', () => {
+      const v = auditViewOf(lowOnly(), sub({ questionCount: 7 }));
+      expect(v.isClean).toBe(true);
+      const h = headerOf(v, { isAuditing: false, failed: false });
+      expect(h.kind).toBe('clean');
+      expect(h.status).toBe('7 terhitung · order 7 · tanpa data pribadi');
+    });
+
+    it('campuran high + low → hanya yang high dihitung', () => {
+      const a = lowOnly();
+      a.pii.findings.push({ type: 'phone', snippet: 'Nomor WhatsApp', context: '', confidence: 'high' });
+      const v = auditViewOf(a, sub({ questionCount: 7 }));
+      expect(v.pii.total).toBe(1);
+      expect(v.pii.top.map((x) => x.snippet)).toEqual(['Nomor WhatsApp']);
+      expect(v.pii.minor).toHaveLength(2);
+      expect(v.isClean).toBe(false);
+      expect(headerOf(v, { isAuditing: false, failed: false }).status).toBe('7 terhitung · order 7 · 1 data pribadi');
+    });
+
+    it('tak terbaca → `minor` juga kosong (tak ada yang dibaca)', () => {
+      const v = auditViewOf({ ...lowOnly(), read_state: 'unreadable' }, sub());
+      expect(v.pii.minor).toEqual([]);
+    });
   });
 
   it('kurang dari order + tebakan AI + teks terpotong → "mungkin terbaca sebagian", bukan alarm', () => {
