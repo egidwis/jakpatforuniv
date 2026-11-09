@@ -327,6 +327,8 @@ export const FormBuilderPage: React.FC = () => {
             options: act.block.options || (blockType === 'multiple_choice' || blockType === 'checkbox' || blockType === 'matrix' ? ['Option 1', 'Option 2'] : undefined),
             rows: act.block.rows || (blockType === 'matrix' ? [{ id: crypto.randomUUID(), label: 'Baris 1' }, { id: crypto.randomUUID(), label: 'Baris 2' }] : undefined),
             maxScale: act.block.maxScale || 5,
+            minScaleLabel: act.block.minScaleLabel,
+            maxScaleLabel: act.block.maxScaleLabel,
             carryForwardFromBlockId: act.block.carryForwardFromBlockId,
             logicMatchMode: act.block.logicMatchMode,
             logicRules: act.block.logicRules as QuestionBlock['logicRules']
@@ -362,6 +364,8 @@ export const FormBuilderPage: React.FC = () => {
             options: b.options || (b.type === 'multiple_choice' || b.type === 'checkbox' || b.type === 'matrix' ? ['Option 1', 'Option 2'] : undefined),
             rows: b.rows || (b.type === 'matrix' ? [{ id: crypto.randomUUID(), label: 'Baris 1' }, { id: crypto.randomUUID(), label: 'Baris 2' }] : undefined),
             maxScale: b.maxScale || 5,
+            minScaleLabel: b.minScaleLabel,
+            maxScaleLabel: b.maxScaleLabel,
             carryForwardFromBlockId: b.carryForwardFromBlockId,
             logicMatchMode: b.logicMatchMode,
             logicRules: b.logicRules as QuestionBlock['logicRules']

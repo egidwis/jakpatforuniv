@@ -18,7 +18,8 @@ import {
   Search,
   BarChart3,
   Users,
-  Megaphone
+  Megaphone,
+  ChevronRight
 } from 'lucide-react';
 import emptyFormIllustration from '../../assets/illustration JFU form.png';
 import { Button } from '../../components/ui/button';
@@ -116,122 +117,157 @@ export const FormListPage: React.FC = () => {
     return `${years}y`;
   };
 
+  const publishedCount = useMemo(() => forms.filter(f => f.status === 'published').length, [forms]);
+  const draftCount = useMemo(() => forms.filter(f => f.status === 'draft').length, [forms]);
+
   return (
-    <div className="p-4 sm:p-6 lg:p-10 max-w-5xl mx-auto space-y-6">
-      {/* Top Header Bar */}
-      <div className="flex items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            JFU Form
-            <span className="text-[10px] font-black bg-blue-600 text-white px-2 py-0.5 rounded-full uppercase tracking-wider">
+    <div className="max-w-5xl mx-auto max-sm:px-4 sm:px-6 pt-5 sm:pt-8 pb-10 space-y-4">
+      {/* Integrated Control Panel Card (Selaras dengan StatusPage / Soft DNA Dashboard Peneliti) */}
+      <div className="rounded-2xl border border-slate-200/90 bg-white shadow-[0_1px_3px_0_rgba(0,0,0,0.03),0_4px_12px_-2px_rgba(0,0,0,0.02)] overflow-hidden">
+        {/* Top Row: Title, Badge, Subtitle & Primary CTA */}
+        <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 sm:py-4">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white truncate">
+              JFU Form
+            </h1>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-jfu-primary border border-blue-200/80 shrink-0">
               BETA
             </span>
-          </h1>
-          <span className="text-xs font-semibold text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-md">
-            {forms.length}
-          </span>
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200/80 shrink-0 tabular-nums">
+              {forms.length}
+            </span>
+            <span className="hidden md:inline-block w-px h-4 bg-slate-200 shrink-0" />
+            <p className="text-xs text-slate-500 truncate hidden md:block">
+              Buat kuesioner online &amp; sebarkan langsung ke responden
+            </p>
+          </div>
+
+          <Button
+            onClick={() => navigate('/dashboard/forms/new')}
+            className="bg-jfu-primary hover:bg-jfu-dark text-white text-xs font-semibold px-3.5 sm:px-4 h-9 rounded-xl shadow-xs inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Buat Form Baru</span>
+          </Button>
         </div>
 
-        <Button
-          onClick={() => navigate('/dashboard/forms/new')}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-xs flex items-center gap-1.5"
-        >
-          <Plus className="w-4 h-4" />
-          New form
-        </Button>
+        {/* Bottom Row: Segmented Filter Tabs & Search Input */}
+        <div className="border-t border-slate-100 bg-slate-50/60 px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          {/* ⚠️ Gunakan `max-sm:w-full` (bukan `w-full sm:w-auto`): `.w-full` di styles.css
+              dimuat setelah Tailwind dan mengalahkan `sm:w-auto`. */}
+          <div className="max-sm:w-full inline-flex items-center gap-1 bg-slate-200/70 dark:bg-gray-800 p-1 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setActiveTab('all')}
+              className={`max-sm:flex-1 px-3 py-1.5 text-xs rounded-lg transition-all cursor-pointer tabular-nums ${
+                activeTab === 'all'
+                  ? 'bg-white dark:bg-gray-700 text-slate-900 dark:text-white shadow-2xs font-semibold'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-gray-400 font-medium'
+              }`}
+            >
+              Semua ({forms.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('published')}
+              className={`max-sm:flex-1 px-3 py-1.5 text-xs rounded-lg transition-all cursor-pointer tabular-nums ${
+                activeTab === 'published'
+                  ? 'bg-white dark:bg-gray-700 text-emerald-700 dark:text-emerald-400 shadow-2xs font-semibold'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-gray-400 font-medium'
+              }`}
+            >
+              Published ({publishedCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('draft')}
+              className={`max-sm:flex-1 px-3 py-1.5 text-xs rounded-lg transition-all cursor-pointer tabular-nums ${
+                activeTab === 'draft'
+                  ? 'bg-white dark:bg-gray-700 text-amber-700 dark:text-amber-400 shadow-2xs font-semibold'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-gray-400 font-medium'
+              }`}
+            >
+              Draft ({draftCount})
+            </button>
+          </div>
+
+          <div className="max-sm:w-full sm:w-64 flex items-center gap-2 bg-white dark:bg-gray-800 border border-slate-200/90 dark:border-gray-700 focus-within:border-jfu-primary focus-within:ring-2 focus-within:ring-jfu-primary/15 rounded-xl px-3 h-9 transition-all">
+            <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Cari judul atau deskripsi form..."
+              className="w-full min-w-0 bg-transparent border-0 p-0 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-0"
+            />
+          </div>
+        </div>
       </div>
 
       {/* Ramp untuk user yang sebenarnya mau order iklan, bukan membuat
           kuesioner — populasi nyasar hampir pasti belum punya form, jadi
           banner hanya tampil saat daftar form kosong. */}
       {!loading && forms.length === 0 && (
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200/80 dark:border-blue-800 rounded-xl px-4 py-3">
-          <div className="flex items-start gap-2.5 flex-1 min-w-0">
-            <Megaphone className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-            <p className="text-xs text-blue-900 dark:text-blue-200 leading-relaxed">
-              <span className="font-semibold">Mau order iklan survei?</span>{' '}
+        <div className="rounded-2xl border border-blue-200/80 bg-gradient-to-r from-blue-50/90 via-blue-50/40 to-white dark:from-blue-950/30 dark:to-gray-800 px-4 sm:px-5 py-3.5 shadow-[0_1px_3px_0_rgba(0,0,0,0.02)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3.5">
+          <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
+            <span className="w-8 h-8 rounded-lg bg-blue-100/80 border border-blue-200/70 text-jfu-primary flex items-center justify-center shrink-0">
+              <Megaphone className="w-4 h-4" />
+            </span>
+            <p className="text-xs sm:text-[13px] text-slate-600 dark:text-blue-200 leading-relaxed min-w-0">
+              <span className="font-bold text-slate-900 dark:text-white">Mau order iklan survei?</span>{' '}
               Kalau kuesionermu sudah jadi (misalnya di Google Form), kamu tidak
               perlu membuat form di sini.
             </p>
           </div>
-          <Button
+          <button
+            type="button"
             onClick={() => navigate('/dashboard/submit-iklan')}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-xs shrink-0 w-full sm:w-auto"
+            className="max-sm:w-full shrink-0 inline-flex items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-white hover:bg-jfu-primary text-jfu-primary hover:text-white hover:border-jfu-primary text-xs font-bold px-4 h-9 shadow-2xs transition-all cursor-pointer"
           >
-            Order Iklan Survei
-          </Button>
+            <span>Order Iklan Survei</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 
-      {/* Filter Tabs & Search */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl w-full sm:w-auto">
-          <button
-            type="button"
-            onClick={() => setActiveTab('all')}
-            className={`px-3 py-1 text-xs font-medium rounded-lg transition-all ${
-              activeTab === 'all'
-                ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-2xs font-semibold'
-                : 'text-gray-500 hover:text-gray-900 dark:text-gray-400'
-            }`}
-          >
-            Semua ({forms.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('published')}
-            className={`px-3 py-1 text-xs font-medium rounded-lg transition-all ${
-              activeTab === 'published'
-                ? 'bg-white dark:bg-gray-700 text-emerald-600 dark:text-emerald-400 shadow-2xs font-semibold'
-                : 'text-gray-500 hover:text-gray-900 dark:text-gray-400'
-            }`}
-          >
-            Published ({forms.filter(f => f.status === 'published').length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('draft')}
-            className={`px-3 py-1 text-xs font-medium rounded-lg transition-all ${
-              activeTab === 'draft'
-                ? 'bg-white dark:bg-gray-700 text-amber-600 dark:text-amber-400 shadow-2xs font-semibold'
-                : 'text-gray-500 hover:text-gray-900 dark:text-gray-400'
-            }`}
-          >
-            Draft ({forms.filter(f => f.status === 'draft').length})
-          </button>
-        </div>
-
-        <div className="relative w-full sm:w-64">
-          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Cari form..."
-            className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-        </div>
-      </div>
-
-      {/* Tally-Style Compact Minimalist Form List */}
+      {/* Daftar Form / Empty State */}
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <Loader2 className="w-7 h-7 text-blue-600 animate-spin mb-2" />
-          <p className="text-xs text-gray-400">Memuat form...</p>
+        <div className="rounded-2xl border border-slate-200/90 bg-white shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] flex flex-col items-center justify-center py-16">
+          <Loader2 className="w-7 h-7 text-jfu-primary animate-spin mb-2.5" />
+          <p className="text-xs font-medium text-slate-500">Memuat daftar form...</p>
         </div>
       ) : filteredForms.length === 0 ? (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-10 text-center">
+        <div className="rounded-2xl border border-slate-200/90 bg-white/95 dark:bg-gray-800 shadow-[0_1px_3px_0_rgba(0,0,0,0.03),0_4px_12px_-2px_rgba(0,0,0,0.02)] px-6 py-10 sm:py-12 text-center flex flex-col items-center justify-center">
           <img
             src={emptyFormIllustration}
-            alt=""
-            className="w-40 sm:w-48 h-auto mx-auto mb-4"
+            alt="Bikin Custom Form"
+            className="w-40 sm:w-44 h-auto mx-auto mb-3"
           />
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {searchQuery ? 'Form tidak ditemukan.' : 'Belum ada form. Klik "+ New form" untuk membuat baru.'}
+          <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+            {searchQuery
+              ? 'Form Tidak Ditemukan'
+              : activeTab !== 'all'
+              ? `Belum Ada Form Berstatus ${activeTab === 'published' ? 'Published' : 'Draft'}`
+              : 'Belum Ada Kuesioner JFU Form'}
+          </h3>
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-gray-400 max-w-md mt-1 mb-6 leading-relaxed">
+            {searchQuery
+              ? `Tidak ada form yang cocok dengan kata kunci "${searchQuery}".`
+              : 'Buat kuesioner interaktif yang nyaman diisi di HP responden, lengkap dengan logika lompat pertanyaan dan ekspor CSV.'}
           </p>
+          {!searchQuery && (
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard/forms/new')}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-jfu-primary hover:bg-jfu-dark text-white text-xs sm:text-sm font-semibold shadow-xs transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Buat Form Baru</span>
+            </button>
+          )}
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {filteredForms.map((form) => {
             const isPublished = form.status === 'published';
             const responseCount = form.response_count || 0;
@@ -240,24 +276,24 @@ export const FormListPage: React.FC = () => {
               <div
                 key={form.id}
                 onClick={() => navigate(`/dashboard/forms/${form.id}/edit`)}
-                className="group relative bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 border border-gray-200/80 dark:border-gray-700/80 hover:border-gray-300 dark:hover:border-gray-600 rounded-xl px-4 py-3 transition-all flex flex-col sm:!flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 cursor-pointer shadow-2xs"
+                className="group rounded-2xl border border-slate-200/90 dark:border-gray-700/80 bg-white dark:bg-gray-800 hover:border-slate-300 dark:hover:border-gray-600 shadow-[0_1px_3px_0_rgba(0,0,0,0.03),0_4px_12px_-2px_rgba(0,0,0,0.02)] px-4 sm:px-5 py-3.5 transition-all flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 sm:gap-4 cursor-pointer"
               >
                 {/* Left Title */}
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate transition-colors">
+                  <span className="text-sm font-bold text-slate-900 dark:text-gray-100 group-hover:text-jfu-primary dark:group-hover:text-blue-400 truncate transition-colors">
                     {form.title || 'Untitled Form'}
                   </span>
                 </div>
 
                 {/* Right Metadata & Action Buttons */}
-                <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0 text-xs w-full sm:!w-auto justify-between sm:!justify-end">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0 text-xs max-sm:w-full justify-between sm:justify-end">
                   {/* Status & Submissions info */}
-                  <div className="flex items-center gap-2 text-gray-400 font-normal">
+                  <div className="flex items-center gap-2 text-slate-400 font-normal">
                     <span
-                      className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                      className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
                         isPublished
-                          ? 'bg-emerald-50 text-emerald-600 border border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-400'
-                          : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-400'
+                          : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400'
                       }`}
                     >
                       {isPublished ? 'Published' : 'Draft'}
@@ -270,9 +306,9 @@ export const FormListPage: React.FC = () => {
                         e.stopPropagation();
                         navigate(`/dashboard/forms/${form.id}/responses`);
                       }}
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border transition-all cursor-pointer shadow-2xs ${
+                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border transition-all cursor-pointer shadow-2xs tabular-nums ${
                         responseCount > 0
-                          ? 'bg-blue-50 text-blue-700 border-blue-200/90 hover:bg-blue-100 hover:border-blue-300 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800'
+                          ? 'bg-blue-50 text-jfu-primary border-blue-200/90 hover:bg-blue-100 hover:border-blue-300 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800'
                           : 'bg-slate-50 text-slate-600 border-slate-200/90 hover:bg-slate-100 dark:bg-slate-800/60 dark:text-slate-400 dark:border-slate-700'
                       }`}
                       title="Lihat hasil respon form"
@@ -281,12 +317,12 @@ export const FormListPage: React.FC = () => {
                       <span>{responseCount} Respon</span>
                     </button>
 
-                    <span className="text-gray-300 dark:text-gray-600">·</span>
-                    <span className="text-[11px]">{timeAgo(form.updated_at)}</span>
+                    <span className="text-slate-300 dark:text-gray-600">·</span>
+                    <span className="text-[11px] text-slate-500 tabular-nums">{timeAgo(form.updated_at)}</span>
                   </div>
 
-                  {/* Inline Quick Action Buttons (Show on Hover / Desktop) */}
-                  <div className="flex items-center gap-1 flex-wrap opacity-90 sm:group-hover:opacity-100 transition-opacity bg-white dark:bg-gray-800 sm:pl-2">
+                  {/* Inline Quick Action Buttons */}
+                  <div className="flex items-center gap-1 flex-wrap sm:pl-2">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -294,7 +330,7 @@ export const FormListPage: React.FC = () => {
                         e.stopPropagation();
                         navigate(`/dashboard/forms/${form.id}/edit`);
                       }}
-                      className="h-7 text-xs text-gray-700 dark:text-gray-200 hover:text-blue-600 px-2 flex items-center gap-1 font-semibold rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                      className="h-7 text-xs text-slate-700 dark:text-gray-200 hover:text-jfu-primary px-2 flex items-center gap-1 font-semibold rounded-lg hover:bg-slate-100 dark:hover:bg-gray-700"
                       title="Edit Form"
                     >
                       <Edit3 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Edit</span>
@@ -307,7 +343,7 @@ export const FormListPage: React.FC = () => {
                         e.stopPropagation();
                         navigate(`/dashboard/forms/${form.id}/responses`);
                       }}
-                      className="h-7 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 px-2 flex items-center gap-1 font-semibold rounded-lg"
+                      className="h-7 text-xs text-jfu-primary dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 px-2 flex items-center gap-1 font-semibold rounded-lg"
                       title="Lihat Hasil Respon"
                     >
                       <BarChart3 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Respon</span>
@@ -320,7 +356,7 @@ export const FormListPage: React.FC = () => {
                         e.stopPropagation();
                         window.open(`/f/${form.slug || form.id}?preview=true`, '_blank');
                       }}
-                      className="h-7 w-7 p-0 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                      className="h-7 w-7 p-0 text-slate-500 hover:text-jfu-primary rounded-lg hover:bg-slate-100 dark:hover:bg-gray-700"
                       title="Preview Form"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
@@ -360,7 +396,7 @@ export const FormListPage: React.FC = () => {
                         e.stopPropagation();
                         handleDelete(form.id, form.title);
                       }}
-                      className="h-7 w-7 p-0 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg"
+                      className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-gray-700 rounded-lg"
                       title="Hapus Form"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

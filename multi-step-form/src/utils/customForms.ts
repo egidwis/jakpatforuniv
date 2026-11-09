@@ -41,6 +41,8 @@ export interface QuestionBlock {
   imageUrl?: string; // Khusus image: URL gambar (label/description dipakai sebagai caption opsional)
   minScale?: number;
   maxScale?: number;
+  minScaleLabel?: string;
+  maxScaleLabel?: string;
   carryForwardFromBlockId?: string; // ID pertanyaan acuan untuk carry forward opsi
   logicMatchMode?: LogicMatchMode; // ALL (AND) atau ANY (OR)
   logicRules?: LogicRule[];

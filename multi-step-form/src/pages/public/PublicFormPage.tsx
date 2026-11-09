@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import type { CustomForm, QuestionBlock } from '../../utils/customForms';
 import {
@@ -16,7 +16,45 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import { toast } from 'sonner';
 import jfuIcon from '../../assets/jfu-icon.png';
+
+export const isOtherOption = (opt: string) => /lainnya|sebutkan|other/i.test(opt);
+
+export const getOtherDetail = (val: string | undefined, opt: string) => {
+  if (!val) return '';
+  const prefix = `${opt}: `;
+  if (val.startsWith(prefix)) {
+    return val.slice(prefix.length);
+  }
+  return '';
+};
+
+export const isRedundantMultiSelectHint = (desc: string | undefined): boolean => {
+  if (!desc) return false;
+  const trimmed = desc.trim();
+  if (!trimmed) return false;
+  return (
+    /^(?:(?:boleh|dapat|bisa)\s+)?(?:memilih|pilih)\s+(?:lebih\s+dari\s+(?:satu|1)|banyak|beberapa)(?:\s+(?:jawaban|opsi|pilihan))?\.?$/i.test(trimmed) ||
+    /^(?:select|choose)\s+(?:all\s+that\s+apply|more\s+than\s+one)\.?$/i.test(trimmed)
+  );
+};
+
+export const getNextUnansweredMatrixRowIndex = (
+  rows: { id: string; label: string }[],
+  matrixAnswers: Record<string, string> | undefined,
+  currentIndex: number
+): number => {
+  if (!rows || rows.length === 0) return -1;
+  const ans = matrixAnswers || {};
+  for (let i = currentIndex + 1; i < rows.length; i++) {
+    if (!ans[rows[i].id]) return i;
+  }
+  for (let i = 0; i < currentIndex; i++) {
+    if (!ans[rows[i].id]) return i;
+  }
+  return -1;
+};
 
 export const PublicFormPage: React.FC = () => {
   const { formId, username, slug } = useParams<{ formId?: string; username?: string; slug?: string }>();
@@ -25,10 +63,15 @@ export const PublicFormPage: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [answers, setAnswers] = useState<Record<string, any>>({});
+  const [otherTexts, setOtherTexts] = useState<Record<string, string>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [matrixActiveRow, setMatrixActiveRow] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+
+  const questionsTopRef = useRef<HTMLDivElement>(null);
+  const matrixAdvanceTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
     loadPublicForm();
@@ -68,6 +111,39 @@ export const PublicFormPage: React.FC = () => {
     }
   };
 
+  // Restore draft answers from localStorage on form load
+  useEffect(() => {
+    if (!form?.id) return;
+    try {
+      const saved = localStorage.getItem(`jfu_answers_${form.id}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.answers && typeof parsed.answers === 'object') {
+          setAnswers(prev => ({ ...parsed.answers, ...prev }));
+          if (typeof parsed.pageIndex === 'number' && parsed.pageIndex > 0) {
+            setCurrentPageIndex(parsed.pageIndex);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to restore draft from localStorage', e);
+    }
+  }, [form?.id]);
+
+  // Debounced auto-save draft to localStorage
+  useEffect(() => {
+    if (!form?.id || submitted) return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          `jfu_answers_${form.id}`,
+          JSON.stringify({ answers, pageIndex: currentPageIndex, updatedAt: Date.now() })
+        );
+      } catch (e) {}
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [form?.id, answers, currentPageIndex, submitted]);
+
   const handleInputChange = (questionId: string, value: any) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
     if (fieldErrors[questionId]) {
@@ -79,19 +155,95 @@ export const PublicFormPage: React.FC = () => {
     }
   };
 
-  const handleCheckboxToggle = (questionId: string, optionValue: string) => {
-    const currentList: string[] = Array.isArray(answers[questionId]) ? answers[questionId] : [];
-    let updated: string[];
-    if (currentList.includes(optionValue)) {
-      updated = currentList.filter(o => o !== optionValue);
+  const handleChoiceSelect = (questionId: string, opt: string) => {
+    if (isOtherOption(opt)) {
+      const currentDetail = otherTexts[`${questionId}_${opt}`] || '';
+      const finalVal = currentDetail.trim() ? `${opt}: ${currentDetail.trim()}` : opt;
+      handleInputChange(questionId, finalVal);
     } else {
-      updated = [...currentList, optionValue];
+      handleInputChange(questionId, opt);
     }
-    handleInputChange(questionId, updated);
+  };
+
+  const handleOtherChoiceDetail = (questionId: string, opt: string, text: string) => {
+    setOtherTexts(prev => ({ ...prev, [`${questionId}_${opt}`]: text }));
+    const finalVal = text.trim() ? `${opt}: ${text.trim()}` : opt;
+    handleInputChange(questionId, finalVal);
+  };
+
+  const handleCheckboxToggle = (questionId: string, opt: string) => {
+    const currentList: string[] = Array.isArray(answers[questionId]) ? answers[questionId] : [];
+    const isOther = isOtherOption(opt);
+    const existingIndex = currentList.findIndex(item => item === opt || item.startsWith(`${opt}: `));
+
+    if (existingIndex !== -1) {
+      // Uncheck
+      const updated = currentList.filter((_, i) => i !== existingIndex);
+      handleInputChange(questionId, updated);
+    } else {
+      // Check
+      const currentDetail = isOther ? (otherTexts[`${questionId}_${opt}`] || '') : '';
+      const entry = currentDetail.trim() ? `${opt}: ${currentDetail.trim()}` : opt;
+      handleInputChange(questionId, [...currentList, entry]);
+    }
+  };
+
+  const handleOtherCheckboxDetail = (questionId: string, opt: string, text: string) => {
+    setOtherTexts(prev => ({ ...prev, [`${questionId}_${opt}`]: text }));
+    const currentList: string[] = Array.isArray(answers[questionId]) ? answers[questionId] : [];
+    const existingIndex = currentList.findIndex(item => item === opt || item.startsWith(`${opt}: `));
+    const entry = text.trim() ? `${opt}: ${text.trim()}` : opt;
+
+    if (existingIndex !== -1) {
+      const updated = [...currentList];
+      updated[existingIndex] = entry;
+      handleInputChange(questionId, updated);
+    } else {
+      handleInputChange(questionId, [...currentList, entry]);
+    }
   };
 
   const handleMatrixChange = (questionId: string, rowId: string, option: string) => {
     handleInputChange(questionId, { ...(answers[questionId] || {}), [rowId]: option });
+    if (fieldErrors[`${questionId}_${rowId}`]) {
+      setFieldErrors(prev => {
+        const updated = { ...prev };
+        delete updated[`${questionId}_${rowId}`];
+        return updated;
+      });
+    }
+  };
+
+  const handleMatrixStepClick = (questionId: string, targetRowIndex: number) => {
+    if (matrixAdvanceTimerRef.current[questionId]) {
+      clearTimeout(matrixAdvanceTimerRef.current[questionId]);
+      delete matrixAdvanceTimerRef.current[questionId];
+    }
+    setMatrixActiveRow(prev => ({ ...prev, [questionId]: targetRowIndex }));
+  };
+
+  const handleMobileMatrixSelect = (
+    questionId: string,
+    rowId: string,
+    option: string,
+    rows: { id: string; label: string }[] = [],
+    rowIndex: number
+  ) => {
+    const updatedRowAnswers = { ...(answers[questionId] || {}), [rowId]: option };
+    handleMatrixChange(questionId, rowId, option);
+
+    if (matrixAdvanceTimerRef.current[questionId]) {
+      clearTimeout(matrixAdvanceTimerRef.current[questionId]);
+    }
+
+    // Auto-advance Focus Card Stepper to next unanswered matrix row after brief visual feedback
+    const nextUnansweredIdx = getNextUnansweredMatrixRowIndex(rows, updatedRowAnswers, rowIndex);
+    if (nextUnansweredIdx !== -1 && nextUnansweredIdx !== rowIndex) {
+      matrixAdvanceTimerRef.current[questionId] = setTimeout(() => {
+        setMatrixActiveRow(prev => ({ ...prev, [questionId]: nextUnansweredIdx }));
+        delete matrixAdvanceTimerRef.current[questionId];
+      }, 220);
+    }
   };
 
   // Logic Rules Evaluator
@@ -104,12 +256,16 @@ export const PublicFormPage: React.FC = () => {
       return val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0);
     }
     if (rule.operator === 'equals') {
-      if (Array.isArray(val)) return val.includes(rule.value);
-      return String(val || '') === String(rule.value || '');
+      if (Array.isArray(val)) {
+        return val.some(v => v === rule.value || (typeof v === 'string' && v.startsWith(`${rule.value}: `)));
+      }
+      return String(val || '').startsWith(`${rule.value}: `) || String(val || '') === String(rule.value || '');
     }
     if (rule.operator === 'not_equals') {
-      if (Array.isArray(val)) return !val.includes(rule.value);
-      return String(val || '') !== String(rule.value || '');
+      if (Array.isArray(val)) {
+        return !val.some(v => v === rule.value || (typeof v === 'string' && v.startsWith(`${rule.value}: `)));
+      }
+      return !String(val || '').startsWith(`${rule.value}: `) && String(val || '') !== String(rule.value || '');
     }
     if (rule.operator === 'contains') {
       if (Array.isArray(val)) return val.some(v => String(v).toLowerCase().includes(String(rule.value || '').toLowerCase()));
@@ -254,25 +410,62 @@ export const PublicFormPage: React.FC = () => {
   const activePageIndex = Math.min(currentPageIndex, Math.max(0, formPages.length - 1));
   const currentPage = formPages[activePageIndex] || { pageIndex: 0, blocks: [] };
 
-  // Calculate overall question index offset for active page
-  const questionNumberOffset = useMemo(() => {
-    const allNonBreakBlocks = visibleBlocks.filter(b => b.type !== 'page_break' && b.type !== 'image');
-    const firstBlockOfPage = currentPage.blocks[0];
-    if (!firstBlockOfPage) return 0;
-    const pageFirstIdx = allNonBreakBlocks.findIndex(b => b.id === firstBlockOfPage.id);
-    return pageFirstIdx !== -1 ? pageFirstIdx : 0;
-  }, [visibleBlocks, currentPage]);
+  // Total answerable questions across the entire form
+  const totalAnswerableCount = useMemo(() => {
+    return visibleBlocks.filter(b => b.type !== 'page_break' && b.type !== 'image').length;
+  }, [visibleBlocks]);
+
+  // Number of answered questions
+  const answeredCount = useMemo(() => {
+    if (!visibleBlocks) return 0;
+    return visibleBlocks
+      .filter(b => b.type !== 'page_break' && b.type !== 'image')
+      .filter(b => {
+        const val = answers[b.id];
+        if (val === undefined || val === null || val === '') return false;
+        if (Array.isArray(val)) return val.length > 0;
+        if (b.type === 'matrix') {
+          return b.rows && b.rows.length > 0 && b.rows.every(r => val && val[r.id]);
+        }
+        return true;
+      }).length;
+  }, [visibleBlocks, answers]);
+
+  const overallProgressPercent = totalAnswerableCount > 0
+    ? Math.round((answeredCount / totalAnswerableCount) * 100)
+    : 0;
+
+  const scrollToQuestionsTop = () => {
+    if (questionsTopRef.current) {
+      questionsTopRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   const validatePageBlocks = (blocks: QuestionBlock[]): boolean => {
     const errors: Record<string, string> = {};
     let firstErrId: string | null = null;
+    const nextMatrixSteps: Record<string, number> = {};
 
     for (const q of blocks.filter(b => b.type !== 'page_break' && b.type !== 'image')) {
+      const val = answers[q.id];
+
       if (q.required) {
-        const val = answers[q.id];
         let isEmpty = false;
         if (q.type === 'matrix') {
-          isEmpty = !q.rows || q.rows.length === 0 || q.rows.some(row => !val || !val[row.id]);
+          const rows = q.rows || [];
+          const missingRows = rows.filter(row => !val || !val[row.id]);
+          if (missingRows.length > 0) {
+            isEmpty = true;
+            missingRows.forEach(r => {
+              errors[`${q.id}_${r.id}`] = 'Pernyataan ini wajib diisi.';
+            });
+            const firstMissingIdx = rows.findIndex(row => !val || !val[row.id]);
+            if (firstMissingIdx !== -1) {
+              nextMatrixSteps[q.id] = firstMissingIdx;
+            }
+          }
         } else {
           if (val === undefined || val === null || val === '') isEmpty = true;
           if (Array.isArray(val) && val.length === 0) isEmpty = true;
@@ -282,8 +475,25 @@ export const PublicFormPage: React.FC = () => {
           if (!firstErrId) firstErrId = q.id;
         }
       }
+
+      // Check if "Lainnya" was chosen but left empty
+      if (q.type === 'multiple_choice' && typeof val === 'string' && isOtherOption(val) && !val.includes(': ')) {
+        errors[q.id] = 'Mohon sebutkan rincian jawaban Anda untuk opsi Lainnya.';
+        if (!firstErrId) firstErrId = q.id;
+      }
+
+      if (q.type === 'checkbox' && Array.isArray(val)) {
+        const incompleteOther = val.find(item => isOtherOption(item) && !item.includes(': '));
+        if (incompleteOther) {
+          errors[q.id] = 'Mohon sebutkan rincian jawaban Anda untuk opsi Lainnya.';
+          if (!firstErrId) firstErrId = q.id;
+        }
+      }
     }
 
+    if (Object.keys(nextMatrixSteps).length > 0) {
+      setMatrixActiveRow(prev => ({ ...prev, ...nextMatrixSteps }));
+    }
     setFieldErrors(errors);
 
     if (firstErrId) {
@@ -297,13 +507,13 @@ export const PublicFormPage: React.FC = () => {
   const handleNextPage = () => {
     if (validatePageBlocks(currentPage.blocks)) {
       setCurrentPageIndex(prev => prev + 1);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setTimeout(scrollToQuestionsTop, 60);
     }
   };
 
   const handlePrevPage = () => {
     setCurrentPageIndex(prev => Math.max(0, prev - 1));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setTimeout(scrollToQuestionsTop, 60);
   };
 
   const handleSubmit = async () => {
@@ -311,18 +521,21 @@ export const PublicFormPage: React.FC = () => {
 
     if (!validatePageBlocks(currentPage.blocks)) return;
 
-    // Draft preview: don't actually submit, just show confirmation
+    // Draft preview: don't actually submit, just show toast confirmation
     if (form.status === 'draft') {
-      alert('✅ Pratinjau berhasil! Jawaban Anda valid. Publikasikan form ini terlebih dahulu agar responden dapat mengirim jawaban.');
+      toast.success('Pratinjau berhasil! Jawaban Anda valid. Publikasikan form ini terlebih dahulu agar responden dapat mengirim jawaban.');
       return;
     }
 
     try {
       setSubmitting(true);
       await submitFormResponse(form.id, answers);
+      try {
+        localStorage.removeItem(`jfu_answers_${form.id}`);
+      } catch (e) {}
       setSubmitted(true);
     } catch (err: any) {
-      alert(err?.message || 'Gagal mengirimkan jawaban. Silakan coba lagi.');
+      toast.error(err?.message || 'Gagal mengirimkan jawaban. Silakan coba lagi.');
     } finally {
       setSubmitting(false);
     }
@@ -354,7 +567,7 @@ export const PublicFormPage: React.FC = () => {
   if (submitted) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border-t-8 border-t-emerald-600 border-x border-b border-gray-200 dark:border-gray-700 p-8 max-w-md w-full text-center shadow-md space-y-4">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-8 max-w-md w-full text-center shadow-md space-y-4">
           <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
             <CheckCircle2 className="w-10 h-10" />
           </div>
@@ -368,23 +581,47 @@ export const PublicFormPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-10">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-12">
       {/* Draft Preview Banner */}
       {form.status === 'draft' && (
-        <div className="bg-amber-500 text-white text-xs font-bold py-2.5 px-4 text-center sticky top-0 z-50 shadow-md flex items-center justify-center gap-2">
+        <div className="bg-amber-500 text-white text-xs font-bold py-2 px-4 text-center sticky top-0 z-50 shadow-md flex items-center justify-center gap-2">
           <span>👁️ MODE PRATINJAU DRAF</span>
           <span className="font-normal opacity-90 hidden sm:inline">— Anda sedang melihat draf survei.</span>
         </div>
       )}
 
-      <div className="max-w-2xl mx-auto space-y-8 pt-6 px-4 sm:px-8">
-        {/* Header */}
-        <div className="space-y-3 pb-6 border-b border-gray-100 dark:border-gray-800">
+      {/* Sticky Progress Header */}
+      <div className={`sticky ${form.status === 'draft' ? 'top-8' : 'top-0'} z-40 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-800 shadow-2xs py-2 max-sm:px-4 sm:px-8`}>
+        <div className="max-w-2xl mx-auto flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-bold text-gray-900 dark:text-white truncate">
+              {formPages.length > 1
+                ? `Bagian ${activePageIndex + 1} dari ${formPages.length}${currentPage.pageTitle ? ` • ${currentPage.pageTitle}` : ''}`
+                : (form.title || 'Survei')}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 tabular-nums">
+              {overallProgressPercent}% Selesai
+            </span>
+          </div>
+        </div>
+        <div className="max-w-2xl mx-auto mt-1.5 w-full h-1 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-indigo-600 transition-all duration-300 rounded-full"
+            style={{ width: `${Math.max(4, overallProgressPercent)}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="max-w-2xl mx-auto space-y-6 pt-5 max-sm:px-4 sm:px-8">
+        {/* Header Hero */}
+        <div className="space-y-3 pb-5 border-b border-gray-100 dark:border-gray-800">
           {form.header_image_url && (
             <img
               src={form.header_image_url}
               alt=""
-              className="w-full max-h-72 object-cover rounded-xl -mt-2"
+              className="w-full max-h-64 object-cover rounded-xl shadow-xs"
             />
           )}
           <div className="flex items-center justify-between gap-2">
@@ -395,38 +632,33 @@ export const PublicFormPage: React.FC = () => {
             <span className="text-xs font-medium text-gray-400 dark:text-gray-500">* Wajib diisi</span>
           </div>
 
-          <h1 className="text-2xl sm:text-4xl font-bold text-gray-900 dark:text-white leading-tight tracking-tight">
+          <h1 className="max-sm:text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white leading-tight tracking-tight">
             {form.title}
           </h1>
           {form.description && (
-            <p className="text-sm sm:text-base text-gray-500 dark:text-gray-400 whitespace-pre-line leading-relaxed">
+            <p className="max-sm:text-sm sm:text-base text-gray-500 dark:text-gray-400 whitespace-pre-line leading-relaxed">
               {form.description}
             </p>
           )}
         </div>
 
-        {/* Multi-step Page Progress Bar */}
-        {formPages.length > 1 && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs font-bold text-gray-500 dark:text-gray-400">
-              <span className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
-                📄 Halaman {activePageIndex + 1} dari {formPages.length}
-                {currentPage.pageTitle && <span className="text-gray-400 dark:text-gray-500 font-medium">• {currentPage.pageTitle}</span>}
+        {/* Section Target Anchor for Smooth Page Navigation */}
+        <div ref={questionsTopRef} className="scroll-mt-20 pt-1">
+          {currentPage.pageTitle && formPages.length > 1 && (
+            <div className="mb-4 pb-2 border-b border-gray-100 dark:border-gray-800">
+              <span className="text-[11px] font-bold tracking-wider uppercase text-indigo-600 dark:text-indigo-400">
+                Bagian {activePageIndex + 1}
               </span>
-              <span>{Math.round(((activePageIndex + 1) / formPages.length) * 100)}% Selesai</span>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                {currentPage.pageTitle}
+              </h2>
             </div>
-            <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-300 rounded-full"
-                style={{ width: `${((activePageIndex + 1) / formPages.length) * 100}%` }}
-              />
-            </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Question Form Body for Active Page */}
-        <div className="space-y-10 sm:space-y-12">
-          {currentPage.blocks.map((q: QuestionBlock, idx: number) => {
+        <div className="max-sm:space-y-6 sm:space-y-10">
+          {currentPage.blocks.map((q: QuestionBlock) => {
             const hasError = !!fieldErrors[q.id];
 
             // Image blocks are decorative — no number, no required state, no answer.
@@ -443,34 +675,56 @@ export const PublicFormPage: React.FC = () => {
               );
             }
 
-            const answerableBefore = currentPage.blocks.slice(0, idx).filter(b => b.type !== 'image').length;
-            const overallNum = questionNumberOffset + answerableBefore + 1;
+            const checkedCount = q.type === 'checkbox' && Array.isArray(answers[q.id])
+              ? answers[q.id].length
+              : 0;
+            const showDescription = !!q.description && !(q.type === 'checkbox' && isRedundantMultiSelectHint(q.description));
+
             return (
               <div
                 key={q.id}
                 id={`question-${q.id}`}
-                className={`space-y-4 pb-8 border-b border-gray-100 dark:border-gray-800 last:border-b-0 transition-colors ${
-                  hasError ? 'border-l-2 border-l-rose-400 pl-4 -ml-4' : ''
-                }`}
+                className="space-y-3.5 pb-6 sm:pb-8 border-b border-gray-200/80 dark:border-gray-800 last:border-b-0 transition-colors"
               >
                 <div className="space-y-1.5">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-sm font-bold text-indigo-500 dark:text-indigo-400 shrink-0">
-                      {overallNum}.
-                    </span>
-                    <label className="text-lg sm:text-2xl font-semibold text-gray-900 dark:text-white leading-snug">
-                      {q.label} {q.required && <span className="text-rose-500 ml-1">*</span>}
-                    </label>
-                  </div>
-                  {q.description && (
-                    <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed pl-6">
+                  <label className="block text-base sm:text-lg font-medium text-gray-900 dark:text-white leading-relaxed">
+                    {q.label} {q.required && <span className="text-rose-500 ml-0.5">*</span>}
+                  </label>
+                  {showDescription && (
+                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
                       {q.description}
                     </p>
+                  )}
+                  {q.type === 'checkbox' && (
+                    <div className="pt-0.5">
+                      <span
+                        className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md border transition-colors ${
+                          checkedCount > 0
+                            ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border-indigo-200/80 dark:border-indigo-800/70'
+                            : 'bg-gray-100/90 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200/80 dark:border-gray-700'
+                        }`}
+                      >
+                        <span
+                          className={`w-3.5 h-3.5 rounded-[4px] border flex items-center justify-center shrink-0 ${
+                            checkedCount > 0
+                              ? 'bg-indigo-600 border-indigo-600 text-white'
+                              : 'border-gray-400 dark:border-gray-500 bg-white dark:bg-gray-700'
+                          }`}
+                        >
+                          <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        </span>
+                        <span className="tabular-nums">
+                          {checkedCount > 0
+                            ? `${checkedCount} dipilih • Boleh pilih lebih dari satu`
+                            : 'Boleh pilih lebih dari satu'}
+                        </span>
+                      </span>
+                    </div>
                   )}
                 </div>
 
                 {/* Render Question Inputs */}
-                <div className="pl-6">
+                <div>
                   {/* Short Text */}
                   {q.type === 'short_text' && (
                     <input
@@ -478,7 +732,7 @@ export const PublicFormPage: React.FC = () => {
                       value={answers[q.id] || ''}
                       onChange={(e) => handleInputChange(q.id, e.target.value)}
                       placeholder="Jawaban Anda..."
-                      className="w-full text-lg bg-transparent border-0 border-b-2 border-gray-200 dark:border-gray-700 focus:border-indigo-500 focus:outline-none rounded-none px-0 py-2 text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-gray-600 transition-colors"
+                      className="w-full text-base bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 rounded-xl px-4 py-3 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 transition-all shadow-2xs"
                     />
                   )}
 
@@ -486,78 +740,133 @@ export const PublicFormPage: React.FC = () => {
                   {q.type === 'long_text' && (
                     <textarea
                       value={answers[q.id] || ''}
-                      onChange={(e) => handleInputChange(q.id, e.target.value)}
+                      onChange={(e) => {
+                        handleInputChange(q.id, e.target.value);
+                        e.target.style.height = 'auto';
+                        e.target.style.height = `${e.target.scrollHeight}px`;
+                      }}
                       placeholder="Jawaban Anda..."
                       rows={3}
-                      className="w-full text-lg bg-transparent border-0 border-b-2 border-gray-200 dark:border-gray-700 focus:border-indigo-500 focus:outline-none rounded-none px-0 py-2 text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-gray-600 resize-none transition-colors"
+                      className="w-full text-base bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 rounded-xl p-3.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 transition-all resize-none shadow-2xs leading-relaxed overflow-hidden"
                     />
                   )}
 
-                  {/* Multiple Choice */}
+                  {/* Multiple Choice (Radio — Circular Indicator) */}
                   {q.type === 'multiple_choice' && (
                     <div className="space-y-2">
                       {(q.options || []).map((opt, optIdx) => {
-                        const letter = String.fromCharCode(65 + optIdx);
-                        const isSelected = answers[q.id] === opt;
+                        const isOther = isOtherOption(opt);
+                        const isSelected = typeof answers[q.id] === 'string' && (
+                          answers[q.id] === opt || answers[q.id].startsWith(`${opt}: `)
+                        );
+                        const otherDetail = isOther ? getOtherDetail(answers[q.id], opt) : '';
+
                         return (
-                          <label
+                          <div
                             key={optIdx}
-                            className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all duration-150 ${
+                            className={`rounded-xl border transition-all duration-150 ${
                               isSelected
-                                ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/30 text-indigo-950 dark:text-indigo-100 font-semibold'
-                                : 'border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700 text-gray-700 dark:text-gray-200'
+                                ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/30 text-indigo-950 dark:text-indigo-100 shadow-2xs'
+                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-indigo-300 dark:hover:border-indigo-700 text-gray-700 dark:text-gray-200'
                             }`}
                           >
-                            <span className={`w-7 h-7 shrink-0 rounded-md border flex items-center justify-center text-xs font-bold transition-all ${
-                              isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400'
-                            }`}>
-                              {letter}
-                            </span>
-                            <input
-                              type="radio"
-                              name={`q_${q.id}`}
-                              value={opt}
-                              checked={isSelected}
-                              onChange={() => handleInputChange(q.id, opt)}
-                              className="sr-only"
-                            />
-                            <span className="text-sm font-medium">{opt}</span>
-                          </label>
+                            <label
+                              className="flex items-center gap-3 p-3.5 min-h-[48px] cursor-pointer active:scale-[0.99] transition-transform"
+                            >
+                              <span
+                                className={`w-5 h-5 shrink-0 rounded-full border-2 flex items-center justify-center transition-all ${
+                                  isSelected
+                                    ? 'border-indigo-600 bg-indigo-600'
+                                    : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800'
+                                }`}
+                              >
+                                {isSelected && <span className="w-2 h-2 rounded-full bg-white" />}
+                              </span>
+                              <input
+                                type="radio"
+                                name={`q_${q.id}`}
+                                value={opt}
+                                checked={isSelected}
+                                onChange={() => handleChoiceSelect(q.id, opt)}
+                                className="sr-only"
+                              />
+                              <span className="text-sm font-medium flex-1">{opt}</span>
+                            </label>
+
+                            {/* Inline Other Input when selected */}
+                            {isOther && isSelected && (
+                              <div className="px-3.5 pb-3.5 pt-0">
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={otherDetail}
+                                  onChange={(e) => handleOtherChoiceDetail(q.id, opt, e.target.value)}
+                                  placeholder="Tuliskan jawaban Anda di sini..."
+                                  className="w-full text-base sm:text-sm bg-white dark:bg-gray-850 border border-indigo-300 dark:border-indigo-600 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 rounded-lg px-3.5 py-2.5 text-gray-900 dark:text-white placeholder-gray-400 shadow-2xs"
+                                />
+                              </div>
+                            )}
+                          </div>
                         );
                       })}
                     </div>
                   )}
 
-                  {/* Checkboxes */}
+                  {/* Checkboxes (Multi-Select — Square Indicator) */}
                   {q.type === 'checkbox' && (
                     <div className="space-y-2">
                       {(q.options || []).map((opt, optIdx) => {
-                        const letter = String.fromCharCode(65 + optIdx);
+                        const isOther = isOtherOption(opt);
                         const currentArr: string[] = Array.isArray(answers[q.id]) ? answers[q.id] : [];
-                        const isChecked = currentArr.includes(opt);
+                        const matchingItem = currentArr.find(item => item === opt || item.startsWith(`${opt}: `));
+                        const isChecked = !!matchingItem;
+                        const otherDetail = isOther && matchingItem ? getOtherDetail(matchingItem, opt) : '';
+
                         return (
-                          <label
+                          <div
                             key={optIdx}
-                            className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all duration-150 ${
+                            className={`rounded-xl border transition-all duration-150 ${
                               isChecked
-                                ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/30 text-indigo-950 dark:text-indigo-100 font-semibold'
-                                : 'border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700 text-gray-700 dark:text-gray-200'
+                                ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/30 text-indigo-950 dark:text-indigo-100 shadow-2xs'
+                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-indigo-300 dark:hover:border-indigo-700 text-gray-700 dark:text-gray-200'
                             }`}
                           >
-                            <span className={`w-7 h-7 shrink-0 rounded-md border flex items-center justify-center text-xs font-bold transition-all ${
-                              isChecked ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400'
-                            }`}>
-                              {isChecked ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : letter}
-                            </span>
-                            <input
-                              type="checkbox"
-                              value={opt}
-                              checked={isChecked}
-                              onChange={() => handleCheckboxToggle(q.id, opt)}
-                              className="sr-only"
-                            />
-                            <span className="text-sm font-medium">{opt}</span>
-                          </label>
+                            <label
+                              className="flex items-center gap-3 p-3.5 min-h-[48px] cursor-pointer active:scale-[0.99] transition-transform"
+                            >
+                              <span
+                                className={`w-5 h-5 shrink-0 rounded-md border-2 flex items-center justify-center transition-all ${
+                                  isChecked
+                                    ? 'bg-indigo-600 border-indigo-600 text-white'
+                                    : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800'
+                                }`}
+                              >
+                                {isChecked && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                              </span>
+                              <input
+                                type="checkbox"
+                                value={opt}
+                                checked={isChecked}
+                                onChange={() => handleCheckboxToggle(q.id, opt)}
+                                className="sr-only"
+                              />
+                              <span className="text-sm font-medium flex-1">{opt}</span>
+                            </label>
+
+                            {/* Inline Other Input when checked */}
+                            {isOther && isChecked && (
+                              <div className="px-3.5 pb-3.5 pt-0">
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={otherDetail}
+                                  onChange={(e) => handleOtherCheckboxDetail(q.id, opt, e.target.value)}
+                                  placeholder="Tuliskan jawaban Anda di sini..."
+                                  className="w-full text-base sm:text-sm bg-white dark:bg-gray-850 border border-indigo-300 dark:border-indigo-600 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 rounded-lg px-3.5 py-2.5 text-gray-900 dark:text-white placeholder-gray-400 shadow-2xs"
+                                />
+                              </div>
+                            )}
+                          </div>
                         );
                       })}
                     </div>
@@ -565,25 +874,31 @@ export const PublicFormPage: React.FC = () => {
 
                   {/* Rating / Scale */}
                   {q.type === 'rating' && (
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
-                      {Array.from({ length: q.maxScale || 5 }, (_, i) => i + 1).map((val) => {
-                        const isSelected = answers[q.id] === val;
-                        return (
-                          <button
-                            key={val}
-                            type="button"
-                            onClick={() => handleInputChange(q.id, val)}
-                            className={`flex flex-col items-center justify-center w-11 h-11 rounded-lg font-bold text-sm border transition-all ${
-                              isSelected
-                                ? 'bg-amber-500 text-white border-amber-500 scale-105'
-                                : 'bg-transparent text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-amber-400'
-                            }`}
-                          >
-                            <Star className={`w-3.5 h-3.5 ${isSelected ? 'fill-white' : 'text-amber-400'}`} />
-                            <span>{val}</span>
-                          </button>
-                        );
-                      })}
+                    <div className="space-y-2 pt-1">
+                      <div className={`grid gap-2 ${q.maxScale === 10 ? 'grid-cols-5 sm:grid-cols-10' : 'grid-cols-5'}`}>
+                        {Array.from({ length: q.maxScale || 5 }, (_, i) => i + 1).map((val) => {
+                          const isSelected = answers[q.id] === val;
+                          return (
+                            <button
+                              key={val}
+                              type="button"
+                              onClick={() => handleInputChange(q.id, val)}
+                              className={`flex flex-col items-center justify-center h-12 rounded-xl font-bold text-sm border transition-all active:scale-95 tabular-nums ${
+                                isSelected
+                                  ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/25 scale-[1.02]'
+                                  : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-700 hover:border-amber-400 hover:text-amber-700 dark:hover:text-amber-300'
+                              }`}
+                            >
+                              <Star className={`w-4 h-4 mb-0.5 ${isSelected ? 'fill-white text-white' : 'text-amber-400'}`} />
+                              <span>{val}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 px-1 pt-0.5 font-medium">
+                        <span>{q.minScaleLabel || (q.maxScale === 10 ? '1 (Sangat Rendah)' : '1 (Sangat Buruk)')}</span>
+                        <span>{q.maxScaleLabel || (q.maxScale === 10 ? `${q.maxScale} (Sangat Tinggi)` : '5 (Sangat Baik)')}</span>
+                      </div>
                     </div>
                   )}
 
@@ -593,89 +908,191 @@ export const PublicFormPage: React.FC = () => {
                       type="date"
                       value={answers[q.id] || ''}
                       onChange={(e) => handleInputChange(q.id, e.target.value)}
-                      className="w-full sm:w-64 text-lg bg-transparent border-0 border-b-2 border-gray-200 dark:border-gray-700 focus:border-indigo-500 focus:outline-none rounded-none px-0 py-2 text-gray-900 dark:text-white transition-colors"
+                      className="max-sm:w-full sm:w-64 text-base bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 rounded-xl px-4 py-3 text-gray-900 dark:text-white transition-all shadow-2xs"
                     />
                   )}
 
                   {/* Matrix */}
-                  {q.type === 'matrix' && (
-                    <>
-                      {/* Desktop: table layout */}
-                      <div className="hidden sm:block overflow-x-auto">
-                        <table className="w-full text-sm border-collapse">
-                          <thead>
-                            <tr>
-                              <th className="text-left" />
-                              {(q.options || []).map((col, colIdx) => (
-                                <th key={colIdx} className="text-center font-semibold text-gray-600 dark:text-gray-300 pb-3 px-2 text-xs">
-                                  {col}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(q.rows || []).map((row) => (
-                              <tr key={row.id} className="border-t border-gray-100 dark:border-gray-800">
-                                <td className="py-3 pr-4 text-sm font-medium text-gray-800 dark:text-gray-100 whitespace-nowrap">
-                                  {row.label}
-                                </td>
-                                {(q.options || []).map((col, colIdx) => {
-                                  const isSelected = answers[q.id]?.[row.id] === col;
-                                  return (
-                                    <td key={colIdx} className="text-center py-3 px-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleMatrixChange(q.id, row.id, col)}
-                                        aria-label={`${row.label}: ${col}`}
-                                        className={`w-5 h-5 rounded-full border-2 mx-auto transition-all ${
-                                          isSelected
-                                            ? 'border-indigo-600 bg-indigo-600'
-                                            : 'border-gray-300 dark:border-gray-600 hover:border-indigo-400'
-                                        }`}
-                                      />
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                  {q.type === 'matrix' && (() => {
+                    const rows = q.rows || [];
+                    const totalRows = rows.length;
+                    const rawActiveIdx = matrixActiveRow[q.id] ?? 0;
+                    const activeRowIdx = totalRows > 0 ? Math.min(Math.max(0, rawActiveIdx), totalRows - 1) : 0;
+                    const activeRow = rows[activeRowIdx];
+                    const answeredRowsCount = rows.filter(r => answers[q.id]?.[r.id]).length;
+                    const isAllRowsAnswered = totalRows > 0 && answeredRowsCount === totalRows;
 
-                      {/* Mobile: stacked rows with choice pills */}
-                      <div className="sm:hidden space-y-5">
-                        {(q.rows || []).map((row) => (
-                          <div key={row.id} className="space-y-2">
-                            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{row.label}</p>
-                            <div className="flex flex-wrap gap-2">
-                              {(q.options || []).map((col, colIdx) => {
-                                const isSelected = answers[q.id]?.[row.id] === col;
+                    return (
+                      <>
+                        {/* Desktop: table layout with permanent row numbering */}
+                        <div className="hidden sm:block overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 p-4">
+                          <table className="w-full text-sm border-collapse">
+                            <thead>
+                              <tr>
+                                <th className="text-left" />
+                                {(q.options || []).map((col, colIdx) => (
+                                  <th key={colIdx} className="text-center font-semibold text-gray-600 dark:text-gray-300 pb-3 px-2 text-xs">
+                                    {col}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rows.map((row, rIdx) => (
+                                <tr key={row.id} className="border-t border-gray-100 dark:border-gray-800">
+                                  <td className="py-3 pr-4 text-sm font-medium text-gray-800 dark:text-gray-100">
+                                    <span className="text-gray-400 dark:text-gray-500 font-semibold mr-1.5 tabular-nums">
+                                      {rIdx + 1}.
+                                    </span>
+                                    {row.label}
+                                  </td>
+                                  {(q.options || []).map((col, colIdx) => {
+                                    const isSelected = answers[q.id]?.[row.id] === col;
+                                    return (
+                                      <td key={colIdx} className="text-center py-3 px-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleMatrixChange(q.id, row.id, col)}
+                                          aria-label={`${row.label}: ${col}`}
+                                          className={`w-5 h-5 rounded-full border-2 mx-auto transition-all flex items-center justify-center ${
+                                            isSelected
+                                              ? 'border-indigo-600 bg-indigo-600'
+                                              : 'border-gray-300 dark:border-gray-600 hover:border-indigo-400'
+                                          }`}
+                                        >
+                                          {isSelected && <span className="w-2 h-2 rounded-full bg-white" />}
+                                        </button>
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Mobile: Approach 2 — Focus Card Stepper (One Sub-Statement at a Time) */}
+                        <div className="sm:hidden rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xs overflow-hidden">
+                          {/* Stepper Header: Interactive Numbered Step Pills & Answered Counter */}
+                          <div className="px-3.5 py-3 bg-gray-50/80 dark:bg-gray-800/80 border-b border-gray-200/80 dark:border-gray-700 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {rows.map((r, rIdx) => {
+                                const isRowDone = !!answers[q.id]?.[r.id];
+                                const isCurrent = rIdx === activeRowIdx;
+                                const rowErr = !!fieldErrors[`${q.id}_${r.id}`];
+
                                 return (
                                   <button
-                                    key={colIdx}
+                                    key={r.id}
                                     type="button"
-                                    onClick={() => handleMatrixChange(q.id, row.id, col)}
-                                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                                      isSelected
-                                        ? 'bg-indigo-600 border-indigo-600 text-white'
-                                        : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300'
+                                    onClick={() => handleMatrixStepClick(q.id, rIdx)}
+                                    aria-label={`Pernyataan ${rIdx + 1}: ${r.label}`}
+                                    className={`h-7 min-w-[28px] px-2 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1 transition-all tabular-nums ${
+                                      isCurrent
+                                        ? 'bg-indigo-600 text-white shadow-2xs ring-2 ring-indigo-500/25'
+                                        : rowErr
+                                        ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-300 dark:border-rose-700'
+                                        : isRowDone
+                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60'
+                                        : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:border-indigo-300'
                                     }`}
                                   >
-                                    {col}
+                                    {isRowDone && !isCurrent && <Check className="w-3 h-3 stroke-[3]" />}
+                                    <span>{rIdx + 1}</span>
                                   </button>
                                 );
                               })}
                             </div>
+
+                            <span
+                              className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full shrink-0 tabular-nums ${
+                                isAllRowsAnswered
+                                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-800/60'
+                                  : 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60'
+                              }`}
+                            >
+                              {isAllRowsAnswered
+                                ? `✓ ${answeredRowsCount}/${totalRows} Selesai`
+                                : `${answeredRowsCount}/${totalRows} terjawab`}
+                            </span>
                           </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
+
+                          {/* Active Statement Card Body */}
+                          {activeRow && (
+                            <div className="p-4 space-y-3.5">
+                              <div className="text-sm sm:text-base font-semibold text-gray-900 dark:text-gray-100 leading-snug">
+                                {activeRow.label}
+                              </div>
+
+                              <div className="space-y-2">
+                                {(q.options || []).map((col, colIdx) => {
+                                  const isSelected = answers[q.id]?.[activeRow.id] === col;
+                                  return (
+                                    <button
+                                      key={colIdx}
+                                      type="button"
+                                      onClick={() => handleMobileMatrixSelect(q.id, activeRow.id, col, rows, activeRowIdx)}
+                                      className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all active:scale-[0.99] min-h-[44px] ${
+                                        isSelected
+                                          ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-950 dark:text-indigo-100 shadow-2xs font-medium'
+                                          : 'border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800 hover:bg-white dark:hover:bg-gray-750 text-gray-700 dark:text-gray-200 hover:border-indigo-300'
+                                      }`}
+                                    >
+                                      <span
+                                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
+                                          isSelected
+                                            ? 'border-indigo-600 bg-indigo-600'
+                                            : 'border-gray-300 dark:border-gray-500 bg-white dark:bg-gray-800'
+                                        }`}
+                                      >
+                                        {isSelected && <span className="w-2 h-2 rounded-full bg-white" />}
+                                      </span>
+                                      <span className="text-sm leading-snug flex-1">{col}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              {fieldErrors[`${q.id}_${activeRow.id}`] && (
+                                <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+                                  {fieldErrors[`${q.id}_${activeRow.id}`]}
+                                </p>
+                              )}
+
+                              {/* Stepper Footer Navigation */}
+                              {totalRows > 1 && (
+                                <div className="pt-2.5 border-t border-gray-100 dark:border-gray-700/70 flex items-center justify-between gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={activeRowIdx === 0}
+                                    onClick={() => handleMatrixStepClick(q.id, Math.max(0, activeRowIdx - 1))}
+                                    className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-35 disabled:pointer-events-none py-1.5 px-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700/60 transition-colors"
+                                  >
+                                    <ArrowLeft className="w-3.5 h-3.5" /> Sebelumnya
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    disabled={activeRowIdx >= totalRows - 1}
+                                    onClick={() => handleMatrixStepClick(q.id, Math.min(totalRows - 1, activeRowIdx + 1))}
+                                    className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 disabled:opacity-35 disabled:pointer-events-none py-1.5 px-2.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
+                                  >
+                                    Selanjutnya <ArrowRight className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {hasError && (
-                  <p className="text-xs font-semibold text-rose-500 pl-6">
-                    {fieldErrors[q.id]}
+                  <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-3 py-1.5 rounded-lg border border-rose-200 dark:border-rose-800/60">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{fieldErrors[q.id]}</span>
                   </p>
                 )}
               </div>
@@ -689,7 +1106,7 @@ export const PublicFormPage: React.FC = () => {
                 type="button"
                 variant="outline"
                 onClick={handlePrevPage}
-                className="px-6 py-3 rounded-xl font-bold border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-750 flex items-center gap-2"
+                className="h-12 px-5 sm:px-6 rounded-xl font-bold border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center gap-2 shrink-0 text-sm active:scale-[0.98] transition-all"
               >
                 <ArrowLeft className="w-4 h-4" /> Kembali
               </Button>
@@ -699,7 +1116,7 @@ export const PublicFormPage: React.FC = () => {
               <Button
                 type="button"
                 onClick={handleNextPage}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3.5 rounded-xl font-bold shadow-md shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center gap-2"
+                className="h-12 max-sm:flex-1 bg-indigo-600 hover:bg-indigo-700 text-white px-7 sm:px-8 rounded-xl font-bold shadow-md shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 max-sm:text-sm sm:text-base ml-auto"
               >
                 Lanjut <ArrowRight className="w-4 h-4" />
               </Button>
@@ -708,7 +1125,7 @@ export const PublicFormPage: React.FC = () => {
                 type="button"
                 disabled={submitting}
                 onClick={handleSubmit}
-                className="w-full sm:w-auto bg-gradient-to-r from-indigo-600 via-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-9 py-3.5 rounded-xl font-bold shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                className="h-12 max-sm:flex-1 bg-indigo-600 hover:bg-indigo-700 text-white px-8 sm:px-9 rounded-xl font-bold shadow-lg shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 max-sm:text-sm sm:text-base ml-auto"
               >
                 {submitting ? (
                   <>
