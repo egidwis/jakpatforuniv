@@ -97,6 +97,8 @@ export interface InvoiceFormProps {
     researcherName?: string | null;
     researcherEmail?: string | null;
     title?: string | null;
+    formUrl?: string | null;
+    survey_url?: string | null;
     phone_number?: string | null;
     questionCount?: number | null;
     duration?: number | null;
@@ -555,13 +557,27 @@ export function InvoiceForm({
       if (notify) {
         sendToTab(waTab, submission.phone_number, invoiceReadyMessage({
           researcherName: submission.researcherName,
-          bundles: [{ title: submission.title || 'Survei Anda', startDate: entry.startDate }],
+          bundles: [{
+            title: submission.title || 'Survei Anda',
+            surveyUrl: submission.formUrl || submission.survey_url || null,
+            startDate: entry.startDate,
+            kilatSlotHour: entry.kilatSlotHour,
+          }],
+          items: items.map((it) => ({
+            name: it.name,
+            qty: it.qty,
+            price: it.price,
+            total: it.qty * it.price,
+          })),
+          subtotal,
+          ppn,
           amount: grandTotal,
           // Link perantara, alasan sama dengan email di atas — dan WhatsApp
           // lebih sulit ditarik daripada email.
           invoiceUrl: payLinkUrl(entry.id),
           tempo,
           topUp: isTopUp,
+          isKilat: isKilatOrder,
         }));
       }
 

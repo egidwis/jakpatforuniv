@@ -23,6 +23,8 @@ export interface BulkCandidate {
   entry: AdScheduleEntry;
   submissionId: string;
   title: string;
+  /** Link kuesioner / form asli peneliti (opsional). */
+  surveyUrl?: string | null;
   /** `created_at` ORDER — penentu masa berlaku voucher bundel ini. */
   orderCreatedAt: string | null;
   /**
@@ -101,6 +103,7 @@ export interface PlanInput {
   submissions: Array<{
     id: string;
     formTitle: string;
+    formUrl?: string | null;
     submittedAt?: string | null;
     questionCount?: number | null;
   }>;
@@ -145,6 +148,7 @@ export function planBulkInvoice(input: PlanInput): BulkPlan {
           entry,
           submissionId: submission.id,
           title: submission.formTitle,
+          surveyUrl: submission.formUrl?.trim() || null,
           orderCreatedAt: submission.submittedAt ?? null,
           questionCount: submission.questionCount ?? null,
         });
