@@ -147,8 +147,8 @@ export function planBulkInvoice(input: PlanInput): BulkPlan {
         candidates.push({
           entry,
           submissionId: submission.id,
-          title: submission.formTitle,
-          surveyUrl: submission.formUrl?.trim() || null,
+          title: submission.formTitle || (submission as any).title || entry.title || 'Survei Anda',
+          surveyUrl: submission.formUrl?.trim() || (submission as any).survey_url?.trim() || null,
           orderCreatedAt: submission.submittedAt ?? null,
           questionCount: submission.questionCount ?? null,
         });

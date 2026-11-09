@@ -356,9 +356,10 @@ export function BulkInvoiceDialog({
           bundles: bundles.map((b) => {
             const bt = bundleTotals(b.items);
             return {
-              title: b.title,
+              title: b.title || b.entry.title || 'Survei Anda',
               surveyUrl: b.surveyUrl,
               startDate: b.entry.startDate,
+              endDate: b.entry.endDate,
               kilatSlotHour: b.entry.kilatSlotHour,
               items: b.items.map((it) => ({
                 name: it.name,

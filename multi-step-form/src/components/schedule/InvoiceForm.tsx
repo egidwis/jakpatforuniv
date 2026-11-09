@@ -97,6 +97,8 @@ export interface InvoiceFormProps {
     researcherName?: string | null;
     researcherEmail?: string | null;
     title?: string | null;
+    formTitle?: string | null;
+    form_title?: string | null;
     formUrl?: string | null;
     survey_url?: string | null;
     phone_number?: string | null;
@@ -174,6 +176,14 @@ export function InvoiceForm({
   // dengan voucher ORDER, bukan voucher yang admin pilih.
   const [voucher, setVoucher] = useState(submission.voucher_code || '');
   const [appliedVoucher, setAppliedVoucher] = useState(submission.voucher_code || '');
+
+  const resolvedSurveyTitle = (
+    submission.formTitle ||
+    submission.title ||
+    submission.form_title ||
+    entry.title ||
+    ''
+  ).trim() || 'Survei Anda';
 
   // Satu sumber dengan jalur tulis dan dengan tagihan gabungan — layar dan
   // baris database tidak boleh menghitung PPN dengan cara yang berbeda.
@@ -505,7 +515,7 @@ export function InvoiceForm({
           body: JSON.stringify({
             name: submission.researcherName || 'Kak',
             email: submission.researcherEmail,
-            title: submission.title || undefined,
+            title: resolvedSurveyTitle,
             variant: entry.isExtension ? 'extension' : 'order',
             airingStart: entry.startDate || undefined,
             airingEnd: entry.endDate || undefined,
@@ -558,9 +568,10 @@ export function InvoiceForm({
         sendToTab(waTab, submission.phone_number, invoiceReadyMessage({
           researcherName: submission.researcherName,
           bundles: [{
-            title: submission.title || 'Survei Anda',
+            title: resolvedSurveyTitle,
             surveyUrl: submission.formUrl || submission.survey_url || null,
             startDate: entry.startDate,
+            endDate: entry.endDate,
             kilatSlotHour: entry.kilatSlotHour,
           }],
           items: items.map((it) => ({
@@ -957,6 +968,38 @@ export function InvoiceForm({
                       {copiedId === inv.payment_id
                         ? <><Check className="w-3 h-3 mr-1 text-green-600" /> Tersalin</>
                         : <><Copy className="w-3 h-3 mr-1" /> Salin</>}
+                    </Button>
+                    <Button
+                      variant="outline" size="sm" className="h-7 px-2 text-[10px] text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
+                      onClick={() => {
+                        const waTab = openBlankTab();
+                        sendToTab(waTab, submission.phone_number, invoiceReadyMessage({
+                          researcherName: submission.researcherName,
+                          bundles: [{
+                            title: resolvedSurveyTitle,
+                            surveyUrl: submission.formUrl || submission.survey_url || null,
+                            startDate: entry.startDate,
+                            endDate: entry.endDate,
+                            kilatSlotHour: entry.kilatSlotHour,
+                          }],
+                          items: items.map((it) => ({
+                            name: it.name,
+                            qty: it.qty,
+                            price: it.price,
+                            total: it.qty * it.price,
+                          })),
+                          subtotal,
+                          ppn,
+                          amount: inv.amount,
+                          invoiceUrl: payLinkUrl(entry.id),
+                          tempo,
+                          topUp: isTopUp,
+                          isKilat: isKilatOrder,
+                        }));
+                      }}
+                      title="Kirim link tagihan ini via WhatsApp"
+                    >
+                      <MessageCircle className="w-3 h-3 mr-1" /> WA
                     </Button>
                   </span>
                 )}

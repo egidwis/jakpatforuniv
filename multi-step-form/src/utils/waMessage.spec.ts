@@ -169,13 +169,14 @@ describe('invoiceReadyMessage', () => {
     expect(msg).not.toContain('10 September 2026');
   });
 
-  it('menyertakan link survei di pembuka ketika surveyUrl tersedia', () => {
+  it('menyertakan link survei, jam tayang, dan tanggal berakhirnya iklan', () => {
     const msg = invoiceReadyMessage({
       researcherName: 'Tri Hartono Rianto',
       bundles: [{
         title: 'Survei Perilaku Konsumen',
         surveyUrl: 'https://forms.gle/abc123xyz',
         startDate: airing('2026-11-11'),
+        endDate: airing('2026-11-12'),
       }],
       items: [{ name: 'Biaya Iklan', qty: 1, price: 125000, total: 125000 }],
       subtotal: 125000,
@@ -184,7 +185,7 @@ describe('invoiceReadyMessage', () => {
       invoiceUrl: 'https://pay.example/abc',
       issuedAt: issued,
     });
-    expect(msg).toContain('• Survei Perilaku Konsumen — tayang Rab, 11 Nov');
+    expect(msg).toContain('• Survei Perilaku Konsumen — tayang Rab, 11 Nov pukul 15.00 WIB s/d Kam, 12 Nov pukul 15.00 WIB');
     expect(msg).toContain('Link survei: https://forms.gle/abc123xyz');
   });
 

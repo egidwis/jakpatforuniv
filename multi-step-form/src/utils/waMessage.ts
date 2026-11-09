@@ -171,6 +171,8 @@ export interface InvoiceBundleSummary {
   surveyUrl?: string | null;
   /** Instant ISO mulai tayang, atau null kalau jadwalnya belum bertanggal. */
   startDate?: string | null;
+  /** Instant ISO selesai tayang, atau null kalau belum bertanggal. */
+  endDate?: string | null;
   /** Jam gelombang Kilat (11 atau 15), jika pesanan Kilat. */
   kilatSlotHour?: number | null;
   /** Rincian item untuk pesanan ini (digunakan pada tagihan gabungan). */
@@ -228,7 +230,21 @@ const formatScheduleSuffix = (b: InvoiceBundleSummary): string => {
   if (b.kilatSlotHour != null) {
     return ` — gelombang ${formatWibShort(b.startDate)} pukul ${String(b.kilatSlotHour).padStart(2, '0')}.00 WIB`;
   }
-  return ` — tayang ${formatWibShort(b.startDate)}`;
+  try {
+    const startDay = formatWibShort(b.startDate);
+    const startTime = `${formatWibTime(b.startDate)} WIB`;
+    if (b.endDate) {
+      const endDay = formatWibShort(b.endDate);
+      const endTime = `${formatWibTime(b.endDate)} WIB`;
+      if (endDay === startDay) {
+        return ` — tayang ${startDay} pukul ${formatWibTime(b.startDate)} s/d ${endTime}`;
+      }
+      return ` — tayang ${startDay} pukul ${startTime} s/d ${endDay} pukul ${endTime}`;
+    }
+    return ` — tayang ${startDay} pukul ${startTime}`;
+  } catch {
+    return ` — tayang ${formatWibShort(b.startDate)}`;
+  }
 };
 
 const formatItemLine = (it: InvoiceItemDetail, indent = ''): string => {

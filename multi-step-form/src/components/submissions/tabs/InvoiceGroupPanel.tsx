@@ -67,7 +67,7 @@ export function InvoiceGroupPanel({
           ? supabase.from('form_submissions').select('id, title, survey_url, full_name, phone_number').in('id', subIds)
           : Promise.resolve({ data: [] as any[] }),
         schedIds.length > 0
-          ? supabase.from('ad_schedules').select('id, start_date, kilat_slot_hour').in('id', schedIds)
+          ? supabase.from('ad_schedules').select('id, start_date, end_date, kilat_slot_hour').in('id', schedIds)
           : Promise.resolve({ data: [] as any[] }),
       ]);
 
@@ -125,10 +125,17 @@ export function InvoiceGroupPanel({
         hasAllSub = false;
       }
 
+      const resolvedTitle = (
+        (m.title && m.title !== '(tanpa judul)' && m.title !== 'Untitled' ? m.title : null) ||
+        sub?.title ||
+        'Survei Anda'
+      );
+
       return {
-        title: m.title || sub?.title || 'Survei Anda',
+        title: resolvedTitle,
         surveyUrl: sub?.survey_url || null,
         startDate: m.startDate ?? sched?.start_date ?? null,
+        endDate: sched?.end_date ?? null,
         kilatSlotHour: sched?.kilat_slot_hour ?? null,
         items: parsedItems,
         subtotal,
