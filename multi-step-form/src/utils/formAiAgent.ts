@@ -33,7 +33,7 @@ Format respon Anda HARUS berupa objek JSON valid dengan dua kunci utama:
 Jenis perintah aksi ("actions") yang didukung:
 - { "type": "SET_TITLE", "value": "Judul Baru" }
 - { "type": "SET_DESCRIPTION", "value": "Deskripsi baru..." }
-- { "type": "ADD_BLOCK", "index": 6, "block": { "type": "short_text"|"long_text"|"multiple_choice"|"checkbox"|"rating"|"date"|"matrix"|"page_break", "label": "Judul Pertanyaan", "description": "Petunjuk", "required": true, "options": ["Opsi 1", "Opsi 2"], "rows": [{ "id": "row_1", "label": "Harga" }, { "id": "row_2", "label": "Rasa" }], "maxScale": 5, "carryForwardFromBlockId": "block_id_acuan", "logicMatchMode": "ALL"|"ANY", "logicRules": [{ "id": "rule_1", "sourceBlockId": "target_id", "operator": "equals"|"not_equals"|"contains"|"is_answered"|"is_empty", "value": "Nilai", "action": "show"|"hide"|"jump_to", "targetBlockId": "target_id" }] } }
+- { "type": "ADD_BLOCK", "index": 6, "block": { "type": "short_text"|"long_text"|"multiple_choice"|"checkbox"|"rating"|"date"|"matrix"|"page_break", "label": "Judul Pertanyaan", "description": "Petunjuk", "required": true, "options": ["Opsi 1", "Opsi 2"], "rows": [{ "id": "row_1", "label": "Harga" }, { "id": "row_2", "label": "Rasa" }], "maxScale": 5, "minScaleLabel": "Sangat Tidak Setuju", "maxScaleLabel": "Sangat Setuju", "carryForwardFromBlockId": "block_id_acuan", "logicMatchMode": "ALL"|"ANY", "logicRules": [{ "id": "rule_1", "sourceBlockId": "target_id", "operator": "equals"|"not_equals"|"contains"|"is_answered"|"is_empty", "value": "Nilai", "action": "show"|"hide"|"jump_to", "targetBlockId": "target_id" }] } }
 - { "type": "UPDATE_BLOCK", "index": 0, "block": { "label": "Judul Baru", "options": ["Opsi A", "Opsi B", "Lainnya"] } }
 - { "type": "REMOVE_BLOCK", "index": 0 }
 - { "type": "REPLACE_ALL", "value": "Judul", "description": "Deskripsi", "blocks": [ ... list of question blocks ... ] }
@@ -41,6 +41,7 @@ Jenis perintah aksi ("actions") yang didukung:
 Aturan Penting:
 - Tipe pertanyaan yang tersedia HANYA: 'short_text', 'long_text', 'multiple_choice', 'checkbox', 'rating', 'date', 'matrix', 'page_break'. JANGAN membuat/menyebut tipe lain di luar daftar ini.
 - Untuk 'multiple_choice' dan 'checkbox', selalu sertakan array 'options'. Jika pengguna meminta opsi "Lainnya", sertakan "Lainnya" di dalam array options.
+- Untuk 'rating' (skala linier 1–5 atau 1–10): gunakan field "minScaleLabel" (mis. "Sangat Tidak Setuju") dan "maxScaleLabel" (mis. "Sangat Setuju") untuk label ujung skala. JANGAN menuliskan rincian arti angka 1 sampai 5 (seperti "1. STS, 2. TS, 3. N, 4. S, 5. SS") di dalam field "description".
 - Untuk 'matrix' (tabel dengan satu skala jawaban yang dipakai bersama oleh beberapa sub-pernyataan, mis. "nilai Harga/Rasa/Kemasan pada skala Sangat Puas–Sangat Tidak Puas"): WAJIB isi DUA field —
   - "rows": array sub-pernyataan/baris, tiap item { "id": string unik, "label": teks baris }.
   - "options": array pilihan jawaban bersama (kolom), sama seperti multiple_choice.

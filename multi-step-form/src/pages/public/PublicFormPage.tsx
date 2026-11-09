@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   Loader2,
   AlertCircle,
-  Star,
   Check,
   ArrowLeft,
   ArrowRight
@@ -38,6 +37,53 @@ export const isRedundantMultiSelectHint = (desc: string | undefined): boolean =>
     /^(?:(?:boleh|dapat|bisa)\s+)?(?:memilih|pilih)\s+(?:lebih\s+dari\s+(?:satu|1)|banyak|beberapa)(?:\s+(?:jawaban|opsi|pilihan))?\.?$/i.test(trimmed) ||
     /^(?:select|choose)\s+(?:all\s+that\s+apply|more\s+than\s+one)\.?$/i.test(trimmed)
   );
+};
+
+export const resolveScaleConfig = (
+  q: Pick<QuestionBlock, 'description' | 'maxScale' | 'minScaleLabel' | 'maxScaleLabel'>
+): {
+  minLabel: string;
+  maxLabel: string;
+  hideDescription: boolean;
+} => {
+  const maxScale = q.maxScale || 5;
+  const desc = (q.description || '').trim();
+
+  const hasStep1 = /(?:^|[,;\s])1\s*[.=:-]\s*/.test(desc);
+  const hasStep2 = /[,;\s]2\s*[.=:-]\s*/.test(desc);
+  const hasMaxStep = new RegExp(`[,;\\s]${maxScale}\\s*[.=:-]\\s*`).test(desc);
+  const isScaleLegendDesc = hasStep1 && hasStep2 && hasMaxStep;
+
+  const cleanEndpointLabel = (raw: string, isMin: boolean): string => {
+    const trimmed = raw.trim().replace(/[.;,]+$/, '').trim();
+    if (isMin && /\(\s*STS\s*\)/i.test(trimmed)) {
+      return 'Sangat Tidak Setuju';
+    }
+    return trimmed.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  };
+
+  let extractedMin = '';
+  let extractedMax = '';
+  if (isScaleLegendDesc) {
+    const minMatch = desc.match(/(?:^|[,;\s])1\s*[.=:-]\s*([^,;]+?)(?=[,;\s]+2\s*[.=:-])/i);
+    const maxMatch = desc.match(new RegExp(`[,;\\s]${maxScale}\\s*[.=:-]\\s*([^,;.]+)`, 'i'));
+    if (minMatch?.[1]) extractedMin = cleanEndpointLabel(minMatch[1], true);
+    if (maxMatch?.[1]) extractedMax = cleanEndpointLabel(maxMatch[1], false);
+  }
+
+  const rawMin = (q.minScaleLabel || '').trim() || extractedMin || 'Sangat Tidak Setuju';
+  const rawMax = (q.maxScaleLabel || '').trim() || extractedMax || 'Sangat Setuju';
+
+  const formatWithNum = (num: number, label: string) => {
+    const stripped = label.replace(/^\d+\s*[.=:-]?\s*/, '').trim();
+    return `${num}. ${stripped}`;
+  };
+
+  return {
+    minLabel: formatWithNum(1, rawMin),
+    maxLabel: formatWithNum(maxScale, rawMax),
+    hideDescription: isScaleLegendDesc,
+  };
 };
 
 export const getNextUnansweredMatrixRowIndex = (
@@ -581,7 +627,7 @@ export const PublicFormPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-12">
+    <div className="min-h-screen bg-slate-100/80 dark:bg-gray-900 pb-12">
       {/* Draft Preview Banner */}
       {form.status === 'draft' && (
         <div className="bg-amber-500 text-white text-xs font-bold py-2 px-4 text-center sticky top-0 z-50 shadow-md flex items-center justify-center gap-2">
@@ -614,9 +660,9 @@ export const PublicFormPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto space-y-6 pt-5 max-sm:px-4 sm:px-8">
-        {/* Header Hero */}
-        <div className="space-y-3 pb-5 border-b border-gray-100 dark:border-gray-800">
+      <div className="max-w-2xl mx-auto space-y-4 pt-5 max-sm:px-4 sm:px-8">
+        {/* Header Hero Card */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200/90 dark:border-gray-700 p-5 sm:p-6 shadow-2xs space-y-3.5">
           {form.header_image_url && (
             <img
               src={form.header_image_url}
@@ -636,20 +682,22 @@ export const PublicFormPage: React.FC = () => {
             {form.title}
           </h1>
           {form.description && (
-            <p className="max-sm:text-sm sm:text-base text-gray-500 dark:text-gray-400 whitespace-pre-line leading-relaxed">
-              {form.description}
-            </p>
+            <div className="bg-slate-50/90 dark:bg-gray-900/60 border border-slate-200/80 dark:border-gray-700/80 rounded-xl p-3.5">
+              <p className="max-sm:text-sm sm:text-base text-gray-600 dark:text-gray-300 whitespace-pre-line leading-relaxed">
+                {form.description}
+              </p>
+            </div>
           )}
         </div>
 
         {/* Section Target Anchor for Smooth Page Navigation */}
-        <div ref={questionsTopRef} className="scroll-mt-20 pt-1">
+        <div ref={questionsTopRef} className="scroll-mt-20">
           {currentPage.pageTitle && formPages.length > 1 && (
-            <div className="mb-4 pb-2 border-b border-gray-100 dark:border-gray-800">
+            <div className="bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200/70 dark:border-indigo-800/60 rounded-xl px-4 py-3">
               <span className="text-[11px] font-bold tracking-wider uppercase text-indigo-600 dark:text-indigo-400">
                 Bagian {activePageIndex + 1}
               </span>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+              <h2 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white">
                 {currentPage.pageTitle}
               </h2>
             </div>
@@ -657,14 +705,14 @@ export const PublicFormPage: React.FC = () => {
         </div>
 
         {/* Question Form Body for Active Page */}
-        <div className="max-sm:space-y-6 sm:space-y-10">
+        <div className="space-y-4">
           {currentPage.blocks.map((q: QuestionBlock) => {
             const hasError = !!fieldErrors[q.id];
 
             // Image blocks are decorative — no number, no required state, no answer.
             if (q.type === 'image') {
               return (
-                <div key={q.id} id={`question-${q.id}`} className="space-y-2">
+                <div key={q.id} id={`question-${q.id}`} className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200/90 dark:border-gray-700 p-4 shadow-2xs space-y-2">
                   {q.imageUrl && (
                     <img src={q.imageUrl} alt={q.label || ''} className="w-full rounded-xl" />
                   )}
@@ -678,13 +726,21 @@ export const PublicFormPage: React.FC = () => {
             const checkedCount = q.type === 'checkbox' && Array.isArray(answers[q.id])
               ? answers[q.id].length
               : 0;
-            const showDescription = !!q.description && !(q.type === 'checkbox' && isRedundantMultiSelectHint(q.description));
+            const scaleConfig = q.type === 'rating' ? resolveScaleConfig(q) : null;
+            const showDescription =
+              !!q.description &&
+              !(q.type === 'checkbox' && isRedundantMultiSelectHint(q.description)) &&
+              !(q.type === 'rating' && scaleConfig?.hideDescription);
 
             return (
               <div
                 key={q.id}
                 id={`question-${q.id}`}
-                className="space-y-3.5 pb-6 sm:pb-8 border-b border-gray-200/80 dark:border-gray-800 last:border-b-0 transition-colors"
+                className={`bg-white dark:bg-gray-800 rounded-2xl border p-5 sm:p-6 shadow-2xs space-y-3.5 transition-colors ${
+                  hasError
+                    ? 'border-rose-300 dark:border-rose-700'
+                    : 'border-gray-200/90 dark:border-gray-700'
+                }`}
               >
                 <div className="space-y-1.5">
                   <label className="block text-base sm:text-lg font-medium text-gray-900 dark:text-white leading-relaxed">
@@ -732,7 +788,7 @@ export const PublicFormPage: React.FC = () => {
                       value={answers[q.id] || ''}
                       onChange={(e) => handleInputChange(q.id, e.target.value)}
                       placeholder="Jawaban Anda..."
-                      className="w-full text-base bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 rounded-xl px-4 py-3 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 transition-all shadow-2xs"
+                      className="w-full text-base bg-gray-50/70 dark:bg-gray-900/40 focus:bg-white dark:focus:bg-gray-800 border border-gray-200/90 dark:border-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 rounded-xl px-4 py-3 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 transition-all"
                     />
                   )}
 
@@ -747,7 +803,7 @@ export const PublicFormPage: React.FC = () => {
                       }}
                       placeholder="Jawaban Anda..."
                       rows={3}
-                      className="w-full text-base bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 rounded-xl p-3.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 transition-all resize-none shadow-2xs leading-relaxed overflow-hidden"
+                      className="w-full text-base bg-gray-50/70 dark:bg-gray-900/40 focus:bg-white dark:focus:bg-gray-800 border border-gray-200/90 dark:border-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 rounded-xl p-3.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 transition-all resize-none leading-relaxed overflow-hidden"
                     />
                   )}
 
@@ -766,8 +822,8 @@ export const PublicFormPage: React.FC = () => {
                             key={optIdx}
                             className={`rounded-xl border transition-all duration-150 ${
                               isSelected
-                                ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/30 text-indigo-950 dark:text-indigo-100 shadow-2xs'
-                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-indigo-300 dark:hover:border-indigo-700 text-gray-700 dark:text-gray-200'
+                                ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/35 text-indigo-950 dark:text-indigo-100 shadow-2xs'
+                                : 'border-gray-200/80 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/40 hover:bg-white dark:hover:bg-gray-750 hover:border-indigo-300 dark:hover:border-indigo-700 text-gray-700 dark:text-gray-200'
                             }`}
                           >
                             <label
@@ -827,8 +883,8 @@ export const PublicFormPage: React.FC = () => {
                             key={optIdx}
                             className={`rounded-xl border transition-all duration-150 ${
                               isChecked
-                                ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/30 text-indigo-950 dark:text-indigo-100 shadow-2xs'
-                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-indigo-300 dark:hover:border-indigo-700 text-gray-700 dark:text-gray-200'
+                                ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/35 text-indigo-950 dark:text-indigo-100 shadow-2xs'
+                                : 'border-gray-200/80 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/40 hover:bg-white dark:hover:bg-gray-750 hover:border-indigo-300 dark:hover:border-indigo-700 text-gray-700 dark:text-gray-200'
                             }`}
                           >
                             <label
@@ -872,8 +928,8 @@ export const PublicFormPage: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Rating / Scale */}
-                  {q.type === 'rating' && (
+                  {/* Linear Scale (Clean Numbered Scale without Stars) */}
+                  {q.type === 'rating' && scaleConfig && (
                     <div className="space-y-2 pt-1">
                       <div className={`grid gap-2 ${q.maxScale === 10 ? 'grid-cols-5 sm:grid-cols-10' : 'grid-cols-5'}`}>
                         {Array.from({ length: q.maxScale || 5 }, (_, i) => i + 1).map((val) => {
@@ -883,21 +939,20 @@ export const PublicFormPage: React.FC = () => {
                               key={val}
                               type="button"
                               onClick={() => handleInputChange(q.id, val)}
-                              className={`flex flex-col items-center justify-center h-12 rounded-xl font-bold text-sm border transition-all active:scale-95 tabular-nums ${
+                              className={`flex items-center justify-center h-12 rounded-xl font-semibold text-base border transition-all active:scale-95 tabular-nums cursor-pointer ${
                                 isSelected
-                                  ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/25 scale-[1.02]'
-                                  : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-700 hover:border-amber-400 hover:text-amber-700 dark:hover:text-amber-300'
+                                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs ring-2 ring-indigo-500/25'
+                                  : 'bg-gray-50/70 dark:bg-gray-900/40 hover:bg-white dark:hover:bg-gray-750 text-gray-700 dark:text-gray-200 border-gray-200/90 dark:border-gray-700 hover:border-indigo-300 hover:text-indigo-600 dark:hover:text-indigo-400'
                               }`}
                             >
-                              <Star className={`w-4 h-4 mb-0.5 ${isSelected ? 'fill-white text-white' : 'text-amber-400'}`} />
                               <span>{val}</span>
                             </button>
                           );
                         })}
                       </div>
                       <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 px-1 pt-0.5 font-medium">
-                        <span>{q.minScaleLabel || (q.maxScale === 10 ? '1 (Sangat Rendah)' : '1 (Sangat Buruk)')}</span>
-                        <span>{q.maxScaleLabel || (q.maxScale === 10 ? `${q.maxScale} (Sangat Tinggi)` : '5 (Sangat Baik)')}</span>
+                        <span>{scaleConfig.minLabel}</span>
+                        <span>{scaleConfig.maxLabel}</span>
                       </div>
                     </div>
                   )}
@@ -908,7 +963,7 @@ export const PublicFormPage: React.FC = () => {
                       type="date"
                       value={answers[q.id] || ''}
                       onChange={(e) => handleInputChange(q.id, e.target.value)}
-                      className="max-sm:w-full sm:w-64 text-base bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 rounded-xl px-4 py-3 text-gray-900 dark:text-white transition-all shadow-2xs"
+                      className="max-sm:w-full sm:w-64 text-base bg-gray-50/70 dark:bg-gray-900/40 focus:bg-white dark:focus:bg-gray-800 border border-gray-200/90 dark:border-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 rounded-xl px-4 py-3 text-gray-900 dark:text-white transition-all"
                     />
                   )}
 
@@ -923,168 +978,125 @@ export const PublicFormPage: React.FC = () => {
                     const isAllRowsAnswered = totalRows > 0 && answeredRowsCount === totalRows;
 
                     return (
-                      <>
-                        {/* Desktop: table layout with permanent row numbering */}
-                        <div className="hidden sm:block overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 p-4">
-                          <table className="w-full text-sm border-collapse">
-                            <thead>
-                              <tr>
-                                <th className="text-left" />
-                                {(q.options || []).map((col, colIdx) => (
-                                  <th key={colIdx} className="text-center font-semibold text-gray-600 dark:text-gray-300 pb-3 px-2 text-xs">
-                                    {col}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {rows.map((row, rIdx) => (
-                                <tr key={row.id} className="border-t border-gray-100 dark:border-gray-800">
-                                  <td className="py-3 pr-4 text-sm font-medium text-gray-800 dark:text-gray-100">
-                                    <span className="text-gray-400 dark:text-gray-500 font-semibold mr-1.5 tabular-nums">
-                                      {rIdx + 1}.
-                                    </span>
-                                    {row.label}
-                                  </td>
-                                  {(q.options || []).map((col, colIdx) => {
-                                    const isSelected = answers[q.id]?.[row.id] === col;
-                                    return (
-                                      <td key={colIdx} className="text-center py-3 px-2">
-                                        <button
-                                          type="button"
-                                          onClick={() => handleMatrixChange(q.id, row.id, col)}
-                                          aria-label={`${row.label}: ${col}`}
-                                          className={`w-5 h-5 rounded-full border-2 mx-auto transition-all flex items-center justify-center ${
-                                            isSelected
-                                              ? 'border-indigo-600 bg-indigo-600'
-                                              : 'border-gray-300 dark:border-gray-600 hover:border-indigo-400'
-                                          }`}
-                                        >
-                                          {isSelected && <span className="w-2 h-2 rounded-full bg-white" />}
-                                        </button>
-                                      </td>
-                                    );
-                                  })}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                      <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xs overflow-hidden">
+                        {/* Stepper Header: Full-width Interactive Numbered Step Pills */}
+                        <div className="px-3.5 py-3 bg-gray-50/80 dark:bg-gray-800/80 border-b border-gray-200/80 dark:border-gray-700">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {rows.map((r, rIdx) => {
+                              const isRowDone = !!answers[q.id]?.[r.id];
+                              const isCurrent = rIdx === activeRowIdx;
+                              const rowErr = !!fieldErrors[`${q.id}_${r.id}`];
+
+                              return (
+                                <button
+                                  key={r.id}
+                                  type="button"
+                                  onClick={() => handleMatrixStepClick(q.id, rIdx)}
+                                  aria-label={`Pernyataan ${rIdx + 1}: ${r.label}`}
+                                  className={`h-7 min-w-[30px] px-2 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1 transition-all tabular-nums cursor-pointer ${
+                                    isCurrent
+                                      ? 'bg-indigo-600 text-white shadow-2xs ring-2 ring-indigo-500/25'
+                                      : rowErr
+                                      ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-300 dark:border-rose-700'
+                                      : isRowDone
+                                      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60'
+                                      : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:border-indigo-300'
+                                  }`}
+                                >
+                                  {isCurrent ? (
+                                    <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                                  ) : isRowDone ? (
+                                    <Check className="w-3 h-3 stroke-[3] shrink-0" />
+                                  ) : null}
+                                  <span>{rIdx + 1}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
 
-                        {/* Mobile: Approach 2 — Focus Card Stepper (One Sub-Statement at a Time) */}
-                        <div className="sm:hidden rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xs overflow-hidden">
-                          {/* Stepper Header: Interactive Numbered Step Pills & Answered Counter */}
-                          <div className="px-3.5 py-3 bg-gray-50/80 dark:bg-gray-800/80 border-b border-gray-200/80 dark:border-gray-700 flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              {rows.map((r, rIdx) => {
-                                const isRowDone = !!answers[q.id]?.[r.id];
-                                const isCurrent = rIdx === activeRowIdx;
-                                const rowErr = !!fieldErrors[`${q.id}_${r.id}`];
+                        {/* Active Statement Card Body */}
+                        {activeRow && (
+                          <div className="p-4 space-y-3.5">
+                            <div className="max-sm:text-sm sm:text-base font-semibold text-gray-900 dark:text-gray-100 leading-snug">
+                              {activeRow.label}
+                            </div>
 
+                            <div className="space-y-2">
+                              {(q.options || []).map((col, colIdx) => {
+                                const isSelected = answers[q.id]?.[activeRow.id] === col;
                                 return (
                                   <button
-                                    key={r.id}
+                                    key={colIdx}
                                     type="button"
-                                    onClick={() => handleMatrixStepClick(q.id, rIdx)}
-                                    aria-label={`Pernyataan ${rIdx + 1}: ${r.label}`}
-                                    className={`h-7 min-w-[28px] px-2 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-1 transition-all tabular-nums ${
-                                      isCurrent
-                                        ? 'bg-indigo-600 text-white shadow-2xs ring-2 ring-indigo-500/25'
-                                        : rowErr
-                                        ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-300 dark:border-rose-700'
-                                        : isRowDone
-                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60'
-                                        : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:border-indigo-300'
+                                    onClick={() => handleMobileMatrixSelect(q.id, activeRow.id, col, rows, activeRowIdx)}
+                                    className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all active:scale-[0.99] min-h-[44px] cursor-pointer ${
+                                      isSelected
+                                        ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-950 dark:text-indigo-100 shadow-2xs font-medium'
+                                        : 'border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800 hover:bg-white dark:hover:bg-gray-750 text-gray-700 dark:text-gray-200 hover:border-indigo-300'
                                     }`}
                                   >
-                                    {isRowDone && !isCurrent && <Check className="w-3 h-3 stroke-[3]" />}
-                                    <span>{rIdx + 1}</span>
+                                    <span
+                                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
+                                        isSelected
+                                          ? 'border-indigo-600 bg-indigo-600'
+                                          : 'border-gray-300 dark:border-gray-500 bg-white dark:bg-gray-800'
+                                      }`}
+                                    >
+                                      {isSelected && <span className="w-2 h-2 rounded-full bg-white" />}
+                                    </span>
+                                    <span className="text-sm leading-snug flex-1">{col}</span>
                                   </button>
                                 );
                               })}
                             </div>
 
-                            <span
-                              className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full shrink-0 tabular-nums ${
-                                isAllRowsAnswered
-                                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-800/60'
-                                  : 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60'
-                              }`}
-                            >
-                              {isAllRowsAnswered
-                                ? `✓ ${answeredRowsCount}/${totalRows} Selesai`
-                                : `${answeredRowsCount}/${totalRows} terjawab`}
-                            </span>
+                            {fieldErrors[`${q.id}_${activeRow.id}`] && (
+                              <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+                                {fieldErrors[`${q.id}_${activeRow.id}`]}
+                              </p>
+                            )}
+
+                            {/* Stepper Footer Navigation & Completion Status */}
+                            {totalRows > 1 && (
+                              <div className="pt-2.5 border-t border-gray-100 dark:border-gray-700/70 flex items-center justify-between gap-2">
+                                <button
+                                  type="button"
+                                  disabled={activeRowIdx === 0}
+                                  onClick={() => handleMatrixStepClick(q.id, Math.max(0, activeRowIdx - 1))}
+                                  className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-35 disabled:pointer-events-none py-1.5 px-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700/60 transition-colors cursor-pointer"
+                                >
+                                  <ArrowLeft className="w-3.5 h-3.5" /> Sebelumnya
+                                </button>
+
+                                <span
+                                  className={`inline-flex items-center gap-1 text-xs tabular-nums ${
+                                    isAllRowsAnswered
+                                      ? 'font-semibold text-emerald-600 dark:text-emerald-400'
+                                      : 'font-medium text-gray-400 dark:text-gray-500'
+                                  }`}
+                                >
+                                  {isAllRowsAnswered && <Check className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />}
+                                  <span>
+                                    {isAllRowsAnswered
+                                      ? `${answeredRowsCount}/${totalRows} selesai`
+                                      : `${answeredRowsCount}/${totalRows} terjawab`}
+                                  </span>
+                                </span>
+
+                                <button
+                                  type="button"
+                                  disabled={activeRowIdx >= totalRows - 1}
+                                  onClick={() => handleMatrixStepClick(q.id, Math.min(totalRows - 1, activeRowIdx + 1))}
+                                  className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 disabled:opacity-35 disabled:pointer-events-none py-1.5 px-2.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors cursor-pointer"
+                                >
+                                  Selanjutnya <ArrowRight className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            )}
                           </div>
-
-                          {/* Active Statement Card Body */}
-                          {activeRow && (
-                            <div className="p-4 space-y-3.5">
-                              <div className="text-sm sm:text-base font-semibold text-gray-900 dark:text-gray-100 leading-snug">
-                                {activeRow.label}
-                              </div>
-
-                              <div className="space-y-2">
-                                {(q.options || []).map((col, colIdx) => {
-                                  const isSelected = answers[q.id]?.[activeRow.id] === col;
-                                  return (
-                                    <button
-                                      key={colIdx}
-                                      type="button"
-                                      onClick={() => handleMobileMatrixSelect(q.id, activeRow.id, col, rows, activeRowIdx)}
-                                      className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all active:scale-[0.99] min-h-[44px] ${
-                                        isSelected
-                                          ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-950 dark:text-indigo-100 shadow-2xs font-medium'
-                                          : 'border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800 hover:bg-white dark:hover:bg-gray-750 text-gray-700 dark:text-gray-200 hover:border-indigo-300'
-                                      }`}
-                                    >
-                                      <span
-                                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
-                                          isSelected
-                                            ? 'border-indigo-600 bg-indigo-600'
-                                            : 'border-gray-300 dark:border-gray-500 bg-white dark:bg-gray-800'
-                                        }`}
-                                      >
-                                        {isSelected && <span className="w-2 h-2 rounded-full bg-white" />}
-                                      </span>
-                                      <span className="text-sm leading-snug flex-1">{col}</span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-
-                              {fieldErrors[`${q.id}_${activeRow.id}`] && (
-                                <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">
-                                  {fieldErrors[`${q.id}_${activeRow.id}`]}
-                                </p>
-                              )}
-
-                              {/* Stepper Footer Navigation */}
-                              {totalRows > 1 && (
-                                <div className="pt-2.5 border-t border-gray-100 dark:border-gray-700/70 flex items-center justify-between gap-2">
-                                  <button
-                                    type="button"
-                                    disabled={activeRowIdx === 0}
-                                    onClick={() => handleMatrixStepClick(q.id, Math.max(0, activeRowIdx - 1))}
-                                    className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-35 disabled:pointer-events-none py-1.5 px-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700/60 transition-colors"
-                                  >
-                                    <ArrowLeft className="w-3.5 h-3.5" /> Sebelumnya
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    disabled={activeRowIdx >= totalRows - 1}
-                                    onClick={() => handleMatrixStepClick(q.id, Math.min(totalRows - 1, activeRowIdx + 1))}
-                                    className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 disabled:opacity-35 disabled:pointer-events-none py-1.5 px-2.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
-                                  >
-                                    Selanjutnya <ArrowRight className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </>
+                        )}
+                      </div>
                     );
                   })()}
                 </div>

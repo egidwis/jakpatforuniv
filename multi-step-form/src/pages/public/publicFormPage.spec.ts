@@ -3,6 +3,7 @@ import {
   isOtherOption,
   getOtherDetail,
   isRedundantMultiSelectHint,
+  resolveScaleConfig,
   getNextUnansweredMatrixRowIndex
 } from './PublicFormPage';
 
@@ -32,6 +33,26 @@ describe('PublicFormPage Logic Helpers', () => {
     expect(isRedundantMultiSelectHint('Pilih maksimal 3 jawaban yang paling sesuai')).toBe(false);
     expect(isRedundantMultiSelectHint('Berdasarkan pengalaman Anda dalam 1 bulan terakhir')).toBe(false);
     expect(isRedundantMultiSelectHint(undefined)).toBe(false);
+  });
+
+  it('simplifies linear scale descriptions into clean 1 and maxScale endpoint labels', () => {
+    const fromLegend = resolveScaleConfig({
+      description: '1. Tidak Setuju (STS), 2. Tidak Setuju (TS), 3. Netral (N), 4. Setuju (S), 5. Sangat Setuju (SS).',
+      maxScale: 5
+    });
+    expect(fromLegend.hideDescription).toBe(true);
+    expect(fromLegend.minLabel).toBe('1. Sangat Tidak Setuju');
+    expect(fromLegend.maxLabel).toBe('5. Sangat Setuju');
+
+    const withCustomEndpoints = resolveScaleConfig({
+      description: 'Berdasarkan pengalaman Anda bulan ini',
+      maxScale: 5,
+      minScaleLabel: 'Sangat Tidak Puas',
+      maxScaleLabel: 'Sangat Puas'
+    });
+    expect(withCustomEndpoints.hideDescription).toBe(false);
+    expect(withCustomEndpoints.minLabel).toBe('1. Sangat Tidak Puas');
+    expect(withCustomEndpoints.maxLabel).toBe('5. Sangat Puas');
   });
 
   it('finds the next unanswered matrix row index for Focus Card Stepper auto-advance', () => {

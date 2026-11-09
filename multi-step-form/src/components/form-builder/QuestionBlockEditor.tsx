@@ -693,32 +693,32 @@ export const QuestionBlockEditor: React.FC<QuestionBlockEditorProps> = ({
                 onChange={(e) => onChange({ ...block, maxScale: Number(e.target.value) })}
                 className="text-xs bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md py-1 px-1.5 font-medium text-gray-800 dark:text-gray-200"
               >
-                <option value={5}>1 to 5 Stars</option>
-                <option value={10}>1 to 10 Scale</option>
+                <option value={5}>Skala 1 sampai 5</option>
+                <option value={10}>Skala 1 sampai 10</option>
               </select>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
               <div>
                 <label className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider block mb-1">
-                  Label Nilai Terendah (opsional)
+                  Label Nilai 1 (Terendah)
                 </label>
                 <input
                   type="text"
                   value={block.minScaleLabel || ''}
                   onChange={(e) => onChange({ ...block, minScaleLabel: e.target.value })}
-                  placeholder="Contoh: Sangat Tidak Puas"
+                  placeholder="Default: Sangat Tidak Setuju"
                   className="w-full text-xs bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-md px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-800 dark:text-gray-200"
                 />
               </div>
               <div>
                 <label className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider block mb-1">
-                  Label Nilai Tertinggi (opsional)
+                  Label Nilai {block.maxScale || 5} (Tertinggi)
                 </label>
                 <input
                   type="text"
                   value={block.maxScaleLabel || ''}
                   onChange={(e) => onChange({ ...block, maxScaleLabel: e.target.value })}
-                  placeholder="Contoh: Sangat Puas"
+                  placeholder="Default: Sangat Setuju"
                   className="w-full text-xs bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-md px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-800 dark:text-gray-200"
                 />
               </div>
