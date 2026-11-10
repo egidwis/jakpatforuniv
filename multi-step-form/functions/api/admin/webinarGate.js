@@ -109,13 +109,15 @@ const TAKES_PATCH = new Set(['create', 'save', 'publish']);
 export const EDITABLE_COLUMNS = [
   'title', 'summary', 'poster_url', 'description_blocks', 'speakers', 'starts_at', 'duration_minutes',
   'sales_mode', 'sales_open_at', 'sales_close_at', 'price', 'quota', 'meeting_url', 'is_listed',
-  // Fase 5B: "Halaman ini menjual". Aturan ubah jenis di offerSwitchError.
+  // Jenis halaman: hanya diisi saat dibuat, tidak bisa diubah (kindChangeError, Iterasi 7).
   'offer_kind',
+  // Video kelas: webinar asal rekamannya (sql/137). Aturannya di sourceError.
+  'source_event_id',
 ];
 
 /** Urutan isian di form; juga urutan lompatan ke isian pertama yang kurang. */
 export const FIELD_ORDER = [
-  'offer_kind', 'title', 'summary', 'poster_url', 'description_blocks', 'speakers',
+  'title', 'summary', 'poster_url', 'description_blocks', 'speakers', 'source_event_id',
   'sales_open_at', 'sales_close_at', 'starts_at', 'duration_minutes', 'price', 'quota', 'meeting_url',
 ];
 
@@ -297,6 +299,11 @@ export function normalizePatch(patch = {}) {
         if (!OFFER_KINDS.includes(raw)) return { error: 'Jenis halaman tidak dikenali', field: key };
         r = { value: raw };
         break;
+      case 'source_event_id':
+        if (raw === null || raw === '') { r = { value: null }; break; }
+        if (typeof raw !== 'string' || !UUID_RE.test(raw)) return { error: 'Webinar asal tidak dikenali', field: key };
+        r = { value: raw.toLowerCase() };
+        break;
       default:
         return { error: `Kolom tidak diizinkan: ${key}`, field: key };
     }
@@ -304,6 +311,59 @@ export function normalizePatch(patch = {}) {
     out[key] = r.value;
   }
   return { patch: out };
+}
+
+const LIVE_ONLY_COLUMNS = ['starts_at', 'duration_minutes', 'quota', 'meeting_url'];
+
+/**
+ * Webinar dan Video kelas adalah dua produk terpisah (Iterasi 7): Video kelas tidak
+ * pernah menyimpan isian sesi live, dan webinar tidak pernah punya webinar asal.
+ */
+export function applyKindInvariant(row) {
+  if (row.offer_kind === 'replay') {
+    return { ...row, ...Object.fromEntries(LIVE_ONLY_COLUMNS.map((k) => [k, null])) };
+  }
+  return 'source_event_id' in row ? { ...row, source_event_id: null } : row;
+}
+
+/** Jenis ditentukan saat dibuat. Draft yang salah jenis dihapus lalu dibuat ulang. */
+export function kindChangeError(current, patch) {
+  if (!('offer_kind' in patch) || patch.offer_kind === (current.offer_kind ?? 'live')) return null;
+  return {
+    code: 'offer_fixed',
+    field: 'offer_kind',
+    error: 'Jenis halaman tidak bisa diubah. Hapus draft ini lalu buat ulang dengan tombol yang sesuai.',
+  };
+}
+
+/**
+ * Webinar asal Video kelas. Status sumber diperiksa saat penghubung dipilih/diganti
+ * (`changed`); sumber yang batal sesudah dihubungkan tidak menggagalkan simpan isian
+ * lain. Video kelas bersumber baru boleh dijual sesudah rekaman di webinar asalnya
+ * terbit, supaya pemegang tiket tidak tertinggal oleh pembeli Video kelas.
+ *
+ * @param {object} row baris Video kelas sesudah patch
+ * @param {object|null} source baris webinar asal (id, offer_kind, status, recording_published_at)
+ * @returns {{ field: string, code: string, error: string } | null}
+ */
+export function sourceError(row, source, { changed = false, publishing = false } = {}) {
+  if (!row.source_event_id) return null;
+  const invalid = (error) => ({ field: 'source_event_id', code: 'source_invalid', error });
+  if (changed) {
+    if (!source) return invalid('Webinar asal tidak ditemukan');
+    if (source.id === row.id) return invalid('Webinar asal tidak bisa halaman ini sendiri');
+    if ((source.offer_kind ?? 'live') !== 'live') return invalid('Webinar asal harus webinar, bukan Video kelas');
+    if (source.status !== 'published') return invalid('Webinar asal harus sudah terbit dan tidak dibatalkan');
+  }
+  const selling = row.sales_mode === 'open' && (publishing || row.status === 'published');
+  if (selling && !source?.recording_published_at) {
+    return {
+      field: 'source_event_id',
+      code: 'source_recording_unpublished',
+      error: 'Terbitkan dulu rekaman di webinar asalnya, supaya pemegang tiketnya tidak tertinggal',
+    };
+  }
+  return null;
 }
 
 /** Tanggal buka hanya bermakna untuk sales_mode 'open'; selain itu dikosongkan. */
@@ -411,36 +471,6 @@ export function clearedScheduleError(current, next, offer) {
   if (current.starts_at && !next.starts_at) return { field: 'starts_at', error: 'Jadwal tidak bisa dikosongkan karena sudah ada tiket' };
   if (current.duration_minutes && !next.duration_minutes) {
     return { field: 'duration_minutes', error: 'Durasi tidak bisa dikosongkan karena sudah ada tiket' };
-  }
-  return null;
-}
-
-/** Saat acara selesai menurut jadwal (mulai + durasi), dalam milidetik; null bila belum berjadwal. */
-export function eventEndsAt(row) {
-  const start = ms(row?.starts_at);
-  return start === null ? null : start + (Number(row?.duration_minutes) || 0) * 60_000;
-}
-
-/**
- * Aturan "Halaman ini menjual" (Fase 5B). Draft bebas dua arah. Halaman terbit hanya
- * Tiket → Video kelas, dan bila sudah ada tiket terjual/ditahan baru sesudah acara
- * selesai: halaman Video kelas menghentikan pengingat H-1 & email jadwal (sql/136b
- * hanya untuk offer_kind='live'), jadi pemegang tiket tidak boleh kehilangannya.
- *
- * @returns {{ code: string, error: string, ends_at?: string|null } | null}
- */
-export function offerSwitchError(current, next, now = Date.now()) {
-  const from = current.offer_kind ?? 'live';
-  const to = next.offer_kind ?? 'live';
-  if (from === to || current.status === 'draft') return null;
-  if (from === 'replay') return { code: 'offer_locked', error: 'Video kelas yang sudah terbit tidak bisa kembali menjadi tiket' };
-  const ends = eventEndsAt(current);
-  if (seatsTaken(current.webinar_offer_state) > 0 && (ends === null || now < ends)) {
-    return {
-      code: 'event_not_over',
-      error: 'Video kelas bisa dipilih sesudah acara selesai',
-      ends_at: ends === null ? null : new Date(ends).toISOString(),
-    };
   }
   return null;
 }

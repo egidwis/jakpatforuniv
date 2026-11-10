@@ -26,10 +26,10 @@ export interface WebinarEventView {
     seats_label: string | null;
     benefits: string[];
     recording_minutes?: number | null;
-    /** Video kelas hasil ubah jenis: "Direkam Sel, 17 Nov 2026". */
-    recorded_label?: string | null;
     /** Video kelas: "Video kelas · 88 menit". */
     kind_label?: string | null;
+    /** Video kelas: webinar asal rekamannya (Iterasi 7, sql/137). */
+    source_event_id?: string | null;
 }
 
 export interface WebinarListing {
@@ -168,6 +168,8 @@ export interface WebinarCheckoutResult {
     result: 'created' | 'reused' | 'already_owned';
     orderId: string;
     paymentUrl?: string;
+    /** Iterasi 7: sudah punya lewat tiket webinar asal; orderId = tiket itu. */
+    via?: 'source';
 }
 
 /** Kontak khusus order; null = sama dengan data akun (server membaca profil). */
@@ -256,6 +258,24 @@ export function activeTickets(orders: WebinarOrderView[]): WebinarOrderView[] {
     return orders.filter((o) => o.status === 'paid' && o.kind === 'live' && !o.event_is_past && !o.event_cancelled);
 }
 
+/**
+ * Sudah punya acara/Video kelas ini? Pembelian lunas acara itu sendiri, atau (Iterasi 7)
+ * tiket live lunas di webinar asal Video kelas: rekamannya sudah ada di tiket itu.
+ * Webinar asal yang batal tidak dihitung, karena rekamannya tidak tersedia. Server
+ * (checkout.js) tetap penentu; ini hanya supaya tombol beli tidak pernah tampil.
+ */
+export function ownedFor(
+    event: Pick<WebinarEventView, 'id' | 'source_event_id'>,
+    orders: WebinarOrderView[],
+): { order: WebinarOrderView; viaSource: boolean } | null {
+    const own = orders.find((o) => o.status === 'paid' && o.event.id === event.id);
+    if (own) return { order: own, viaSource: false };
+    if (!event.source_event_id) return null;
+    const ticket = orders.find((o) => o.status === 'paid' && o.kind === 'live' && !o.event_cancelled
+        && o.event.id === event.source_event_id);
+    return ticket ? { order: ticket, viaSource: true } : null;
+}
+
 export function checkoutErrorText(err: unknown): string {
     if (err instanceof WebinarApiError) {
         if (err.code === 'preparing') return 'Tagihan sedang disiapkan. Coba lagi beberapa detik.';
@@ -263,7 +283,8 @@ export function checkoutErrorText(err: unknown): string {
         if (err.code === 'voucher_invalid' || err.code === 'contact_invalid') return err.message;
         if (err.code === 'not_for_sale') {
             if (err.state === 'seats_held') return 'Kursi sedang ditahan pembeli lain, coba lagi beberapa menit.';
-            if (err.state === 'sold_out') return 'Kursi live habis. Rekaman bisa dibeli setelah acara.';
+            // Tidak setiap webinar punya Video kelas, jadi rekaman tidak dijanjikan (Iterasi 7).
+            if (err.state === 'sold_out') return 'Kursi live habis.';
             if (err.state === 'coming_soon') return 'Penjualan belum dibuka.';
             return 'Penjualan ditutup.';
         }

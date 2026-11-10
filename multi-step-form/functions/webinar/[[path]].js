@@ -132,7 +132,26 @@ ${upcoming.length ? `<section><h2>Webinar berikutnya</h2><div class="grid">${upc
 ${videos.length ? `<section><h2>Video kelas</h2><div class="grid">${videos.map(tile).join('')}</div></section>` : ''}`;
 }
 
-function renderDetail(event, { preview }) {
+/**
+ * Penghubung Video kelas ↔ webinar (Iterasi 7, sql/137). Masing-masing satu kueri
+ * kecil, hanya bila perlu:
+ * - halaman Video kelas bersumber: judul webinar asalnya (bila masih terbit), untuk
+ *   catatan pemegang tiket;
+ * - halaman webinar yang sudah mulai: Video kelas terbit yang menunjuk ke acara itu.
+ */
+async function loadLinks(sb, event, now = Date.now()) {
+  if (event.offer_kind === 'replay' && event.source_event_id) {
+    const [source] = (await rest(sb, `webinar_events?id=eq.${event.source_event_id}&status=eq.published&select=title`, {}, 'SELECT webinar_events (webinar asal)')) || [];
+    return { sourceTitle: source?.title ?? null };
+  }
+  if (event.offer_kind === 'live' && event.status === 'published' && event.starts_at && now >= Date.parse(event.starts_at)) {
+    const [video] = (await rest(sb, `webinar_events?source_event_id=eq.${event.id}&status=eq.published&select=slug`, {}, 'SELECT webinar_events (Video kelas)')) || [];
+    return { videoSlug: video?.slug ?? null };
+  }
+  return {};
+}
+
+function renderDetail(event, { preview, sourceTitle = null, videoSlug = null }) {
   const view = buildEventView(event);
   const description = view.summary || `${view.title} — webinar Jakpat for Universities`;
   const canBuy = view.can_buy && !preview;
@@ -151,20 +170,24 @@ ${/^https:\/\//i.test(s?.photo_url || '') ? `<img src="${e(s.photo_url)}" alt=""
   // Rancangan A2 (3 Nov): di HP info acara ada di bawah judul dan tombol di bar bawah;
   // di desktop info acara + tombol pindah ke kartu kanan yang ikut di-scroll.
   const [dateLine, timeLine] = (view.schedule_label || '').split(' · ');
-  // C19 (Fase 5B): Video kelas menyebut durasi rekaman dan tanggal rekamnya, bukan jam live.
+  // C19 (Fase 5B): Video kelas menyebut durasi rekaman, bukan jam live.
   const replayFacts = view.kind === 'replay'
     ? `<li>🎬 Video kelas${view.recording_minutes ? ` · ▶ ${Number(view.recording_minutes)} menit` : ''}</li>
-${view.recorded_label ? `<li>📅 ${e(view.recorded_label)}</li>` : ''}<li>💻 Tonton kapan saja di menu Webinar</li>`
+<li>💻 Tonton kapan saja di menu Webinar</li>`
     : '';
   const facts = `<ul class="meta">
 ${dateLine ? `<li>📅 ${e(dateLine)}</li>` : ''}${timeLine ? `<li>🕖 ${e(timeLine)}</li>` : ''}
 ${view.kind === 'live' ? '<li>💻 Online via Zoom</li>' : ''}${replayFacts}
 ${view.seats_label ? `<li>🎟 ${e(view.seats_label)}</li>` : ''}</ul>`;
-  // Tiket: rekaman sudah termasuk. Video kelas hasil ubah jenis: pemegang tiket tidak perlu membeli lagi.
+  // Tiket: rekaman sudah termasuk; sesudah acara mulai, tunjuk Video kelasnya bila ada.
+  // Video kelas dari webinar: pemegang tiket webinar itu tidak perlu membeli lagi.
+  const liveNote = videoSlug
+    ? `<p class="note">Rekaman acara ini tersedia sebagai Video kelas. <a href="/webinar/${e(videoSlug)}" style="font-weight:600">Lihat Video kelas →</a></p>`
+    : '<p class="note">Tidak bisa hadir? Tiket sudah termasuk rekaman.</p>';
   const replayNote = view.kind === 'live'
-    ? '<p class="note">Tidak bisa hadir? Tiket sudah termasuk rekaman.</p>'
-    : (view.recorded_label
-      ? '<p class="note">Sudah punya tiket acara ini? Rekamannya sudah ada di menu Webinar, tidak perlu membeli lagi.</p>'
+    ? liveNote
+    : (sourceTitle
+      ? `<p class="note">Sudah ikut webinar “${e(sourceTitle)}”? Rekamannya sudah ada di tiketmu di menu Webinar, tidak perlu membeli lagi.</p>`
       : '');
   const prose = renderBlocks(event.description_blocks);
 
@@ -311,7 +334,7 @@ export async function onRequest({ request, env, params }) {
     if (event.status === 'draft' && !preview) return notFound();
     // Masa uji: hanya acara uji (atau link pratinjau) yang punya halaman.
     if (webinarPreviewOnly(env, request) && !event.is_test && !preview) return notFound();
-    return html(renderDetail(event, { preview }));
+    return html(renderDetail(event, { preview, ...(await loadLinks(sb, event)) }));
   } catch (err) {
     console.error('[webinar page]', err);
     return html(page({

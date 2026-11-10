@@ -77,6 +77,29 @@ export function summarizeDokuError(doku) {
   return { status: doku.status ?? null, message: String(typeof message === 'string' ? message : JSON.stringify(message)).slice(0, 300) };
 }
 
+/**
+ * Video kelas yang punya webinar asal (sql/137): pemegang tiket live lunas acara asal
+ * sudah punya rekamannya lewat tiket itu, jadi tidak membeli dua kali (Iterasi 7,
+ * penjaga 3). Dicek di sini, bukan di webinar_reserve_seat, supaya badan fungsi
+ * produksi tidak perlu disalin. Webinar asal yang dibatalkan tidak dihitung punya:
+ * rekamannya tidak tersedia untuk pemegang tiket.
+ *
+ * @returns {Promise<string|null>} id order tiket webinar asal, atau null
+ */
+export async function ownedViaSource(sb, slug, userId) {
+  const [event] = (await rest(sb, `webinar_events?slug=eq.${slug}&select=offer_kind,source_event_id`, {}, 'SELECT webinar_events (webinar asal)')) || [];
+  if (event?.offer_kind !== 'replay' || !event.source_event_id) return null;
+  const [source] = (await rest(sb, `webinar_events?id=eq.${event.source_event_id}&status=eq.published&select=id`, {}, 'SELECT webinar_events (status webinar asal)')) || [];
+  if (!source) return null;
+  const [ticket] = (await rest(
+    sb,
+    `webinar_orders?event_id=eq.${source.id}&auth_user_id=eq.${userId}&status=eq.paid&kind=eq.live&select=id&limit=1`,
+    {},
+    'SELECT webinar_orders (tiket webinar asal)'
+  )) || [];
+  return ticket?.id ?? null;
+}
+
 export async function onRequest({ request, env }) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (request.method !== 'POST') return json(405, { error: 'Method Not Allowed' });
@@ -108,6 +131,10 @@ export async function onRequest({ request, env }) {
   try { sb = resolveService(env); } catch (err) { return json(500, { error: err.message }); }
 
   try {
+    // Sebelum profil: pemegang tiket asal cukup dibawa ke tiketnya.
+    const ownedTicket = await ownedViaSource(sb, body.slug, user.id);
+    if (ownedTicket) return json(200, { result: 'already_owned', orderId: ownedTicket, via: 'source' });
+
     // Biodata dari server, supaya snapshot order tidak bisa dipalsukan dari browser.
     const [profile] = await rest(
       sb,

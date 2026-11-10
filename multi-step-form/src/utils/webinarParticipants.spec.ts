@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     alarmLabel, filterParticipants, groupCounts, participantCsv, participantGroup, failedEmails, noticeStatus,
-    participantStats, purchaseEmailLabel, purchaseEmailSummary, reminderStatus, ticketEmailState, unpaidLabel, emailHistoryFor,
+    participantStats, summaryTiles, sourceTicketNote, purchaseEmailLabel, purchaseEmailSummary, reminderStatus, ticketEmailState, unpaidLabel, emailHistoryFor,
     type AdminWebinarOrder,
 } from './webinarParticipants';
 
@@ -226,6 +226,24 @@ describe('Video kelas di halaman Peserta (Fase 5B: satu daftar + label)', () => 
     it('riwayat email pembeli video diawali "Bukti beli"', () => {
         expect(emailHistoryFor(VIDEO)[0]).toMatchObject({ label: 'Bukti beli', status: 'sent' });
         expect(emailHistoryFor(VIDEO_FAILED)[0]).toMatchObject({ label: 'Bukti beli', status: 'failed', error: 'resend HTTP 422' });
+    });
+
+    it('ringkasan per jenis produk (Iterasi 7): webinar seperti sebelum 5B, Video kelas tanpa kuota & kursi ditahan', () => {
+        const stats = participantStats([PAID, PAID_NO_CONSENT], { state: 'on_sale', sold: 2, held: 1 });
+        expect(summaryTiles('live', 25, stats)).toEqual([
+            { label: 'Lunas', value: '2 / 25' }, { label: 'Ditahan', value: '1' }, { label: 'Izin kontak', value: '1' },
+        ]);
+        expect(summaryTiles('live', null, stats)[0]).toEqual({ label: 'Lunas', value: '2' });
+        const videoStats = participantStats([VIDEO, VIDEO_FAILED], null);
+        expect(summaryTiles('replay', null, videoStats)).toEqual([
+            { label: 'Terjual', value: '2' }, { label: 'Izin kontak', value: '1' },
+        ]);
+    });
+
+    it('penjaga 5: pembeli Video kelas yang juga memegang tiket webinar asal ditandai', () => {
+        expect(sourceTicketNote({ ...VIDEO, holds_source_ticket: true })).toBe('Sudah punya lewat tiket webinar — pertimbangkan refund');
+        expect(sourceTicketNote({ ...VIDEO, holds_source_ticket: true, status: 'refunded' })).toBeNull();
+        expect(sourceTicketNote(VIDEO)).toBeNull();
     });
 
     it('CSV: kolom Jenis', () => {

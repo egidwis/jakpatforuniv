@@ -5,7 +5,7 @@ import {
   isEmptyDoc, hasDataImage, normalizeDoc, normalizeSpeakers, normalizePatch, applySalesInvariant,
   slugifyTitle, pickFreeSlug, isSlugLocked, missingForPublish, crossFieldError, quotaError,
   clearedScheduleError, scheduleChanged, RECORDING_ACTIONS, MAX_RECORDING_BYTES,
-  PUBLISH_FIELD_ORDER, offerSwitchError, eventEndsAt,
+  PUBLISH_FIELD_ORDER, kindChangeError, applyKindInvariant, sourceError,
 } from './webinarGate.js';
 
 const ID = '33333333-3333-4333-8333-333333333333';
@@ -59,12 +59,24 @@ describe('validateWebinarRequest', () => {
     expect(FIELD_ORDER.every((f) => EDITABLE_COLUMNS.includes(f))).toBe(true);
   });
 
-  it('Fase 5B: jenis halaman (offer_kind) bisa ditulis, hanya live/replay', () => {
-    expect(validateWebinarRequest({ action: 'save', id: ID, patch: { offer_kind: 'replay' } })).toBeNull();
+  it('jenis halaman (offer_kind) hanya live/replay, dan bukan isian form', () => {
+    expect(validateWebinarRequest({ action: 'create', patch: { title: 'A', offer_kind: 'replay' } })).toBeNull();
     expect(normalizePatch({ offer_kind: 'replay' })).toEqual({ patch: { offer_kind: 'replay' } });
-    expect(normalizePatch({ offer_kind: 'live' })).toEqual({ patch: { offer_kind: 'live' } });
     expect(normalizePatch({ offer_kind: 'kelas' })).toEqual({ error: 'Jenis halaman tidak dikenali', field: 'offer_kind' });
-    expect(FIELD_ORDER[0]).toBe('offer_kind');
+    expect(FIELD_ORDER).not.toContain('offer_kind');
+  });
+
+  it('Iterasi 7: source_event_id hanya UUID atau kosong', () => {
+    expect(EDITABLE_COLUMNS).toContain('source_event_id');
+    expect(FIELD_ORDER.indexOf('source_event_id')).toBe(FIELD_ORDER.indexOf('speakers') + 1);
+    expect(normalizePatch({ source_event_id: ID })).toEqual({ patch: { source_event_id: ID } });
+    expect(normalizePatch({ source_event_id: ID.toUpperCase() })).toEqual({ patch: { source_event_id: ID } });
+    expect(normalizePatch({ source_event_id: null })).toEqual({ patch: { source_event_id: null } });
+    expect(normalizePatch({ source_event_id: '' })).toEqual({ patch: { source_event_id: null } });
+    expect(normalizePatch({ source_event_id: 'uji-webinar' }))
+      .toEqual({ error: 'Webinar asal tidak dikenali', field: 'source_event_id' });
+    expect(normalizePatch({ source_event_id: 7 }))
+      .toEqual({ error: 'Webinar asal tidak dikenali', field: 'source_event_id' });
   });
 
   it('Fase 5B: urutan isian kurang diakhiri panel Rekaman (bukan kolom patch)', () => {
@@ -280,48 +292,77 @@ describe('kuota dan jadwal yang sudah bertiket', () => {
   });
 });
 
-describe('ubah jenis halaman (Fase 5B)', () => {
-  const NOW = Date.parse('2026-11-17T02:00:00Z'); // 09.00 WIB
-  const live = {
-    status: 'published', offer_kind: 'live', starts_at: '2026-11-17T01:36:50Z', duration_minutes: 90,
-    webinar_offer_state: { sold: 12, held: 0 },
-  };
-  const toReplay = (row) => ({ ...row, offer_kind: 'replay' });
+describe('jenis tetap sejak dibuat (Iterasi 7)', () => {
+  const live = { status: 'draft', offer_kind: 'live' };
 
-  it('acara selesai = mulai + durasi', () => {
-    expect(eventEndsAt(live)).toBe(Date.parse('2026-11-17T03:06:50Z'));
-    expect(eventEndsAt({ starts_at: null })).toBeNull();
+  it('patch tanpa offer_kind, atau jenis yang sama: boleh', () => {
+    expect(kindChangeError(live, { title: 'B' })).toBeNull();
+    expect(kindChangeError(live, { offer_kind: 'live' })).toBeNull();
+    expect(kindChangeError({ status: 'draft' }, { offer_kind: 'live' })).toBeNull();
   });
 
-  it('jenis sama atau draft: bebas', () => {
-    expect(offerSwitchError(live, live, NOW)).toBeNull();
-    const draft = { ...live, status: 'draft', webinar_offer_state: { sold: 0, held: 0 } };
-    expect(offerSwitchError(draft, toReplay(draft), NOW)).toBeNull();
-    expect(offerSwitchError(toReplay(draft), draft, NOW)).toBeNull();
+  it('jenis berubah ditolak, termasuk draft', () => {
+    const refusal = { code: 'offer_fixed', field: 'offer_kind', error: 'Jenis halaman tidak bisa diubah. Hapus draft ini lalu buat ulang dengan tombol yang sesuai.' };
+    expect(kindChangeError(live, { offer_kind: 'replay' })).toEqual(refusal);
+    expect(kindChangeError({ ...live, status: 'published' }, { offer_kind: 'replay' })?.code).toBe('offer_fixed');
+    expect(kindChangeError({ status: 'published', offer_kind: 'replay' }, { offer_kind: 'live' })?.code).toBe('offer_fixed');
   });
 
-  it('acara terbit bertiket belum selesai: ditolak, dengan jam selesainya', () => {
-    expect(offerSwitchError(live, toReplay(live), NOW)).toEqual({
-      code: 'event_not_over', error: 'Video kelas bisa dipilih sesudah acara selesai', ends_at: '2026-11-17T03:06:50.000Z',
+  it('Video kelas tidak pernah menyimpan isian live', () => {
+    const row = {
+      offer_kind: 'replay', title: 'A', starts_at: '2026-11-17T01:00:00Z', duration_minutes: 90, quota: 10,
+      meeting_url: 'https://zoom.us/j/1', price: 1000,
+    };
+    expect(applyKindInvariant(row)).toEqual({
+      offer_kind: 'replay', title: 'A', starts_at: null, duration_minutes: null, quota: null, meeting_url: null, price: 1000,
     });
   });
 
-  it('kursi yang sedang ditahan juga menahan ubah jenis', () => {
-    const held = { ...live, webinar_offer_state: { sold: 0, held: 1 } };
-    expect(offerSwitchError(held, toReplay(held), NOW)?.code).toBe('event_not_over');
+  it('webinar tidak pernah punya webinar asal', () => {
+    const row = { offer_kind: 'live', starts_at: '2026-11-17T01:00:00Z', source_event_id: ID };
+    expect(applyKindInvariant(row)).toEqual({ offer_kind: 'live', starts_at: '2026-11-17T01:00:00Z', source_event_id: null });
+    expect(applyKindInvariant({ starts_at: null })).toEqual({ starts_at: null });
+  });
+});
+
+describe('webinar asal Video kelas (Iterasi 7)', () => {
+  const SRC = '44444444-4444-4444-8444-444444444444';
+  const video = { id: ID, offer_kind: 'replay', status: 'draft', sales_mode: 'coming_soon', source_event_id: SRC };
+  const source = { id: SRC, offer_kind: 'live', status: 'published', recording_published_at: null };
+
+  it('tanpa webinar asal: tidak ada yang diperiksa', () => {
+    expect(sourceError({ ...video, source_event_id: null }, null, { changed: true })).toBeNull();
   });
 
-  it('sesudah acara selesai, atau tanpa tiket sama sekali: boleh', () => {
-    expect(offerSwitchError(live, toReplay(live), Date.parse('2026-11-17T03:06:51Z'))).toBeNull();
-    const empty = { ...live, webinar_offer_state: { sold: 0, held: 0 } };
-    expect(offerSwitchError(empty, toReplay(empty), NOW)).toBeNull();
+  it('webinar asal yang sah: webinar terbit, bukan dirinya sendiri', () => {
+    expect(sourceError(video, source, { changed: true })).toBeNull();
   });
 
-  it('Video kelas yang sudah terbit tidak bisa kembali menjadi tiket', () => {
-    const replay = { ...live, offer_kind: 'replay', webinar_offer_state: { sold: 0, held: 0 } };
-    expect(offerSwitchError(replay, { ...replay, offer_kind: 'live' }, NOW)).toEqual({
-      code: 'offer_locked', error: 'Video kelas yang sudah terbit tidak bisa kembali menjadi tiket',
+  it.each([
+    ['tidak ada', null, 'Webinar asal tidak ditemukan'],
+    ['dirinya sendiri', { ...source, id: ID }, 'Webinar asal tidak bisa halaman ini sendiri'],
+    ['Video kelas lain', { ...source, offer_kind: 'replay' }, 'Webinar asal harus webinar, bukan Video kelas'],
+    ['draft', { ...source, status: 'draft' }, 'Webinar asal harus sudah terbit dan tidak dibatalkan'],
+    ['batal', { ...source, status: 'cancelled' }, 'Webinar asal harus sudah terbit dan tidak dibatalkan'],
+  ])('webinar asal %s ditolak saat dipilih', (_, src, error) => {
+    expect(sourceError(video, src, { changed: true })).toEqual({ field: 'source_event_id', code: 'source_invalid', error });
+  });
+
+  it('acara asal yang batal SESUDAH dihubungkan tidak menggagalkan simpan isian lain', () => {
+    expect(sourceError(video, { ...source, status: 'cancelled' }, { changed: false })).toBeNull();
+  });
+
+  it('dijual (terbit + dibuka) mensyaratkan rekaman webinar asal sudah terbit', () => {
+    const selling = { ...video, status: 'published', sales_mode: 'open' };
+    expect(sourceError(selling, source, { changed: false })).toEqual({
+      field: 'source_event_id', code: 'source_recording_unpublished',
+      error: 'Terbitkan dulu rekaman di webinar asalnya, supaya pemegang tiketnya tidak tertinggal',
     });
+    expect(sourceError(selling, { ...source, recording_published_at: '2026-11-18T02:00:00Z' }, { changed: false })).toBeNull();
+    expect(sourceError({ ...selling, sales_mode: 'coming_soon' }, source, { changed: false })).toBeNull();
+    expect(sourceError({ ...selling, status: 'draft' }, source, { changed: false, publishing: true })?.code)
+      .toBe('source_recording_unpublished');
+    expect(sourceError({ ...selling, status: 'draft' }, source, { changed: false })).toBeNull();
   });
 });
 

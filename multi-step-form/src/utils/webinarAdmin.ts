@@ -32,7 +32,7 @@ export interface WebinarOfferState {
 
 export type SalesMode = 'open' | 'coming_soon' | 'closed';
 
-/** "Halaman ini menjual": tiket webinar atau Video kelas (Fase 5B). */
+/** Jenis produk, ditentukan saat dibuat dan tidak bisa diubah (Iterasi 7). */
 export type OfferKind = 'live' | 'replay';
 
 /** Baris webinar_events seperti dikirim /api/admin/webinar. */
@@ -73,6 +73,8 @@ export interface AdminWebinarEvent {
     /** Fase 5B: order lunas per jenis (hanya di aksi `list`); offer_state.sold hanya menghitung tiket live. */
     sold_live?: number;
     sold_replay?: number;
+    /** Iterasi 7 (sql/137): Video kelas → webinar asal rekamannya. */
+    source_event_id?: string | null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -101,6 +103,8 @@ export interface WebinarForm {
     quota: string;
     meeting_url: string;
     is_listed: boolean;
+    /** Video kelas: id webinar asal, '' = tanpa. */
+    source_event_id: string;
 }
 
 export type WebinarColumns = {
@@ -119,13 +123,14 @@ export type WebinarColumns = {
     quota: number | null;
     meeting_url: string | null;
     is_listed: boolean;
+    source_event_id: string | null;
 };
 
 export type ColumnKey = keyof WebinarColumns;
 
 /** Urutan isian di form = urutan lompatan ke isian pertama yang kurang (sama dengan FIELD_ORDER server). */
 export const FIELD_ORDER: ColumnKey[] = [
-    'offer_kind', 'title', 'summary', 'poster_url', 'description_blocks', 'speakers',
+    'title', 'summary', 'poster_url', 'description_blocks', 'speakers', 'source_event_id',
     'sales_open_at', 'sales_close_at', 'starts_at', 'duration_minutes', 'price', 'quota', 'meeting_url',
 ];
 
@@ -151,6 +156,7 @@ export const FIELD_LABELS: Record<ColumnKey, string> = {
     quota: 'Kuota',
     meeting_url: 'Link Zoom/Meet',
     is_listed: 'Tampil di daftar',
+    source_event_id: 'Dari webinar',
 };
 
 /** Id elemen pembungkus isian, untuk menggulir dan memfokuskan isian yang kurang. */
@@ -261,7 +267,13 @@ export const EMPTY_FORM: WebinarForm = {
     offer_kind: 'live', title: '', summary: '', poster_url: '', description_blocks: null, speakers: [{ name: '', title: '' }],
     salesChoice: 'undecided', openDate: '', openTime: '', closeAtStart: true, closeDate: '', closeTime: '',
     startDate: '', startTime: '', duration: '', price: '', quota: '', meeting_url: '', is_listed: true,
+    source_event_id: '',
 };
+
+/** Form kosong untuk tombol [+ Webinar] / [+ Video kelas]. */
+export function emptyFormFor(kind: OfferKind): WebinarForm {
+    return { ...EMPTY_FORM, offer_kind: kind };
+}
 
 export function formFromEvent(row: AdminWebinarEvent): WebinarForm {
     const open = isoToWibParts(row.sales_open_at);
@@ -287,6 +299,7 @@ export function formFromEvent(row: AdminWebinarEvent): WebinarForm {
         quota: row.quota != null ? String(row.quota) : '',
         meeting_url: row.meeting_url ?? '',
         is_listed: row.is_listed,
+        source_event_id: row.source_event_id ?? '',
     };
 }
 
@@ -341,6 +354,8 @@ export function columnsFromForm(form: WebinarForm): FormResult {
     const quota = parseWholeNumber(form.quota);
     if (Number.isNaN(quota)) return fail('quota', 'Kuota harus angka');
 
+    // Cermin applyKindInvariant server: Video kelas tanpa isian live, webinar tanpa asal.
+    const replay = form.offer_kind === 'replay';
     return {
         columns: {
             offer_kind: form.offer_kind,
@@ -352,12 +367,13 @@ export function columnsFromForm(form: WebinarForm): FormResult {
             sales_mode: salesMode,
             sales_open_at: openAt,
             sales_close_at: closeAt,
-            starts_at: startAt,
-            duration_minutes: duration,
+            starts_at: replay ? null : startAt,
+            duration_minutes: replay ? null : duration,
             price,
-            quota,
-            meeting_url: form.meeting_url.trim() || null,
+            quota: replay ? null : quota,
+            meeting_url: replay ? null : (form.meeting_url.trim() || null),
             is_listed: form.is_listed,
+            source_event_id: replay ? (form.source_event_id || null) : null,
         },
     };
 }
@@ -407,95 +423,74 @@ export function diffColumns(row: Partial<AdminWebinarEvent> | null, columns: Web
     }
     // Server mengosongkan tanggal buka sendiri saat sales_mode bukan open.
     if (row && out.sales_open_at === null && !row.sales_open_at) delete out.sales_open_at;
-    // Ubah jenis halaman selalu membawa pilihan penjualan lengkap: server menolak ubah
-    // jenis tanpa sales_mode, dan tanggal lama tidak boleh terbawa (Fase 5B).
-    if (row && out.offer_kind !== undefined && out.offer_kind !== (row.offer_kind ?? 'live')) {
-        out.sales_mode = columns.sales_mode;
-        out.sales_open_at = columns.sales_open_at;
-        out.sales_close_at = columns.sales_close_at;
-    }
+    // Jenis ditentukan saat dibuat (Iterasi 7): baris yang sudah ada tidak pernah dikirimi jenis.
+    if (row) delete out.offer_kind;
     return out;
 }
 
-// ── Jenis halaman (Fase 5B) ───────────────────────────────────────────────
+// ── Webinar ↔ Video kelas (Iterasi 7) ───────────────────────────────────────
 
 /**
- * Isi form sesudah "Halaman ini menjual" diganti. Pilihan penjualan kembali ke
- * Belum ditentukan dan tanggal buka/tutup dikosongkan, supaya penjualan tidak
- * terbuka tanpa sengaja. Bila `clearLive` (lihat clearsLiveFields), Video kelas
- * kehilangan isian sesi live; acara yang sudah berlangsung menyimpannya (jadwalnya
- * tampil sebagai "Direkam …").
+ * Isi create "Buat Video kelas dari webinar ini": isi halaman tersalin, jadwal tidak.
+ * Poster sengaja kosong: tujuan marketing Video kelas berbeda dari webinarnya, jadi
+ * admin mengunggah poster sendiri (poster wajib saat terbit).
  */
-export function switchOffer(form: WebinarForm, kind: OfferKind, { clearLive }: { clearLive: boolean }): WebinarForm {
-    const next: WebinarForm = {
-        ...form, offer_kind: kind, salesChoice: 'undecided', openDate: '', openTime: '',
-        closeAtStart: true, closeDate: '', closeTime: '',
+export function videoDraftFromWebinar(event: AdminWebinarEvent) {
+    return {
+        offer_kind: 'replay' as const,
+        title: `${event.title} (Video Kelas)`.slice(0, 200),
+        summary: event.summary,
+        poster_url: null,
+        description_blocks: event.description_blocks ?? null,
+        speakers: event.speakers ?? [],
+        price: event.price,
+        source_event_id: event.id,
+        // Video kelas dari acara uji juga uji (server menyalin is_test): jangan tampil di daftar.
+        is_listed: !event.is_test,
+        sales_mode: 'coming_soon' as const,
     };
-    if (clearLive && kind === 'replay') {
-        Object.assign(next, { startDate: '', startTime: '', duration: '', quota: '', meeting_url: '' });
-    }
-    return next;
 }
 
-/** Saat acara selesai menurut jadwal (mulai + durasi); cermin eventEndsAt server. */
-function eventEndsAt(row: Pick<AdminWebinarEvent, 'starts_at' | 'duration_minutes'>): number | null {
-    if (!row.starts_at) return null;
-    return Date.parse(row.starts_at) + (Number(row.duration_minutes) || 0) * 60_000;
+/** Video kelas yang menunjuk ke webinar ini (paling banyak satu, sql/137). */
+export function linkedVideoOf<T extends Pick<AdminWebinarEvent, 'offer_kind' | 'source_event_id'>>(
+    event: Pick<AdminWebinarEvent, 'id'>,
+    events: T[],
+): T | null {
+    return events.find((e) => e.offer_kind === 'replay' && e.source_event_id === event.id) ?? null;
 }
 
 /**
- * Ubah ke Video kelas mengosongkan jadwal/kuota/Zoom untuk draft dan acara yang belum
- * berlangsung; cermin offerChange server (functions/api/admin/webinar.js).
+ * Pilihan "Dari webinar": webinar terbit yang belum punya Video kelas lain, terbaru
+ * dulu. Sumber yang sedang terpilih selalu ikut, walau sudah batal sesudahnya.
  */
-export function clearsLiveFields(
-    row: Pick<AdminWebinarEvent, 'status' | 'starts_at' | 'duration_minutes'> | null,
+export function sourceCandidates<T extends Pick<AdminWebinarEvent, 'id' | 'offer_kind' | 'status' | 'starts_at' | 'source_event_id'>>(
+    events: T[],
+    currentId: string | null,
+): T[] {
+    const current = events.find((e) => e.id === currentId)?.source_event_id ?? null;
+    const takenByOthers = new Set(events
+        .filter((e) => e.offer_kind === 'replay' && e.source_event_id && e.id !== currentId)
+        .map((e) => e.source_event_id));
+    return events
+        .filter((e) => e.offer_kind === 'live' && e.id !== currentId
+            && (e.id === current || (e.status === 'published' && !takenByOthers.has(e.id))))
+        .sort((a, b) => (Date.parse(b.starts_at ?? '') || 0) - (Date.parse(a.starts_at ?? '') || 0));
+}
+
+/** Batalkan hanya untuk webinar terbit yang belum mulai; cermin aturan `cancel` server. */
+export function canCancel(
+    event: Pick<AdminWebinarEvent, 'status' | 'offer_kind' | 'starts_at'>,
     now: number = Date.now(),
 ): boolean {
-    if (!row || row.status === 'draft') return true;
-    const ends = eventEndsAt(row);
-    return ends === null || now < ends;
-}
-
-function endsLabel(ms: number): string {
-    const d = new Date(ms);
-    const date = d.toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', weekday: 'short', day: 'numeric', month: 'short' });
-    const time = d.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' });
-    return `${date} · ${time} WIB`;
-}
-
-/**
- * Pilihan jenis yang terkunci, sama dengan offerSwitchError server: draft bebas;
- * Video kelas terbit tidak kembali menjadi tiket; tiket terbit yang sudah terjual
- * atau ditahan baru bisa menjadi Video kelas sesudah acara selesai.
- */
-export function offerLock(
-    row: Pick<AdminWebinarEvent, 'status' | 'offer_kind' | 'starts_at' | 'duration_minutes' | 'webinar_offer_state'> | null,
-    now: number = Date.now(),
-): { locked: OfferKind; reason: string } | null {
-    if (!row || row.status === 'draft') return null;
-    if (row.offer_kind === 'replay') {
-        return { locked: 'live', reason: 'Video kelas yang sudah terbit tidak bisa kembali menjadi tiket.' };
-    }
-    const { sold, held } = seatsSummary(row.webinar_offer_state);
-    const ends = eventEndsAt(row);
-    if (sold + held === 0 || (ends !== null && now >= ends)) return null;
-    const taken = sold ? `${sold} tiket terjual` : `${held} kursi sedang ditahan`;
-    return {
-        locked: 'replay',
-        reason: ends === null
-            ? `Video kelas bisa dipilih sesudah acara selesai (${taken}).`
-            : `Video kelas bisa dipilih sesudah acara selesai: ${endsLabel(ends)} (${taken}).`,
-    };
+    if (event.status !== 'published' || event.offer_kind === 'replay') return false;
+    return !event.starts_at || now < Date.parse(event.starts_at);
 }
 
 /** "Terjual …" di kartu daftar admin (C18). */
 export function soldLabel(
     event: Pick<AdminWebinarEvent, 'offer_kind' | 'quota' | 'webinar_offer_state' | 'sold_live' | 'sold_replay'>,
 ): string {
-    if (event.offer_kind === 'replay') {
-        const live = Number(event.sold_live) || 0;
-        return `Terjual ${Number(event.sold_replay) || 0} video${live ? ` · ${live} tiket live` : ''}`;
-    }
+    if (event.offer_kind === 'replay') return `Terjual ${Number(event.sold_replay) || 0} video`;
     const seats = seatsSummary(event.webinar_offer_state);
     return `Terjual ${seats.sold} / ${event.quota}${seats.held ? ` · ditahan ${seats.held}` : ''}`;
 }

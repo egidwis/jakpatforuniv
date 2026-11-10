@@ -20,14 +20,14 @@ import { cancelDokuOrder } from '../doku/_doku-cancel.js';
 import {
   adminEmails, validateWebinarRequest, normalizePatch, applySalesInvariant, slugifyTitle, pickFreeSlug,
   isSlugLocked, missingForPublish, crossFieldError, quotaError, clearedScheduleError, scheduleChanged,
-  offerSwitchError, eventEndsAt,
+  kindChangeError, applyKindInvariant, sourceError,
 } from './webinarGate.js';
 import { DbError, Refusal, refuse, db, dbAll, decorate, loadOrRefuse, writeEvent } from './_webinarDb.js';
 import {
   participants, participant, resendTicket, checkOrder, refundOrder, LOCAL_BLOCKED_ACTIONS, buyers,
 } from './_webinarOps.js';
 import {
-  uploadStart, partUrls, uploadComplete, uploadAbort, preview, saveMaterials, publishRecording,
+  uploadStart, partUrls, uploadComplete, uploadAbort, preview, saveMaterials, publishRecording, purgeEventFiles,
 } from './_webinarRecording.js';
 import { StorageError } from '../webinar/_recording.js';
 
@@ -39,6 +39,8 @@ const LIST_SELECT = [
   'meeting_url', 'webinar_offer_state',
   // Fase 5A: kunci R2 hanya untuk admin; pembeli tidak pernah menerimanya.
   'recording_object_key', 'recording_minutes', 'recording_published_at', 'materials_path',
+  // Iterasi 7: Video kelas → webinar asal (sql/137).
+  'source_event_id',
 ].join(',');
 
 const LOCAL_TEST = 'Dimatikan di uji lokal karena memakai database produksi dan bisa mengirim email ke peserta sungguhan. Uji di produksi.';
@@ -55,10 +57,16 @@ async function withSlugRetry(attempt) {
   try {
     return await attempt();
   } catch (err) {
-    if (err instanceof DbError && err.code === '23505') return attempt();
+    if (err instanceof DbError && err.code === '23505' && !isSourceConflict(err)) return attempt();
     throw err;
   }
 }
+
+/** 23505 dari index satu-Video-kelas-per-webinar (sql/137), bukan dari slug. */
+const isSourceConflict = (err) => err instanceof DbError && err.code === '23505'
+  && String(err.message).includes('webinar_events_source_unique');
+
+const SOURCE_TAKEN = 'Webinar ini sudah punya Video kelas. Satu webinar paling banyak satu Video kelas.';
 
 function normalized(body) {
   const result = normalizePatch(body.patch ?? {});
@@ -66,40 +74,50 @@ function normalized(body) {
   return result.patch;
 }
 
+/** Jenis halaman ditentukan saat dibuat (Iterasi 7): webinar dan Video kelas produk terpisah. */
+function refuseKindChange(current, patch) {
+  const kind = kindChangeError(current, patch);
+  if (kind) {
+    const { code, field, error } = kind;
+    throw refuse(409, error, { code, field });
+  }
+}
+
+/** Baris sesudah patch, dengan kedua invarian (penjualan + jenis) diterapkan. */
+const nextRow = (current, patch) => applyKindInvariant(applySalesInvariant({ ...current, ...patch }));
+
 /**
- * "Halaman ini menjual" berubah (Fase 5B). Aturan arah & waktunya di offerSwitchError.
- * Ubah jenis selalu memakai pilihan penjualan yang baru: sales_mode wajib ikut, dan
- * tanggal buka/tutup lama tidak pernah terbawa (tanggal tutup tiket yang sudah lewat
- * membuat Video kelas langsung tampil ditutup). Draft, atau acara yang belum
- * berlangsung (pasti tanpa tiket, lihat offerSwitchError), kehilangan isian sesi live:
- * jadwalnya tidak boleh tampil sebagai "Direkam …" padahal belum terjadi.
- *
- * @returns {object} kolom tambahan yang wajib ikut ditulis ({} bila jenis tidak berubah)
+ * Webinar asal Video kelas (sql/137). Dibaca hanya bila Video kelas punya sumber.
+ * Status sumber diperiksa saat penghubung dipilih/diganti; syarat rekaman sumber
+ * terbit diperiksa setiap kali Video kelas dijual (penjaga 4).
  */
-function offerChange(current, patch) {
-  if (!('offer_kind' in patch) || patch.offer_kind === (current.offer_kind ?? 'live')) return {};
-  const switchError = offerSwitchError(current, { ...current, ...patch });
-  if (switchError) {
-    const { code, error, ...extra } = switchError;
-    throw refuse(409, error, { code, field: 'offer_kind', ...extra });
+async function checkSource(sb, current, next, patch, { publishing = false } = {}) {
+  if ((next.offer_kind ?? 'live') !== 'replay') {
+    if (patch.source_event_id) throw refuse(400, 'Hanya Video kelas yang punya webinar asal', { field: 'source_event_id' });
+    return null;
   }
-  if (!('sales_mode' in patch)) {
-    throw refuse(400, 'Pilih lagi kapan penjualan dibuka', { code: 'sales_choice_required', field: 'sales_open_at' });
+  if (!next.source_event_id) return null;
+  const changed = next.source_event_id !== (current.source_event_id ?? null);
+  const [source] = (await db(
+    sb,
+    `webinar_events?id=eq.${next.source_event_id}&select=id,title,offer_kind,status,is_test,recording_published_at`,
+    {},
+    'SELECT webinar_events (webinar asal)'
+  )) || [];
+  const error = sourceError(next, source ?? null, { changed, publishing });
+  if (error) throw refuse(400, error.error, { code: error.code, field: error.field });
+  if (changed) {
+    const self = current.id ? `&id=neq.${current.id}` : '';
+    const taken = await db(sb, `webinar_events?source_event_id=eq.${next.source_event_id}${self}&select=id&limit=1`, {}, 'SELECT webinar_events (Video kelas lain)');
+    if (taken?.length) throw refuse(409, SOURCE_TAKEN, { code: 'source_taken', field: 'source_event_id' });
   }
-  const ends = eventEndsAt(current);
-  const notHeld = current.status === 'draft' || ends === null || Date.now() < ends;
-  return {
-    sales_open_at: patch.sales_open_at ?? null,
-    sales_close_at: patch.sales_close_at ?? null,
-    ...(patch.offer_kind === 'replay' && notHeld
-      ? { starts_at: null, duration_minutes: null, quota: null, meeting_url: null }
-      : {}),
-  };
+  return source;
 }
 
 /** Kolom yang benar-benar ditulis: isi patch, ditambah tanggal buka yang dikosongkan oleh invarian. */
 function columnsToWrite(current, patch, next) {
-  const write = { ...patch };
+  // Nilai sesudah invarian: isian live yang dikirim untuk Video kelas tertulis kosong.
+  const write = Object.fromEntries(Object.keys(patch).map((key) => [key, next[key]]));
   if (next.sales_open_at === null && current.sales_open_at !== null && current.sales_open_at !== undefined) {
     write.sales_open_at = null;
   }
@@ -173,15 +191,19 @@ async function get(sb, body) {
 async function create(sb, body) {
   const patch = normalized(body);
   if (!patch.title) throw refuse(400, 'Judul wajib diisi', { field: 'title' });
-  const row = applySalesInvariant({ sales_mode: 'coming_soon', ...patch });
+  const row = applyKindInvariant(applySalesInvariant({ sales_mode: 'coming_soon', offer_kind: 'live', ...patch }));
   const cross = crossFieldError(row);
   if (cross) throw refuse(400, cross.error, { field: cross.field });
+  const source = await checkSource(sb, { status: 'draft' }, { status: 'draft', ...row }, patch);
+  // Video kelas dari acara uji juga uji: transaksinya berlabel Uji dan halamannya
+  // terbuka selama masa uji. Diambil dari baris sumber, bukan dari browser.
+  const isTest = source ? { is_test: Boolean(source.is_test) } : {};
 
   const inserted = await withSlugRetry(async () => {
     const slug = await freeSlug(sb, row.title);
     return db(sb, 'webinar_events?select=id', {
       method: 'POST',
-      body: JSON.stringify({ ...row, slug, status: 'draft' }),
+      body: JSON.stringify({ ...row, ...isTest, slug, status: 'draft' }),
     }, 'INSERT webinar_events');
   });
   const id = inserted?.[0]?.id;
@@ -196,14 +218,15 @@ async function save(sb, body, ctx) {
     throw refuse(409, 'Acara ini baru diubah di tempat lain. Muat ulang dulu.', { code: 'stale' });
   }
 
-  const given = normalized(body);
-  const patch = { ...given, ...offerChange(current, given) };
-  const next = applySalesInvariant({ ...current, ...patch });
+  const patch = normalized(body);
+  refuseKindChange(current, patch);
+  const next = nextRow(current, patch);
   // Peserta dikabari otomatis bila jadwal acara yang sudah terjual berubah: cukup
   // tandai schedule_changed_at; cron mengirim email per peserta (sql/136b).
   const notifySchedule = current.status === 'published' && soldOf(current) > 0 && scheduleChanged(current, next);
   if (notifySchedule && ctx.local) throw refuse(403, LOCAL_TEST, { code: 'local_test' });
   checkRules(current, next, { confirmScheduleChange: body.confirmScheduleChange === true });
+  await checkSource(sb, current, next, patch);
 
   const write = columnsToWrite(current, patch, next);
   if (Object.keys(write).length === 0) return { event: decorate(current) };
@@ -224,13 +247,14 @@ async function publish(sb, body) {
     throw refuse(409, 'Acara ini baru diubah di tempat lain. Muat ulang dulu.', { code: 'stale' });
   }
 
-  const given = normalized(body);
-  const patch = { ...given, ...offerChange(current, given) };
-  const next = applySalesInvariant({ ...current, ...patch });
+  const patch = normalized(body);
+  refuseKindChange(current, patch);
+  const next = nextRow(current, patch);
   if (next.sales_mode === 'closed') {
     throw refuse(400, 'Pilih kapan penjualan dibuka sebelum terbit', { field: 'sales_open_at' });
   }
   checkRules(current, next, { publishing: true });
+  await checkSource(sb, current, next, patch, { publishing: true });
 
   const followTitle = !isSlugLocked(current) && 'title' in patch && patch.title !== current.title;
   const event = await withSlugRetry(async () => writeEvent(sb, body.id, {
@@ -263,6 +287,12 @@ async function cancel(sb, env, body, ctx) {
   // rekamannya hilang dari mereka (Fase 5B). Untuk berhenti menjual: Tutup penjualan.
   if ((current.offer_kind ?? 'live') === 'replay') {
     throw refuse(409, 'Video kelas tidak dibatalkan. Pakai Tutup penjualan untuk berhenti menjual.', { code: 'replay_no_cancel' });
+  }
+  // Sesudah acara mulai, membatalkan berarti email "dibatalkan" untuk acara yang sudah
+  // terjadi dan rekamannya hilang dari pemegang tiket (Iterasi 7). Memanggil ulang pada
+  // acara yang sudah batal tetap boleh: hanya membersihkan.
+  if (current.status === 'published' && current.starts_at && Date.now() >= Date.parse(current.starts_at)) {
+    throw refuse(409, 'Acara yang sudah mulai tidak bisa dibatalkan. Pakai Tutup penjualan untuk berhenti menjual.', { code: 'already_started' });
   }
   // Hanya transisi pertama yang mengabari peserta (cron per peserta, sql/136b);
   // memanggil ulang hanya membersihkan.
@@ -307,7 +337,7 @@ async function cancel(sb, env, body, ctx) {
   };
 }
 
-async function remove(sb, body) {
+async function remove(sb, env, body) {
   const current = await loadOrRefuse(sb, body.id);
   if (current.status !== 'draft') throw refuse(409, 'Hanya draft yang bisa dihapus. Acara terbit memakai Batalkan acara.', { code: 'not_draft' });
 
@@ -316,7 +346,10 @@ async function remove(sb, body) {
 
   const deleted = await db(sb, `webinar_events?id=eq.${body.id}&status=eq.draft&select=id`, { method: 'DELETE' }, 'DELETE webinar_events');
   if (!deleted?.length) throw refuse(409, 'Acara ini baru berubah. Muat ulang dulu.', { code: 'stale' });
-  return { deleted: body.id };
+  // Baris sudah tiada: berkasnya tidak dipakai siapa pun lagi. Gagal membersihkan
+  // hanya dicatat di log (berkas yatim, bukan galat bagi admin).
+  const filesRemoved = await purgeEventFiles(sb, env, current);
+  return { deleted: body.id, files_removed: filesRemoved };
 }
 
 // ── Handler ────────────────────────────────────────────────────────────────
@@ -347,7 +380,7 @@ export async function onRequest({ request, env, waitUntil }) {
       case 'publish': return json(200, await publish(sb, body));
       case 'close-sales': return json(200, await closeSales(sb, body));
       case 'cancel': return json(200, await cancel(sb, env, body, ctx));
-      case 'delete': return json(200, await remove(sb, body));
+      case 'delete': return json(200, await remove(sb, env, body));
       case 'participants': return json(200, await participants(sb, body));
       case 'participant': return json(200, await participant(sb, body));
       case 'resend-ticket': return json(200, await resendTicket(sb, env, body));
@@ -371,6 +404,9 @@ export async function onRequest({ request, env, waitUntil }) {
     }
     if (err instanceof DbError && err.code === '23503') {
       return json(409, { error: 'Acara ini sudah punya order, jadi tidak bisa dihapus', code: 'has_orders' });
+    }
+    if (isSourceConflict(err)) {
+      return json(409, { error: SOURCE_TAKEN, code: 'source_taken', field: 'source_event_id' });
     }
     if (err instanceof DbError && err.code === '23505') {
       return json(409, { error: 'URL acara bentrok dengan acara lain. Coba simpan lagi.', code: 'slug_taken' });

@@ -234,8 +234,8 @@ export function WebinarWatchPage() {
                         </button>
                     )}
                     <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Tentang acara</p>
-                    {(event.schedule_label ?? event.recorded_label) && (
-                        <p className="mt-1 text-sm text-slate-700">{event.schedule_label ?? event.recorded_label}</p>
+                    {(event.schedule_label ?? event.kind_label) && (
+                        <p className="mt-1 text-sm text-slate-700">{event.schedule_label ?? event.kind_label}</p>
                     )}
                     {event.speakers.map((s) => (
                         <p key={`${s.name}-${s.title}`} className="text-sm text-slate-600">{[s.name, s.title].filter(Boolean).join(', ')}</p>

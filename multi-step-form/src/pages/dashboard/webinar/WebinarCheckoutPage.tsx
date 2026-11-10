@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { getOwnProfile, isProfileComplete, type ResearcherProfile } from '@/utils/supabase';
 import { createInFlightGate } from '@/utils/inFlightGate';
 import {
-    checkoutErrorText, fetchMyWebinarOrders, fetchWebinarEvent, previewWebinarVoucher, startWebinarCheckout, webinarContactError,
+    checkoutErrorText, fetchMyWebinarOrders, fetchWebinarEvent, ownedFor, previewWebinarVoucher, startWebinarCheckout, webinarContactError,
     WebinarApiError, webinarTicketHref, type WebinarCheckoutResult, type WebinarContact, type WebinarEventView, type WebinarVoucherPreview,
 } from '@/utils/webinarApi';
 import { FieldRow, SectionLabel } from '@/components/SurveyFieldRow';
@@ -61,9 +61,12 @@ export function WebinarCheckoutPage() {
                 const [ev, mine, own] = await Promise.all([fetchWebinarEvent(slug), fetchMyWebinarOrders(), getOwnProfile()]);
                 if (!alive) return;
                 // Pending dan lunas sama-sama punya halaman sendiri; jangan menawarkan bayar lagi.
-                const existing = mine.orders.find((o) => o.event.slug === slug && (o.status === 'paid' || o.status === 'pending'));
-                if (existing && (existing.status === 'pending' || existing.kind === 'live' || ev.kind === 'replay')) {
-                    navigate(webinarTicketHref(existing.id), { replace: true });
+                const pending = mine.orders.find((o) => o.event.id === ev.id && o.status === 'pending');
+                const owned = ownedFor(ev, mine.orders);
+                if (owned || pending) {
+                    // Penjaga 2 (Iterasi 7): pemegang tiket webinar asal tidak pernah melihat form bayar.
+                    if (owned?.viaSource) toast.success('Rekaman ini sudah termasuk di tiket webinarmu');
+                    navigate(webinarTicketHref((owned?.order ?? pending)!.id), { replace: true });
                     return;
                 }
                 setEvent(ev);
@@ -133,6 +136,7 @@ export function WebinarCheckoutPage() {
             } else {
                 tab?.close();
             }
+            if (result.via === 'source') toast.success('Rekaman ini sudah termasuk di tiket webinarmu');
             navigate(webinarTicketHref(result.orderId), { replace: true });
         } catch (err) {
             tab?.close();
@@ -170,7 +174,7 @@ export function WebinarCheckoutPage() {
             {event.schedule_label && <p className="text-sm text-slate-600">{event.schedule_label}</p>}
             {/* C20 (Fase 5B): Video kelas tanpa jadwal live. */}
             {event.kind === 'replay' && event.kind_label && (
-                <p className="text-sm text-slate-600">{[event.kind_label, event.recorded_label].filter(Boolean).join(' · ')}</p>
+                <p className="text-sm text-slate-600">{event.kind_label}</p>
             )}
             <div className="border-t border-slate-100 pt-3 space-y-1.5">
                 <div className="flex items-baseline justify-between">

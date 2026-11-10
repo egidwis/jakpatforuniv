@@ -52,6 +52,8 @@ export interface AdminWebinarOrder {
     recording_email_sent_at: string | null;
     /** Galat email otomatis terakhir: "<jenis> · <waktu WIB> · <pesan>". */
     email_error: string | null;
+    /** Video kelas (Iterasi 7): akun ini juga memegang tiket lunas webinar asal. */
+    holds_source_ticket?: boolean;
 }
 
 /** Pesan galat untuk toast; `fallback` bila galatnya tanpa pesan. */
@@ -130,6 +132,29 @@ export function participantStats(orders: AdminWebinarOrder[], offer: WebinarOffe
         consent: paid.filter((o) => o.marketing_consent).length,
         revenue: paid.reduce((sum, o) => sum + (Number(o.amount) || 0), 0),
     };
+}
+
+type Stats = ReturnType<typeof participantStats>;
+
+/**
+ * Kotak ringkasan halaman Peserta per jenis produk (Iterasi 7). Webinar: lunas/kuota,
+ * kursi ditahan, izin kontak. Video kelas: terjual dan izin kontak (tanpa kuota).
+ * Pendapatan ditampilkan terpisah.
+ */
+export function summaryTiles(kind: 'live' | 'replay', quota: number | null | undefined, stats: Stats): { label: string; value: string }[] {
+    if (kind === 'replay') {
+        return [{ label: 'Terjual', value: String(stats.replay) }, { label: 'Izin kontak', value: String(stats.consent) }];
+    }
+    return [
+        { label: 'Lunas', value: quota != null ? `${stats.live} / ${quota}` : String(stats.live) },
+        { label: 'Ditahan', value: String(stats.held) },
+        { label: 'Izin kontak', value: String(stats.consent) },
+    ];
+}
+
+/** Penjaga 5: pembeli lunas yang sudah punya rekamannya lewat tiket webinar asal. */
+export function sourceTicketNote(order: Pick<AdminWebinarOrder, 'status' | 'holds_source_ticket'>): string | null {
+    return order.status === 'paid' && order.holds_source_ticket ? 'Sudah punya lewat tiket webinar — pertimbangkan refund' : null;
 }
 
 // ── Label baris ───────────────────────────────────────────────────────────

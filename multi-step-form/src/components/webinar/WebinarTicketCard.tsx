@@ -78,9 +78,8 @@ export const WebinarTicketCard = forwardRef<HTMLDivElement, Props>(function Webi
     };
 
     const ringClass = highlighted ? 'ring-2 ring-jfu-primary/60 ring-offset-2' : '';
-    // C21 (Fase 5B): Video kelas tanpa jadwal live. Tiket live di halaman yang sudah
-    // menjadi Video kelas menampilkan tanggal rekamnya.
-    const subline = event.schedule_label ?? (order.kind === 'replay' ? event.kind_label : event.recorded_label) ?? null;
+    // C21 (Fase 5B): Video kelas tanpa jadwal live.
+    const subline = event.schedule_label ?? (order.kind === 'replay' ? event.kind_label : null) ?? null;
     const KindIcon = order.kind === 'replay' ? Play : Ticket;
 
     return (

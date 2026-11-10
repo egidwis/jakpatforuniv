@@ -41,7 +41,7 @@ export function WebinarMeta({ event }: { event: WebinarEventView }) {
             {event.kind === 'replay' && event.kind_label && (
                 <li className="flex items-start gap-2">
                     <Clock className="w-4 h-4 mt-0.5 shrink-0 text-slate-400" />
-                    {[event.kind_label, event.recorded_label].filter(Boolean).join(' · ')}
+                    {event.kind_label}
                 </li>
             )}
             {event.note && event.state !== 'on_sale' && (

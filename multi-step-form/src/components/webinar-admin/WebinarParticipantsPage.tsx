@@ -8,7 +8,7 @@ import { adminDateLabel, formatRupiah } from '@/utils/webinarAdmin';
 import { errorMessage } from '@/utils/webinarParticipants';
 import { listParticipants, refundOrder, resendTicket, type ParticipantsResult } from '@/utils/webinarAdminApi';
 import {
-    alarmLabel, filterParticipants, groupCounts, participantCsv, participantStats, purchaseEmailLabel, ticketEmailState, unpaidLabel,
+    alarmLabel, filterParticipants, groupCounts, participantCsv, participantStats, summaryTiles, sourceTicketNote, purchaseEmailLabel, ticketEmailState, unpaidLabel,
     type AdminWebinarOrder, type ParticipantGroup,
 } from '@/utils/webinarParticipants';
 import { WebinarEmailStatus } from './WebinarEmailStatus';
@@ -39,11 +39,6 @@ function EmailBadge({ order, now }: { order: AdminWebinarOrder; now: number }) {
 }
 
 /** Email otomatis (pengingat, jadwal, dst.) terakhir gagal: tidak diulang, admin mengabari lewat WA. */
-/** Label baris pembeli Video kelas (C23). */
-function VideoTag() {
-    return <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">Video kelas</span>;
-}
-
 function AutoEmailBadge({ order }: { order: AdminWebinarOrder }) {
     if (order.status !== 'paid' || !order.email_error) return null;
     return <span className="text-[12px] font-medium text-amber-700">⚠ Email gagal</span>;
@@ -105,8 +100,10 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
 
     const { event } = data;
     const stats = participantStats(orders, event.webinar_offer_state);
-    // C23 (Fase 5B): satu daftar; ringkasan memisahkan tiket live (x/kuota) dan Video kelas.
-    const showVideo = stats.replay > 0 || event.offer_kind === 'replay';
+    // Iterasi 7: satu produk per halaman, jadi ringkasan mengikuti jenis acaranya.
+    const isVideo = event.offer_kind === 'replay';
+    const tiles = summaryTiles(isVideo ? 'replay' : 'live', event.quota, stats);
+    const source = data.source ?? null;
     const purchaseNoun = (order: AdminWebinarOrder) => (order.kind === 'replay' ? 'Bukti pembelian' : 'E-tiket');
     const exportCsv = () => {
         const { headers, rows } = participantCsv(visible);
@@ -153,8 +150,8 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
                             {event.is_test && <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">UJI</span>}
                         </h1>
                         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-slate-600">
-                            {event.offer_kind === 'replay'
-                                ? event.view?.recorded_label && <span>{event.view.recorded_label}</span>
+                            {isVideo
+                                ? <span>{event.view?.kind_label ?? 'Video kelas'}{source ? ` · dari webinar "${source.title}"` : ''}</span>
                                 : event.starts_at && <span>{adminDateLabel(event.starts_at)}</span>}
                             <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset', TONE_CLASS[tone] ?? TONE_CLASS.ended)}>{badge}</span>
                         </div>
@@ -170,13 +167,8 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
                     </div>
                 )}
 
-                <div className={cn('grid gap-3', showVideo ? 'grid-cols-2 lg:grid-cols-5' : 'grid-cols-3 lg:grid-cols-4')}>
-                    {[
-                        { label: showVideo ? 'Tiket live' : 'Lunas', value: event.quota != null ? `${stats.live} / ${event.quota}` : String(stats.live) },
-                        ...(showVideo ? [{ label: 'Video kelas', value: String(stats.replay) }] : []),
-                        { label: 'Ditahan', value: String(stats.held) },
-                        { label: 'Izin kontak', value: String(stats.consent) },
-                    ].map((s) => (
+                <div className={cn('grid gap-3', isVideo ? 'grid-cols-2 lg:grid-cols-3' : 'grid-cols-3 lg:grid-cols-4')}>
+                    {tiles.map((s) => (
                         <div key={s.label} className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
                             <p className="text-[12px] text-slate-500">{s.label}</p>
                             <p className="text-lg font-bold tabular-nums text-slate-900">{s.value}</p>
@@ -233,13 +225,13 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
                                             <div className="flex items-start justify-between gap-2">
                                                 <span className="flex min-w-0 items-center gap-1.5">
                                                     <span className="min-w-0 truncate text-[14px] font-semibold text-slate-900">{o.buyer_name || 'Peserta'}</span>
-                                                    {o.kind === 'replay' && <VideoTag />}
                                                 </span>
                                                 {alarm
                                                     ? <span className="shrink-0 text-[12px] font-medium text-amber-700">⚠ {alarm}</span>
                                                     : o.email_error && o.status === 'paid' ? <AutoEmailBadge order={o} /> : <EmailBadge order={o} now={now} />}
                                             </div>
                                             <p className="truncate text-[13px] text-slate-600">{o.buyer_email}</p>
+                                            {sourceTicketNote(o) && <p className="text-[12px] font-medium text-amber-700">⚠ {sourceTicketNote(o)}</p>}
                                             <p className="text-[12px] text-slate-500">
                                                 {note ?? [o.buyer_university, o.ticket_code, `Izin ${o.marketing_consent ? '✓' : '–'}`].filter(Boolean).join(' · ')}
                                             </p>
@@ -255,9 +247,9 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
                                 <thead className="bg-slate-50 text-[12px] font-semibold text-slate-600">
                                     <tr>
                                         <th className="px-4 py-2.5">Nama</th>
-                                        <th className="px-3 py-2.5">Email e-tiket</th>
+                                        <th className="px-3 py-2.5">{isVideo ? 'Email' : 'Email e-tiket'}</th>
                                         <th className="px-3 py-2.5">Kampus</th>
-                                        <th className="px-3 py-2.5">{group === 'paid' ? 'Kode tiket' : 'Keterangan'}</th>
+                                        <th className="px-3 py-2.5">{group === 'paid' ? (isVideo ? 'Kode' : 'Kode tiket') : 'Keterangan'}</th>
                                         {group === 'paid' && <th className="px-3 py-2.5">Email</th>}
                                         <th className="px-3 py-2.5">Izin</th>
                                     </tr>
@@ -269,8 +261,8 @@ export function WebinarParticipantsPage({ eventId, onBack }: { eventId: string; 
                                             <tr key={o.id} onClick={() => setSelectedId(o.id)} className="cursor-pointer hover:bg-slate-50">
                                                 <td className="px-4 py-2.5 font-semibold text-slate-900">
                                                     {o.buyer_name || 'Peserta'}
-                                                    {o.kind === 'replay' && <span className="ml-2"><VideoTag /></span>}
                                                     {alarm && <span className="ml-2 text-[12px] font-medium text-amber-700">⚠ {alarm}</span>}
+                                                    {sourceTicketNote(o) && <span className="block text-[12px] font-medium text-amber-700">⚠ {sourceTicketNote(o)}</span>}
                                                 </td>
                                                 <td className="max-w-[16rem] truncate px-3 py-2.5 text-slate-700">{o.buyer_email}</td>
                                                 <td className="px-3 py-2.5 text-slate-700">{o.buyer_university || '–'}</td>

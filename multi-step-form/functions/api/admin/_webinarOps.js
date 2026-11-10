@@ -46,11 +46,31 @@ async function rpc(sb, fn, args) {
   return db(sb, `rpc/${fn}`, { method: 'POST', body: JSON.stringify(args) }, `RPC ${fn}`);
 }
 
+/**
+ * Penjaga 5 (Iterasi 7): akun yang memegang tiket live lunas di webinar asal Video
+ * kelas ini. Satu-satunya jalan beli dua kali adalah penghubung diisi sesudah Video
+ * kelasnya telanjur laku, jadi pembelinya ditandai untuk dipertimbangkan refund.
+ */
+async function sourceTicketHolders(sb, sourceId) {
+  const rows = await dbAll(sb, `webinar_orders?event_id=eq.${sourceId}&status=eq.paid&kind=eq.live&auth_user_id=not.is.null&select=auth_user_id&order=id.asc`, 'SELECT webinar_orders (tiket webinar asal)');
+  return new Set(rows.map((r) => r.auth_user_id));
+}
+
 export async function participants(sb, body) {
   const event = await loadOrRefuse(sb, body.id);
-  // Tiket live dan Video kelas dalam satu daftar (Fase 5B: label per baris).
   const orders = await dbAll(sb, `webinar_orders?event_id=eq.${body.id}&select=${ORDER_COLUMNS}&order=created_at.desc,id.asc`, 'SELECT webinar_orders (peserta)');
-  return { event: decorate(event, { full: false }), orders: orders.map(orderView) };
+  let source = null;
+  let holders = new Set();
+  if (event.offer_kind === 'replay' && event.source_event_id) {
+    const [row] = (await db(sb, `webinar_events?id=eq.${event.source_event_id}&select=id,title,slug`, {}, 'SELECT webinar_events (webinar asal)')) || [];
+    source = row ?? null;
+    holders = await sourceTicketHolders(sb, event.source_event_id);
+  }
+  return {
+    event: decorate(event, { full: false }),
+    source,
+    orders: orders.map((o) => ({ ...orderView(o), holds_source_ticket: Boolean(o.auth_user_id && holders.has(o.auth_user_id)) })),
+  };
 }
 
 export async function participant(sb, body) {

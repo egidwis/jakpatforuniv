@@ -15,7 +15,7 @@ export const PUBLIC_EVENT_COLUMNS = [
   'id', 'slug', 'title', 'summary', 'description_blocks', 'speakers', 'poster_url',
   'starts_at', 'duration_minutes', 'price', 'status', 'offer_kind', 'sales_mode',
   'is_listed', 'is_test', 'recording_minutes', 'recording_published_at',
-  'webinar_offer_state',
+  'source_event_id', 'webinar_offer_state',
 ].join(',');
 
 const WIB = { timeZone: 'Asia/Jakarta' };
@@ -68,17 +68,11 @@ const BENEFITS = {
 
 const BUY_LABEL = { live: 'Beli tiket', replay: 'Beli rekaman' };
 
-/**
- * Video kelas (Fase 5B) tidak punya jadwal live untuk ditampilkan. Halaman hasil ubah
- * jenis menyebut tanggal acaranya sebagai "Direkam …"; kelas tanpa sesi live tidak.
- */
-function replayLabels(event) {
-  if (event.offer_kind !== 'replay') return { recorded_label: null, kind_label: null };
+/** Video kelas (Fase 5B) tidak punya jadwal live; labelnya jenis + durasi rekaman. */
+function kindLabel(event) {
+  if (event.offer_kind !== 'replay') return null;
   const minutes = Number(event.recording_minutes) || null;
-  return {
-    recorded_label: event.starts_at ? `Direkam ${formatDateWib(event.starts_at)}` : null,
-    kind_label: minutes ? `Video kelas · ${minutes} menit` : 'Video kelas',
-  };
+  return minutes ? `Video kelas · ${minutes} menit` : 'Video kelas';
 }
 
 function stateCopy(state, offer) {
@@ -93,7 +87,7 @@ function stateCopy(state, offer) {
     case 'seats_held':
       return { badge: 'Kursi ditahan', tone: 'held', note: 'Kursi sedang ditahan pembeli lain, coba lagi beberapa menit.' };
     case 'sold_out':
-      return { badge: 'Habis', tone: 'ended', note: 'Kursi live habis. Rekaman bisa dibeli setelah acara.' };
+      return { badge: 'Habis', tone: 'ended', note: 'Kursi live habis.' };
     case 'closed':
     case 'sales_ended':
       return { badge: 'Ditutup', tone: 'ended', note: 'Penjualan ditutup.' };
@@ -129,7 +123,9 @@ export function buildEventView(event) {
     detail_url: `/webinar/${event.slug}`,
     price_label: event.price != null ? formatPrice(event.price) : null,
     schedule_label: event.offer_kind === 'replay' ? null : scheduleLabel(event),
-    ...replayLabels(event),
+    kind_label: kindLabel(event),
+    // Video kelas dari webinar (sql/137); judulnya dibaca halaman publik bila perlu.
+    source_event_id: event.source_event_id ?? null,
     short_date: event.starts_at ? formatShortDateWib(event.starts_at) : null,
     starts_at: event.starts_at ?? null,
     duration_minutes: event.duration_minutes ?? null,

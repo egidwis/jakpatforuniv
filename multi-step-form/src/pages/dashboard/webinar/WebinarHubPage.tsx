@@ -4,7 +4,7 @@ import {
     AlertCircle, ArrowDown, ChevronRight, HelpCircle, LayoutDashboard, Loader2, Mail, Sparkles, Ticket,
 } from 'lucide-react';
 import {
-    fetchMyWebinarOrders, fetchWebinarListing, purchaseHistory, syncWebinarOrder, webinarTicketHref,
+    fetchMyWebinarOrders, fetchWebinarListing, ownedFor, purchaseHistory, syncWebinarOrder, webinarTicketHref,
     type MyWebinarOrders, type WebinarEventView, type WebinarListing, type WebinarOrderView,
 } from '@/utils/webinarApi';
 import { ADMIN_EMAIL, CARD_CLASS, WebinarBadge, WebinarMeta, WebinarPoster } from '@/components/webinar/WebinarParts';
@@ -24,7 +24,7 @@ export function WebinarTicketRedirect() {
     return <Navigate to={webinarTicketHref(orderId)} replace />;
 }
 
-function OfferCard({ event, owned }: { event: WebinarEventView; owned?: WebinarOrderView }) {
+function OfferCard({ event, owned }: { event: WebinarEventView; owned?: { order: WebinarOrderView; viaSource: boolean } | null }) {
     return (
         <article className={`${CARD_CLASS} p-4 flex flex-col gap-3`}>
             <div className="flex gap-3">
@@ -36,12 +36,13 @@ function OfferCard({ event, owned }: { event: WebinarEventView; owned?: WebinarO
                 </div>
             </div>
             <WebinarMeta event={event} />
+            {owned?.viaSource && <p className="text-sm text-slate-600">Sudah termasuk tiket webinarmu.</p>}
             <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 mt-auto">
                 {owned ? (
                     // Pemilik Video kelas (atau tiket yang rekamannya terbit) langsung menonton.
-                    owned.watch_path
-                        ? <Link to={owned.watch_path} className="rounded-xl bg-jfu-primary px-4 py-2 text-sm font-semibold text-white">Tonton</Link>
-                        : <Link to={webinarTicketHref(owned.id)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Lihat tiket</Link>
+                    owned.order.watch_path
+                        ? <Link to={owned.order.watch_path} className="rounded-xl bg-jfu-primary px-4 py-2 text-sm font-semibold text-white">Tonton</Link>
+                        : <Link to={webinarTicketHref(owned.order.id)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Lihat tiket</Link>
                 ) : event.can_buy ? (
                     <Link to={`/dashboard/webinar/beli/${event.slug}`} className="rounded-xl bg-jfu-primary px-4 py-2 text-sm font-semibold text-white">{event.buy_label}</Link>
                 ) : <span />}
@@ -152,7 +153,7 @@ export function WebinarHubPage() {
     const visibleOrders = (mine?.orders ?? []).filter((o) => o.status !== 'expired' || o.id === focusId);
     const focusMissing = !!focusId && !!mine && !visibleOrders.some((o) => o.id === focusId);
     const events = listing ? [listing.hero, ...listing.upcoming, ...listing.videos].filter((e): e is WebinarEventView => !!e) : [];
-    const ownedBySlug = new Map(visibleOrders.filter((o) => o.status === 'paid').map((o) => [o.event.slug, o]));
+
 
     return (
         <div className="max-w-5xl mx-auto px-4 md:px-6 py-5 md:py-8 space-y-6">
@@ -234,7 +235,7 @@ export function WebinarHubPage() {
                         <h2 className="text-base font-bold text-slate-900">Webinar &amp; kelas</h2>
                         {events.length > 0 ? (
                             <div className="grid gap-3 lg:grid-cols-2">
-                                {events.map((e) => <OfferCard key={e.id} event={e} owned={ownedBySlug.get(e.slug)} />)}
+                                {events.map((e) => <OfferCard key={e.id} event={e} owned={ownedFor(e, visibleOrders)} />)}
                             </div>
                         ) : (
                             <Card className="border border-slate-200/90 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] bg-white/95 rounded-2xl overflow-hidden">

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-    AlertTriangle, Calendar, ImageIcon, MoreHorizontal, Plus, RefreshCw, Search, X,
+    AlertTriangle, Calendar, ImageIcon, MoreHorizontal, Plus, PlayCircle, RefreshCw, Search, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import {
-    adminDateLabel, seatsSummary, soldLabel, zoomWarning, type AdminWebinarEvent,
+    adminDateLabel, canCancel, linkedVideoOf, seatsSummary, soldLabel, zoomWarning, type AdminWebinarEvent, type OfferKind,
 } from '@/utils/webinarAdmin';
 
 const TONE_CLASS: Record<string, string> = {
@@ -27,6 +27,33 @@ export interface WebinarListActions {
     onCloseSales: (event: AdminWebinarEvent) => void;
     onCancel: (event: AdminWebinarEvent) => void;
     onDelete: (event: AdminWebinarEvent) => void;
+    /** Iterasi 7: draft Video kelas terisi dari webinar ini. */
+    onCreateVideoFrom: (event: AdminWebinarEvent) => void;
+}
+
+/** [+ Video kelas] (bergaris tepi) dan [+ Webinar] (biru): dua produk terpisah. */
+function CreateButtons({ onCreate }: { onCreate: (kind: OfferKind) => void }) {
+    return (
+        <>
+            <Button
+                onClick={() => onCreate('replay')}
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs font-semibold rounded-lg gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50 cursor-pointer"
+            >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Video kelas</span>
+            </Button>
+            <Button
+                onClick={() => onCreate('live')}
+                size="sm"
+                className="h-8 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg gap-1.5 shadow-xs cursor-pointer"
+            >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Webinar</span>
+            </Button>
+        </>
+    );
 }
 
 type StatusTab = 'all' | 'on_sale' | 'soon' | 'closed' | 'draft';
@@ -44,7 +71,7 @@ export function WebinarEventList({
     events: AdminWebinarEvent[];
     loading: boolean;
     error: string | null;
-    onCreate: () => void;
+    onCreate: (kind: OfferKind) => void;
     onRetry: () => void;
     actions: WebinarListActions;
 }) {
@@ -120,12 +147,12 @@ export function WebinarEventList({
                     </div>
 
                     {/* Search & Actions */}
-                    <div className="flex items-center gap-2 ml-auto">
+                    <div className="flex flex-wrap items-center justify-end gap-2 ml-auto">
                         <div className="relative w-44 sm:w-60">
                             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                             <Input
                                 type="text"
-                                placeholder="Cari acara..."
+                                placeholder="Cari judul..."
                                 className="w-full pl-8 pr-7 h-8 text-xs bg-gray-50/60 border-gray-200 focus:bg-white focus:border-blue-500 rounded-lg"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -153,14 +180,9 @@ export function WebinarEventList({
                             <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
                         </Button>
 
-                        <Button
-                            onClick={onCreate}
-                            size="sm"
-                            className="h-8 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg gap-1.5 shadow-xs cursor-pointer"
-                        >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>Buat Acara</span>
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <CreateButtons onCreate={onCreate} />
+                        </div>
                     </div>
                 </div>
 
@@ -168,8 +190,8 @@ export function WebinarEventList({
                 <div className="flex-1 min-h-0 overflow-auto">
                     {/* Sticky Table Header */}
                     <div className={cn('sticky top-0 z-10 bg-gray-50 border-b border-gray-200 px-4 h-9 text-[11px] font-bold text-gray-500 uppercase tracking-wider', GRID_TEMPLATE)}>
-                        <span>Acara</span>
-                        <span>Jadwal Pelaksanaan</span>
+                        <span>Judul</span>
+                        <span>Jadwal</span>
                         <span className="text-center">Status</span>
                         <span className="text-right">Terjual / Kuota</span>
                         <span className="text-right pr-1">Aksi</span>
@@ -210,22 +232,17 @@ export function WebinarEventList({
                                 <Calendar className="w-6 h-6 stroke-[1.75]" />
                             </div>
                             <h3 className="text-base font-semibold text-gray-900 mb-1">
-                                {searchQuery || activeTab !== 'all' ? 'Tidak ada acara yang cocok' : 'Belum ada acara'}
+                                {searchQuery || activeTab !== 'all' ? 'Tidak ada yang cocok' : 'Belum ada webinar atau video kelas'}
                             </h3>
                             <p className="text-xs text-gray-500 max-w-sm mx-auto mb-4 leading-relaxed">
                                 {searchQuery || activeTab !== 'all'
                                     ? 'Coba ubah kata kunci pencarian atau pilih tab filter status yang lain.'
-                                    : 'Buat acara webinar atau video kelas pertama untuk mulai membuka pendaftaran.'}
+                                    : 'Webinar: sesi live + rekaman + materi. Video kelas: rekaman + materi, tanpa sesi live.'}
                             </p>
                             {!searchQuery && activeTab === 'all' && (
-                                <Button
-                                    onClick={onCreate}
-                                    size="sm"
-                                    className="h-8 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg gap-1.5 shadow-xs"
-                                >
-                                    <Plus className="w-3.5 h-3.5" />
-                                    <span>Buat Acara Baru</span>
-                                </Button>
+                                <div className="flex items-center justify-center gap-2">
+                                    <CreateButtons onCreate={onCreate} />
+                                </div>
                             )}
                         </div>
                     ) : (
@@ -238,8 +255,11 @@ export function WebinarEventList({
                                 const tone = isDraft ? 'ended' : event.view.tone;
                                 const note = event.view.state === 'coming_soon' ? event.view.note : null;
                                 const replay = event.offer_kind === 'replay';
-                                const participants = (event.sold_live ?? seats.sold) + (event.sold_replay ?? 0);
-                                const dateLine = replay ? event.view.recorded_label : event.starts_at ? adminDateLabel(event.starts_at) : null;
+                                const participants = replay ? (event.sold_replay ?? 0) : (event.sold_live ?? seats.sold);
+                                const dateLine = replay
+                                    ? (event.recording_minutes ? `▶ ${event.recording_minutes} menit` : null)
+                                    : event.starts_at ? adminDateLabel(event.starts_at) : null;
+                                const video = replay ? null : linkedVideoOf(event, events);
                                 const hasZoomWarn = zoomWarning(event, now);
                                 const quota = event.quota;
                                 const sold = event.sold_live ?? seats.sold ?? 0;
@@ -284,6 +304,11 @@ export function WebinarEventList({
                                                         </span>
                                                     )}
                                                 </div>
+                                                {video && (
+                                                    <p className="flex items-center gap-1 text-[11px] font-medium text-blue-700 mt-0.5 truncate" title={video.title}>
+                                                        <PlayCircle className="h-3 w-3 shrink-0" /> Video kelas: {video.title}
+                                                    </p>
+                                                )}
                                                 {hasZoomWarn && (
                                                     <p className="flex items-center gap-1 text-[11px] font-medium text-amber-700 mt-0.5">
                                                         <AlertTriangle className="h-3 w-3 shrink-0" /> Link Zoom belum diisi
@@ -347,7 +372,7 @@ export function WebinarEventList({
                                                         actions.onParticipants(event);
                                                     }}
                                                 >
-                                                    Peserta ({participants})
+                                                    {replay ? 'Pembeli' : 'Peserta'} ({participants})
                                                 </Button>
                                             )}
                                             <Button
@@ -373,7 +398,7 @@ export function WebinarEventList({
                                                         <MoreHorizontal className="h-4 w-4" />
                                                     </Button>
                                                 </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" className="w-48 bg-white border border-gray-200 shadow-md rounded-xl p-1 z-50">
+                                                <DropdownMenuContent align="end" className="w-60 bg-white border border-gray-200 shadow-md rounded-xl p-1 z-50">
                                                     <DropdownMenuItem
                                                         className="text-xs cursor-pointer py-1.5"
                                                         onSelect={() => actions.onPreview(event)}
@@ -395,6 +420,14 @@ export function WebinarEventList({
                                                         </DropdownMenuItem>
                                                     )}
                                                     {isPublished && !replay && (
+                                                        <DropdownMenuItem
+                                                            className="text-xs cursor-pointer py-1.5"
+                                                            onSelect={() => (video ? actions.onEdit(video) : actions.onCreateVideoFrom(event))}
+                                                        >
+                                                            {video ? 'Lihat Video kelas' : 'Buat Video kelas dari webinar ini'}
+                                                        </DropdownMenuItem>
+                                                    )}
+                                                    {canCancel(event, now) && (
                                                         <>
                                                             <DropdownMenuSeparator />
                                                             <DropdownMenuItem

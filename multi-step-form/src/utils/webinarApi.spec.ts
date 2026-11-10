@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('./supabase', () => ({ supabase: { auth: { getSession: async () => ({ data: { session: null } }) } } }));
 
-const { activeTickets, checkoutErrorText, fetchMyWebinarOrders, fetchWebinarListing, WebinarApiError } = await import('./webinarApi');
+const { activeTickets, checkoutErrorText, fetchMyWebinarOrders, fetchWebinarListing, ownedFor, WebinarApiError } = await import('./webinarApi');
 
 describe('respons bukan JSON', () => {
     it('index.html berstatus 200 dianggap galat, bukan daftar kosong', async () => {
@@ -44,6 +44,9 @@ describe('checkoutErrorText', () => {
     ])('%s', (state, text) => {
         expect(checkoutErrorText(new WebinarApiError('x', 409, { code: 'not_for_sale', state }))).toContain(text);
     });
+    it('kursi habis tidak menjanjikan rekaman dijual (Iterasi 7)', () => {
+        expect(checkoutErrorText(new WebinarApiError('x', 409, { code: 'not_for_sale', state: 'sold_out' }))).toBe('Kursi live habis.');
+    });
     it('galat tak dikenal punya kalimat aman', () => {
         expect(checkoutErrorText(new Error('rahasia'))).not.toContain('rahasia');
     });
@@ -84,5 +87,34 @@ describe('jendela gabung', () => {
         expect(joinOpensHint(13.5 * 86_400_000)).toBe('Ruang dibuka dalam 13 hari');
         expect(joinOpensHint(5 * 3_600_000 + 1)).toBe('Ruang dibuka dalam 5 jam');
         expect(joinOpensHint(12 * 60_000)).toBe('Ruang dibuka dalam 12 menit');
+    });
+});
+
+describe('ownedFor: sudah punya (Iterasi 7, penjaga 1–2)', () => {
+    const SRC = { id: 'src', slug: 'olah-data' };
+    const VID = { id: 'vid', slug: 'olah-data-video', source_event_id: 'src' };
+    const mineOf = (over = {}) => order({ id: 't1', event: SRC, ...over });
+
+    it('pembelian acara itu sendiri (lunas) dihitung punya', () => {
+        const own = order({ id: 'v1', kind: 'replay', event: VID });
+        expect(ownedFor(VID as never, [own])).toEqual({ order: own, viaSource: false });
+        expect(ownedFor(VID as never, [order({ id: 'v2', kind: 'replay', status: 'refunded', event: VID })])).toBeNull();
+    });
+
+    it('tiket live lunas webinar asal dihitung punya Video kelasnya', () => {
+        const ticket = mineOf();
+        expect(ownedFor(VID as never, [ticket])).toEqual({ order: ticket, viaSource: true });
+    });
+
+    it.each([
+        ['tiket di-refund', { status: 'refunded' }],
+        ['tiket belum dibayar', { status: 'pending' }],
+        ['webinar asal batal', { event_cancelled: true }],
+    ])('%s → belum punya', (_n, over) => {
+        expect(ownedFor(VID as never, [mineOf(over)])).toBeNull();
+    });
+
+    it('Video kelas tanpa webinar asal tidak terhubung ke tiket mana pun', () => {
+        expect(ownedFor({ ...VID, source_event_id: null } as never, [mineOf()])).toBeNull();
     });
 });

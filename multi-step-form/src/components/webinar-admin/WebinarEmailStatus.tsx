@@ -45,12 +45,18 @@ export function WebinarEmailStatus({
                 <h2 className="text-[12px] font-bold uppercase tracking-wide text-slate-500">Email otomatis</h2>
                 <span className="text-[12px] text-slate-500">dikirim otomatis tiap menit</span>
             </div>
-            <Row label="E-tiket" line={tickets ?? { text: '—', tone: 'muted' }} />
-            {videos && <Row label="Bukti beli video" line={videos} />}
-            <Row label="Pengingat H-1" line={reminderStatus(event, orders, now)} />
-            {schedule && <Row label="Jadwal berubah" line={schedule} />}
-            {cancellation && <Row label="Pembatalan" line={cancellation} />}
-            {recording && <Row label="Rekaman tersedia" line={recording} />}
+            {/* Iterasi 7: satu produk per halaman. Video kelas hanya punya email bukti beli. */}
+            {event.offer_kind === 'replay' ? (
+                <Row label="Bukti beli" line={videos ?? { text: '—', tone: 'muted' }} />
+            ) : (
+                <>
+                    <Row label="E-tiket" line={tickets ?? { text: '—', tone: 'muted' }} />
+                    <Row label="Pengingat H-1" line={reminderStatus(event, orders, now)} />
+                    {schedule && <Row label="Jadwal berubah" line={schedule} />}
+                    {cancellation && <Row label="Pembatalan" line={cancellation} />}
+                    {recording && <Row label="Rekaman tersedia" line={recording} />}
+                </>
+            )}
 
             {failed.length > 0 && (
                 <div className="mt-2 flex gap-2 rounded-xl bg-amber-50 px-3 py-2 text-[13px] text-amber-800">

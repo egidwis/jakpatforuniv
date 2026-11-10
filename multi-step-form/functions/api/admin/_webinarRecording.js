@@ -147,3 +147,43 @@ export async function publishRecording(sb, body, ctx) {
   const event = await writeEvent(sb, body.id, { recording_published_at: new Date().toISOString() }, 'PATCH webinar_events (terbit rekaman)');
   return { event: decorate(event), notify_scheduled: Number(current.webinar_offer_state?.sold) || 0 };
 }
+
+/**
+ * Hapus berkas milik draft yang barisnya SUDAH terhapus (Iterasi 7): video di R2 dan
+ * seluruh materi di folder `<id>/` bucket webinar-materials (termasuk versi yang
+ * sudah diganti). Poster & foto pembicara di webinar-public sengaja dibiarkan: Video
+ * kelas yang dibuat dari webinar memakai URL poster yang sama.
+ *
+ * @returns {Promise<boolean>} true bila semua yang ada terhapus; galat hanya dicatat.
+ */
+export async function purgeEventFiles(sb, env, row) {
+  let ok = true;
+  const fail = (what) => (err) => {
+    ok = false;
+    console.error(`[admin/webinar] ${what} draft ${row.id} gagal dihapus:`, err?.message || err);
+  };
+  if (row.recording_object_key) {
+    const c = recordingConfig(env);
+    if (c) await deleteObject(c, row.recording_object_key).catch(fail('video'));
+    else fail('video')(new Error('secret R2 belum diatur'));
+  }
+  await removeMaterialFolder(sb, row.id).catch(fail('materi'));
+  return ok;
+}
+
+async function removeMaterialFolder(sb, eventId) {
+  const res = await fetch(`${sb.url}/storage/v1/object/list/${MATERIALS_BUCKET}`, {
+    method: 'POST',
+    headers: sb.headers,
+    body: JSON.stringify({ prefix: eventId, search: '', limit: 1000 }),
+  });
+  if (!res.ok) throw new Error(`Storage list ${MATERIALS_BUCKET} gagal — HTTP ${res.status}`);
+  const names = ((await res.json()) || []).map((r) => r?.name).filter(Boolean);
+  if (!names.length) return;
+  const del = await fetch(`${sb.url}/storage/v1/object/${MATERIALS_BUCKET}`, {
+    method: 'DELETE',
+    headers: { ...sb.headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prefixes: names.map((n) => `${eventId}/${n}`) }),
+  });
+  if (!del.ok) throw new Error(`Storage hapus ${MATERIALS_BUCKET} gagal — HTTP ${del.status}`);
+}

@@ -4,9 +4,6 @@ import {
     type AdminWebinarEvent, type SalesChoice, type WebinarForm,
 } from '@/utils/webinarAdmin';
 
-const recordedDate = (iso: string) => new Date(iso).toLocaleDateString('id-ID', {
-    timeZone: 'Asia/Jakarta', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
-});
 import type { FieldErrors } from './useWebinarEditor';
 import { Field, PanelHeading, WibDateTime, inputClass } from './WebinarFormParts';
 
@@ -39,10 +36,8 @@ export function WebinarSalesPanel({
     const price = parseWholeNumber(form.price);
     const breakdown = priceBreakdown(typeof price === 'number' && !Number.isNaN(price) ? price : null);
     const seats = seatsSummary(row?.webinar_offer_state);
-    // Video kelas (Fase 5B): tanpa jadwal live, kuota, dan Zoom. Acara terbit yang diubah
-    // jenisnya menyimpan jadwalnya sebagai tanggal rekam.
+    // Video kelas: tanpa jadwal live, kuota, dan Zoom (server juga mengosongkannya).
     const replay = form.offer_kind === 'replay';
-    const recordedAt = replay && row && row.status !== 'draft' ? row.starts_at : null;
 
     return (
         <div className="space-y-6">
@@ -101,12 +96,6 @@ export function WebinarSalesPanel({
                     )}
                 </Field>
             </section>
-
-            {recordedAt && (
-                <p className="text-[13px] text-slate-600">
-                    <span className="font-semibold text-slate-800">Direkam</span> {recordedDate(recordedAt)}
-                </p>
-            )}
 
             <hr className="border-slate-200" />
 

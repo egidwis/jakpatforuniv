@@ -5,14 +5,13 @@ import { BannerPicker } from '@/components/PageBuilder/BannerPicker';
 import { ConfirmDialog, type ConfirmRequest } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import {
-    WEBINAR_PUBLIC_BUCKET, clearsLiveFields, formFromEvent, offerLock, publishConsequence, seatsSummary, slugifyTitle,
-    switchOffer, webinarImageUrl, type OfferKind,
+    WEBINAR_PUBLIC_BUCKET, adminDateLabel, linkedVideoOf, publishConsequence, slugifyTitle, sourceCandidates,
+    webinarImageUrl, type AdminWebinarEvent, type OfferKind,
 } from '@/utils/webinarAdmin';
 import { useWebinarEditor, type SaveStatus } from './useWebinarEditor';
 import { WebinarSalesPanel } from './WebinarSalesPanel';
 import { WebinarSpeakersField } from './WebinarSpeakersField';
 import { WebinarRecordingPanel } from './WebinarRecordingPanel';
-import { WebinarOfferKindField } from './WebinarOfferKindField';
 import { Field, inputClass } from './WebinarFormParts';
 
 const timeLabel = (d: Date) => d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -35,22 +34,35 @@ const STATUS_CHIP: Record<string, string> = {
 
 export function WebinarEventForm({
     eventId,
+    kind = 'live',
+    events = [],
     onBack,
     onDirtyChange,
+    onCreateVideoFrom,
+    onOpenEvent,
 }: {
     eventId: string | null;
+    /** Jenis acara baru (tombol [+ Webinar] / [+ Video kelas]); acara lama memakai jenis barisnya. */
+    kind?: OfferKind;
+    /** Daftar acara (aksi list) untuk pilihan "Dari webinar" dan Video kelas tersambung. */
+    events?: AdminWebinarEvent[];
     onBack: () => void;
     onDirtyChange?: (dirty: boolean) => void;
+    onCreateVideoFrom?: (event: AdminWebinarEvent) => void;
+    onOpenEvent?: (event: AdminWebinarEvent) => void;
 }) {
-    const editor = useWebinarEditor(eventId);
+    const editor = useWebinarEditor(eventId, kind);
     const { row, form, updateForm, fieldErrors: errors, busy, dirty, isEditable, status, savedAt } = editor;
     const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
 
     const isDraft = !row || row.status === 'draft';
     const isPublished = row?.status === 'published';
     const disabled = !isEditable;
-    // Draft Video kelas memakai panel Rekaman setelah jenisnya tersimpan (server menolak terbit rekaman draft tiket).
-    const showRecording = Boolean(row) && (isPublished || (isDraft && row?.offer_kind === 'replay'));
+    const replay = form.offer_kind === 'replay';
+    // Video kelas memakai panel Rekaman sejak draft tersimpan; webinar sesudah terbit.
+    const showRecording = Boolean(row) && (isPublished || (isDraft && replay));
+    const candidates = replay ? sourceCandidates(events, row?.id ?? null) : [];
+    const linkedVideo = row && !replay ? linkedVideoOf(row, events) : null;
 
     useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
     useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
@@ -82,42 +94,6 @@ export function WebinarEventForm({
     const slug = row && row.status !== 'draft' ? row.slug : (row?.slug ?? slugifyTitle(form.title));
     const summaryLength = [...form.summary].length;
 
-    /**
-     * C17 (Fase 5B). Draft: pindah jenis langsung (simpan otomatis). Acara terbit:
-     * dialog dulu; tersimpan lewat Simpan perubahan. Kembali ke jenis yang tersimpan
-     * memulihkan pilihan penjualannya, jadi tidak ada perubahan yang tertinggal.
-     */
-    const chooseOffer = (kind: OfferKind) => {
-        if (row && !isDraft && kind === row.offer_kind) {
-            const saved = formFromEvent(row);
-            updateForm({
-                offer_kind: kind, salesChoice: saved.salesChoice, openDate: saved.openDate, openTime: saved.openTime,
-                closeAtStart: saved.closeAtStart, closeDate: saved.closeDate, closeTime: saved.closeTime,
-            });
-            return;
-        }
-        const clearLive = clearsLiveFields(row);
-        if (isDraft) {
-            updateForm(switchOffer(form, kind, { clearLive }));
-            return;
-        }
-        const sold = seatsSummary(row?.webinar_offer_state).sold;
-        setConfirm({
-            title: 'Ubah jadi Video kelas?',
-            lines: [
-                `Tombol halaman menjadi "Beli rekaman". URL tetap: /webinar/${slug}`,
-                sold > 0 && `${sold} pemegang tiket tetap bisa menonton dan tidak perlu membeli lagi.`,
-                clearLive && 'Acaranya belum berlangsung, jadi jadwal, kuota, dan link Zoom dikosongkan.',
-                'Pilih lagi kapan penjualan dibuka; tanggal buka/tutup lama dikosongkan.',
-                'Tersimpan setelah Simpan perubahan.',
-            ],
-            confirmLabel: 'Ubah jadi Video kelas',
-            cancelLabel: 'Kembali',
-            tone: 'neutral',
-            onConfirm: () => { updateForm(switchOffer(form, kind, { clearLive })); },
-        });
-    };
-
     if (editor.loading) {
         return <div className="flex flex-1 items-center justify-center p-10"><Loader2 className="h-6 w-6 animate-spin text-blue-600" /></div>;
     }
@@ -141,6 +117,9 @@ export function WebinarEventForm({
                     <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', STATUS_CHIP[row?.status ?? 'draft'])}>
                         {row?.status === 'published' ? (row.view?.badge ?? 'Terbit') : row?.status === 'cancelled' ? 'Batal' : 'Draft'}
                     </span>
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                        {replay ? 'Video kelas' : 'Webinar'}
+                    </span>
                     {row?.is_test && <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-bold text-slate-600">UJI</span>}
                 </div>
                 <SaveIndicator status={status} savedAt={savedAt} dirty={dirty} isDraft={isDraft} />
@@ -154,21 +133,11 @@ export function WebinarEventForm({
 
             {/* Isi: satu kolom di HP, dua kolom di desktop */}
             <div className="flex-1 px-5 pb-8 pt-5">
-                {/* C17: jenis halaman di atas segalanya, karena menentukan isian lainnya. */}
-                <div className="mx-auto mb-6 max-w-6xl rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <WebinarOfferKindField
-                        value={form.offer_kind}
-                        lock={offerLock(row)}
-                        disabled={disabled}
-                        error={errors.offer_kind}
-                        onChoose={chooseOffer}
-                    />
-                </div>
                 <div className="mx-auto [display:grid] max-w-6xl gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
                     <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                         <Field
                             field="title"
-                            label="Judul acara"
+                            label={replay ? 'Judul video kelas' : 'Judul acara'}
                             error={errors.title}
                             hint={<>URL: <span className="font-mono text-slate-600">/webinar/{slug}</span>{row && row.status !== 'draft' && ' · terkunci sejak terbit'}</>}
                         >
@@ -226,6 +195,31 @@ export function WebinarEventForm({
                                 disabled={disabled}
                             />
                         </Field>
+
+                        {replay && (
+                            <Field
+                                field="source_event_id"
+                                label="Dari webinar (opsional)"
+                                error={errors.source_event_id}
+                                hint={form.source_event_id
+                                    ? 'Pemegang tiket webinar ini tidak perlu membeli; mereka dibawa ke tiketnya.'
+                                    : 'Pilih bila video ini rekaman salah satu webinar. Satu webinar paling banyak satu Video kelas.'}
+                            >
+                                <select
+                                    value={form.source_event_id}
+                                    onChange={(e) => updateForm({ source_event_id: e.target.value })}
+                                    disabled={disabled}
+                                    className={cn(inputClass(errors.source_event_id), 'h-10')}
+                                >
+                                    <option value="">Tanpa webinar asal</option>
+                                    {candidates.map((e) => (
+                                        <option key={e.id} value={e.id}>
+                                            {e.title}{e.starts_at ? ` · ${adminDateLabel(e.starts_at)}` : ''}{e.status === 'cancelled' ? ' (batal)' : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            </Field>
+                        )}
                     </div>
 
                     {/* Rekaman (Fase 5A) di bawah panel penjualan; tanpa sticky supaya kolom kanan bisa digulir.
@@ -241,7 +235,16 @@ export function WebinarEventForm({
                                     onRow={editor.adoptRow}
                                     errors={{ recording: errors.recording, materials_path: errors.materials_path }}
                                     offerKind={form.offer_kind}
+                                    linkedVideo={linkedVideo}
+                                    onCreateVideo={onCreateVideoFrom && !dirty ? () => onCreateVideoFrom(row) : undefined}
+                                    onOpenVideo={onOpenEvent && linkedVideo ? () => onOpenEvent(linkedVideo) : undefined}
                                 />
+                            </aside>
+                        )}
+                        {replay && !row && (
+                            <aside className="h-fit rounded-2xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">
+                                <p className="text-[13px] font-semibold text-slate-800">Rekaman &amp; materi</p>
+                                <p className="mt-1">Isi judul dulu untuk mulai mengunggah. Sesudah draft tersimpan, video dan materi diunggah di sini.</p>
                             </aside>
                         )}
                     </div>

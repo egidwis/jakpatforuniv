@@ -148,6 +148,11 @@ beforeEach(() => {
       const q = JSON.parse(init.body);
       return json(storageNames.filter((n) => n.startsWith(`${q.prefix}/`)).map((n) => ({ name: n.split('/')[1] })).filter((r) => r.name.includes(q.search)));
     }
+    if (url.endsWith('/storage/v1/object/webinar-materials') && method === 'DELETE') {
+      const gone = JSON.parse(init.body).prefixes;
+      storageNames = storageNames.filter((n) => !gone.includes(n));
+      return json(gone.map((name) => ({ name })));
+    }
     if (url.includes('/rest/v1/webinar_events')) {
       if (method === 'PATCH' && overrideEventsPatch) return overrideEventsPatch();
       return events.respond(url, init);
@@ -425,13 +430,58 @@ describe('cancel', () => {
   it('draft tidak dibatalkan (dihapus)', async () => {
     expect((await call({ action: 'cancel', id: DRAFT_ID })).body.code).toBe('draft');
   });
+
+  it('acara yang sudah mulai tidak bisa dibatalkan → 409 already_started, tanpa menulis', async () => {
+    rowOf(PUB_ID).starts_at = at(-60_000);
+    const r = await call({ action: 'cancel', id: PUB_ID });
+    expect(r).toMatchObject({ status: 409, body: { code: 'already_started' } });
+    expect(eventPatches()).toHaveLength(0);
+    expect(rowOf(PUB_ID).status).toBe('published');
+  });
+
+  it('acara yang sudah batal tetap bisa dibersihkan ulang walau jadwalnya lewat', async () => {
+    Object.assign(rowOf(PUB_ID), { status: 'cancelled', starts_at: at(-DAY) });
+    expect((await call({ action: 'cancel', id: PUB_ID })).status).toBe(200);
+  });
 });
 
 describe('delete', () => {
+  const R2_ENV = { ...ENV, R2_ACCOUNT_ID: 'acct', R2_ACCESS_KEY_ID: 'AKID', R2_SECRET_ACCESS_KEY: 'SECRET', R2_RECORDINGS_BUCKET: 'rek' };
+  const KEY = `rekaman/${DRAFT_ID}/kelas-00000000.mp4`;
+
   it('draft tanpa order terhapus', async () => {
     const r = await call({ action: 'delete', id: DRAFT_ID });
     expect(r).toMatchObject({ status: 200, body: { deleted: DRAFT_ID } });
     expect(rowOf(DRAFT_ID)).toBeUndefined();
+  });
+
+  it('berkas draft (video R2 + materi) dihapus SESUDAH baris terhapus', async () => {
+    Object.assign(rowOf(DRAFT_ID), { recording_object_key: KEY, materials_path: `${DRAFT_ID}/materi.pdf` });
+    r2.objects.set(KEY, 10);
+    storageNames = [`${DRAFT_ID}/materi.pdf`, `${DRAFT_ID}/materi-lama.pdf`, `${PUB_ID}/lain.pdf`];
+    const r = await call({ action: 'delete', id: DRAFT_ID }, { env: R2_ENV });
+    expect(r).toMatchObject({ status: 200, body: { deleted: DRAFT_ID, files_removed: true } });
+    expect(r2.objects.has(KEY)).toBe(false);
+    expect(storageNames).toEqual([`${PUB_ID}/lain.pdf`]);
+    const order = calls.map((c) => (c.method === 'DELETE' && c.url.includes('/rest/v1/webinar_events') ? 'db'
+      : c.method === 'DELETE' && c.url.includes('r2.cloudflarestorage') ? 'r2'
+        : c.method === 'DELETE' && c.url.includes('/storage/v1/') ? 'storage' : null)).filter(Boolean);
+    expect(order).toEqual(['db', 'r2', 'storage']);
+  });
+
+  it('pembersihan berkas gagal tidak menggagalkan penghapusan', async () => {
+    Object.assign(rowOf(DRAFT_ID), { recording_object_key: KEY });
+    r2.fail = 'InternalError';
+    const r = await call({ action: 'delete', id: DRAFT_ID }, { env: R2_ENV });
+    expect(r).toMatchObject({ status: 200, body: { deleted: DRAFT_ID, files_removed: false } });
+    expect(rowOf(DRAFT_ID)).toBeUndefined();
+  });
+
+  it('penghapusan ditolak → tidak ada berkas yang disentuh', async () => {
+    Object.assign(rowOf(PUB_ID), { recording_object_key: `rekaman/${PUB_ID}/x-00000000.mp4` });
+    expect((await call({ action: 'delete', id: PUB_ID }, { env: R2_ENV })).status).toBe(409);
+    expect(r2.calls).toHaveLength(0);
+    expect(calls.some((c) => c.url.includes('/storage/v1/'))).toBe(false);
   });
 
   it('acara terbit tidak bisa dihapus', async () => {
@@ -504,7 +554,7 @@ describe('participants', () => {
     expect(paid.join_token).toBeUndefined();
     expect(r.body.event.has_meeting_url).toBe(true);
     // Iterasi 4: status email dibaca dari kolom penanda order, tanpa tabel antrean.
-    expect(Object.keys(r.body).sort()).toEqual(['event', 'orders']);
+    expect(Object.keys(r.body).sort()).toEqual(['event', 'orders', 'source']);
     const read = calls.find((c) => c.method === 'GET' && c.url.includes('/rest/v1/webinar_orders?event_id='));
     for (const col of ['reminder_sent_for', 'schedule_email_sent_at', 'cancel_email_sent_at', 'recording_email_sent_at', 'email_error']) {
       expect(read.url).toContain(col);
@@ -946,9 +996,11 @@ describe('rekaman & materi (Fase 5A)', () => {
   });
 });
 
-// ── Fase 5B: Video kelas ─────────────────────────────────────────────────────
+// ── Video kelas (Fase 5B) + produk terpisah (Iterasi 7) ─────────────────────
 
-describe('Video kelas (Fase 5B)', () => {
+describe('Video kelas (Fase 5B, Iterasi 7)', () => {
+  const SRC_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const VID_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
   const ENDED = { starts_at: at(-2 * DAY), duration_minutes: 90 };
   const recOf = (id) => ({
     recording_object_key: `rekaman/${id}/rekaman-spss-00000000.mp4`, recording_published_at: at(-DAY),
@@ -959,68 +1011,176 @@ describe('Video kelas (Fase 5B)', () => {
     speakers: [{ name: 'Dr. Sari', title: 'Dosen' }], price: 49000,
   };
   const conf = { speakerPermission: true, facesTrimmed: true };
+  const src = (over) => eventRow({
+    id: SRC_ID, title: 'Olah Data SPSS', slug: 'olah-data-spss', status: 'published', sales_mode: 'closed',
+    published_at: '2026-11-01T00:00:00.000Z', ...READY, ...ENDED, ...recOf(SRC_ID), ...over,
+  });
+  const video = (over) => eventRow({ id: VID_ID, title: 'Olah Data SPSS (Video Kelas)', slug: 'olah-data-spss-video-kelas', offer_kind: 'replay', ...over });
+  const withSource = ({ source = {}, vid = {}, extra = [], orderSeed = [] } = {}) => setup({
+    eventSeed: [src(source), video(vid), eventRow({ id: DRAFT_ID, title: 'Olah Data', slug: 'olah-data' }), ...extra],
+    orderSeed,
+  });
 
-  it('ubah acara terbit yang sudah selesai: satu PATCH id saja; tanggal buka/tutup lama dikosongkan server', async () => {
-    Object.assign(rowOf(PUB_ID), ENDED, recOf(PUB_ID), { sales_close_at: at(-2 * DAY - 60_000) });
-    offers[PUB_ID] = { state: 'sales_ended', sold: 12, held: 0 };
-    const r = await call({ action: 'save', id: PUB_ID, patch: { offer_kind: 'replay', sales_mode: 'open' } });
+  it('buat Video kelas: isian sesi live tidak pernah tersimpan', async () => {
+    const r = await call({
+      action: 'create',
+      patch: { title: 'Kelas SPSS', offer_kind: 'replay', starts_at: at(5 * DAY), duration_minutes: 60, quota: 50, meeting_url: 'https://zoom.us/j/1' },
+    });
     expect(r.status).toBe(200);
-    const patches = eventPatches();
-    expect(patches).toHaveLength(1);
-    expect(patches[0].url).toMatch(new RegExp(`webinar_events\\?id=eq\\.${PUB_ID}&select=id$`));
-    expect(patches[0].body).toEqual({ offer_kind: 'replay', sales_mode: 'open', sales_open_at: null, sales_close_at: null });
-    // Jadwal & kuota acara hasil ubah jenis tetap (tampil sebagai "Direkam …").
-    expect(rowOf(PUB_ID)).toMatchObject({ offer_kind: 'replay', starts_at: ENDED.starts_at, quota: 100, sales_close_at: null });
-    expect(r.body.notify_scheduled).toBeUndefined();
+    expect(r.body.event).toMatchObject({ offer_kind: 'replay', status: 'draft', starts_at: null, duration_minutes: null, quota: null, meeting_url: null });
   });
 
-  it('ubah jenis tanpa pilihan penjualan → 400 sales_choice_required, tanpa menulis', async () => {
-    Object.assign(rowOf(PUB_ID), ENDED, recOf(PUB_ID));
-    const r = await call({ action: 'save', id: PUB_ID, patch: { offer_kind: 'replay' } });
-    expect(r).toMatchObject({ status: 400, body: { code: 'sales_choice_required', field: 'sales_open_at' } });
+  it('jenis tidak bisa diubah, termasuk di draft → 409 offer_fixed tanpa menulis', async () => {
+    for (const id of [DRAFT_ID, PUB_ID]) {
+      const r = await call({ action: 'save', id, patch: { offer_kind: 'replay', sales_mode: 'coming_soon' } });
+      expect(r).toMatchObject({ status: 409, body: { code: 'offer_fixed', field: 'offer_kind' } });
+    }
+    rowOf(DRAFT_ID).offer_kind = 'replay';
+    const back = await call({ action: 'publish', id: DRAFT_ID, patch: { offer_kind: 'live' } });
+    expect(back).toMatchObject({ status: 409, body: { code: 'offer_fixed' } });
+    expect(eventPatches()).toHaveLength(0);
+    // Jenis yang sama ikut terkirim: bukan perubahan.
+    expect((await call({ action: 'save', id: PUB_ID, patch: { offer_kind: 'live', title: 'Statistik 2' } })).status).toBe(200);
+  });
+
+  it('simpan Video kelas: jadwal/kuota/Zoom di patch ditulis kosong', async () => {
+    rowOf(DRAFT_ID).offer_kind = 'replay';
+    const r = await call({ action: 'save', id: DRAFT_ID, patch: { starts_at: at(3 * DAY), quota: 20, title: 'Kelas' } });
+    expect(r.status).toBe(200);
+    expect(eventPatches()[0].body).toMatchObject({ starts_at: null, quota: null, title: 'Kelas' });
+    expect(rowOf(DRAFT_ID)).toMatchObject({ starts_at: null, quota: null });
+  });
+
+  it('pilih webinar asal: satu PATCH id saja, dan daftar/get membawanya', async () => {
+    withSource();
+    const r = await call({ action: 'save', id: VID_ID, patch: { source_event_id: SRC_ID } });
+    expect(r.status).toBe(200);
+    expect(eventPatches()).toHaveLength(1);
+    expect(eventPatches()[0].url).toMatch(new RegExp(`webinar_events\\?id=eq\\.${VID_ID}&select=id$`));
+    expect(r.body.event.source_event_id).toBe(SRC_ID);
+    const list = await call({ action: 'list' });
+    expect(list.body.events.find((e) => e.id === VID_ID).source_event_id).toBe(SRC_ID);
+  });
+
+  it.each([
+    ['draft', { status: 'draft' }],
+    ['batal', { status: 'cancelled' }],
+    ['Video kelas', { offer_kind: 'replay' }],
+  ])('webinar asal %s → 400 source_invalid tanpa menulis', async (_n, source) => {
+    withSource({ source });
+    const r = await call({ action: 'save', id: VID_ID, patch: { source_event_id: SRC_ID } });
+    expect(r).toMatchObject({ status: 400, body: { code: 'source_invalid', field: 'source_event_id' } });
     expect(eventPatches()).toHaveLength(0);
   });
 
-  it('acara bertiket yang belum selesai → 409 event_not_over + jam selesai, tanpa menulis', async () => {
-    offers[PUB_ID] = { state: 'on_sale', sold: 12, held: 0 };
-    const r = await call({ action: 'save', id: PUB_ID, patch: { offer_kind: 'replay', sales_mode: 'coming_soon' } });
-    expect(r).toMatchObject({ status: 409, body: { code: 'event_not_over', field: 'offer_kind' } });
-    expect(Date.parse(r.body.ends_at)).toBe(Date.parse(READY.starts_at) + 90 * 60_000);
+  it('webinar asal dirinya sendiri atau tidak ada → 400', async () => {
+    withSource();
+    expect((await call({ action: 'save', id: VID_ID, patch: { source_event_id: VID_ID } })).body.code).toBe('source_invalid');
+    expect((await call({ action: 'save', id: VID_ID, patch: { source_event_id: '99999999-9999-4999-8999-999999999999' } })).body.code).toBe('source_invalid');
     expect(eventPatches()).toHaveLength(0);
+  });
+
+  it('webinar yang bukan Video kelas tidak boleh punya webinar asal → 400', async () => {
+    withSource();
+    const r = await call({ action: 'save', id: DRAFT_ID, patch: { source_event_id: SRC_ID } });
+    expect(r).toMatchObject({ status: 400, body: { field: 'source_event_id' } });
+    expect(eventPatches()).toHaveLength(0);
+  });
+
+  it('satu webinar paling banyak satu Video kelas → 409 source_taken (cek dulu, dan 23505 dari index)', async () => {
+    const OTHER = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+    withSource({ vid: { source_event_id: SRC_ID }, extra: [video({ id: OTHER, slug: 'lain' })] });
+    const r = await call({ action: 'save', id: OTHER, patch: { source_event_id: SRC_ID } });
+    expect(r).toMatchObject({ status: 409, body: { code: 'source_taken', field: 'source_event_id' } });
+    expect(eventPatches()).toHaveLength(0);
+
+    // Balapan: lolos cek, lalu index unik menolak.
+    rowOf(VID_ID).source_event_id = null;
+    overrideEventsPatch = () => json({ code: '23505', message: 'duplicate key value violates unique constraint "webinar_events_source_unique"' }, 409);
+    const raced = await call({ action: 'save', id: OTHER, patch: { source_event_id: SRC_ID } });
+    expect(raced).toMatchObject({ status: 409, body: { code: 'source_taken', field: 'source_event_id' } });
+    expect(eventPatches()).toHaveLength(1);
+  });
+
+  it('Video kelas yang sama boleh menyimpan ulang webinar asalnya', async () => {
+    withSource({ vid: { source_event_id: SRC_ID } });
+    expect((await call({ action: 'save', id: VID_ID, patch: { source_event_id: SRC_ID, title: 'Baru' } })).status).toBe(200);
+  });
+
+  it('buat dari webinar uji: is_test ikut dari server, bukan dari browser', async () => {
+    withSource({ source: { is_test: true } });
+    const r = await call({ action: 'create', patch: { title: 'Olah Data SPSS (Video Kelas)', offer_kind: 'replay', source_event_id: SRC_ID, is_listed: false } });
+    expect(r.status).toBe(200);
+    expect(r.body.event).toMatchObject({ is_test: true, is_listed: false, source_event_id: SRC_ID, offer_kind: 'replay' });
+    expect(calls.find((c) => c.method === 'POST' && c.url.includes('/rest/v1/webinar_events')).body.is_test).toBe(true);
+  });
+
+  it('buat dari webinar sungguhan: is_test tetap false; webinar asal draft ditolak', async () => {
+    withSource();
+    expect((await call({ action: 'create', patch: { title: 'A', offer_kind: 'replay', source_event_id: SRC_ID } })).body.event.is_test).toBe(false);
+    rowOf(SRC_ID).status = 'draft';
+    const r = await call({ action: 'create', patch: { title: 'B', offer_kind: 'replay', source_event_id: SRC_ID } });
+    expect(r).toMatchObject({ status: 400, body: { code: 'source_invalid' } });
+  });
+
+  it('dijual dengan webinar asal mensyaratkan rekaman webinar asal terbit (penjaga 4)', async () => {
+    withSource({ source: { recording_published_at: null }, vid: { ...CLASS, ...recOf(VID_ID), source_event_id: SRC_ID } });
+    const early = await call({ action: 'publish', id: VID_ID, patch: { sales_mode: 'open' } });
+    expect(early).toMatchObject({ status: 400, body: { code: 'source_recording_unpublished', field: 'source_event_id' } });
+    expect(eventPatches()).toHaveLength(0);
+    // Segera hadir boleh.
+    expect((await call({ action: 'publish', id: VID_ID, patch: { sales_mode: 'coming_soon' } })).status).toBe(200);
+    expect((await call({ action: 'save', id: VID_ID, patch: { sales_mode: 'open' } })).body.code).toBe('source_recording_unpublished');
+    rowOf(SRC_ID).recording_published_at = at(-60_000);
+    expect((await call({ action: 'save', id: VID_ID, patch: { sales_mode: 'open' } })).status).toBe(200);
+    expect(rowOf(VID_ID)).toMatchObject({ status: 'published', sales_mode: 'open' });
+  });
+
+  it('webinar asal yang batal sesudah dihubungkan tidak menggagalkan simpan isian lain', async () => {
+    withSource({ source: { status: 'cancelled' }, vid: { source_event_id: SRC_ID } });
+    expect((await call({ action: 'save', id: VID_ID, patch: { title: 'Judul baru' } })).status).toBe(200);
+  });
+
+  it('peserta Video kelas: pembeli yang juga memegang tiket lunas webinar asal ditandai (penjaga 5)', async () => {
+    const HOLDER = '12121212-1212-4212-8212-121212121212';
+    const REFUNDED = '13131313-1313-4313-8313-131313131313';
+    const FRESH = '14141414-1414-4414-8414-141414141414';
+    withSource({
+      vid: { status: 'published', source_event_id: SRC_ID },
+      orderSeed: [
+        orderRow({ event_id: SRC_ID, auth_user_id: HOLDER, invoice_number: 'WBN-1' }),
+        orderRow({ event_id: SRC_ID, auth_user_id: REFUNDED, status: 'refunded', invoice_number: 'WBN-2' }),
+        orderRow({ id: ORDER_PAID, event_id: VID_ID, kind: 'replay', auth_user_id: HOLDER, invoice_number: 'WBN-3' }),
+        orderRow({ id: ORDER_PENDING, event_id: VID_ID, kind: 'replay', auth_user_id: REFUNDED, invoice_number: 'WBN-4' }),
+        orderRow({ id: ORDER_REPLAY, event_id: VID_ID, kind: 'replay', auth_user_id: FRESH, invoice_number: 'WBN-5' }),
+      ],
+    });
+    const r = await call({ action: 'participants', id: VID_ID });
+    expect(r.status).toBe(200);
+    const flag = Object.fromEntries(r.body.orders.map((o) => [o.id, o.holds_source_ticket]));
+    expect(flag).toEqual({ [ORDER_PAID]: true, [ORDER_PENDING]: false, [ORDER_REPLAY]: false });
+    expect(r.body.source).toEqual({ id: SRC_ID, title: 'Olah Data SPSS', slug: 'olah-data-spss' });
+    const read = calls.find((c) => c.url.includes(`webinar_orders?event_id=eq.${SRC_ID}`));
+    expect(read.url).toContain('status=eq.paid');
+    expect(read.url).toContain('kind=eq.live');
+  });
+
+  it('peserta webinar tanpa webinar asal: tanpa tanda dan tanpa kueri tambahan', async () => {
+    seedOps();
+    const r = await call({ action: 'participants', id: PUB_ID });
+    expect(r.body.source).toBeNull();
+    expect(r.body.orders.every((o) => o.holds_source_ticket === false)).toBe(true);
   });
 
   it('Video kelas dijual wajib rekaman terbit + materi; Segera hadir tidak', async () => {
-    Object.assign(rowOf(PUB_ID), ENDED);
-    const sell = await call({ action: 'save', id: PUB_ID, patch: { offer_kind: 'replay', sales_mode: 'open' } });
+    rowOf(DRAFT_ID).offer_kind = 'replay';
+    const sell = await call({ action: 'publish', id: DRAFT_ID, patch: { ...CLASS, sales_mode: 'open' } });
     expect(sell).toMatchObject({ status: 400, body: { code: 'missing_fields', fields: ['recording', 'materials_path'] } });
     expect(eventPatches()).toHaveLength(0);
-    const soon = await call({ action: 'save', id: PUB_ID, patch: { offer_kind: 'replay', sales_mode: 'coming_soon' } });
+    const soon = await call({ action: 'publish', id: DRAFT_ID, patch: { ...CLASS, sales_mode: 'coming_soon' } });
     expect(soon.status).toBe(200);
-    expect(rowOf(PUB_ID)).toMatchObject({ offer_kind: 'replay', sales_mode: 'coming_soon' });
+    expect(rowOf(DRAFT_ID)).toMatchObject({ offer_kind: 'replay', status: 'published', sales_mode: 'coming_soon' });
   });
-
-  it('Video kelas terbit tidak bisa kembali menjadi tiket → 409 offer_locked', async () => {
-    Object.assign(rowOf(PUB_ID), ENDED, recOf(PUB_ID), { offer_kind: 'replay' });
-    const r = await call({ action: 'save', id: PUB_ID, patch: { offer_kind: 'live', sales_mode: 'coming_soon' } });
-    expect(r).toMatchObject({ status: 409, body: { code: 'offer_locked', field: 'offer_kind' } });
-    expect(eventPatches()).toHaveLength(0);
-  });
-
-  it('draft → Video kelas: jadwal, kuota, dan link Zoom dikosongkan server', async () => {
-    Object.assign(rowOf(DRAFT_ID), { starts_at: at(5 * DAY), duration_minutes: 60, quota: 50, meeting_url: 'https://zoom.us/j/1' });
-    const r = await call({ action: 'save', id: DRAFT_ID, patch: { offer_kind: 'replay', sales_mode: 'coming_soon' } });
-    expect(r.status).toBe(200);
-    expect(eventPatches()[0].body).toMatchObject({ starts_at: null, duration_minutes: null, quota: null, meeting_url: null });
-    expect(rowOf(DRAFT_ID)).toMatchObject({ offer_kind: 'replay', starts_at: null, quota: null, meeting_url: null });
-  });
-
-  it('acara terbit tanpa tiket yang belum berlangsung → Video kelas: jadwal dikosongkan (tidak ada "Direkam" palsu)', async () => {
-    const r = await call({ action: 'save', id: PUB_ID, patch: { offer_kind: 'replay', sales_mode: 'coming_soon' } });
-    expect(r.status).toBe(200);
-    expect(eventPatches()[0].body).toMatchObject({ starts_at: null, duration_minutes: null, quota: null, meeting_url: null });
-    expect(rowOf(PUB_ID)).toMatchObject({ offer_kind: 'replay', starts_at: null });
-  });
-
   it('kelas tanpa sesi live: terbitkan rekaman di draft (tanpa email), lalu halaman terbit dijual', async () => {
     rowOf(DRAFT_ID).offer_kind = 'replay';
     const early = await call({ action: 'publish', id: DRAFT_ID, patch: { ...CLASS, sales_mode: 'open' } });
@@ -1038,7 +1198,7 @@ describe('Video kelas (Fase 5B)', () => {
   });
 
   it('Video kelas tidak dibatalkan (pakai Tutup penjualan) → 409, tanpa menulis', async () => {
-    Object.assign(rowOf(PUB_ID), ENDED, recOf(PUB_ID), { offer_kind: 'replay' });
+    Object.assign(rowOf(PUB_ID), recOf(PUB_ID), { offer_kind: 'replay', starts_at: null, duration_minutes: null, quota: null });
     const r = await call({ action: 'cancel', id: PUB_ID });
     expect(r).toMatchObject({ status: 409, body: { code: 'replay_no_cancel' } });
     expect(eventPatches()).toHaveLength(0);

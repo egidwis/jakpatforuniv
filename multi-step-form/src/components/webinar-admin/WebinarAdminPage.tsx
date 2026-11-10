@@ -2,16 +2,20 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ConfirmDialog, type ConfirmRequest } from '@/components/ui/confirm-dialog';
 import {
-    previewEventUrl, publicEventUrl, seatsSummary, sortAdminEvents, type AdminWebinarEvent,
+    previewEventUrl, publicEventUrl, seatsSummary, sortAdminEvents, videoDraftFromWebinar,
+    type AdminWebinarEvent, type OfferKind,
 } from '@/utils/webinarAdmin';
 import {
-    cancelWebinarEvent, closeWebinarSales, deleteWebinarEvent, listWebinarEvents,
+    cancelWebinarEvent, closeWebinarSales, createWebinarEvent, deleteWebinarEvent, getWebinarEvent, listWebinarEvents,
 } from '@/utils/webinarAdminApi';
 import { WebinarEventForm } from './WebinarEventForm';
 import { WebinarEventList, type WebinarListActions } from './WebinarEventList';
 import { WebinarParticipantsPage } from './WebinarParticipantsPage';
 
-type View = { kind: 'list' } | { kind: 'edit'; id: string | null } | { kind: 'participants'; id: string };
+type View =
+    | { kind: 'list' }
+    | { kind: 'edit'; id: string | null; offer?: OfferKind }
+    | { kind: 'participants'; id: string };
 
 /**
  * Menu Webinar di /internal-dash: daftar acara (C1), form acara (C2), dan peserta (C4, Fase 3).
@@ -45,8 +49,21 @@ export function WebinarAdminPage({ onDirtyChange }: { onDirtyChange?: (dirty: bo
         try { await task(); } catch (err: any) { toast.error(err?.message || 'Terjadi kendala. Coba lagi beberapa saat.'); }
     };
 
+    /**
+     * "Buat Video kelas dari webinar ini" (Iterasi 7): draft Video kelas terisi dari baris
+     * lengkap webinar (daftar tidak memuat deskripsi), lalu form-nya dibuka.
+     */
+    const createVideoFrom = (event: AdminWebinarEvent) => run(async () => {
+        const full = await getWebinarEvent(event.id);
+        const video = await createWebinarEvent(videoDraftFromWebinar(full));
+        setEvents((prev) => sortAdminEvents([video, ...prev]));
+        toast.success(`Draft Video kelas dibuat dari "${event.title}". Unggah poster, rekaman, dan materinya di sini.`);
+        setView({ kind: 'edit', id: video.id });
+    });
+
     const actions: WebinarListActions = {
         onEdit: (event) => setView({ kind: 'edit', id: event.id }),
+        onCreateVideoFrom: (event) => { void createVideoFrom(event); },
         onParticipants: (event) => setView({ kind: 'participants', id: event.id }),
         onPreview: (event) => window.open(previewEventUrl(event.slug, event.preview_token), '_blank'),
         onCopyLink: (event) => {
@@ -99,14 +116,15 @@ export function WebinarAdminPage({ onDirtyChange }: { onDirtyChange?: (dirty: bo
         onDelete: (event) => setConfirm({
             title: 'Hapus draft ini?',
             highlight: event.title,
-            lines: ['Draft dan isinya terhapus permanen. Gambar yang sudah diunggah tetap tersimpan.'],
+            lines: ['Draft, video rekaman, dan materinya terhapus permanen. Poster dan gambar yang sudah diunggah tetap tersimpan.'],
             confirmLabel: 'Hapus draft',
             cancelLabel: 'Kembali',
             tone: 'danger',
             onConfirm: () => run(async () => {
-                await deleteWebinarEvent(event.id);
+                const result = await deleteWebinarEvent(event.id);
                 setEvents((prev) => prev.filter((e) => e.id !== event.id));
-                toast.success('Draft dihapus');
+                if (result.files_removed === false) toast.warning('Draft dihapus, tetapi sebagian berkasnya gagal dibersihkan.');
+                else toast.success('Draft dihapus');
             }),
         }),
     };
@@ -118,10 +136,14 @@ export function WebinarAdminPage({ onDirtyChange }: { onDirtyChange?: (dirty: bo
     if (view.kind === 'edit') {
         return (
             <WebinarEventForm
-                key={view.id ?? 'baru'}
+                key={view.id ?? `baru-${view.offer ?? 'live'}`}
                 eventId={view.id}
+                kind={view.offer ?? 'live'}
+                events={events}
                 onBack={() => setView({ kind: 'list' })}
                 onDirtyChange={onDirtyChange}
+                onCreateVideoFrom={(event) => { void createVideoFrom(event); }}
+                onOpenEvent={(event) => setView({ kind: 'edit', id: event.id })}
             />
         );
     }
@@ -132,7 +154,7 @@ export function WebinarAdminPage({ onDirtyChange }: { onDirtyChange?: (dirty: bo
                 events={events}
                 loading={loading}
                 error={error}
-                onCreate={() => setView({ kind: 'edit', id: null })}
+                onCreate={(offer) => setView({ kind: 'edit', id: null, offer })}
                 onRetry={() => { void load(); }}
                 actions={actions}
             />

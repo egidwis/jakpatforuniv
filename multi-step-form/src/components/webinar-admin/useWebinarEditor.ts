@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
-    EMPTY_FORM, PUBLISH_FIELD_ORDER, columnsFromForm, diffColumns, fieldDomId, formFromEvent, previewEventUrl,
-    type AdminWebinarEvent, type ColumnKey, type FieldKey, type WebinarForm,
+    PUBLISH_FIELD_ORDER, emptyFormFor, columnsFromForm, diffColumns, fieldDomId, formFromEvent, previewEventUrl,
+    type AdminWebinarEvent, type ColumnKey, type FieldKey, type OfferKind, type WebinarForm,
 } from '@/utils/webinarAdmin';
 import {
     WebinarAdminError, closeWebinarSales, createWebinarEvent, getWebinarEvent, publishWebinarEvent, saveWebinarEvent,
@@ -18,7 +18,7 @@ const MAX_ROUNDS = 4;
 
 /** Isian form → kolom yang galatnya dihapus saat isian itu disunting. */
 const FORM_TO_COLUMN: Partial<Record<keyof WebinarForm, ColumnKey>> = {
-    offer_kind: 'offer_kind', title: 'title', summary: 'summary', poster_url: 'poster_url', description_blocks: 'description_blocks',
+    source_event_id: 'source_event_id', title: 'title', summary: 'summary', poster_url: 'poster_url', description_blocks: 'description_blocks',
     speakers: 'speakers', salesChoice: 'sales_open_at', openDate: 'sales_open_at', openTime: 'sales_open_at',
     closeAtStart: 'sales_close_at', closeDate: 'sales_close_at', closeTime: 'sales_close_at',
     startDate: 'starts_at', startTime: 'starts_at', duration: 'duration_minutes', price: 'price', quota: 'quota',
@@ -49,9 +49,10 @@ const errorsFrom = (err: WebinarAdminError): FieldErrors => {
     return err.field ? { [err.field]: err.message } : {};
 };
 
-export function useWebinarEditor(eventId: string | null) {
+/** `kind` hanya untuk acara baru: jenis ditentukan saat dibuat (Iterasi 7). */
+export function useWebinarEditor(eventId: string | null, kind: OfferKind = 'live') {
     const [row, setRowState] = useState<AdminWebinarEvent | null>(null);
-    const [form, setFormState] = useState<WebinarForm>(EMPTY_FORM);
+    const [form, setFormState] = useState<WebinarForm>(() => emptyFormFor(kind));
     const [loading, setLoading] = useState(Boolean(eventId));
     const [loadError, setLoadError] = useState<string | null>(null);
     const [status, setStatus] = useState<SaveStatus>('idle');
@@ -60,7 +61,7 @@ export function useWebinarEditor(eventId: string | null) {
     const [busy, setBusy] = useState<null | 'publish' | 'save' | 'close'>(null);
 
     const rowRef = useRef<AdminWebinarEvent | null>(null);
-    const formRef = useRef<WebinarForm>(EMPTY_FORM);
+    const formRef = useRef<WebinarForm>(emptyFormFor(kind));
     const chain = useRef<Promise<unknown>>(Promise.resolve());
 
     const setRow = useCallback((next: AdminWebinarEvent | null) => {

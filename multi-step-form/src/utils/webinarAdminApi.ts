@@ -37,6 +37,8 @@ export interface CancelResult extends NotifyNotice {
 export interface ParticipantsResult {
     event: AdminWebinarEvent;
     orders: AdminWebinarOrder[];
+    /** Video kelas: webinar asalnya (Iterasi 7). */
+    source?: { id: string; title: string; slug: string } | null;
 }
 
 export interface CheckOrderResult {
@@ -90,7 +92,7 @@ export const closeWebinarSales = (id: string) =>
 
 export const cancelWebinarEvent = (id: string) => webinarAdmin<CancelResult>('cancel', { id });
 
-export const deleteWebinarEvent = (id: string) => webinarAdmin<{ deleted: string }>('delete', { id });
+export const deleteWebinarEvent = (id: string) => webinarAdmin<{ deleted: string; files_removed?: boolean }>('delete', { id });
 
 // ── Fase 3: peserta ─────────────────────────────────────────────────────────
 
