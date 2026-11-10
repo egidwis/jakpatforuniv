@@ -144,6 +144,7 @@ export function WebinarAdminPage({ onDirtyChange }: { onDirtyChange?: (dirty: bo
                 onDirtyChange={onDirtyChange}
                 onCreateVideoFrom={(event) => { void createVideoFrom(event); }}
                 onOpenEvent={(event) => setView({ kind: 'edit', id: event.id })}
+                onEventChanged={replace}
             />
         );
     }

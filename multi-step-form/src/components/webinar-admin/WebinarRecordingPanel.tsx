@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/utils/supabase';
 import { ConfirmDialog, type ConfirmRequest } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
-import { fieldDomId, seatsSummary, type AdminWebinarEvent } from '@/utils/webinarAdmin';
+import { fieldDomId, type AdminWebinarEvent } from '@/utils/webinarAdmin';
 import {
     abortRecordingUpload, completeRecordingUpload, publishRecording, recordingPartUrls, recordingPreview,
     saveWebinarMaterials, startRecordingUpload,
@@ -31,27 +31,20 @@ interface Progress {
  * Terbit = dua centang wajib, lalu email "Rekaman tersedia" sekali per tiket (cron, sql/136b).
  * Video kelas (Fase 5B): rekaman terbit + materi wajib sebelum dijual; kelas tanpa sesi
  * live menerbitkan rekamannya saat masih draft (belum ada pembeli, jadi tanpa email).
+ * Iterasi 8: hanya Video kelas yang punya rekaman; webinar memakai WebinarVideoLinkPanel.
  */
 export function WebinarRecordingPanel({
     row,
     onRow,
     errors = {},
-    offerKind = row.offer_kind,
-    linkedVideo = null,
-    onCreateVideo,
-    onOpenVideo,
+    holders = null,
 }: {
     row: AdminWebinarEvent;
     onRow: (row: AdminWebinarEvent) => void;
     /** Tanda merah dari "isian kurang" saat terbit (missing_fields). */
     errors?: { recording?: string; materials_path?: string };
-    /** Jenis halaman yang sedang dipilih di form (bisa belum tersimpan). */
-    offerKind?: AdminWebinarEvent['offer_kind'];
-    /** Webinar: Video kelas yang tersambung (Iterasi 7). */
-    linkedVideo?: Pick<AdminWebinarEvent, 'id' | 'title'> | null;
-    /** Webinar dengan rekaman terbit: buat draft Video kelas dari webinar ini. */
-    onCreateVideo?: () => void;
-    onOpenVideo?: () => void;
+    /** Webinar yang dikaitkan (Iterasi 8): pemegang tiketnya ikut dikabari saat rekaman terbit. */
+    holders?: { count: number; title: string; started: boolean } | null;
 }) {
     const [progress, setProgress] = useState<Progress | null>(null);
     const [phase, setPhase] = useState<'idle' | 'reading' | 'uploading' | 'saving'>('idle');
@@ -68,13 +61,13 @@ export function WebinarRecordingPanel({
     const busy = phase !== 'idle';
     const hasVideo = Boolean(row.recording_object_key);
     const published = Boolean(row.recording_published_at);
-    const sold = seatsSummary(row.webinar_offer_state).sold;
-    const classMode = offerKind === 'replay';
-    // Video kelas baru bisa dijual sesudah rekamannya terbit, jadi belum ada pembeli.
-    const emailNote = classMode ? 'Belum ada pembeli, jadi tanpa email.' : `→ ${sold} pemegang tiket dapat email`;
-    const eventEnded = row.starts_at
-        ? Date.parse(row.starts_at) + (row.duration_minutes || 0) * 60_000 < Date.now()
-        : true;
+    // Iterasi 8: panel ini hanya untuk Video kelas. Pemegang tiket webinar terkait dikabari
+    // cron (sekali per tiket) bila webinarnya sudah mulai; bila belum, saat acara mulai.
+    const emailNote = !holders
+        ? 'Belum ada pembeli, jadi tanpa email.'
+        : holders.started
+            ? `→ ${holders.count} pemegang tiket ${holders.title} dapat email`
+            : `Pemegang tiket ${holders.title} menerima email sesudah acara mulai.`;
 
     // Menutup tab membatalkan unggahan; peringatkan selama berjalan.
     useEffect(() => {
@@ -182,15 +175,12 @@ export function WebinarRecordingPanel({
         setConfirm({
             title: 'Terbitkan rekaman?',
             lines: [
-                classMode
+                !holders
                     ? 'Belum ada pembeli, jadi belum ada email yang dikirim. Sesudah terbit, Video kelas bisa dijual.'
-                    : sold > 0
-                        ? `${sold} pemegang tiket otomatis menerima email "Rekaman tersedia" dan bisa langsung menonton.`
-                        : 'Belum ada tiket lunas, jadi belum ada email yang dikirim.',
-                !row.materials_path && (classMode
-                    ? 'Materi belum diunggah. Video kelas baru bisa dijual sesudah materinya ada.'
-                    : 'Materi belum diunggah. Bisa menyusul; pemegang tiket melihatnya begitu tersimpan.'),
-                !classMode && !eventEnded && 'Acara ini belum selesai menurut jadwal.',
+                    : holders.started && holders.count > 0
+                        ? `${holders.count} pemegang tiket ${holders.title} otomatis menerima email "Rekaman tersedia" dan bisa langsung menonton. Kaitannya lalu terkunci.`
+                        : `Pemegang tiket ${holders.title} bisa menonton dan menerima email sesudah acara mulai.`,
+                !row.materials_path && 'Materi belum diunggah. Video kelas baru bisa dijual sesudah materinya ada.',
                 'Email hanya dikirim sekali. Mengganti video sesudah terbit tidak mengirim email lagi.',
             ],
             confirmLabel: 'Terbitkan rekaman',
@@ -221,7 +211,7 @@ export function WebinarRecordingPanel({
 
     return (
         <section className="space-y-4">
-            <PanelHeading>Rekaman & materi{classMode && ' · wajib untuk Video kelas'}</PanelHeading>
+            <PanelHeading>Rekaman & materi · wajib untuk Video kelas</PanelHeading>
 
             {/* Video */}
             <div
@@ -342,7 +332,7 @@ export function WebinarRecordingPanel({
                             {materialBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />} Unggah materi
                         </button>
                         <p className="text-[12px] text-slate-500">
-                            PDF, PPT/PPTX, DOC/DOCX, atau ZIP · maks. 50 MB. {classMode ? 'Wajib sebelum Video kelas dijual.' : 'Boleh menyusul.'}
+                            PDF, PPT/PPTX, DOC/DOCX, atau ZIP · maks. 50 MB. Wajib sebelum Video kelas dijual.
                         </p>
                     </div>
                 )}
@@ -351,11 +341,11 @@ export function WebinarRecordingPanel({
 
             {/* Terbit */}
             <div className={cn('rounded-xl border border-slate-200 p-3', errors.recording && 'ring-2 ring-red-200 ring-offset-2')}>
-                <p className="mb-2 text-[13px] font-semibold text-slate-800">{classMode ? 'Terbitkan rekaman' : 'Terbitkan ke pemegang tiket'}</p>
+                <p className="mb-2 text-[13px] font-semibold text-slate-800">Terbitkan rekaman</p>
                 {published ? (
                     <p className="flex items-start gap-1.5 text-[13px] text-emerald-700">
                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                        <span>Terbit {shortStamp(row.recording_published_at!)} WIB. Status email ada di halaman Peserta.</span>
+                        <span>Terbit {shortStamp(row.recording_published_at!)} WIB.{holders ? ` Status email pemegang tiket ada di halaman Peserta ${holders.title}.` : ''}</span>
                     </p>
                 ) : (
                     <div className="space-y-2">
@@ -384,25 +374,6 @@ export function WebinarRecordingPanel({
                     </div>
                 )}
             </div>
-
-            {/* Iterasi 7: Video kelas adalah produk terpisah yang boleh menunjuk ke webinar ini. */}
-            {!classMode && published && (linkedVideo ? (
-                <p className="text-[13px] text-slate-600">
-                    Dijual ke umum sebagai Video kelas: <span className="font-semibold text-slate-800">{linkedVideo.title}</span>
-                    {onOpenVideo && (
-                        <button type="button" onClick={onOpenVideo} className="ml-1 font-semibold text-blue-700 hover:underline">Buka →</button>
-                    )}
-                </p>
-            ) : onCreateVideo ? (
-                <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50/50 p-3">
-                    <p className="text-[13px] text-slate-700">Jual rekaman ini ke umum?</p>
-                    <button type="button" onClick={onCreateVideo}
-                        className="mt-2 h-9 rounded-lg border border-blue-200 bg-white px-3 text-[13px] font-semibold text-blue-700 hover:bg-blue-50">
-                        Buat Video kelas dari webinar ini
-                    </button>
-                    <p className="mt-1.5 text-[12px] text-slate-500">Rekaman dan materinya diunggah sendiri di Video kelas, boleh versi yang sudah dipotong.</p>
-                </div>
-            ) : null)}
 
             <ConfirmDialog request={confirm} onDismiss={() => setConfirm(null)} />
         </section>

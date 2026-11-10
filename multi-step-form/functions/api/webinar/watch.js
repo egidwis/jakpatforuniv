@@ -17,7 +17,7 @@ export async function onRequest({ request, env }) {
   try {
     const gate = await ownedOrderRequest(env, request, 'tonton');
     if (gate.response) return gate.response;
-    const { user, order } = gate;
+    const { user, order, recording } = gate;
 
     const config = recordingConfig(env);
     if (!config) {
@@ -25,13 +25,13 @@ export async function onRequest({ request, env }) {
       return json(503, { error: 'Video belum bisa diputar. Coba lagi nanti.', code: 'storage_unconfigured' });
     }
 
-    const event = order.webinar_events;
-    const { recording_object_key: key, materials_path: materials, ...publicEvent } = event;
+    // Info acara = acara di tiket/pembelian; video & materi = baris Video kelas (Iterasi 8).
+    const { recording_object_key: _k, materials_path: _m, ...publicEvent } = order.webinar_events;
     return json(200, {
-      video_url: await presignGet(config, key, WATCH_SECONDS),
+      video_url: await presignGet(config, recording.recording_object_key, WATCH_SECONDS),
       expires_at: new Date(Date.now() + WATCH_SECONDS * 1000).toISOString(),
-      minutes: event.recording_minutes ?? null,
-      has_materials: Boolean(materials),
+      minutes: recording.recording_minutes ?? null,
+      has_materials: Boolean(recording.materials_path),
       watermark: watermarkText(user.email, order.ticket_code),
       event: buildEventView({ ...publicEvent, webinar_offer_state: { state: 'closed' } }),
     });

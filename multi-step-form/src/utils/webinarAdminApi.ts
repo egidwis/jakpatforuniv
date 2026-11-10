@@ -39,6 +39,8 @@ export interface ParticipantsResult {
     orders: AdminWebinarOrder[];
     /** Video kelas: webinar asalnya (Iterasi 7). */
     source?: { id: string; title: string; slug: string } | null;
+    /** Webinar: Video kelas yang dikaitkan (Iterasi 8). */
+    video?: { id: string; title: string; slug: string } | null;
 }
 
 export interface CheckOrderResult {
@@ -156,3 +158,18 @@ export const publishRecording = (id: string) =>
     webinarAdmin<{ event: AdminWebinarEvent; already?: boolean } & NotifyNotice>('recording-publish', {
         id, confirmations: { speakerPermission: true, facesTrimmed: true },
     });
+
+// ── Kaitan Video kelas ↔ webinar (Iterasi 8) ───────────────────────────────
+
+export interface LinkResult extends NotifyNotice {
+    event: AdminWebinarEvent;
+    video: AdminWebinarEvent;
+}
+
+/** Kaitkan Video kelas ke webinar: pemegang tiket webinar menonton rekaman Video kelas itu. */
+export const linkVideo = (webinarId: string, videoId: string) =>
+    webinarAdmin<LinkResult>('link-video', { id: webinarId, videoId });
+
+/** Lepas kaitan (id = Video kelas). Ditolak 409 link_locked bila pemegang tiket sudah menonton. */
+export const unlinkVideo = (videoId: string) =>
+    webinarAdmin<{ video: AdminWebinarEvent }>('unlink-video', { id: videoId }).then((r) => r.video);

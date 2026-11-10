@@ -5,13 +5,14 @@ import { BannerPicker } from '@/components/PageBuilder/BannerPicker';
 import { ConfirmDialog, type ConfirmRequest } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
 import {
-    WEBINAR_PUBLIC_BUCKET, adminDateLabel, linkedVideoOf, publishConsequence, slugifyTitle, sourceCandidates,
+    WEBINAR_PUBLIC_BUCKET, fieldDomId, paidLiveOf, publishConsequence, slugifyTitle,
     webinarImageUrl, type AdminWebinarEvent, type OfferKind,
 } from '@/utils/webinarAdmin';
 import { useWebinarEditor, type SaveStatus } from './useWebinarEditor';
 import { WebinarSalesPanel } from './WebinarSalesPanel';
 import { WebinarSpeakersField } from './WebinarSpeakersField';
 import { WebinarRecordingPanel } from './WebinarRecordingPanel';
+import { WebinarVideoLinkPanel, WebinarVideoSourceField } from './WebinarVideoLinkPanel';
 import { Field, inputClass } from './WebinarFormParts';
 
 const timeLabel = (d: Date) => d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -40,6 +41,7 @@ export function WebinarEventForm({
     onDirtyChange,
     onCreateVideoFrom,
     onOpenEvent,
+    onEventChanged,
 }: {
     eventId: string | null;
     /** Jenis acara baru (tombol [+ Webinar] / [+ Video kelas]); acara lama memakai jenis barisnya. */
@@ -50,6 +52,8 @@ export function WebinarEventForm({
     onDirtyChange?: (dirty: boolean) => void;
     onCreateVideoFrom?: (event: AdminWebinarEvent) => void;
     onOpenEvent?: (event: AdminWebinarEvent) => void;
+    /** Baris yang berubah lewat aksi di luar simpan form (kaitan Video kelas), untuk daftar. */
+    onEventChanged?: (event: AdminWebinarEvent) => void;
 }) {
     const editor = useWebinarEditor(eventId, kind);
     const { row, form, updateForm, fieldErrors: errors, busy, dirty, isEditable, status, savedAt } = editor;
@@ -59,10 +63,21 @@ export function WebinarEventForm({
     const isPublished = row?.status === 'published';
     const disabled = !isEditable;
     const replay = form.offer_kind === 'replay';
-    // Video kelas memakai panel Rekaman sejak draft tersimpan; webinar sesudah terbit.
-    const showRecording = Boolean(row) && (isPublished || (isDraft && replay));
-    const candidates = replay ? sourceCandidates(events, row?.id ?? null) : [];
-    const linkedVideo = row && !replay ? linkedVideoOf(row, events) : null;
+    // Iterasi 8: video & materi hanya diunggah di Video kelas (sejak draft tersimpan).
+    // Webinar terbit cukup dikaitkan ke satu Video kelas.
+    const showRecording = Boolean(row) && replay && row?.status !== 'cancelled';
+    const showLink = Boolean(row) && !replay && isPublished;
+    // Video kelas yang dikaitkan: pemegang tiket webinarnya ikut dikabari saat rekaman terbit.
+    const linkedWebinar = replay && row?.source_event_id ? events.find((e) => e.id === row.source_event_id) ?? null : null;
+    const holders = linkedWebinar && row ? {
+        count: paidLiveOf(linkedWebinar),
+        title: linkedWebinar.title,
+        started: linkedWebinar.status === 'published' && Date.parse(linkedWebinar.starts_at ?? '') <= Date.now(),
+    } : null;
+    const adoptVideo = (video: AdminWebinarEvent) => {
+        if (video.id === row?.id) editor.adoptRow(video);
+        onEventChanged?.(video);
+    };
 
     useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
     useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
@@ -197,47 +212,41 @@ export function WebinarEventForm({
                         </Field>
 
                         {replay && (
-                            <Field
-                                field="source_event_id"
-                                label="Dari webinar (opsional)"
-                                error={errors.source_event_id}
-                                hint={form.source_event_id
-                                    ? 'Pemegang tiket webinar ini tidak perlu membeli; mereka dibawa ke tiketnya.'
-                                    : 'Pilih bila video ini rekaman salah satu webinar. Satu webinar paling banyak satu Video kelas.'}
-                            >
-                                <select
-                                    value={form.source_event_id}
-                                    onChange={(e) => updateForm({ source_event_id: e.target.value })}
+                            <div id={fieldDomId('source_event_id')} className="scroll-mt-24">
+                                <WebinarVideoSourceField
+                                    video={row}
+                                    events={events}
                                     disabled={disabled}
-                                    className={cn(inputClass(errors.source_event_id), 'h-10')}
-                                >
-                                    <option value="">Tanpa webinar asal</option>
-                                    {candidates.map((e) => (
-                                        <option key={e.id} value={e.id}>
-                                            {e.title}{e.starts_at ? ` · ${adminDateLabel(e.starts_at)}` : ''}{e.status === 'cancelled' ? ' (batal)' : ''}
-                                        </option>
-                                    ))}
-                                </select>
-                            </Field>
+                                    onVideoChanged={adoptVideo}
+                                />
+                            </div>
                         )}
                     </div>
 
-                    {/* Rekaman (Fase 5A) di bawah panel penjualan; tanpa sticky supaya kolom kanan bisa digulir.
-                        Draft Video kelas juga memakainya: rekaman wajib terbit sebelum dijual (Fase 5B). */}
+                    {/* Rekaman (Video kelas) atau kaitan (webinar terbit) di bawah panel penjualan; tanpa
+                        sticky supaya kolom kanan bisa digulir. */}
                     <div className="space-y-6">
-                        <aside className={cn('h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm', !showRecording && 'lg:sticky lg:top-20')}>
+                        <aside className={cn('h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm', !showRecording && !showLink && 'lg:sticky lg:top-20')}>
                             <WebinarSalesPanel form={form} update={updateForm} errors={errors} row={row} disabled={disabled} />
                         </aside>
                         {showRecording && row && (
                             <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                                 <WebinarRecordingPanel
                                     row={row}
-                                    onRow={editor.adoptRow}
+                                    onRow={adoptVideo}
                                     errors={{ recording: errors.recording, materials_path: errors.materials_path }}
-                                    offerKind={form.offer_kind}
-                                    linkedVideo={linkedVideo}
+                                    holders={holders}
+                                />
+                            </aside>
+                        )}
+                        {showLink && row && (
+                            <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <WebinarVideoLinkPanel
+                                    webinar={row}
+                                    events={events}
+                                    onVideoChanged={adoptVideo}
                                     onCreateVideo={onCreateVideoFrom && !dirty ? () => onCreateVideoFrom(row) : undefined}
-                                    onOpenVideo={onOpenEvent && linkedVideo ? () => onOpenEvent(linkedVideo) : undefined}
+                                    onOpenVideo={onOpenEvent}
                                 />
                             </aside>
                         )}

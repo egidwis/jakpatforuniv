@@ -4,6 +4,7 @@ import {
     isoToWibParts, normalizeDoc, normalizeSpeakers, parseWholeNumber, priceBreakdown, publishConsequence,
     salesChoiceOf, slugifyTitle, soldLabel, sortAdminEvents, stableStringify, wibPartsToIso, zoomWarning,
     emptyFormFor, videoDraftFromWebinar, sourceCandidates, linkedVideoOf, canCancel,
+    unlinkedVideos, holderAccess, linkLocked,
     type AdminWebinarEvent, type WebinarForm,
 } from './webinarAdmin';
 // @ts-expect-error — gerbang server ditulis JS polos (Pages Functions), sengaja tanpa tipe.
@@ -248,7 +249,8 @@ describe('Video kelas: produk terpisah (Iterasi 7)', () => {
         const form = formFromEvent(r);
         expect(form.source_event_id).toBe('44444444-4444-4444-8444-444444444444');
         expect(diffColumns(r, columnsOf(form))).toEqual({});
-        expect(diffColumns(r, columnsOf({ ...form, source_event_id: '' }))).toEqual({ source_event_id: null });
+        // Iterasi 8: mengosongkan kaitan lewat Lepas kaitan, bukan diff simpan otomatis.
+        expect(diffColumns(r, columnsOf({ ...form, source_event_id: '' }))).toEqual({});
         const server = gate.normalizePatch(columnsOf(form));
         expect(diffColumns(server.patch, columnsOf(form))).toEqual({});
         // Webinar tidak pernah membawa webinar asal.
@@ -311,5 +313,56 @@ describe('Video kelas: produk terpisah (Iterasi 7)', () => {
 
     it('urutan isian kurang sama dengan server (panel Rekaman di ujung)', () => {
         expect(PUBLISH_FIELD_ORDER).toEqual(gate.PUBLISH_FIELD_ORDER);
+    });
+});
+
+describe('kaitan Video kelas ↔ webinar (Iterasi 8)', () => {
+    const NOW = Date.parse('2026-11-20T00:00:00Z');
+    const WEB = row({ id: 'w1', status: 'published', starts_at: '2026-11-17T01:30:00Z', sold_live: 3 });
+    const VID = row({
+        id: 'v1', offer_kind: 'replay', status: 'draft', source_event_id: 'w1', source_linked_at: '2026-11-18T00:00:00Z',
+        recording_object_key: 'rekaman/v1/a.mp4', recording_published_at: '2026-11-18T02:30:00Z',
+    });
+
+    it('diff baris yang sudah ada tidak pernah mengirim kaitan (lewat Kaitkan/Lepas kaitan)', () => {
+        const form = { ...formFromEvent(VID), source_event_id: 'lain' };
+        expect(diffColumns(VID, columnsOf(form))).not.toHaveProperty('source_event_id');
+    });
+
+    it('unlinkedVideos: Video kelas tanpa kaitan dan tidak batal, terbaru dulu', () => {
+        const events = [
+            row({ id: 'a', offer_kind: 'replay', created_at: '2026-11-01T00:00:00Z' }),
+            row({ id: 'b', offer_kind: 'replay', created_at: '2026-11-03T00:00:00Z' }),
+            row({ id: 'c', offer_kind: 'replay', source_event_id: 'w9' }),
+            row({ id: 'd', offer_kind: 'replay', status: 'cancelled' }),
+            row({ id: 'e', offer_kind: 'live' }),
+        ];
+        expect(unlinkedVideos(events).map((e) => e.id)).toEqual(['b', 'a']);
+    });
+
+    it('holderAccess: langkah berikutnya sampai pemegang tiket bisa menonton', () => {
+        expect(holderAccess(WEB, null, NOW)).toEqual({ state: 'none', since: null });
+        expect(holderAccess(WEB, { ...VID, recording_object_key: null, recording_published_at: null }, NOW).state).toBe('upload');
+        expect(holderAccess(WEB, { ...VID, recording_published_at: null }, NOW).state).toBe('publish');
+        expect(holderAccess({ ...WEB, starts_at: '2026-11-21T00:00:00Z' }, VID, NOW))
+            .toEqual({ state: 'start', since: '2026-11-21T00:00:00.000Z' });
+        expect(holderAccess(WEB, VID, NOW)).toEqual({ state: 'open', since: '2026-11-18T02:30:00.000Z' });
+        expect(holderAccess(WEB, { ...VID, source_linked_at: '2026-11-19T05:00:00Z' }, NOW).since).toBe('2026-11-19T05:00:00.000Z');
+    });
+
+    it('linkLocked: terbuka untuk pemegang tiket + ada tiket lunas', () => {
+        expect(linkLocked(WEB, VID, NOW)).toBe(true);
+        expect(linkLocked({ ...WEB, sold_live: 0 }, VID, NOW)).toBe(false);
+        expect(linkLocked({ ...WEB, sold_live: undefined, webinar_offer_state: { state: 'closed', sold: 2, held: 0 } }, VID, NOW)).toBe(true);
+        expect(linkLocked({ ...WEB, starts_at: '2026-11-21T00:00:00Z' }, VID, NOW)).toBe(false);
+        expect(linkLocked(WEB, { ...VID, recording_published_at: null }, NOW)).toBe(false);
+        expect(linkLocked(null, VID, NOW)).toBe(false);
+    });
+
+    it('cermin linkLockError server', () => {
+        for (const [web, vid] of [[WEB, VID], [{ ...WEB, sold_live: 0 }, VID], [WEB, { ...VID, recording_published_at: null }]] as const) {
+            const paid = web.sold_live ?? 0;
+            expect(linkLocked(web, vid, NOW)).toBe(gate.linkLockError(web, vid, paid, NOW) !== null);
+        }
     });
 });

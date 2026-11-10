@@ -11,6 +11,8 @@
 // berputar karena klien dan server menormalisasi berbeda. webinarGate.spec.js
 // mengunci kesamaannya.
 
+import { holderVideo } from '../webinar/_recordingAccess.js';
+
 export const WEBINAR_ADMIN_ACTIONS = [
   'list', 'get', 'create', 'save', 'publish', 'close-sales', 'cancel', 'delete',
   // Fase 3: peserta, refund (email otomatis dikirim cron per peserta, sql/136b)
@@ -20,9 +22,12 @@ export const WEBINAR_ADMIN_ACTIONS = [
   // Fase 5A: rekaman (R2) & materi untuk pemegang tiket
   'recording-upload-start', 'recording-part-urls', 'recording-upload-complete', 'recording-upload-abort',
   'recording-preview', 'materials-save', 'recording-publish',
+  // Iterasi 8: kaitkan Video kelas ke webinar (id = webinar, videoId = Video kelas) /
+  // lepas kaitan (id = Video kelas). Rekaman hanya diunggah di Video kelas.
+  'link-video', 'unlink-video',
 ];
 export const RECORDING_ACTIONS = WEBINAR_ADMIN_ACTIONS.filter((a) => a.startsWith('recording-') || a === 'materials-save');
-const NEEDS_ID = new Set(['get', 'save', 'publish', 'close-sales', 'cancel', 'delete', 'participants', ...RECORDING_ACTIONS]);
+const NEEDS_ID = new Set(['get', 'save', 'publish', 'close-sales', 'cancel', 'delete', 'participants', 'link-video', 'unlink-video', ...RECORDING_ACTIONS]);
 
 // ── Rekaman (Fase 5A) ──────────────────────────────────────────────────────
 
@@ -148,6 +153,7 @@ export function validateWebinarRequest(body) {
   if (!WEBINAR_ADMIN_ACTIONS.includes(body.action)) return 'Tindakan tidak diizinkan';
   if (NEEDS_ID.has(body.action) && (typeof body.id !== 'string' || !UUID_RE.test(body.id))) return 'Acara tidak dikenali';
   if (NEEDS_ORDER.has(body.action) && (typeof body.orderId !== 'string' || !UUID_RE.test(body.orderId))) return 'Order tidak dikenali';
+  if (body.action === 'link-video' && (typeof body.videoId !== 'string' || !UUID_RE.test(body.videoId))) return 'Video kelas tidak dikenali';
   if (body.action === 'refund' && !normalizeRefundNote(body.note)) return 'Catatan refund wajib diisi (3–500 karakter)';
   const recording = validateRecordingRequest(body);
   if (recording) return recording;
@@ -339,14 +345,14 @@ export function kindChangeError(current, patch) {
 /**
  * Webinar asal Video kelas. Status sumber diperiksa saat penghubung dipilih/diganti
  * (`changed`); sumber yang batal sesudah dihubungkan tidak menggagalkan simpan isian
- * lain. Video kelas bersumber baru boleh dijual sesudah rekaman di webinar asalnya
- * terbit, supaya pemegang tiket tidak tertinggal oleh pembeli Video kelas.
+ * lain. Iterasi 8: syarat "rekaman webinar asal terbit sebelum dijual" (penjaga 4)
+ * dicabut, karena rekaman pemegang tiket kini milik Video kelas itu sendiri.
  *
  * @param {object} row baris Video kelas sesudah patch
- * @param {object|null} source baris webinar asal (id, offer_kind, status, recording_published_at)
+ * @param {object|null} source baris webinar asal (id, offer_kind, status)
  * @returns {{ field: string, code: string, error: string } | null}
  */
-export function sourceError(row, source, { changed = false, publishing = false } = {}) {
+export function sourceError(row, source, { changed = false } = {}) {
   if (!row.source_event_id) return null;
   const invalid = (error) => ({ field: 'source_event_id', code: 'source_invalid', error });
   if (changed) {
@@ -355,15 +361,26 @@ export function sourceError(row, source, { changed = false, publishing = false }
     if ((source.offer_kind ?? 'live') !== 'live') return invalid('Webinar asal harus webinar, bukan Video kelas');
     if (source.status !== 'published') return invalid('Webinar asal harus sudah terbit dan tidak dibatalkan');
   }
-  const selling = row.sales_mode === 'open' && (publishing || row.status === 'published');
-  if (selling && !source?.recording_published_at) {
-    return {
-      field: 'source_event_id',
-      code: 'source_recording_unpublished',
-      error: 'Terbitkan dulu rekaman di webinar asalnya, supaya pemegang tiketnya tidak tertinggal',
-    };
-  }
   return null;
+}
+
+/**
+ * Kaitan Video kelas ↔ webinar terkunci (keputusan pemilik produk 10 Nov) sesudah
+ * pemegang tiket bisa menonton dan webinar punya ≥ 1 tiket lunas: tidak bisa
+ * dilepas, diganti, dan Video kelasnya tidak bisa dihapus.
+ *
+ * @param {object|null} webinar baris webinar (status, offer_kind, starts_at, id)
+ * @param {object|null} video baris Video kelas yang dikaitkan
+ * @param {number} paidLive tiket live lunas webinar itu
+ * @returns {{ field: string, code: string, error: string } | null}
+ */
+export function linkLockError(webinar, video, paidLive, now = Date.now()) {
+  if (!(paidLive > 0) || !holderVideo(webinar, video, now)) return null;
+  return {
+    field: 'source_event_id',
+    code: 'link_locked',
+    error: `Kaitan terkunci: ${paidLive} pemegang tiket sudah bisa menonton rekaman ini.`,
+  };
 }
 
 /** Tanggal buka hanya bermakna untuk sales_mode 'open'; selain itu dikosongkan. */

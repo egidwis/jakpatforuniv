@@ -12,6 +12,10 @@
 // sekali per tiket lewat penanda recording_email_sent_at). Draft Video kelas boleh
 // menerbitkan rekaman (Fase 5B).
 //
+// Iterasi 8 (sql/138): rekaman & materi HANYA di baris Video kelas. Baris webinar
+// ditolak (409 recording_on_video); pemegang tiket webinar menonton rekaman Video
+// kelas yang dikaitkan (source_event_id).
+//
 // Aturan tulis sama dengan webinar.js: PATCH acara memfilter id saja dan meminta
 // barisnya kembali. Kunci R2 hanya dikirim ke admin, tidak pernah ke pembeli.
 
@@ -20,7 +24,8 @@ import {
   abortMultipart, headObject, deleteObject,
 } from '../webinar/_recording.js';
 import { MAX_RECORDING_BYTES, RECORDING_PART_SIZE } from './webinarGate.js';
-import { db, decorate, loadOrRefuse, refuse, writeEvent } from './_webinarDb.js';
+import { db, decorate, loadEvent, loadOrRefuse, refuse, writeEvent } from './_webinarDb.js';
+import { holderVideo } from '../webinar/_recordingAccess.js';
 
 export const PREVIEW_SECONDS = 3600;
 const PART_URL_SECONDS = 2 * 3600;
@@ -34,14 +39,22 @@ function config(env) {
   return c;
 }
 
-async function loadEditable(sb, id) {
-  const event = await loadOrRefuse(sb, id);
-  if (event.status === 'cancelled') throw refuse(409, 'Acara yang dibatalkan tidak punya rekaman', { code: 'cancelled' });
+function requireVideo(event) {
+  if ((event.offer_kind ?? 'live') !== 'replay') {
+    throw refuse(409, 'Rekaman webinar diunggah di Video kelas yang dikaitkan.', { code: 'recording_on_video' });
+  }
   return event;
 }
 
-async function hasPaidTickets(sb, eventId) {
-  const rows = await db(sb, `webinar_orders?event_id=eq.${eventId}&kind=eq.live&status=eq.paid&select=id&limit=1`, {}, 'SELECT webinar_orders (lunas)');
+async function loadEditable(sb, id) {
+  const event = await loadOrRefuse(sb, id);
+  if (event.status === 'cancelled') throw refuse(409, 'Acara yang dibatalkan tidak punya rekaman', { code: 'cancelled' });
+  return requireVideo(event);
+}
+
+/** Pembeli Video kelas ini sudah ada (order lunas apa pun jenisnya). */
+async function hasPaidOrders(sb, eventId) {
+  const rows = await db(sb, `webinar_orders?event_id=eq.${eventId}&status=eq.paid&select=id&limit=1`, {}, 'SELECT webinar_orders (lunas)');
   return Array.isArray(rows) && rows.length > 0;
 }
 
@@ -104,7 +117,7 @@ export async function uploadAbort(sb, env, body) {
 
 export async function preview(sb, env, body) {
   const c = config(env);
-  const event = await loadOrRefuse(sb, body.id);
+  const event = requireVideo(await loadOrRefuse(sb, body.id));
   if (!event.recording_object_key) throw refuse(404, 'Rekaman belum diunggah', { code: 'no_recording' });
   return {
     url: await presignGet(c, event.recording_object_key, PREVIEW_SECONDS),
@@ -134,25 +147,31 @@ export async function saveMaterials(sb, body) {
 
 export async function publishRecording(sb, body, ctx) {
   const current = await loadEditable(sb, body.id);
-  // Video kelas tanpa sesi live (Fase 5B): rekaman terbit di draft lebih dulu, karena
-  // halaman Video kelas baru bisa dijual sesudah rekamannya terbit. Draft belum
-  // punya pembeli, jadi tidak ada email.
-  const draftClass = current.status === 'draft' && current.offer_kind === 'replay';
-  if (current.status !== 'published' && !draftClass) throw refuse(409, 'Terbitkan acaranya dulu', { code: 'not_published' });
+  // Rekaman Video kelas boleh terbit saat halamannya masih draft (Fase 5B): halaman
+  // baru bisa dijual sesudah rekamannya terbit, dan V draft yang dikaitkan ke webinar
+  // = rekaman khusus peserta (Iterasi 8).
   if (!current.recording_object_key) throw refuse(409, 'Unggah video rekaman dulu', { code: 'no_recording' });
   // Sekali terbit: menekan lagi tidak mengubah apa pun (penanda per tiket juga menjaga).
   if (current.recording_published_at) return { event: decorate(current), already: true };
-  if (ctx.local && await hasPaidTickets(sb, body.id)) throw refuse(403, LOCAL_TEST, { code: 'local_test' });
 
-  const event = await writeEvent(sb, body.id, { recording_published_at: new Date().toISOString() }, 'PATCH webinar_events (terbit rekaman)');
-  return { event: decorate(event), notify_scheduled: Number(current.webinar_offer_state?.sold) || 0 };
+  // Pemegang tiket webinar terkait dikabari cron bila webinarnya sudah mulai;
+  // bila belum, email berangkat saat acara mulai.
+  const publishedAt = new Date().toISOString();
+  const webinar = current.source_event_id ? await loadEvent(sb, current.source_event_id) : null;
+  const notify = holderVideo(webinar, { ...current, recording_published_at: publishedAt })
+    ? Number(webinar.webinar_offer_state?.sold) || 0
+    : 0;
+  if (ctx.local && (notify > 0 || await hasPaidOrders(sb, body.id))) throw refuse(403, LOCAL_TEST, { code: 'local_test' });
+
+  const event = await writeEvent(sb, body.id, { recording_published_at: publishedAt }, 'PATCH webinar_events (terbit rekaman)');
+  return { event: decorate(event), notify_scheduled: notify };
 }
 
 /**
  * Hapus berkas milik draft yang barisnya SUDAH terhapus (Iterasi 7): video di R2 dan
  * seluruh materi di folder `<id>/` bucket webinar-materials (termasuk versi yang
- * sudah diganti). Poster & foto pembicara di webinar-public sengaja dibiarkan: Video
- * kelas yang dibuat dari webinar memakai URL poster yang sama.
+ * sudah diganti). Gambar di webinar-public sengaja dibiarkan: foto pembicara ikut
+ * tersalin ke Video kelas yang dibuat dari webinar, jadi URL-nya bisa dipakai bersama.
  *
  * @returns {Promise<boolean>} true bila semua yang ada terhapus; galat hanya dicatat.
  */

@@ -13,6 +13,7 @@
 import { sendMail } from '../_mail.js';
 import { buildWebinarNotifyEmail } from './_notify-email.js';
 import { rest } from './_server.js';
+import { holderVideo, linkedVideos } from './_recordingAccess.js';
 
 export const NOTIFY_KINDS = ['reminder_day', 'schedule_change', 'cancellation', 'recording_ready'];
 
@@ -34,11 +35,14 @@ function wibStamp(date) {
   return `${p.day} ${p.month} ${p.hour}.${p.minute}`;
 }
 
-/** Keadaan acara saat ini masih cocok dengan jenis email? (tick bisa basi beberapa detik) */
-function stillDue(kind, event, now) {
+/**
+ * Keadaan acara saat ini masih cocok dengan jenis email? (tick bisa basi beberapa detik)
+ * Rekaman: dari Video kelas yang dikaitkan (Iterasi 8), aturan sama dengan halaman tonton.
+ */
+function stillDue(kind, event, now, video) {
   const started = !event.starts_at || Date.parse(event.starts_at) <= now.getTime();
   if (kind === 'cancellation') return event.status === 'cancelled';
-  if (kind === 'recording_ready') return event.status === 'published' && Boolean(event.recording_published_at);
+  if (kind === 'recording_ready') return holderVideo(event, video, now.getTime()) !== null;
   return event.status === 'published' && event.offer_kind === 'live' && !started;
 }
 
@@ -62,7 +66,10 @@ export async function sendOrderNotification({ env, sb, orderId, kind, now = new 
   if (order.status !== 'paid' || order.kind !== 'live') return { skipped: 'not_paid' };
 
   const [event] = (await rest(sb, `webinar_events?id=eq.${order.event_id}&select=${EVENT_COLUMNS}`, {}, 'SELECT webinar_events (email otomatis)')) || [];
-  if (!event || !stillDue(kind, event, now)) return { skipped: 'wrong_state' };
+  const video = event && kind === 'recording_ready'
+    ? (await linkedVideos(sb, [event.id], 'email rekaman')).get(event.id) ?? null
+    : null;
+  if (!event || !stillDue(kind, event, now, video)) return { skipped: 'wrong_state' };
 
   let error;
   try {

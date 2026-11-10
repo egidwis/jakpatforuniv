@@ -3,11 +3,12 @@ import { onRequest as watchHandler } from './watch.js';
 import { onRequest as materialHandler, materialFileName } from './material.js';
 import { onRequest as myHandler, buildOrderView } from './my.js';
 import { onRequest as eventsHandler } from './events.js';
-import { recordingAccess, watermarkText } from './_recordingAccess.js';
+import { availableSince, holderVideo, recordingAccess, watermarkText } from './_recordingAccess.js';
 import { PUBLIC_EVENT_COLUMNS } from './_view.js';
 
 /*
-  Fase 5A: rekaman hanya untuk pemilik tiket. Masa uji asli (_access.js) dipakai:
+  Fase 5A: rekaman hanya untuk pemilik tiket. Iterasi 8: rekaman pemegang tiket webinar
+  datang dari Video kelas yang dikaitkan (source_event_id), bukan dari baris webinar. Masa uji asli (_access.js) dipakai:
   akun uji = tegar@jakpat.net, yang memang ada di daftar izin.
 */
 
@@ -24,16 +25,32 @@ const OWNER = { id: '11111111-1111-4111-8111-111111111111', email: 'Tegar@Jakpat
 const OTHER = { id: '99999999-9999-4999-8999-999999999999', email: 'tegar@jakpat.net' };
 const ORDER_ID = '22222222-2222-4222-8222-222222222222';
 const EVENT_ID = '8ea66d4e-429f-4e98-a716-4bbc92b6ee39';
-const KEY = `rekaman/${EVENT_ID}/olah-data-a1b2c3d4.mp4`;
+const VIDEO_ID = '33333333-3333-4333-8333-333333333333';
+const KEY = `rekaman/${VIDEO_ID}/olah-data-a1b2c3d4.mp4`;
+const DAY = 86_400_000;
+const ago = (ms) => new Date(Date.now() - ms).toISOString();
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
 const eventRow = (over = {}) => ({
   id: EVENT_ID, slug: 'olah-data', title: 'Olah Data', summary: 'Ringkas', poster_url: 'https://cdn.test/p.webp',
-  speakers: [{ name: 'Dr. Sari', title: 'Dosen' }], starts_at: '2026-11-17T01:30:00Z', duration_minutes: 90,
+  speakers: [{ name: 'Dr. Sari', title: 'Dosen' }], starts_at: ago(2 * DAY), duration_minutes: 90,
   price: 49000, status: 'published', offer_kind: 'live', sales_mode: 'closed', is_listed: true, is_test: false,
-  recording_minutes: 88, recording_published_at: '2026-11-18T02:30:00Z', recording_object_key: KEY,
-  materials_path: `${EVENT_ID}/materi-spss-1a2b.pdf`, meeting_url: 'https://zoom.us/j/1',
+  recording_minutes: null, recording_published_at: null, recording_object_key: null,
+  materials_path: null, meeting_url: 'https://zoom.us/j/1',
+  ...over,
+});
+// Video kelas yang dikaitkan ke webinar di atas; rekamannya terbit, halamannya boleh draft.
+const videoRow = (over = {}) => ({
+  id: VIDEO_ID, status: 'draft', source_event_id: EVENT_ID, source_linked_at: ago(DAY),
+  recording_minutes: 88, recording_published_at: ago(DAY), recording_object_key: KEY,
+  materials_path: `${VIDEO_ID}/materi-spss-1a2b.pdf`,
+  ...over,
+});
+// Order Video kelas: rekamannya milik baris acaranya sendiri.
+const replayEvent = (over = {}) => eventRow({
+  id: VIDEO_ID, slug: 'olah-data-video', offer_kind: 'replay', starts_at: null, duration_minutes: null, meeting_url: null,
+  recording_minutes: 88, recording_published_at: ago(DAY), recording_object_key: KEY, materials_path: `${VIDEO_ID}/materi-spss-1a2b.pdf`,
   ...over,
 });
 const orderRow = (over = {}) => ({
@@ -45,7 +62,7 @@ const orderRow = (over = {}) => ({
 });
 
 let calls;
-function net({ user = OWNER, order = orderRow(), sign = () => json({ signedURL: `/object/sign/webinar-materials/${EVENT_ID}/materi-spss-1a2b.pdf?token=abc` }) } = {}) {
+function net({ user = OWNER, order = orderRow(), video = videoRow(), sign = () => json({ signedURL: `/object/sign/webinar-materials/${VIDEO_ID}/materi-spss-1a2b.pdf?token=abc` }) } = {}) {
   calls = [];
   global.fetch = vi.fn(async (url, init = {}) => {
     const u = String(url);
@@ -57,7 +74,12 @@ function net({ user = OWNER, order = orderRow(), sign = () => json({ signedURL: 
       return json(order && owner === `eq.${order.auth_user_id}` ? [order] : []);
     }
     if (u.includes('/storage/v1/object/sign/')) return sign();
-    if (u.includes('/rest/v1/webinar_events')) return json([]);
+    if (u.includes('/rest/v1/webinar_events')) {
+      // Video kelas terkait dicari lewat source_event_id (eq. atau in.), seperti PostgREST.
+      const f = new URL(u).searchParams.get('source_event_id') || '';
+      const ids = f.startsWith('eq.') ? [f.slice(3)] : f.startsWith('in.(') ? f.slice(4, -1).split(',') : [];
+      return json(video && ids.includes(video.source_event_id) ? [video] : []);
+    }
     return json([]);
   });
 }
@@ -97,12 +119,44 @@ describe('POST /api/webinar/watch', () => {
     expect(text).not.toContain('materi-spss');
   });
 
-  it('order dicari dengan auth_user_id sesi', async () => {
+  it('order dicari dengan auth_user_id sesi; Video kelas terkait lewat source_event_id', async () => {
     net();
     await watch();
     const q = calls.find((c) => c.url.includes('/webinar_orders')).url;
     expect(q).toContain(`id=eq.${ORDER_ID}`);
     expect(q).toContain(`auth_user_id=eq.${OWNER.id}`);
+    const v = calls.find((c) => c.url.includes('/webinar_events')).url;
+    expect(v).toContain(`source_event_id=in.(${EVENT_ID})`);
+  });
+
+  it('pemegang tiket menonton rekaman Video kelas terkait walau halamannya draft', async () => {
+    net({ video: videoRow({ status: 'draft' }) });
+    const r = await watch();
+    expect(r.status).toBe(200);
+    expect(new URL(r.body.video_url).pathname).toBe(`/rek/${KEY}`);
+    expect(r.body.event.title).toBe('Olah Data'); // judul tiketnya, bukan judul Video kelas
+  });
+
+  it('pemegang tiket: tanpa Video kelas, rekaman V belum terbit, atau webinar belum mulai → 409 not_ready', async () => {
+    net({ video: null });
+    expect((await watch()).body.code).toBe('not_ready');
+    net({ video: videoRow({ recording_published_at: null }) });
+    expect((await watch()).body.code).toBe('not_ready');
+    net({ order: orderRow({ webinar_events: eventRow({ starts_at: new Date(Date.now() + DAY).toISOString() }) }) });
+    expect((await watch()).body.code).toBe('not_ready');
+  });
+
+  it('rekaman lama di baris webinar diabaikan (rekaman hanya di Video kelas)', async () => {
+    net({ video: null, order: orderRow({ webinar_events: eventRow({ recording_object_key: `rekaman/${EVENT_ID}/lama-a1b2c3d4.mp4`, recording_published_at: ago(DAY) }) }) });
+    expect((await watch()).body.code).toBe('not_ready');
+  });
+
+  it('pembeli Video kelas: rekaman baris acaranya sendiri, tanpa mencari kaitan', async () => {
+    net({ video: null, order: orderRow({ kind: 'replay', webinar_events: replayEvent() }) });
+    const r = await watch();
+    expect(r.status).toBe(200);
+    expect(new URL(r.body.video_url).pathname).toBe(`/rek/${KEY}`);
+    expect(calls.some((c) => c.url.includes('/webinar_events'))).toBe(false);
   });
 
   it('akun lain → 404 "untuk pemilik tiket", tanpa slug/URL', async () => {
@@ -129,10 +183,8 @@ describe('POST /api/webinar/watch', () => {
     });
   });
 
-  it('rekaman belum terbit → 409 not_ready; acara batal → 409 cancelled', async () => {
-    net({ order: orderRow({ webinar_events: eventRow({ recording_published_at: null }) }) });
-    expect((await watch()).body.code).toBe('not_ready');
-    net({ order: orderRow({ webinar_events: eventRow({ recording_object_key: null, recording_published_at: null }) }) });
+  it('Video kelas belum terbit rekamannya → 409 not_ready; acara batal → 409 cancelled', async () => {
+    net({ order: orderRow({ kind: 'replay', webinar_events: replayEvent({ recording_published_at: null }) }) });
     expect((await watch()).body.code).toBe('not_ready');
     net({ order: orderRow({ webinar_events: eventRow({ status: 'cancelled' }) }) });
     expect((await watch()).body.code).toBe('cancelled');
@@ -160,7 +212,8 @@ describe('POST /api/webinar/material', () => {
     net();
     const r = await material();
     expect(r.status).toBe(200);
-    expect(r.body.url).toBe(`https://db.example.test/storage/v1/object/sign/webinar-materials/${EVENT_ID}/materi-spss-1a2b.pdf?token=abc&download=materi-olah-data.pdf`);
+    // Materi dari Video kelas terkait; nama unduhan dari slug webinar tiketnya.
+    expect(r.body.url).toBe(`https://db.example.test/storage/v1/object/sign/webinar-materials/${VIDEO_ID}/materi-spss-1a2b.pdf?token=abc&download=materi-olah-data.pdf`);
     const sign = calls.find((c) => c.url.includes('/storage/v1/object/sign/'));
     expect(sign.method).toBe('POST');
     expect(JSON.parse(sign.body)).toEqual({ expiresIn: 600 });
@@ -171,9 +224,9 @@ describe('POST /api/webinar/material', () => {
     expect((await material()).status).toBe(404);
     net({ order: orderRow({ status: 'refunded' }) });
     expect((await material()).status).toBe(403);
-    net({ order: orderRow({ webinar_events: eventRow({ recording_published_at: null }) }) });
+    net({ video: videoRow({ recording_published_at: null }) });
     expect((await material()).status).toBe(409);
-    net({ order: orderRow({ webinar_events: eventRow({ materials_path: null }) }) });
+    net({ video: videoRow({ materials_path: null }) });
     expect((await material()).body.code).toBe('no_material');
     expect(calls.some((c) => c.url.includes('/storage/'))).toBe(false);
   });
@@ -196,11 +249,24 @@ describe('kartu tiket (my.js) & kebocoran URL', () => {
     for (const leak of ['r2.cloudflarestorage.com', 'rekaman/', 'materi-spss', 'X-Amz-']) expect(text).not.toContain(leak);
   });
 
-  it('belum terbit, refund, atau acara batal → tidak tersedia', () => {
-    const view = (over) => buildOrderView(orderRow(over));
-    expect(view({ webinar_events: eventRow({ recording_published_at: null }) }).recording.available).toBe(false);
+  it('my.js memuat Video kelas terkait dalam SATU kueri in.(…) untuk semua tiket live', async () => {
+    net();
+    await myHandler({ request: req('my', null, 'GET'), env: ENV, waitUntil: () => {} });
+    const q = calls.filter((c) => c.url.includes('/webinar_events'));
+    expect(q).toHaveLength(1);
+    expect(q[0].url).toContain(`source_event_id=in.(${EVENT_ID})`);
+  });
+
+  it('belum terbit, belum mulai, tanpa Video kelas, refund, atau acara batal → tidak tersedia', () => {
+    const view = (over, video = videoRow()) => buildOrderView(orderRow(over), Date.now(), video);
+    expect(view({}).recording).toEqual({ available: true, minutes: 88, has_materials: true });
+    expect(view({}, videoRow({ recording_published_at: null })).recording.available).toBe(false);
+    expect(view({}, null).recording.available).toBe(false);
+    expect(view({ webinar_events: eventRow({ starts_at: new Date(Date.now() + DAY).toISOString() }) }).recording.available).toBe(false);
     expect(view({ status: 'refunded' })).toMatchObject({ recording: { available: false, has_materials: false }, watch_path: null });
     expect(view({ webinar_events: eventRow({ status: 'cancelled' }) }).watch_path).toBeNull();
+    // Order Video kelas: rekaman barisnya sendiri.
+    expect(buildOrderView(orderRow({ kind: 'replay', webinar_events: replayEvent() })).recording.available).toBe(true);
   });
 
   it('events.js (daftar publik) bebas URL/kunci R2', async () => {
@@ -222,8 +288,41 @@ describe('kartu tiket (my.js) & kebocoran URL', () => {
 describe('aturan murni', () => {
   it('recordingAccess & watermark', () => {
     expect(recordingAccess(null).code).toBe('not_owner');
-    expect(recordingAccess(orderRow()).ok).toBe(true);
+    expect(recordingAccess(orderRow(), videoRow()).ok).toBe(true);
+    expect(recordingAccess(orderRow(), null).code).toBe('not_ready');
     expect(watermarkText('a@b.c', 'ab12cd')).toBe('a@b.c · AB12');
     expect(watermarkText('a@b.c', null)).toBe('a@b.c');
+  });
+});
+
+describe('holderVideo & availableSince', () => {
+  const now = Date.parse('2026-11-20T00:00:00Z');
+  const E = eventRow({ starts_at: '2026-11-17T01:30:00Z' });
+  const V = videoRow({ source_linked_at: '2026-11-18T00:00:00Z', recording_published_at: '2026-11-18T02:30:00Z' });
+
+  it('terbuka bila webinar terbit + sudah mulai, V terkait ke webinar ini, rekaman V terbit', () => {
+    expect(holderVideo(E, V, now)).toBe(V);
+    expect(holderVideo(E, { ...V, status: 'published' }, now)).toEqual({ ...V, status: 'published' });
+  });
+
+  it.each([
+    ['tanpa V', E, null],
+    ['webinar draft', { ...E, status: 'draft' }, V],
+    ['webinar batal', { ...E, status: 'cancelled' }, V],
+    ['webinar belum mulai', { ...E, starts_at: '2026-11-21T00:00:00Z' }, V],
+    ['bukan webinar live', { ...E, offer_kind: 'replay' }, V],
+    ['V terkait ke webinar lain', E, { ...V, source_event_id: '44444444-4444-4444-8444-444444444444' }],
+    ['V batal', E, { ...V, status: 'cancelled' }],
+    ['rekaman V belum terbit', E, { ...V, recording_published_at: null }],
+    ['V tanpa objek video', E, { ...V, recording_object_key: null }],
+  ])('%s → tertutup', (_, e, v) => {
+    expect(holderVideo(e, v, now)).toBeNull();
+  });
+
+  it('tersedia sejak = yang paling akhir dari terbit rekaman, kaitan, dan mulai webinar', () => {
+    expect(availableSince(E, V)).toBe('2026-11-18T02:30:00.000Z');
+    expect(availableSince(E, { ...V, source_linked_at: '2026-11-19T05:00:00Z' })).toBe('2026-11-19T05:00:00.000Z');
+    expect(availableSince({ ...E, starts_at: '2026-11-25T01:00:00Z' }, V)).toBe('2026-11-25T01:00:00.000Z');
+    expect(availableSince(E, null)).toBeNull();
   });
 });

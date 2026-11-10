@@ -5,7 +5,7 @@ import {
   isEmptyDoc, hasDataImage, normalizeDoc, normalizeSpeakers, normalizePatch, applySalesInvariant,
   slugifyTitle, pickFreeSlug, isSlugLocked, missingForPublish, crossFieldError, quotaError,
   clearedScheduleError, scheduleChanged, RECORDING_ACTIONS, MAX_RECORDING_BYTES,
-  PUBLISH_FIELD_ORDER, kindChangeError, applyKindInvariant, sourceError,
+  PUBLISH_FIELD_ORDER, kindChangeError, applyKindInvariant, sourceError, linkLockError,
 } from './webinarGate.js';
 
 const ID = '33333333-3333-4333-8333-333333333333';
@@ -16,7 +16,7 @@ describe('validateWebinarRequest', () => {
   it('menerima setiap aksi yang terdaftar dengan bentuk benar', () => {
     // Aksi rekaman punya isian sendiri; bentuk sahnya diuji di "aksi rekaman (Fase 5A)".
     for (const action of WEBINAR_ADMIN_ACTIONS.filter((a) => !RECORDING_ACTIONS.includes(a))) {
-      expect(validateWebinarRequest({ action, id: ID, patch: {}, orderId: ID, note: 'Bentrok jadwal' })).toBeNull();
+      expect(validateWebinarRequest({ action, id: ID, patch: {}, orderId: ID, note: 'Bentrok jadwal', videoId: ID })).toBeNull();
     }
   });
 
@@ -352,17 +352,47 @@ describe('webinar asal Video kelas (Iterasi 7)', () => {
     expect(sourceError(video, { ...source, status: 'cancelled' }, { changed: false })).toBeNull();
   });
 
-  it('dijual (terbit + dibuka) mensyaratkan rekaman webinar asal sudah terbit', () => {
+  it('Iterasi 8: dijual TIDAK lagi mensyaratkan rekaman di webinar asal (rekaman milik Video kelas)', () => {
     const selling = { ...video, status: 'published', sales_mode: 'open' };
-    expect(sourceError(selling, source, { changed: false })).toEqual({
-      field: 'source_event_id', code: 'source_recording_unpublished',
-      error: 'Terbitkan dulu rekaman di webinar asalnya, supaya pemegang tiketnya tidak tertinggal',
+    expect(sourceError(selling, source, { changed: false })).toBeNull();
+    expect(sourceError({ ...selling, status: 'draft' }, source, { changed: true })).toBeNull();
+  });
+});
+
+describe('kunci kaitan Video kelas ↔ webinar (Iterasi 8)', () => {
+  const NOW = Date.parse('2026-11-20T00:00:00Z');
+  const WEB = { id: '44444444-4444-4444-8444-444444444444', status: 'published', offer_kind: 'live', starts_at: '2026-11-17T01:30:00Z' };
+  const VID = {
+    id: ID, status: 'draft', offer_kind: 'replay', source_event_id: WEB.id,
+    recording_object_key: `rekaman/${ID}/a-a1b2c3d4.mp4`, recording_published_at: '2026-11-18T02:00:00Z',
+  };
+
+  it('terkunci bila pemegang tiket sudah bisa menonton dan ada ≥ 1 tiket lunas', () => {
+    expect(linkLockError(WEB, VID, 3, NOW)).toEqual({
+      code: 'link_locked', field: 'source_event_id',
+      error: 'Kaitan terkunci: 3 pemegang tiket sudah bisa menonton rekaman ini.',
     });
-    expect(sourceError(selling, { ...source, recording_published_at: '2026-11-18T02:00:00Z' }, { changed: false })).toBeNull();
-    expect(sourceError({ ...selling, sales_mode: 'coming_soon' }, source, { changed: false })).toBeNull();
-    expect(sourceError({ ...selling, status: 'draft' }, source, { changed: false, publishing: true })?.code)
-      .toBe('source_recording_unpublished');
-    expect(sourceError({ ...selling, status: 'draft' }, source, { changed: false })).toBeNull();
+  });
+
+  it.each([
+    ['tanpa tiket lunas', WEB, VID, 0],
+    ['webinar belum mulai', { ...WEB, starts_at: '2026-11-21T00:00:00Z' }, VID, 5],
+    ['rekaman Video kelas belum terbit', WEB, { ...VID, recording_published_at: null }, 5],
+    ['tanpa webinar', null, VID, 5],
+    ['tanpa Video kelas', WEB, null, 5],
+  ])('%s → tidak terkunci', (_, web, vid, paid) => {
+    expect(linkLockError(web, vid, paid, NOW)).toBeNull();
+  });
+});
+
+describe('aksi kaitan (Iterasi 8)', () => {
+  it('link-video wajib id webinar + videoId; unlink-video wajib id', () => {
+    expect(validateWebinarRequest({ action: 'link-video', id: ID, videoId: ID })).toBeNull();
+    expect(validateWebinarRequest({ action: 'link-video', id: ID })).toMatch(/Video kelas tidak dikenali/);
+    expect(validateWebinarRequest({ action: 'link-video', id: ID, videoId: 'x' })).toMatch(/Video kelas tidak dikenali/);
+    expect(validateWebinarRequest({ action: 'link-video', videoId: ID })).toMatch(/Acara tidak dikenali/);
+    expect(validateWebinarRequest({ action: 'unlink-video', id: ID })).toBeNull();
+    expect(validateWebinarRequest({ action: 'unlink-video' })).toMatch(/Acara tidak dikenali/);
   });
 });
 

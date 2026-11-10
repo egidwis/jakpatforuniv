@@ -215,6 +215,8 @@ interface EventTiming {
     duration_minutes: number | null;
     schedule_changed_at?: string | null;
     recording_published_at?: string | null;
+    /** Iterasi 8: sejak kapan pemegang tiket bisa menonton Video kelas terkait (aksi participants). */
+    recording_available_at?: string | null;
 }
 
 export interface EmailLine { text: string; tone: Tone }
@@ -282,10 +284,13 @@ export function noticeStatus(kind: Exclude<NotifyKind, 'reminder_day'>, event: E
         const lost = ms(event.starts_at) < now - SEVEN_DAYS;
         return summary('', done.length, paid.length, paid.length - done.length, failedFor(done, kind), lost);
     }
-    if (!event.recording_published_at) return null;
+    // Rekaman pemegang tiket milik Video kelas terkait (Iterasi 8); batas 7 hari dihitung
+    // dari "tersedia sejak" (cermin webinar_notify_tick, sql/138).
+    const since = event.recording_available_at;
+    if (!since) return null;
     const done = paid.filter((o) => o.recording_email_sent_at);
-    const lost = event.status !== 'published' || ms(event.recording_published_at) < now - SEVEN_DAYS;
-    return summary(shortStamp(event.recording_published_at), done.length, paid.length, paid.length - done.length, failedFor(done, kind), lost);
+    const lost = event.status !== 'published' || ms(since) < now - SEVEN_DAYS;
+    return summary(shortStamp(since), done.length, paid.length, paid.length - done.length, failedFor(done, kind), lost);
 }
 
 /** Tiket lunas yang email otomatis terakhirnya gagal (tidak diulang otomatis). */

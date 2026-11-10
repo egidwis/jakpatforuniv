@@ -1,5 +1,5 @@
 // POST /api/webinar/material {orderId}: link unduh materi (PPT/PDF) untuk pemilik
-// tiket (Fase 5A). Signed URL Supabase Storage 10 menit dari bucket privat
+// tiket (Fase 5A). Iterasi 8: materi milik Video kelas. Signed URL Supabase Storage 10 menit dari bucket privat
 // webinar-materials (sql/131); syarat aksesnya sama dengan menonton rekaman.
 
 import { CORS, json, sbFetch } from './_server.js';
@@ -20,11 +20,13 @@ export async function onRequest({ request, env }) {
   try {
     const gate = await ownedOrderRequest(env, request, 'materi');
     if (gate.response) return gate.response;
-    const { sb, order } = gate;
+    const { sb, order, recording } = gate;
     const event = order.webinar_events;
-    if (!event.materials_path) return json(404, { error: 'Materi belum tersedia', code: 'no_material' });
+    // Materi milik baris Video kelas (Iterasi 8); nama unduhan dari slug acara di tiket.
+    const materials = recording.materials_path;
+    if (!materials) return json(404, { error: 'Materi belum tersedia', code: 'no_material' });
 
-    const path = event.materials_path.split('/').map(encodeURIComponent).join('/');
+    const path = materials.split('/').map(encodeURIComponent).join('/');
     const res = await sbFetch(`${sb.url}/storage/v1/object/sign/${BUCKET}/${path}`, {
       method: 'POST',
       headers: sb.headers,
@@ -34,7 +36,7 @@ export async function onRequest({ request, env }) {
     if (typeof signed !== 'string' || !signed.startsWith('/')) throw new Error('Storage sign: signedURL tidak ada');
 
     const sep = signed.includes('?') ? '&' : '?';
-    const name = materialFileName(event.slug, event.materials_path);
+    const name = materialFileName(event.slug, materials);
     return json(200, {
       url: `${sb.url}/storage/v1${signed}${sep}download=${encodeURIComponent(name)}`,
       file_name: name,

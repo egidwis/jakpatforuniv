@@ -75,6 +75,8 @@ export interface AdminWebinarEvent {
     sold_replay?: number;
     /** Iterasi 7 (sql/137): Video kelas → webinar asal rekamannya. */
     source_event_id?: string | null;
+    /** Iterasi 8 (sql/138): kapan kaitan ke webinar dibuat. */
+    source_linked_at?: string | null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -425,6 +427,8 @@ export function diffColumns(row: Partial<AdminWebinarEvent> | null, columns: Web
     if (row && out.sales_open_at === null && !row.sales_open_at) delete out.sales_open_at;
     // Jenis ditentukan saat dibuat (Iterasi 7): baris yang sudah ada tidak pernah dikirimi jenis.
     if (row) delete out.offer_kind;
+    // Kaitan ke webinar hanya lewat Kaitkan / Lepas kaitan (Iterasi 8), tidak lewat simpan otomatis.
+    if (row) delete out.source_event_id;
     return out;
 }
 
@@ -475,6 +479,48 @@ export function sourceCandidates<T extends Pick<AdminWebinarEvent, 'id' | 'offer
         .filter((e) => e.offer_kind === 'live' && e.id !== currentId
             && (e.id === current || (e.status === 'published' && !takenByOthers.has(e.id))))
         .sort((a, b) => (Date.parse(b.starts_at ?? '') || 0) - (Date.parse(a.starts_at ?? '') || 0));
+}
+
+// ── Kaitan Video kelas ↔ webinar (Iterasi 8) ────────────────────────────────
+
+type LinkWebinar = Pick<AdminWebinarEvent, 'id' | 'status' | 'offer_kind' | 'starts_at'>
+    & Partial<Pick<AdminWebinarEvent, 'sold_live' | 'webinar_offer_state'>>;
+type LinkVideo = Pick<AdminWebinarEvent, 'status' | 'source_event_id' | 'source_linked_at' | 'recording_object_key' | 'recording_published_at'>;
+
+/** Video kelas yang bisa dikaitkan ke webinar: belum terkait, tidak batal; terbaru dulu. */
+export function unlinkedVideos<T extends Pick<AdminWebinarEvent, 'offer_kind' | 'status' | 'source_event_id' | 'created_at'>>(events: T[]): T[] {
+    return events
+        .filter((e) => e.offer_kind === 'replay' && !e.source_event_id && e.status !== 'cancelled')
+        .sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0));
+}
+
+export type HolderAccessState = 'none' | 'upload' | 'publish' | 'start' | 'open';
+
+const msOf = (iso?: string | null) => (iso ? Date.parse(iso) : NaN);
+
+/**
+ * Keadaan pemegang tiket webinar terhadap Video kelas terkait, beserta langkah yang
+ * kurang. Cermin holderVideo/availableSince (functions/api/webinar/_recordingAccess.js).
+ * `since` = sejak kapan bisa menonton (open) atau kapan akan bisa (start).
+ */
+export function holderAccess(webinar: LinkWebinar | null, video: LinkVideo | null, now: number = Date.now()): { state: HolderAccessState; since: string | null } {
+    if (!webinar || !video || video.status === 'cancelled' || video.source_event_id !== webinar.id) return { state: 'none', since: null };
+    if (!video.recording_object_key) return { state: 'upload', since: null };
+    if (!video.recording_published_at) return { state: 'publish', since: null };
+    const times = [video.recording_published_at, video.source_linked_at, webinar.starts_at].map(msOf).filter(Number.isFinite);
+    const since = times.length ? new Date(Math.max(...times)).toISOString() : null;
+    const live = webinar.status === 'published' && webinar.offer_kind === 'live';
+    if (!live || !(msOf(webinar.starts_at) <= now)) return { state: 'start', since };
+    return { state: 'open', since };
+}
+
+/** Tiket live lunas webinar (aksi list membawa sold_live; get membawa offer_state). */
+export const paidLiveOf = (webinar: Partial<Pick<AdminWebinarEvent, 'sold_live' | 'webinar_offer_state'>> | null): number =>
+    webinar?.sold_live ?? (Number(webinar?.webinar_offer_state?.sold) || 0);
+
+/** Kaitan terkunci: pemegang tiket sudah bisa menonton dan ada ≥ 1 tiket lunas (cermin linkLockError). */
+export function linkLocked(webinar: LinkWebinar | null, video: LinkVideo | null, now: number = Date.now()): boolean {
+    return holderAccess(webinar, video, now).state === 'open' && paidLiveOf(webinar) > 0;
 }
 
 /** Batalkan hanya untuk webinar terbit yang belum mulai; cermin aturan `cancel` server. */

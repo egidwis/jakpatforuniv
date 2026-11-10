@@ -116,9 +116,11 @@ const ENV = {
 const ORDER_ID = '11111111-1111-4111-8111-111111111111';
 const EVENT_ID = '22222222-2222-4222-8222-222222222222';
 const NOW = new Date('2026-11-16T02:00:00Z'); // Sen 16 Nov 09.00 WIB, acara mulai besok 08.30
+// Video kelas yang dikaitkan ke acara ini, rekamannya terbit (sumber rekaman pemegang tiket, Iterasi 8).
+const LINKED = { id: '33333333-3333-4333-8333-333333333333', recording_published_at: '2026-11-15T03:00:00Z', recording_object_key: 'rekaman/33333333-3333-4333-8333-333333333333/a-a1b2c3d4.mp4', source_linked_at: '2026-11-15T02:00:00Z' };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
-function network({ order = {}, event = {}, mail = () => json({ id: 'm' }), orderStatus = 200, patchRows = null } = {}) {
+function network({ order = {}, event = {}, video = null, mail = () => json({ id: 'm' }), orderStatus = 200, patchRows = null } = {}) {
   const calls = [];
   const orderRow = order === null ? null : {
     id: ORDER_ID, event_id: EVENT_ID, kind: 'live', status: 'paid', buyer_name: 'Putra', buyer_email: 'putra@t.test',
@@ -131,7 +133,11 @@ function network({ order = {}, event = {}, mail = () => json({ id: 'm' }), order
     const body = init.body ? JSON.parse(init.body) : null;
     calls.push({ url: u, method, body });
     if (u.includes('/rest/v1/webinar_orders') && method === 'GET') return json(orderRow ? [orderRow] : [], orderStatus);
-    if (u.includes('/rest/v1/webinar_events') && method === 'GET') return json([eventRow]);
+    if (u.includes('/rest/v1/webinar_events') && method === 'GET') {
+      // Video kelas terkait (Iterasi 8): dicari lewat source_event_id.
+      if (u.includes('source_event_id=')) return json(video && u.includes(EVENT_ID) ? [{ source_event_id: EVENT_ID, status: 'draft', ...video }] : []);
+      return json([eventRow]);
+    }
     if (u.includes('/rest/v1/webinar_orders') && method === 'PATCH') return json(patchRows ?? [{ id: ORDER_ID }]);
     if (u.includes('api.resend.com')) return mail(body);
     return json({}, 404);
@@ -204,9 +210,21 @@ describe('sendOrderNotification', () => {
     expect(await send('cancellation')).toEqual({ sent: true });
     expect(net.mails()[0].subject).toBe('Webinar dibatalkan: Olah Data SPSS untuk Skripsi');
 
-    net = network({ event: { starts_at: '2026-11-10T01:30:00Z', recording_published_at: '2026-11-15T03:00:00Z' } });
+    net = network({ event: { starts_at: '2026-11-10T01:30:00Z' }, video: LINKED });
     expect(await send('recording_ready')).toEqual({ sent: true });
     expect(net.mails()[0].html).toContain(`/dashboard/webinar/tonton/${ORDER_ID}`);
+    expect(net.calls.find((c) => c.url.includes('source_event_id=')).url).toContain(`source_event_id=in.(${EVENT_ID})`);
+  });
+
+  it.each([
+    ['tanpa Video kelas terkait', { event: { starts_at: '2026-11-10T01:30:00Z' } }],
+    ['rekaman lama di baris webinar (diabaikan)', { event: { starts_at: '2026-11-10T01:30:00Z', recording_published_at: '2026-11-15T03:00:00Z', recording_object_key: 'rekaman/x/a.mp4' } }],
+    ['rekaman Video kelas belum terbit', { event: { starts_at: '2026-11-10T01:30:00Z' }, video: { ...LINKED, recording_published_at: null } }],
+    ['webinar belum mulai', { video: LINKED }],
+  ])('rekaman: %s → dilewati', async (_, setup) => {
+    const net = network(setup);
+    expect(await send('recording_ready')).toEqual({ skipped: 'wrong_state' });
+    expect(net.mails()).toHaveLength(0);
   });
 
   it('database gagal dibaca → melempar', async () => {

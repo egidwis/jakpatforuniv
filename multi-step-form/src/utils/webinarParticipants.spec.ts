@@ -140,10 +140,13 @@ describe('email otomatis (kolom penanda per order, Iterasi 4)', () => {
         const orders = [paid('a', { cancel_email_sent_at: '2026-11-10T03:01:00Z' }), paid('b', { cancel_email_sent_at: '2026-11-10T03:01:00Z', email_error: 'Pembatalan · 10 Nov 10.01 · x' })];
         expect(noticeStatus('cancellation', event, orders, NOW)).toBeNull();
         expect(noticeStatus('cancellation', cancelled, orders, NOW)).toEqual({ text: '2/2 dikirim · 1 gagal', tone: 'warn' });
-        const rec = { ...event, recording_published_at: '2026-11-18T02:30:00Z' };
+        // Iterasi 8: rekaman milik Video kelas terkait; server menghitung "tersedia sejak".
+        const rec = { ...event, recording_available_at: '2026-11-18T02:30:00Z' };
         expect(noticeStatus('recording_ready', event, orders, NOW)).toBeNull();
         expect(noticeStatus('recording_ready', rec, [paid('a', { recording_email_sent_at: '2026-11-18T02:31:00Z' })], Date.parse('2026-11-18T03:00:00Z')))
             .toEqual({ text: '18 Nov 09.30 · 1/1 dikirim', tone: 'ok' });
+        // Rekaman lama di baris webinar diabaikan.
+        expect(noticeStatus('recording_ready', { ...event, recording_published_at: '2026-11-18T02:30:00Z' }, orders, NOW)).toBeNull();
     });
 
     it('daftar email gagal hanya tiket lunas', () => {

@@ -13,6 +13,7 @@ import { checkOrderAtDoku } from '../webinar/_checkStatus.js';
 import { accountEmailOf, deliverWebinarTicket } from '../doku/_webinar.js';
 import { db, dbAll, decorate, loadOrRefuse, refuse } from './_webinarDb.js';
 import { normalizeRefundNote, normalizeTicketEmail } from './webinarGate.js';
+import { availableSince, holderVideo } from '../webinar/_recordingAccess.js';
 
 /** Aksi yang menulis ke produksi atau mengirim email: ditolak dari uji lokal. */
 export const LOCAL_BLOCKED_ACTIONS = ['resend-ticket', 'check-order', 'refund'];
@@ -66,9 +67,25 @@ export async function participants(sb, body) {
     source = row ?? null;
     holders = await sourceTicketHolders(sb, event.source_event_id);
   }
+  // Webinar: Video kelas yang dikaitkan (Iterasi 8) dan sejak kapan pemegang tiket bisa menonton.
+  let video = null;
+  let availableAt = null;
+  if ((event.offer_kind ?? 'live') === 'live') {
+    const [row] = (await db(
+      sb,
+      `webinar_events?source_event_id=eq.${event.id}&select=id,title,slug,status,source_event_id,source_linked_at,recording_published_at,recording_object_key`,
+      {},
+      'SELECT webinar_events (Video kelas terkait)'
+    )) || [];
+    if (row) {
+      video = { id: row.id, title: row.title, slug: row.slug };
+      availableAt = holderVideo(event, row) ? availableSince(event, row) : null;
+    }
+  }
   return {
-    event: decorate(event, { full: false }),
+    event: { ...decorate(event, { full: false }), recording_available_at: availableAt },
     source,
+    video,
     orders: orders.map((o) => ({ ...orderView(o), holds_source_ticket: Boolean(o.auth_user_id && holders.has(o.auth_user_id)) })),
   };
 }
