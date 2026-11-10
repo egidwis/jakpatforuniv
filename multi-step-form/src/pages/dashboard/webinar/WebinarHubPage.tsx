@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import {
+    AlertCircle, ArrowDown, ChevronRight, HelpCircle, LayoutDashboard, Loader2, Mail, Sparkles, Ticket,
+} from 'lucide-react';
 import {
     fetchMyWebinarOrders, fetchWebinarListing, purchaseHistory, syncWebinarOrder, webinarTicketHref,
     type MyWebinarOrders, type WebinarEventView, type WebinarListing, type WebinarOrderView,
 } from '@/utils/webinarApi';
-import { AdminContactLine, CARD_CLASS, WebinarBadge, WebinarMeta, WebinarPoster } from '@/components/webinar/WebinarParts';
+import { ADMIN_EMAIL, CARD_CLASS, WebinarBadge, WebinarMeta, WebinarPoster } from '@/components/webinar/WebinarParts';
 import { WebinarTicketCard } from '@/components/webinar/WebinarTicketCard';
+import { Card, CardContent } from '@/components/ui/card';
 
 const POLL_MS = 5_000;
 // Dokumentasi DOKU melarang Check Status lebih cepat dari 60 detik sesudah bayar.
@@ -169,9 +172,10 @@ export function WebinarHubPage() {
                     <section className="space-y-3">
                         <h2 className="text-base font-bold text-slate-900">Tiket &amp; video saya</h2>
                         {focusMissing && (
-                            <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                                Tiket itu tidak ada di akun {mine?.email}. Cek akun yang tertulis di e-tiketmu.
-                            </p>
+                            <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-900">
+                                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                <span>Tiket itu tidak ada di akun <strong className="font-semibold">{mine?.email}</strong>. Cek akun yang tertulis di e-tiketmu.</span>
+                            </div>
                         )}
                         {visibleOrders.length > 0 ? (
                             <div className="space-y-3">
@@ -187,25 +191,101 @@ export function WebinarHubPage() {
                                 ))}
                             </div>
                         ) : !focusMissing && (
-                            <p className="text-sm text-slate-500">
-                                Belum ada tiket atau video di akun {mine?.email}. Beli dengan akun lain? Cek email pembelianmu untuk melihat akun yang dipakai.
-                            </p>
+                            <Card className="border border-slate-200/90 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] bg-white/95 rounded-2xl overflow-hidden">
+                                <CardContent className="flex flex-col items-center justify-center py-10 md:py-12 px-6 text-center">
+                                    <div className="w-14 h-14 rounded-2xl bg-blue-50/80 border border-blue-100 flex items-center justify-center text-jfu-primary mb-4 shadow-xs">
+                                        <Ticket className="w-7 h-7 stroke-[1.75]" />
+                                    </div>
+                                    <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                                        Belum Ada Tiket atau Video
+                                    </h3>
+                                    <p className="text-xs sm:text-sm text-slate-500 max-w-md mt-1.5 leading-relaxed">
+                                        Tiket webinar dan rekaman video kelas yang kamu miliki akan tersimpan rapi di sini.
+                                    </p>
+
+                                    {mine?.email && (
+                                        <div className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200/80 text-xs text-slate-500">
+                                            <HelpCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                            <span>
+                                                Terhubung ke <strong className="font-semibold text-slate-700">{mine.email}</strong>. Beli pakai email lain? Cek e-tiketmu.
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    {events.length > 0 && (
+                                        <div className="mt-6">
+                                            <a
+                                                href="#webinar-katalog"
+                                                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-jfu-primary hover:bg-jfu-dark text-white text-xs sm:text-sm font-semibold shadow-xs transition-all cursor-pointer"
+                                            >
+                                                <span>Jelajahi Webinar &amp; Kelas</span>
+                                                <ArrowDown className="w-4 h-4" />
+                                            </a>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
                         )}
                     </section>
 
                     <PurchaseHistory orders={mine?.orders ?? []} />
 
-                    <section className="space-y-3">
+                    <section id="webinar-katalog" className="space-y-3">
                         <h2 className="text-base font-bold text-slate-900">Webinar &amp; kelas</h2>
                         {events.length > 0 ? (
                             <div className="grid gap-3 lg:grid-cols-2">
                                 {events.map((e) => <OfferCard key={e.id} event={e} owned={ownedBySlug.get(e.slug)} />)}
                             </div>
                         ) : (
-                            <p className="text-sm text-slate-500">Webinar berikutnya sedang disiapkan. Cek lagi nanti ya.</p>
+                            <Card className="border border-slate-200/90 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] bg-white/95 rounded-2xl overflow-hidden">
+                                <CardContent className="flex flex-col items-center justify-center py-10 md:py-12 px-6 text-center">
+                                    <div className="w-14 h-14 rounded-2xl bg-amber-50/80 border border-amber-100 flex items-center justify-center text-amber-600 mb-4 shadow-xs">
+                                        <Sparkles className="w-7 h-7 stroke-[1.75]" />
+                                    </div>
+                                    <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                                        Webinar Berikutnya Sedang Disiapkan
+                                    </h3>
+                                    <p className="text-xs sm:text-sm text-slate-500 max-w-md mt-1.5 leading-relaxed">
+                                        Nantikan kelas riset, analisis data, dan sesi praktikum industri berikutnya. Ingin membahas topik tertentu?
+                                    </p>
+
+                                    <div className="mt-6 flex flex-wrap items-center justify-center gap-2.5 sm:gap-3">
+                                        <a
+                                            href={`mailto:${ADMIN_EMAIL}?subject=Usulan%20Topik%20Webinar%20JFU`}
+                                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-jfu-primary text-white text-xs sm:text-sm font-semibold shadow-xs hover:bg-jfu-dark transition-all cursor-pointer"
+                                        >
+                                            <span>Usulkan Topik Webinar</span>
+                                            <ChevronRight className="w-4 h-4" />
+                                        </a>
+                                        <Link
+                                            to="/dashboard"
+                                            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs sm:text-sm font-semibold transition-all"
+                                        >
+                                            <LayoutDashboard className="w-4 h-4 text-slate-500" />
+                                            <span>Kembali ke Dashboard</span>
+                                        </Link>
+                                    </div>
+                                </CardContent>
+                            </Card>
                         )}
                     </section>
-                    <AdminContactLine />
+
+                    <div className="pt-2">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-2xl bg-white/90 border border-slate-200/90 shadow-[0_1px_3px_0_rgba(0,0,0,0.02)] text-xs sm:text-sm text-slate-600">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-xl bg-blue-50/80 border border-blue-100 flex items-center justify-center text-jfu-primary shrink-0 shadow-2xs">
+                                    <Mail className="w-4 h-4" />
+                                </div>
+                                <span>Ada kendala atau pertanyaan seputar webinar?</span>
+                            </div>
+                            <a
+                                href={`mailto:${ADMIN_EMAIL}`}
+                                className="font-semibold text-jfu-primary hover:text-jfu-dark underline decoration-blue-200 hover:decoration-jfu-primary underline-offset-2 transition-colors inline-flex items-center gap-1"
+                            >
+                                <span>Hubungi admin di {ADMIN_EMAIL}</span>
+                            </a>
+                        </div>
+                    </div>
                 </>
             )}
         </div>
