@@ -18,7 +18,12 @@ import {
 } from '../api/webinar/_view.js';
 import { escapeHtml, renderBlocks } from './_render-blocks.js';
 
-const CANONICAL_ORIGIN = 'https://jakpatforuniv.com';
+// Apex jakpatforuniv.com dialihkan aturan Cloudflare ke submit.…/homepage/<path>
+// SEBELUM sampai ke Pages, jadi jakpatforuniv.com/webinar/<slug> berakhir di aplikasi
+// React, bukan di halaman ini (dicek 12 Nov 2026). Karena itu URL kanonik (canonical,
+// og:url) memakai submit.; apex hanya dipakai untuk link Beranda (pengalihannya benar).
+const CANONICAL_ORIGIN = SITE_URL;
+const HOME_URL = 'https://jakpatforuniv.com/';
 const LOGO_URL = `${SITE_URL}/favicon.webp`;
 
 const e = escapeHtml;
@@ -87,8 +92,8 @@ function page({ title, description, image, canonicalPath, body, noindex = false,
 }
 
 const navbar = () => `<header class="nav"><div class="nav-in">
-<a class="brand" href="${CANONICAL_ORIGIN}/"><img src="${LOGO_URL}" alt="" width="26" height="26">Jakpat for Universities</a>
-<a class="link hide-sm" href="${CANONICAL_ORIGIN}/">Beranda</a><a class="link hide-sm" href="/webinar">Webinar</a><a class="link hide-sm" href="${SITE_URL}/pages">Survei</a>
+<a class="brand" href="${HOME_URL}"><img src="${LOGO_URL}" alt="" width="26" height="26">Jakpat for Universities</a>
+<a class="link hide-sm" href="${HOME_URL}">Beranda</a><a class="link hide-sm" href="/webinar">Webinar</a><a class="link hide-sm" href="${SITE_URL}/pages">Survei</a>
 <a class="cta" href="${SITE_URL}/dashboard">Dashboard</a></div></header>`;
 
 const inAppNotice = () => `<div class="inapp">Google tidak bisa dipakai di browser aplikasi ini. Buka di Chrome/Safari
@@ -229,7 +234,7 @@ function joinPage({ title, inner, scripts = [] }) {
     noindex: true,
     referrerNone: true,
     scripts,
-    body: `<div class="simple"><div class="card"><a class="brand" style="justify-content:center;margin-bottom:12px" href="${CANONICAL_ORIGIN}/"><img src="${LOGO_URL}" alt="" width="26" height="26">Jakpat for Universities</a>${inner}
+    body: `<div class="simple"><div class="card"><a class="brand" style="justify-content:center;margin-bottom:12px" href="${HOME_URL}"><img src="${LOGO_URL}" alt="" width="26" height="26">Jakpat for Universities</a>${inner}
 <p class="foot">Ada kendala? <a href="mailto:${ADMIN_CONTACT}">${ADMIN_CONTACT}</a></p></div></div>`,
   });
 }

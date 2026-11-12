@@ -204,7 +204,10 @@ describe('halaman publik', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('Cache-Control')).toBe('no-store');
     expect(html).toContain('og:title');
-    expect(html).toContain('rel="canonical" href="https://jakpatforuniv.com/webinar/olah-data"');
+    // Apex dialihkan Cloudflare ke /homepage/ sebelum Pages, jadi URL kanonik di submit.
+    expect(html).toContain('rel="canonical" href="https://submit.jakpatforuniv.com/webinar/olah-data"');
+    expect(html).toContain('og:url" content="https://submit.jakpatforuniv.com/webinar/olah-data"');
+    expect(html).not.toContain('https://jakpatforuniv.com/webinar');
     expect(html).not.toContain(SECRET_ZOOM);
     expect(html).not.toContain('tok-rahasia');
     expect(html.toLowerCase()).not.toMatch(/refund|pengembalian dana/);
