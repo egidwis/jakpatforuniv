@@ -5,6 +5,7 @@ import { onRequest as myHandler, buildOrderView } from './my.js';
 import { onRequest as eventsHandler } from './events.js';
 import { availableSince, holderVideo, recordingAccess, watermarkText } from './_recordingAccess.js';
 import { PUBLIC_EVENT_COLUMNS } from './_view.js';
+import { WEBINAR_PREVIEW_ONLY } from './_access.js';
 
 /*
   Fase 5A: rekaman hanya untuk pemilik tiket. Iterasi 8: rekaman pemegang tiket webinar
@@ -190,11 +191,13 @@ describe('POST /api/webinar/watch', () => {
     expect((await watch()).body.code).toBe('cancelled');
   });
 
-  it('tanpa sesi 401; masa uji: akun di luar daftar → 403; orderId tak sah 400', async () => {
+  it('tanpa sesi 401; email di luar daftar uji ditolak hanya selama masa uji; orderId tak sah 400', async () => {
     net({ user: null });
     expect((await watch()).status).toBe(401);
     net({ user: { ...OWNER, email: 'budi@example.test' } });
-    expect((await watch()).body.code).toBe('not_open');
+    // Kepemilikan dicek lewat auth_user_id, bukan email: sesudah rilis akun ini lolos.
+    if (WEBINAR_PREVIEW_ONLY) expect((await watch()).body.code).toBe('not_open');
+    else expect((await watch()).status).toBe(200);
     net();
     expect((await watch({ orderId: 'x' })).status).toBe(400);
     expect((await watchHandler({ request: req('watch', null, 'GET'), env: ENV })).status).toBe(405);

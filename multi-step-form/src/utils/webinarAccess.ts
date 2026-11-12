@@ -1,6 +1,7 @@
 // Cermin functions/api/webinar/_access.js untuk tampilan. Penegaknya server;
-// ini hanya menyembunyikan menu dan rute. Saat rilis, ubah keduanya bersamaan.
-export const WEBINAR_PREVIEW_ONLY = true;
+// ini hanya menyembunyikan menu dan rute. Ubah keduanya bersamaan.
+// Dimatikan 12 Nov 2026 (rilis publik).
+export const WEBINAR_PREVIEW_ONLY = false;
 export const WEBINAR_PREVIEW_EMAILS = ['tegar@jakpat.net'];
 
 // Uji lokal: build `npm run dev:full` memakai mode 'localtest'. Masa uji hanya

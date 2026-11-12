@@ -1,16 +1,18 @@
-// Masa uji sebelum rilis: webinar hanya terbuka untuk akun di daftar ini.
+// Saklar masa uji. DIMATIKAN 12 Nov 2026: webinar terbuka untuk semua akun.
 //
-// Saat rilis, ubah WEBINAR_PREVIEW_ONLY menjadi false di sini DAN di
-// src/utils/webinarAccess.ts (spec memastikan keduanya sama), lalu deploy.
-//
-// Selama masa uji:
-// - checkout, my, sync menolak akun lain (403);
-// - events mengembalikan daftar kosong + open:false untuk selain daftar ini,
-//   jadi section & menu homepage tidak muncul;
-// - event (API checkout) menjawab 404 untuk selain daftar ini;
+// Menyalakannya lagi (true) di sini DAN di src/utils/webinarAccess.ts (spec
+// memastikan keduanya sama) mengembalikan masa uji:
+// - checkout, my, sync menolak akun di luar WEBINAR_PREVIEW_EMAILS (403);
+// - events mengembalikan daftar kosong + open:false, jadi section & menu homepage
+//   tersembunyi;
+// - event (API checkout) menjawab 404;
 // - halaman publik /webinar menjawab 404; /webinar/<slug> hanya untuk acara
 //   is_test atau link pratinjau; link gabung tetap jalan (token hanya milik pembeli).
-export const WEBINAR_PREVIEW_ONLY = true;
+//
+// Sesudah rilis, acara uji (is_test) tetap bisa dibuka dan dibeli siapa pun yang
+// tahu URL-nya (keputusan pemilik produk 12 Nov: risikonya kecil, pembayaran
+// nyasar di-refund admin). Acara uji tidak masuk daftar selama is_listed=false.
+export const WEBINAR_PREVIEW_ONLY = false;
 export const WEBINAR_PREVIEW_EMAILS = ['tegar@jakpat.net'];
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
