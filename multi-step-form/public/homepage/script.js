@@ -372,13 +372,30 @@ function toggleTestimonials() {
         return a;
     }
 
+    // Pintu Webinar di hero: acara pilihan _view.js (tiket dijual → habis → segera
+    // hadir → Video kelas), atau teks umum bila belum ada acara. Selalu tampil
+    // selama webinar terbuka, supaya ritme 1–2 acara per bulan tidak membuatnya hilang.
+    function fillDoor(hero) {
+        var door = document.getElementById('hero-webinar-door');
+        var label = door && door.querySelector('.hero-webinar-door-label');
+        var doorText = document.getElementById('hero-webinar-door-text');
+        if (!door || !label || !doorText) return;
+        if (hero && hero.title) {
+            door.href = hero.detail_url || '/webinar';
+            var isVideo = hero.kind === 'replay';
+            label.setAttribute('data-i18n', isVideo ? 'webinar.doorVideo' : 'webinar.doorLabel');
+            label.textContent = isVideo ? translated('doorVideo', 'Video kelas') : translated('doorLabel', 'Webinar & Kelas');
+            doorText.removeAttribute('data-i18n');
+            doorText.textContent = !isVideo && hero.short_date ? hero.title + ' · ' + hero.short_date : hero.title;
+        }
+        door.hidden = false;
+    }
+
     fetch('/api/webinar/events')
         .then(function (res) { return res.ok ? res.json() : null; })
         .then(function (data) {
-            // Menu Webinar tersembunyi sampai server bilang terbuka (masa uji: open:false).
-            if (data && data.open === true) {
-                document.querySelectorAll('[data-webinar-nav]').forEach(function (el) { el.style.display = ''; });
-            }
+            // Pintu hero hanya tampil bila server bilang webinar terbuka.
+            if (data && data.open === true) fillDoor(data.hero);
             var items = data && data.open === true && Array.isArray(data.homepage) ? data.homepage : [];
             if (items.length === 0) return;
             list.className = 'webinar-home-list ' + (items.length === 1 ? 'is-one' : 'is-two');

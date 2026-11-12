@@ -2325,3 +2325,101 @@ body {
     .webinar-home-list.is-one .webinar-home-card { display: grid; grid-template-columns: 1.1fr 1fr; gap: 24px; align-items: center; padding: 20px; }
 }
 
+
+/* Pintu Webinar di hero (Fase 6): satu baris di bawah tombol iklan.
+   Sengaja lebih tenang dari .cta-button supaya iklan tetap ajakan utama. */
+/* Tanpa min-width:0, judul acara yang panjang (nowrap) melebarkan kolom grid hero. */
+.hero-content { min-width: 0; }
+.hero-webinar-door-row { margin-top: var(--spacing-sm); }
+.hero-webinar-door {
+    display: inline-flex; align-items: center; gap: 10px; max-width: min(100%, 540px);
+    padding: 8px 14px 8px 8px; border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, 0.85); border: 1px solid #bbdefb;
+    color: var(--blue-darker); font-size: .95rem; font-weight: 600; line-height: 1.35;
+    text-decoration: none; text-align: left;
+    transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+.hero-webinar-door[hidden] { display: none; }
+.hero-webinar-door:hover { border-color: var(--blue-primary); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+.hero-webinar-door:focus-visible { outline: 3px solid var(--blue-lightest); outline-offset: 2px; }
+.hero-webinar-door-label {
+    flex: none; padding: 3px 10px; border-radius: var(--radius-full);
+    background: #e3f2fd; color: var(--blue-dark); font-size: .75rem; font-weight: 700;
+    letter-spacing: .02em; text-transform: uppercase; white-space: nowrap;
+}
+.hero-webinar-door-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hero-webinar-door-arrow { flex: none; color: var(--blue-primary); transition: transform .2s ease; }
+.hero-webinar-door:hover .hero-webinar-door-arrow { transform: translateX(3px); }
+@media (max-width: 900px) {
+    /* HP: label di atas, judul acara selebar tombol iklan. */
+    .hero-webinar-door {
+        display: flex; flex-direction: column; align-items: center; gap: 6px;
+        width: 100%; padding: 12px 16px; border-radius: var(--radius-md); text-align: center;
+    }
+    .hero-webinar-door[hidden] { display: none; }
+    .hero-webinar-door-text { white-space: normal; }
+    .hero-webinar-door-text::after { content: " \2192"; color: var(--blue-primary); }
+    .hero-webinar-door-arrow { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .hero-webinar-door, .hero-webinar-door-arrow { transition: none; }
+    .hero-webinar-door:hover, .hero-webinar-door:hover .hero-webinar-door-arrow { transform: none; }
+}
+
+/* ========================================
+   Navbar (12 Nov 2026): struktur sama dengan navbar halaman /webinar —
+   logo · Beranda · Webinar · Survei · [Dashboard]. Bilah penuh di atas,
+   bukan kartu mengambang. Menimpa aturan .nav lama di atas.
+   ======================================== */
+.nav, .nav.scrolled {
+    top: 0; left: 0; right: 0; transform: none;
+    width: 100%; max-width: none;
+    padding: 0; border: 0; border-radius: 0;
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: none;
+}
+.nav.scrolled { box-shadow: 0 4px 20px rgba(15, 23, 42, 0.06); }
+.nav-container {
+    max-width: 1400px; margin: 0 auto;
+    padding: 12px var(--spacing-2xl);
+    display: flex; align-items: center; gap: var(--spacing-md);
+}
+.nav .logo { margin-right: auto; font-size: 1.35rem; }
+.nav-links { gap: var(--spacing-md); }
+.nav-links a, .nav-links a.active {
+    padding: 6px 0; border-radius: 0; background: none; box-shadow: none;
+    color: #475569; font-weight: 600; font-size: 1rem;
+}
+.nav-links a:hover, .nav-links a.active, .nav-links a.active:hover {
+    background: none; box-shadow: none; transform: none; color: var(--blue-primary);
+}
+.nav-language-switcher { margin-left: 0; }
+.nav-dashboard {
+    flex: none; background: var(--blue-primary); color: #fff; text-decoration: none;
+    font-weight: 700; font-size: 1rem; padding: 10px 20px; border-radius: 10px;
+    transition: background .2s ease;
+}
+.nav-dashboard:hover { background: var(--blue-dark); }
+.nav-dashboard:focus-visible { outline: 3px solid var(--blue-lightest); outline-offset: 2px; }
+
+/* 901–1100 px: tiga menu + pemilih bahasa + Dashboard tidak muat; menu & bahasa
+   pindah ke hamburger, Dashboard tetap terlihat (sama seperti HP). */
+@media (max-width: 1100px) {
+    .nav-links, .nav-language-switcher { display: none; }
+    .hamburger { display: flex; }
+    .mobile-menu { display: block; }
+    .mobile-language-switcher { display: flex; }
+}
+@media (max-width: 900px) {
+    .nav, .nav.scrolled { top: 0; width: 100%; padding: 0; }
+    .nav-container { padding: 10px var(--spacing-sm); gap: var(--spacing-xs); }
+    .nav .logo { font-size: 1rem; white-space: nowrap; gap: 6px; }
+    .nav .logo-image { height: 1.5rem; }
+    .nav-dashboard { font-size: .875rem; padding: 8px 12px; }
+    .hamburger { padding: 4px; }
+}
+@media (max-width: 374px) {
+    .nav .logo { font-size: 0; gap: 0; } /* sisakan ikon; nama tetap di aria-label */
+}

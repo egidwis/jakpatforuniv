@@ -121,12 +121,11 @@
                 <img src="assets/images/logo-navbar.webp" alt="Jakpat for Universities Logo" class="logo-image" loading="lazy">
                 Jakpat for Universities
             </a>
+            <!-- Struktur sama dengan navbar halaman /webinar (functions/webinar/[[path]].js). -->
             <ul class="nav-links" role="list">
                 <li><a href="#beranda" data-i18n="nav.home">Beranda</a></li>
-                <li><a href="#layanan" data-i18n="nav.services">Layanan</a></li>
-                <li><a href="#testimoni" data-i18n="nav.testimonials">Testimoni</a></li>
-                <li><a href="#perbandingan" data-i18n="nav.comparison">Perbandingan</a></li>
-                <li data-webinar-nav style="display:none"><a href="/webinar" data-i18n="nav.webinar">Webinar</a></li>
+                <li><a href="/webinar" data-i18n="nav.webinar">Webinar</a></li>
+                <li><a href="https://submit.jakpatforuniv.com/pages" data-i18n="nav.surveys">Survei</a></li>
             </ul>
 
             <!-- Language Switcher - Desktop -->
@@ -143,6 +142,8 @@
                     </button>
                 </div>
             </div>
+
+            <a href="https://submit.jakpatforuniv.com/dashboard" class="nav-dashboard" data-i18n="nav.dashboard">Dashboard</a>
 
             <button class="hamburger" aria-label="Toggle menu navigasi" aria-expanded="false" aria-controls="mobile-menu">
                 <span></span>
@@ -171,10 +172,8 @@
 
         <ul role="list">
             <li><a href="#beranda" data-i18n="nav.home">Beranda</a></li>
-            <li><a href="#layanan" data-i18n="nav.services">Layanan</a></li>
-            <li><a href="#testimoni" data-i18n="nav.testimonials">Testimoni</a></li>
-            <li><a href="#perbandingan" data-i18n="nav.comparison">Perbandingan</a></li>
-            <li data-webinar-nav style="display:none"><a href="/webinar" data-i18n="nav.webinar">Webinar</a></li>
+            <li><a href="/webinar" data-i18n="nav.webinar">Webinar</a></li>
+            <li><a href="https://submit.jakpatforuniv.com/pages" data-i18n="nav.surveys">Survei</a></li>
         </ul>
     </div>
 
@@ -191,6 +190,14 @@
 
                 <div class="hero-cta-wrapper">
                     <a href="https://submit.jakpatforuniv.com/dashboard" class="cta-button" aria-label="Iklankan survey Anda sekarang di Jakpat for Universities" data-i18n="hero.ctaButton">🚀 Iklankan Survey Sekarang</a>
+                    <!-- Pintu kedua (Fase 6): diisi script.js dari /api/webinar/events; tersembunyi sampai open:true. -->
+                    <div class="hero-webinar-door-row">
+                        <a href="/webinar" class="hero-webinar-door" id="hero-webinar-door" hidden>
+                            <span class="hero-webinar-door-label" data-i18n="webinar.doorLabel">Webinar &amp; Kelas</span>
+                            <span class="hero-webinar-door-text" id="hero-webinar-door-text" data-i18n="webinar.doorEmpty">Belajar riset bareng praktisi, jadwal berikutnya segera diumumkan</span>
+                            <span class="hero-webinar-door-arrow" aria-hidden="true">→</span>
+                        </a>
+                    </div>
                 </div>
 
                 <!-- Stats Badges - Compact -->

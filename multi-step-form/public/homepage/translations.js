@@ -16,6 +16,8 @@ var translations = {
             testimonials: "Testimoni",
             comparison: "Perbandingan",
             webinar: "Webinar",
+            surveys: "Survei",
+            dashboard: "Dashboard",
             ariaLabel: "Navigasi utama",
             hamburgerAriaLabel: "Toggle menu navigasi",
             mobileMenuAriaLabel: "Menu mobile",
@@ -70,6 +72,9 @@ var translations = {
             subtitle: "Belajar riset langsung dari praktisinya",
             cta: "Lihat Webinar",
             ppn: "termasuk PPN",
+            doorLabel: "Webinar & Kelas",
+            doorVideo: "Video kelas",
+            doorEmpty: "Belajar riset bareng praktisi, jadwal berikutnya segera diumumkan",
         },
 
         comparison: {
@@ -138,6 +143,8 @@ var translations = {
             testimonials: "Testimonials",
             comparison: "Comparison",
             webinar: "Webinar",
+            surveys: "Surveys",
+            dashboard: "Dashboard",
             ariaLabel: "Main navigation",
             hamburgerAriaLabel: "Toggle navigation menu",
             mobileMenuAriaLabel: "Mobile menu",
@@ -192,6 +199,9 @@ var translations = {
             subtitle: "Learn research directly from practitioners",
             cta: "View Webinar",
             ppn: "VAT included",
+            doorLabel: "Webinars & Classes",
+            doorVideo: "Video class",
+            doorEmpty: "Learn research from practitioners, next session announced soon",
         },
 
         comparison: {
