@@ -477,7 +477,10 @@ export function planCardActions(input: {
       };
       const canStop = can.cancelSchedule && entry.status !== 'cancelled';
       const primary = !hasBill && can.createInvoice ? tempoBill : (can.markPaid ? markPaid : null);
-      const canReissue = !!billing?.openInvoice?.isTempo && !!can.tempoInvoice && can.createInvoice;
+      // Bukan untuk jadwal yang DIHENTIKAN (tetap airing_on_credit selama utangnya
+      // terbuka, K6): dialognya menjanjikan "TETAP tayang" (review akhir 16 Nov).
+      const canReissue = !!billing?.openInvoice?.isTempo && !!can.tempoInvoice && can.createInvoice
+        && entry.status !== 'cancelled';
       return {
         primary,
         menu: [

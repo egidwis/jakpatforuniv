@@ -8,7 +8,7 @@ import { DetailSheetSection } from '../../data-list/DetailSheet';
 import {
   fetchAdSchedules, fetchScheduleBilling, fetchInvoiceGroups, settleScheduleAsPaid, settleGroupAsPaid,
   unmarkScheduleAsPaid, unsettleGroupAsPaid, cancelInvoice, cancelSchedule, tempoCancelBlockReason,
-  markSchedulesOnCredit, creditOutcomeReason,
+  markSchedulesOnCredit, creditOutcomeReason, membersInScope,
   type AdScheduleEntry, type InvoiceGroup, type ScheduleBilling, type ScheduleInvoice,
 } from '@/utils/supabase';
 import { formatIDR } from '@/utils/currency';
@@ -551,7 +551,7 @@ export function SchedulePaymentTab({
         highlight: formatIDR(group.total),
         lines: [
           `Tagihan ${group.paymentId} menaungi ${group.memberCount} pesanan, dan SEMUANYA ikut `
-            + `kembali jadi "menunggu bayar": ${group.members.map((m) => m.title).join(', ')}.`,
+            + `kembali jadi "menunggu bayar": ${membersInScope(group).map((m) => m.title).join(', ')}.`,
           'Ini hanya membalik pelunasan yang ditandai MANUAL — bukan pembayaran lewat DOKU, dan bukan rekonsiliasi warisan (kanal MANUAL_RECONCILED, sql/71).',
           // Yang paling mudah disalahpahami: pembalikan TIDAK menghidupkan
           // kembali link bayarnya. Ia sudah dimatikan saat grup dilunasi, dan
@@ -941,7 +941,9 @@ export function SchedulePaymentTab({
                 semuanya ikut ditandai lunas:
               </p>
               <ul className="space-y-1">
-                {pendingGroup.members.map((m, i) => (
+                {/* Yang BENAR-BENAR dilunasi `settleGroupAsPaid` — anggota yang dikeluarkan
+                    tidak ikut (review akhir 16 Nov, Important 2). */}
+                {membersInScope(pendingGroup).map((m, i) => (
                   <li key={m.scheduleId ?? i} className="flex items-center justify-between gap-2">
                     <span className="truncate text-gray-700">{i + 1}. {m.title}</span>
                     <span className="tabular-nums shrink-0">{formatIDR(m.amount)}</span>

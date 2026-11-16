@@ -136,6 +136,21 @@ describe('aksi kartu', () => {
     expect(p.menu.find((a) => a.id === 'reissue_tempo')?.label).toBe('Terbitkan Ulang Tagihan Tempo');
   });
 
+  // Review akhir (Minor 2 → Important): jadwal kredit yang DIHENTIKAN tetap
+  // `airing_on_credit` selama utangnya terbuka (K6). Dialognya berjanji "TETAP
+  // tayang" untuk iklan yang sudah mati — jangan ditawarkan.
+  it('kredit yang sudah dihentikan (status cancelled) → tanpa reissue_tempo', () => {
+    const p = planFor('airing_on_credit', entry({ status: 'cancelled' }), billingWith(tempoInvoice()));
+    expect(p.menu.map((a) => a.id)).not.toContain('reissue_tempo');
+  });
+
+  it('K8 kartu: anggota mati tidak mengunci', () => {
+    expect(isTempoBillLocked({ isTempo: true, members: [
+      { startDate: past, airOnCredit: true, isDead: true },
+      { startDate: future, airOnCredit: true },
+    ] as any }, NOW)).toBe(false);
+  });
+
   it('kredit tanpa tagihan → tetap tempo_invoice, tanpa reissue_tempo', () => {
     const p = planFor('airing_on_credit', entry(), billingWith(null));
     expect([p.primary?.id, ...p.menu.map((a) => a.id)]).not.toContain('reissue_tempo');

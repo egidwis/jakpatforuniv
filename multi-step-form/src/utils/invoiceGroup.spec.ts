@@ -75,7 +75,7 @@ vi.mock('@supabase/supabase-js', () => ({
 
 const {
   fetchInvoiceGroups, settleGroupAsPaid, unsettleGroupAsPaid, markScheduleAsPaid, tempoCancelBlockReason,
-  settleScheduleAsPaid, unmarkScheduleAsPaid, isLinkStillLive,
+  settleScheduleAsPaid, unmarkScheduleAsPaid, isLinkStillLive, membersInScope,
 } = await import('./supabase');
 
 const PID = 'JFU-INV-abc-1756000000000';
@@ -236,6 +236,23 @@ describe('fetchInvoiceGroups', () => {
     expect(g.deadCount).toBe(3);
     expect(g.allDead).toBe(true);
     expect(g.members.map((m) => m.bookingId)).toEqual(['BOOK1', 'BOOK2', 'BOOK3']);
+  });
+
+  // Review akhir, Important 1: settle kini melewati anggota mati, jadi baris
+  // mati tidak pernah `paid` — `allPaid` yang menghitungnya tak akan pernah true.
+  it('allPaid dihitung atas anggota hidup: grup lunas dengan satu anggota dikeluarkan = lunas', async () => {
+    responder = withStatuses({ 'sch-1': 'expired', 'sch-2': 'paid', 'sch-3': 'paid' });
+    const g = (await fetchInvoiceGroups([PID])).get(PID)!;
+    expect(g.allPaid).toBe(true);
+  });
+
+  it('membersInScope: anggota hidup saja, atau semua bila grup mati seluruhnya', async () => {
+    responder = withStatuses({ 'sch-1': 'expired' });
+    const g = (await fetchInvoiceGroups([PID])).get(PID)!;
+    expect(membersInScope(g).map((m) => m.bookingId)).toEqual(['BOOK2', 'BOOK3']);
+    responder = withStatuses({ 'sch-1': 'cancelled', 'sch-2': 'cancelled', 'sch-3': 'cancelled' });
+    const dead = (await fetchInvoiceGroups([PID])).get(PID)!;
+    expect(membersInScope(dead)).toHaveLength(3);
   });
 
   it('settleGroupAsPaid melewati anggota mati', async () => {
@@ -527,6 +544,28 @@ describe('tempo SUSULAN — pelunasan manual & kunci K8 (jadwal sudah lunas, buk
   it('K8: tagihan tempo KREDIT yang sudah tayang tetap terkunci', async () => {
     responder = cancelResponder('2026-08-30T01:00:00Z');
     expect(await tempoCancelBlockReason('JFU-INV-t-1')).toMatch(/tidak bisa dibatalkan/);
+  });
+
+  // Review akhir (Minor 1 → Important): anggota yang sudah tayang lalu
+  // diterbitkan ulang ke tagihan lain meninggalkan baris MATI di grup lama. Ia
+  // tidak boleh terus mengunci pembatalan sisa grup.
+  it('K8: anggota yang barisnya mati tidak mengunci tagihan', async () => {
+    responder = (op: Op) => {
+      if (op.table === 'invoices') return { data: [
+        { schedule_id: 'sch-1', is_tempo: true, status: 'cancelled' },
+        { schedule_id: 'sch-2', is_tempo: true, status: 'pending' },
+      ], error: null };
+      if (op.table === 'ad_schedules') {
+        const ids = op.filters.find((f) => f.col === 'id')?.val as string[];
+        const all = [
+          { id: 'sch-1', booking_id: 'BOOK1', start_date: '2026-09-01T08:00:00Z', air_on_credit_at: '2026-08-30T01:00:00Z' },
+          { id: 'sch-2', booking_id: 'BOOK2', start_date: '2099-01-01T08:00:00Z', air_on_credit_at: '2026-08-30T01:00:00Z' },
+        ];
+        return { data: all.filter((s) => ids.includes(s.id)), error: null };
+      }
+      return { data: [], error: null };
+    };
+    expect(await tempoCancelBlockReason('JFU-INV-t-2')).toBeNull();
   });
 
   it('K8: pesannya menunjuk ke Terbitkan Ulang — iklannya tetap tayang', async () => {

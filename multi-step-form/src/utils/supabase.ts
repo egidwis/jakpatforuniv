@@ -2182,7 +2182,9 @@ export const fetchInvoiceGroups = async (
         memberCount: counted.length,
         deadCount: members.length - live.length,
         total: counted.reduce((sum, m) => sum + m.amount, 0),
-        allPaid: members.length > 0 && members.every((m) => m.isPaid),
+        // Atas anggota yang DIHITUNG: settle melewati anggota mati, jadi baris
+        // mati tidak pernah `paid` (review akhir 16 Nov, Important 1).
+        allPaid: counted.length > 0 && counted.every((m) => m.isPaid),
         allDead: members.length > 0 && members.every((m) => m.isDead),
         isTempo: ownRows.some((r) => !!r.is_tempo),
         supersededBy: ownRows.find((r) => r.superseded_by)?.superseded_by ?? null,
@@ -2201,7 +2203,7 @@ export const fetchInvoiceGroups = async (
  * boleh ikut dilunasi/dibalik — membalik baris mati jadi `paid` adalah
  * pendapatan fiktif (pelajaran sql/101).
  */
-const membersInScope = (group: InvoiceGroup): InvoiceGroupMember[] =>
+export const membersInScope = (group: InvoiceGroup): InvoiceGroupMember[] =>
   group.allDead ? group.members : group.members.filter((m) => !m.isDead);
 
 /** Hasil pelunasan manual satu tagihan gabungan — per anggota, bukan borongan. */
@@ -6704,12 +6706,19 @@ export const fetchOpenTempoDebt = async (
 export const tempoCancelBlockReason = async (paymentId: string): Promise<string | null> => {
   const { data: rows, error } = await supabase
     .from('invoices')
-    .select('schedule_id, is_tempo')
+    .select('schedule_id, is_tempo, status')
     .eq('payment_id', paymentId);
   if (error) throw error;
   if (!(rows || []).some((r: any) => r.is_tempo)) return null;
 
-  const scheduleIds = (rows || []).map((r: any) => r.schedule_id).filter(Boolean);
+  /*
+    Anggota yang barisnya MATI (dikeluarkan / diterbitkan ulang ke tagihan
+    lain) bukan lagi utang tagihan ini — ia tidak boleh mengunci pembatalan
+    sisanya. Seluruh baris mati = riwayat → semua dipertimbangkan, seperti dulu.
+  */
+  const isDeadRow = (r: any) => DEAD_PAYMENT_STATUSES.includes(String(r.status || '').toLowerCase());
+  const liveRows = (rows || []).filter((r: any) => !isDeadRow(r));
+  const scheduleIds = (liveRows.length > 0 ? liveRows : rows || []).map((r: any) => r.schedule_id).filter(Boolean);
   if (scheduleIds.length === 0) return null;
   const { data: scheds, error: sErr } = await supabase
     .from('ad_schedules').select('booking_id, start_date, air_on_credit_at').in('id', scheduleIds);
@@ -6732,7 +6741,10 @@ export const isTempoBillLocked = (
   group: Pick<InvoiceGroup, 'isTempo' | 'members'> | null | undefined,
   now: number = Date.now(),
 ): boolean =>
-  !!group?.isTempo && group.members.some((m) =>
+  !!group?.isTempo && (
+    // Anggota mati (dikeluarkan) tidak mengunci — kembar `tempoCancelBlockReason`.
+    group.members.some((m) => !m.isDead) ? group.members.filter((m) => !m.isDead) : group.members
+  ).some((m) =>
     // `airOnCredit === false` = terbukti bukan kredit (tempo susulan). Tidak
     // terbaca (`undefined`) tetap mengunci — gagal-tertutup.
     m.airOnCredit !== false && !!m.startDate && new Date(m.startDate).getTime() <= now);
