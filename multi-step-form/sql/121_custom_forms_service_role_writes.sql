@@ -31,6 +31,7 @@ ORDER BY tablename, policyname;
 BEGIN;
 
 DROP POLICY IF EXISTS "Users can manage their own custom_forms" ON public.custom_forms;
+DROP POLICY IF EXISTS "Users can read their own custom_forms" ON public.custom_forms;
 
 CREATE POLICY "Users can read their own custom_forms"
   ON public.custom_forms
