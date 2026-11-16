@@ -23,6 +23,12 @@ export interface BulkCandidate {
   entry: AdScheduleEntry;
   submissionId: string;
   title: string;
+  /**
+   * `payment_id` tagihan tempo TERBUKA yang akan digantikan tagihan baru ini —
+   * jadwal kredit yang ditagih ulang (`writeInvoiceRows` mencabutnya lebih
+   * dulu; iklannya tetap tayang). `null` = tidak menggantikan apa pun.
+   */
+  replacesPaymentId: string | null;
   /** Link kuesioner / form asli peneliti (opsional). */
   surveyUrl?: string | null;
   /** `created_at` ORDER — penentu masa berlaku voucher bundel ini. */
@@ -58,7 +64,7 @@ const REASONS: Record<CardState | 'no_schedule', { text: string; fixable: boolea
   waiting_payment: { text: 'Sudah punya tagihan aktif', fixable: false },
   hold_lapsed: { text: 'Slot lewat batas bayar 14.00 — centang "Tagihan tempo" kalau boleh tayang dulu', fixable: false },
   partially_paid: { text: 'Sudah dibayar sebagian', fixable: false },
-  airing_on_credit: { text: 'Sudah tayang sebelum lunas dengan tagihan tempo aktif', fixable: false },
+  airing_on_credit: { text: 'Sudah tayang sebelum lunas — centang "Tagihan tempo" untuk menerbitkan ulang tagihannya', fixable: false },
   paid: { text: 'Sudah lunas', fixable: false },
   cancelled: { text: 'Dibatalkan', fixable: false },
   no_schedule: { text: 'Belum punya jadwal sama sekali', fixable: true },
@@ -88,14 +94,18 @@ const REJECTION_PRIORITY: Array<CardState | 'no_schedule'> = [
  *                         MASIH bertanggal; slot yang benar-benar lepas tidak.
  *   `waiting_payment`   — tagihan biasanya DIGANTI tagihan tempo;
  *                         `writeInvoiceRows` mematikan yang lama lebih dulu.
- *   `airing_on_credit`  — sudah kredit tapi belum punya tagihan tempo yang
- *                         berlaku (mis. tagihannya dibatalkan sebelum tayang).
+ *   `airing_on_credit`  — sudah kredit: belum punya tagihan tempo yang
+ *                         berlaku, ATAU punya dan sedang DITAGIH ULANG
+ *                         (`replacesPaymentId`; `writeInvoiceRows` mencabut
+ *                         yang lama, iklannya tetap tayang). Tagihan terbuka
+ *                         non-tempo tetap ditolak — anomali, bukan penagihan
+ *                         ulang.
  */
 function isBillable(state: CardState, entry: AdScheduleEntry, billing: ScheduleBilling | undefined, tempo: boolean): boolean {
   if (state === 'awaiting_invoice') return true;
   if (!tempo || !entry.startDate || entry.reviewStatus !== 'approved') return false;
   if (state === 'hold_lapsed' || state === 'waiting_payment') return true;
-  if (state === 'airing_on_credit') return !billing?.openInvoice;
+  if (state === 'airing_on_credit') return !billing?.openInvoice || !!billing.openInvoice.isTempo;
   return false;
 }
 
@@ -147,6 +157,9 @@ export function planBulkInvoice(input: PlanInput): BulkPlan {
         candidates.push({
           entry,
           submissionId: submission.id,
+          replacesPaymentId: billings.get(entry.id)?.openInvoice?.isTempo
+            ? billings.get(entry.id)?.openInvoice?.paymentId ?? null
+            : null,
           title: submission.formTitle || (submission as any).title || entry.title || 'Survei Anda',
           surveyUrl: submission.formUrl?.trim() || (submission as any).survey_url?.trim() || null,
           orderCreatedAt: submission.submittedAt ?? null,

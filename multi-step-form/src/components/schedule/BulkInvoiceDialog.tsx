@@ -565,6 +565,11 @@ export function BulkInvoiceDialog({
                                 ? `Tayang ${formatWibShort(bundle.entry.startDate)}`
                                 : 'Belum bertanggal'}
                             </p>
+                            {bundle.replacesPaymentId && (
+                              <p className="text-[11px] text-amber-800">
+                                Menggantikan tagihan {bundle.replacesPaymentId}. Iklannya tetap tayang.
+                              </p>
+                            )}
                           </div>
                           <span className="text-sm font-semibold text-gray-900 shrink-0 tabular-nums">
                             {formatIDR(t.amount)}

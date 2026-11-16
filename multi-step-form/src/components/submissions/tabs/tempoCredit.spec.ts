@@ -231,11 +231,40 @@ describe('tagihan gabungan dengan tempo', () => {
     expect(plan.candidates).toHaveLength(0);
   });
 
-  it('jadwal kredit yang SUDAH punya tagihan tempo tidak ditagih dua kali', () => {
+  /*
+    Dulu: jadwal kredit yang sudah bertagihan tempo DITOLAK ("tidak ditagih dua
+    kali"). Sekarang ia boleh ditagih ULANG — itu satu-satunya cara memisah atau
+    menggabung ulang grup tanpa menghentikan iklan (insiden Mun#07, 16 Nov 2026).
+    "Tidak dua kali" kini dijaga `writeInvoiceRows`, yang mencabut tagihan lama
+    jadwal itu sebelum menulis yang baru; kandidatnya membawa nomor yang diganti.
+  */
+  it('mode tempo: kredit + tempo terbuka → kandidat, dengan replacesPaymentId', () => {
     const plan = planBulkInvoice({
       submissions: [sub], entries: [entry()], billings: new Map([['s1', billingWith(tempoInvoice())]]), tempo: true,
     });
+    expect(plan.candidates.map((c) => c.entry.id)).toEqual(['s1']);
+    expect(plan.candidates[0].replacesPaymentId).toBe('JFU-INV-t-1');
+  });
+
+  it('mode biasa: kredit + tempo terbuka → ditolak, alasannya menyebut centang Tagihan tempo', () => {
+    const plan = planBulkInvoice({
+      submissions: [sub], entries: [entry()], billings: new Map([['s1', billingWith(tempoInvoice())]]),
+    });
     expect(plan.candidates).toHaveLength(0);
+    expect(plan.rejected[0].reason).toContain('centang "Tagihan tempo"');
+  });
+
+  it('kredit + tagihan terbuka NON-tempo → tetap ditolak di mode tempo', () => {
+    const plain = tempoInvoice({ isTempo: false, tempoLinkLapsed: false });
+    const plan = planBulkInvoice({
+      submissions: [sub], entries: [entry()], billings: new Map([['s1', billingWith(plain)]]), tempo: true,
+    });
+    expect(plan.candidates).toHaveLength(0);
+  });
+
+  it('kandidat yang tidak menggantikan apa pun → replacesPaymentId null', () => {
+    const plan = planBulkInvoice({ submissions: [sub], entries: [lapsed], billings: new Map(), tempo: true });
+    expect(plan.candidates[0].replacesPaymentId).toBeNull();
   });
 });
 
