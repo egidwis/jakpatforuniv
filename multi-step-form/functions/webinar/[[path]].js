@@ -18,10 +18,6 @@ import {
 } from '../api/webinar/_view.js';
 import { escapeHtml, renderBlocks } from './_render-blocks.js';
 
-// Apex jakpatforuniv.com dialihkan aturan Cloudflare ke submit.…/homepage/<path>
-// SEBELUM sampai ke Pages, jadi jakpatforuniv.com/webinar/<slug> berakhir di aplikasi
-// React, bukan di halaman ini (dicek 12 Nov 2026). Karena itu URL kanonik (canonical,
-// og:url) memakai submit.; apex hanya dipakai untuk link Beranda (pengalihannya benar).
 const CANONICAL_ORIGIN = SITE_URL;
 const HOME_URL = 'https://jakpatforuniv.com/';
 const LOGO_URL = `${SITE_URL}/favicon.webp`;
