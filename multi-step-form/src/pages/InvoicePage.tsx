@@ -870,6 +870,14 @@ export function InvoicePage() {
                         </table>
                     </div>
 
+                    {/* Pesanan yang dikeluarkan dari tagihan ini — tidak ikut total
+                        maupun "Terbilang" (`buildInvoiceDocument`, insiden Mun11). */}
+                    {doc.excluded.length > 0 && (
+                        <p className="-mt-6 mb-8 text-xs text-gray-500">
+                            {doc.excluded.length} pesanan dikeluarkan dari tagihan ini: {doc.excluded.map((e) => e.title).join(', ')}.
+                        </p>
+                    )}
+
                     {/* Summary (Subtotal → PPN → Total Hero Card) */}
                     <div className="flex flex-col items-end mb-10">
                         {hasPpn && (

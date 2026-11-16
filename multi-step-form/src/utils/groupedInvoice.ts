@@ -118,10 +118,23 @@ export interface InvoiceDocument {
   showMaterai: boolean;
   /** Baris mana pun boleh mengoreksi item basi (Kilat 250rb → 200rb). */
   itemsWereCorrected: boolean;
+  /**
+   * Pesanan yang dikeluarkan dari tagihan ini (barisnya mati) — TIDAK ikut
+   * bundel maupun total. Kosong bila seluruh baris mati (dokumen riwayat).
+   */
+  excluded: { title: string; amount: number }[];
 }
 
 /** Bea meterai (UU 10/2020) — di bawah ini tidak diperlukan. */
 export const MATERAI_THRESHOLD = 5_000_000;
+
+/**
+ * Cermin `DEAD_PAYMENT_STATUSES` (supabase.ts). Disalin, bukan diimpor: berkas
+ * ini murni dan tidak boleh menarik klien Supabase hanya demi tiga string.
+ */
+const DEAD_ROW_STATUSES = ['expired', 'failed', 'cancelled'];
+const isRowDead = (status: string | null | undefined) =>
+  DEAD_ROW_STATUSES.includes((status || '').toLowerCase());
 
 const isRowPaid = (status: string | null | undefined) =>
   ['completed', 'paid'].includes((status || '').toLowerCase());
@@ -185,9 +198,23 @@ export function parseRowItems(row: DocRow): ParsedItems {
  * yang menempel di baris/ordernya sendiri.
  */
 export function buildInvoiceDocument(
-  rows: DocRow[],
+  allRows: DocRow[],
   schedules: Map<string, ScheduleInfo> = new Map(),
 ): InvoiceDocument {
+  /*
+    ⚠️ PESANAN YANG DIKELUARKAN TIDAK IKUT DITAGIH. Membatalkan jadwal satu
+    anggota sebelum tayang mengeluarkannya dari tagihan gabungan, tapi barisnya
+    tetap ber-payment_id sama (statusnya mati). Kalau ikut, total dan
+    "Terbilang" menyebut nominal yang tidak pernah ditagih DOKU (insiden Mun11,
+    16 Nov 2026). Seluruh baris mati = dokumen riwayat → perilaku lama.
+  */
+  const liveRows = allRows.filter((r) => !isRowDead(r.status));
+  const rows = liveRows.length > 0 ? liveRows : allRows;
+  const excluded = liveRows.length > 0
+    ? allRows.filter((r) => isRowDead(r.status))
+      .map((r) => ({ title: r.form_submissions?.title || 'Survei', amount: r.amount }))
+    : [];
+
   const bundles: DocBundle[] = rows.map((row) => {
     const { items, corrected } = parseRowItems(row);
     const sourceId = sourceIdOf(row);
@@ -259,6 +286,7 @@ export function buildInvoiceDocument(
     // memang melewati ambang meterai meski tak satu pun melewatinya sendiri.
     showMaterai: total > MATERAI_THRESHOLD,
     itemsWereCorrected: bundles.some((_, i) => parseRowItems(rows[i]).corrected),
+    excluded,
   };
 }
 

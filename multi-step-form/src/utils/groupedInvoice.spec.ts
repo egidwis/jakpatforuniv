@@ -291,3 +291,45 @@ describe('penanda jadwal — membedakan perpanjangan dari jadwal pertama', () =>
     expect(bertanda.ppn).toBe(polos.ppn);
   });
 });
+
+/*
+  Insiden 16 Nov 2026 (Mun11 dobel): baris pesanan yang dikeluarkan dari
+  tagihan gabungan tetap ber-payment_id sama. Dokumen ini dipakai untuk
+  pertanggungjawaban dana kampus — total dan "Terbilang"-nya tidak boleh
+  menjumlahkan pesanan yang tidak ditagih.
+*/
+describe('buildInvoiceDocument — pesanan yang dikeluarkan dari tagihan', () => {
+  const titled = (title: string, o: Partial<DocRow>) =>
+    row({ ...o, form_submissions: { id: title, title, start_date: '2026-11-17T08:00:00Z', duration: 1 } });
+
+  it('baris mati dikeluarkan dari bundel dan total selama ada baris hidup', () => {
+    const doc = buildInvoiceDocument([
+      titled('Mun11 #PX', { status: 'pending', amount: 493950, subtotal: 445000, ppn_amount: 48950 }),
+      titled('Mun11 #Y9', { status: 'expired', amount: 493950, subtotal: 445000, ppn_amount: 48950 }),
+    ]);
+    expect(doc.bundles).toHaveLength(1);
+    expect(doc.bundles[0].title).toBe('Mun11 #PX');
+    expect(doc.total).toBe(493950);
+    expect(doc.excluded).toEqual([{ title: 'Mun11 #Y9', amount: 493950 }]);
+  });
+
+  it('grup lunas dengan satu baris batal tetap RECEIPT', () => {
+    const doc = buildInvoiceDocument([
+      titled('A', { status: 'paid', amount: 100, subtotal: 90, ppn_amount: 10 }),
+      titled('B', { status: 'cancelled', amount: 50, subtotal: 45, ppn_amount: 5 }),
+    ]);
+    expect(doc.isPaid).toBe(true);
+    expect(doc.total).toBe(100);
+    expect(doc.outstanding).toBe(0);
+  });
+
+  it('semua baris mati → semua dipakai, excluded kosong (perilaku lama)', () => {
+    const doc = buildInvoiceDocument([
+      titled('A', { status: 'cancelled', amount: 100, subtotal: 90, ppn_amount: 10 }),
+      titled('B', { status: 'EXPIRED', amount: 50, subtotal: 45, ppn_amount: 5 }),
+    ]);
+    expect(doc.bundles).toHaveLength(2);
+    expect(doc.total).toBe(150);
+    expect(doc.excluded).toEqual([]);
+  });
+});
