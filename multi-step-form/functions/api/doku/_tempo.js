@@ -111,7 +111,7 @@ export async function renewTempoBill(env, scheduleId, { origin } = {}) {
 
   const amount = Number(cand.amount);
   const invoiceNumber = tempoInvoiceNumber(cand.lead_submission_id);
-  const base = origin || 'https://submit.jakpatforuniv.com';
+  const base = origin || 'https://jakpatforuniv.com';
   // Pola `createManualInvoice`: grup → kuitansi gabungan; tunggal → halaman sukses.
   const callbackUrl = Number(cand.member_count) > 1
     ? `${base}/invoices/${invoiceNumber}`

@@ -5,7 +5,7 @@
 //
 // Teks di sini dilihat pembeli: jangan menyebut refund. Dikunci webinarView.spec.js.
 
-export const SITE_URL = 'https://submit.jakpatforuniv.com';
+export const SITE_URL = 'https://jakpatforuniv.com';
 export const ADMIN_CONTACT = 'product@jakpat.net';
 export const SEATS_VISIBLE_AT = 20;
 

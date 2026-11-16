@@ -14,7 +14,7 @@
  * berhenti jadi masalah permanen.
  *
  * ── Bentuk URL ──────────────────────────────────────────────────────────────
- * `https://submit.jakpatforuniv.com/bayar/<ad_schedules.id>` (UUID).
+ * `https://jakpatforuniv.com/bayar/<ad_schedules.id>` (UUID).
  *
  *  • UUID, BUKAN `booking_id`. `booking_id` cuma 8 karakter dari alfabet yang
  *    dipangkas (sql/51), jadi bisa ditebak berurutan. Link ini kapabilitas

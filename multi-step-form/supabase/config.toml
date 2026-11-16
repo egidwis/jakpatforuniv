@@ -15,6 +15,7 @@ site_url = "https://submit.jakpatforuniv.com"
 # Allowed redirect targets for magic links / recovery links. The reset flow
 # lands users on /reset-password (see src/pages/ResetPasswordPage.tsx).
 additional_redirect_urls = [
+  "https://jakpatforuniv.com/reset-password",
   "https://submit.jakpatforuniv.com/reset-password",
   "http://localhost:5173/reset-password",
   "http://localhost:5199/reset-password",

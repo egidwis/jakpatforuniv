@@ -233,7 +233,7 @@ export function dokuLifetimeMinutes(
 export const createPayment = async (paymentData: PaymentData) => {
   try {
     const { formSubmissionId, expiredAt, scheduleId } = paymentData;
-    const origin = window.location.origin || "https://submit.jakpatforuniv.com";
+    const origin = window.location.origin || "https://jakpatforuniv.com";
 
     // Payment + invoice/transaction rows are created SERVER-SIDE via
     // /api/doku/create-payment (service_role). The server derives the amount
@@ -333,7 +333,7 @@ export const createManualInvoice = async (invoiceData: InvoiceData) => {
         + '"Tandai Lunas" hanya untuk uang yang sudah diterima.',
       );
     }
-    const origin = window.location.origin || "https://submit.jakpatforuniv.com";
+    const origin = window.location.origin || "https://jakpatforuniv.com";
 
     // ⚠️ Memuat potongan SATU `formSubmissionId`, dan untuk tagihan gabungan itu
     // sekadar kosmetik. Sejak satu pembayaran boleh menaungi N pesanan,

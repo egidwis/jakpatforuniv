@@ -33,7 +33,7 @@ import { waveLabel } from './_kilatScheduleInfo.js';
  */
 
 const WIB = 'Asia/Jakarta';
-const DASHBOARD_URL = 'https://submit.jakpatforuniv.com/dashboard';
+const DASHBOARD_URL = 'https://jakpatforuniv.com/dashboard';
 
 const fmtDate = (iso) =>
     iso

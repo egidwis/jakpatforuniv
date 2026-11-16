@@ -501,7 +501,7 @@ describe('Video kelas (Fase 5B): email pembelian "Rekamanmu siap"', () => {
       order: replayOrder, event: { ...EVENT, recording_minutes: 88 }, accountEmail: 'akun@login.test',
     });
     expect(subject).toBe('Rekamanmu siap: Riset Cepat');
-    expect(html).toContain('https://submit.jakpatforuniv.com/dashboard/webinar/tonton/order-1');
+    expect(html).toContain('https://jakpatforuniv.com/dashboard/webinar/tonton/order-1');
     expect(html).toContain('88 menit');
     expect(html).toContain('Masuk dengan akun <strong>akun@login.test</strong>');
     expect(html).toContain('penggunaan pribadi');

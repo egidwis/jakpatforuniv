@@ -9,10 +9,8 @@
 // tugasnya MENYERAHKAN tautan itu ke manusia, keduanya lengkap dengan tombol
 // "Salin Link". Yang diterima orang di ujung sana:
 //
-//   submit.jakpatforuniv.com/p/…  → SPA jatuh ke `*`, <Routes> bersarang tidak
-//                                   cocok apa pun → halaman kosong + footer
-//   jakpatforuniv.com/p/…         → functions/_middleware.js cabang `else`
-//                                   → homepage marketing
+//   jakpatforuniv.com/p/…  → SPA jatuh ke `*`, <Routes> bersarang tidak
+//                            cocok apa pun → halaman kosong + footer
 //
 // Rute yang hidup ada di App.tsx (`/pages/:slug` → SurveyPage). Kalau rute itu
 // berubah, ia berubah DI SINI juga — dan `page-url.spec.ts` mengadu keduanya

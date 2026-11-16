@@ -18,7 +18,7 @@ export function CampaignTracker() {
                 console.error('Failed to log campaign click:', err);
             } finally {
                 // Selalu redirect ke landing page terlepas dari hasil tracking
-                window.location.replace('https://submit.jakpatforuniv.com/homepage/');
+                window.location.replace('https://jakpatforuniv.com/');
             }
         };
 

@@ -10,7 +10,7 @@
 import { nowWib, toAiringStartIso } from './airing-window';
 import type { WebinarEventView } from './webinarApi';
 
-export const SITE_URL = 'https://submit.jakpatforuniv.com';
+export const SITE_URL = 'https://jakpatforuniv.com';
 export const WEBINAR_PUBLIC_BUCKET = 'webinar-public';
 
 // ── Tipe ──────────────────────────────────────────────────────────────────

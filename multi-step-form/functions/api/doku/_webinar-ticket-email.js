@@ -15,7 +15,7 @@ import {
 // oleh webhookWebinar.spec.js. URL rekaman (R2) tidak pernah masuk email: tombol
 // tonton membuka halaman tonton yang memeriksa sesi.
 
-const SITE_URL = 'https://submit.jakpatforuniv.com';
+const SITE_URL = 'https://jakpatforuniv.com';
 const ADMIN_CONTACT = 'product@jakpat.net';
 
 export function escapeHtml(value) {

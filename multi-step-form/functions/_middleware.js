@@ -18,7 +18,7 @@ const SUBMIT_HOST = 'submit.jakpatforuniv.com';
 // Turn on only after the apex is attached to this Pages project and the
 // Cloudflare zone redirect `jakpatforuniv.com/* → submit…/homepage/*` is
 // removed — otherwise the two redirects loop.
-export const REDIRECT_SUBMIT_TO_APEX = false;
+export const REDIRECT_SUBMIT_TO_APEX = true;
 
 const HOMEPAGE_PATHS = {
   '/': '/homepage/index.html',

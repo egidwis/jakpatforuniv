@@ -15,7 +15,7 @@ import { sendMail } from '../_mail.js';
  * tidak boleh membuat pembayaran yang sudah tercatat ikut gagal lalu di-retry.
  */
 
-const ADMIN_DASHBOARD = 'https://submit.jakpatforuniv.com/internal-dash';
+const ADMIN_DASHBOARD = 'https://jakpatforuniv.com/internal-dash';
 
 /**
  * Penerima TAMBAHAN selain admin. ⚠️ Jangan dimasukkan ke `ADMIN_EMAILS`:

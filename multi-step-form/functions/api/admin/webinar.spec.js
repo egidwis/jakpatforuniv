@@ -544,7 +544,7 @@ describe('participants', () => {
     expect(r.body.orders.map((o) => o.id).sort()).toEqual([ORDER_PAID, ORDER_PENDING, ORDER_REPLAY].sort());
     expect(r.body.orders.find((o) => o.id === ORDER_REPLAY).kind).toBe('replay');
     const paid = r.body.orders.find((o) => o.id === ORDER_PAID);
-    expect(paid.join_url).toBe(`https://submit.jakpatforuniv.com/webinar/gabung/${'a'.repeat(64)}`);
+    expect(paid.join_url).toBe(`https://jakpatforuniv.com/webinar/gabung/${'a'.repeat(64)}`);
     expect(r.body.orders.find((o) => o.id === ORDER_PENDING).join_url).toBeNull();
     expect(r.body.orders.find((o) => o.id === ORDER_REPLAY).join_url).toBeNull();
     const text = JSON.stringify(r.body);

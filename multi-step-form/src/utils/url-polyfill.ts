@@ -16,15 +16,15 @@ export class URLPolyfill {
 
   constructor(url: string, base?: string) {
     // Default values
-    this.href = url || 'https://submit.jakpatforuniv.com';
+    this.href = url || 'https://jakpatforuniv.com';
     this.protocol = 'https:';
-    this.host = 'submit.jakpatforuniv.com';
-    this.hostname = 'submit.jakpatforuniv.com';
+    this.host = 'jakpatforuniv.com';
+    this.hostname = 'jakpatforuniv.com';
     this.port = '';
     this.pathname = '/';
     this.search = '';
     this.hash = '';
-    this.origin = 'https://submit.jakpatforuniv.com';
+    this.origin = 'https://jakpatforuniv.com';
 
     // Try to parse the URL if it's valid
     if (url && typeof url === 'string') {

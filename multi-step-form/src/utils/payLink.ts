@@ -35,23 +35,23 @@ export const jadwalPagePath = (scheduleId: ScheduleUuid): string =>
   `/dashboard/jadwal/${scheduleId}`;
 
 /**
- * Host yang PASTI menjalankan resolver `/bayar/`.
+ * Host kanonik yang menjalankan resolver `/bayar/`.
  *
- * Root `functions/_middleware.js` merutekan per-domain: `jakpatforuniv.com`
- * disajikan sebagai homepage statis dan TIDAK pernah memanggil `next()`, jadi
- * `/bayar/<id>` di sana mendarat di halaman depan — bukan 404, bukan resolver.
- * Link mati yang terlihat hidup.
+ * Root `functions/_middleware.js` hanya menyajikan `/` dan halaman legal apex
+ * sebagai homepage; `/bayar/<id>` diteruskan ke resolver. `submit.` dan `www.`
+ * dialihkan 301 ke apex, jadi link yang dicetak di sana tetap hidup — tapi
+ * tetap dikunci ke apex supaya tidak bergantung pada pengalihan itu.
  */
-export const PAY_LINK_CANONICAL_ORIGIN = 'https://submit.jakpatforuniv.com';
+export const PAY_LINK_CANONICAL_ORIGIN = 'https://jakpatforuniv.com';
 
 /**
- * Origin yang boleh dipakai apa adanya: yang benar-benar menjalankan Pages
- * Functions. Sisanya dipaksa ke host kanonik.
+ * Origin yang boleh dipakai apa adanya: host kanonik, preview, dan dev.
+ * Sisanya dipaksa ke host kanonik.
  */
 const originServesResolver = (origin: string): boolean => {
   try {
     const { hostname } = new URL(origin);
-    return hostname.startsWith('submit.')
+    return hostname === new URL(PAY_LINK_CANONICAL_ORIGIN).hostname
       || hostname.endsWith('.pages.dev')
       || hostname === 'localhost'
       || hostname === '127.0.0.1';
@@ -65,8 +65,8 @@ const originServesResolver = (origin: string): boolean => {
  *
  * ⚠️ ORIGIN-NYA DIKUNCI, bukan disalin apa adanya dari `window.location`.
  * Link yang keluar dari sini bertahan berhari-hari di inbox seseorang, jadi ia
- * tidak boleh mewarisi domain yang kebetulan sedang dibuka admin. Apex
- * `jakpatforuniv.com` khususnya: di sana `/bayar/` adalah homepage.
+ * tidak boleh mewarisi domain yang kebetulan sedang dibuka admin — termasuk
+ * `submit.`/`www.` yang hidupnya kini bergantung pada pengalihan 301.
  *
  * `localhost` dan `*.pages.dev` sengaja DIBIARKAN — keduanya menjalankan
  * resolver, dan memaksa preview/dev ke produksi akan menyamarkan link uji

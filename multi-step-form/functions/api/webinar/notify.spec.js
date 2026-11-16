@@ -18,7 +18,7 @@ const EVENT = {
   status: 'published',
 };
 const RECIPIENT = { buyer_name: 'Putra', ticket_code: '7F3A91B2C4', join_token: 'a'.repeat(64) };
-const JOIN = `https://submit.jakpatforuniv.com/webinar/gabung/${'a'.repeat(64)}`;
+const JOIN = `https://jakpatforuniv.com/webinar/gabung/${'a'.repeat(64)}`;
 const FORBIDDEN = /refund|pengembalian dana|uang kembali|zoom\.us|meeting_url/i;
 
 describe('formatWibRange', () => {
@@ -90,7 +90,7 @@ describe('templat email otomatis', () => {
     expect(m.subject).toBe('Rekaman tersedia: Olah Data SPSS untuk Skripsi');
     expect(m.html).toContain('Halo Putra');
     expect(m.html).toContain('Selasa, 17 November 2026');
-    expect(m.html).toContain(`https://submit.jakpatforuniv.com/dashboard/webinar/tonton/${ORDER}`);
+    expect(m.html).toContain(`https://jakpatforuniv.com/dashboard/webinar/tonton/${ORDER}`);
     expect(m.html).toContain('Tonton rekaman');
     expect(m.html).toContain('Materi presentasi bisa diunduh');
     expect(m.html).toContain('jangan disebarkan');

@@ -15,7 +15,7 @@
 
 import { sendMail } from '../_mail.js';
 
-const DEFAULT_ORIGIN = 'https://submit.jakpatforuniv.com';
+const DEFAULT_ORIGIN = 'https://jakpatforuniv.com';
 
 export function shortDocCode(paymentId) {
   const raw = (paymentId || '').trim();

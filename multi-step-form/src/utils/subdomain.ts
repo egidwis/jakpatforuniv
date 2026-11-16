@@ -19,7 +19,7 @@ const RESERVED_SUBDOMAINS = new Set([
  * Extracts username from the current hostname or query parameter
  * E.g. budi.jakpatforuniv.com -> 'budi'
  * E.g. budi.localhost:5173 -> 'budi'
- * E.g. submit.jakpatforuniv.com?user=budi -> 'budi'
+ * E.g. jakpatforuniv.com?user=budi -> 'budi'
  */
 export function getSubdomainUsername(hostname: string = window.location.hostname): string | null {
   // Check URL query param override (useful for dev/testing)

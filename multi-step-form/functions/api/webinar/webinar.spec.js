@@ -316,7 +316,7 @@ describe('halaman publik', () => {
     const liveEvent = (over = {}) => ({ title: 'Olah', status: 'published', starts_at: future(DAY), duration_minutes: 60, meeting_url: SECRET_ZOOM, ...over });
 
     const paidOrder = { id: ORDER_ID, status: 'paid', kind: 'live', event_id: 'e1' };
-    const TICKET_PAGE = `https://submit.jakpatforuniv.com/dashboard/webinar/tiket/${ORDER_ID}`;
+    const TICKET_PAGE = `https://jakpatforuniv.com/dashboard/webinar/tiket/${ORDER_ID}`;
 
     it('jauh sebelum acara: ke halaman tiket di dashboard, tanpa link Zoom, no-referrer', async () => {
       net([], { joinOrder: paidOrder, joinEvent: liveEvent() });

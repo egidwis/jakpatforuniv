@@ -9,8 +9,8 @@ describe('payLink — bentuk URL', () => {
   });
 
   it('URL penuh menempel pada origin yang diberikan', () => {
-    expect(payLinkUrl(id, 'https://submit.jakpatforuniv.com'))
-      .toBe(`https://submit.jakpatforuniv.com/bayar/${id}`);
+    expect(payLinkUrl(id, 'https://jakpatforuniv.com'))
+      .toBe(`https://jakpatforuniv.com/bayar/${id}`);
   });
 });
 
@@ -116,26 +116,29 @@ describe('payLinkForBill — KEBERADAAN dari paymentUrl, BENTUK dari scheduleId'
 
 describe('payLinkUrl — origin dikunci ke host yang menjalankan resolver', () => {
   /*
-    ⚠️ Root `functions/_middleware.js` menyajikan `jakpatforuniv.com` sebagai
-    homepage statis dan TIDAK pernah memanggil `next()`. Jadi `/bayar/<id>` di
-    apex bukan 404 — ia halaman depan. Link mati yang terlihat hidup, di inbox
-    orang, berhari-hari.
+    ⚠️ Link ini hidup berhari-hari di inbox orang. `submit.` dan `www.` hanya
+    hidup lewat pengalihan 301 ke apex, jadi link yang dicetak di sana tetap
+    dikunci ke apex — tidak bergantung pada pengalihan itu.
   */
   const id = '11111111-2222-4333-8444-555555555555';
 
-  it('apex dipaksa ke host kanonik', () => {
-    expect(payLinkUrl(id, 'https://jakpatforuniv.com'))
-      .toBe(`${PAY_LINK_CANONICAL_ORIGIN}/bayar/${id}`);
+  it('host kanonik adalah apex', () => {
+    expect(PAY_LINK_CANONICAL_ORIGIN).toBe('https://jakpatforuniv.com');
   });
 
-  it('www juga dipaksa — ia apex yang sama', () => {
+  it('apex dipakai apa adanya', () => {
+    expect(payLinkUrl(id, 'https://jakpatforuniv.com'))
+      .toBe(`https://jakpatforuniv.com/bayar/${id}`);
+  });
+
+  it('www dipaksa ke host kanonik', () => {
     expect(payLinkUrl(id, 'https://www.jakpatforuniv.com'))
       .toBe(`${PAY_LINK_CANONICAL_ORIGIN}/bayar/${id}`);
   });
 
-  it('submit. dipakai apa adanya', () => {
+  it('submit. dipaksa ke host kanonik', () => {
     expect(payLinkUrl(id, 'https://submit.jakpatforuniv.com'))
-      .toBe(`https://submit.jakpatforuniv.com/bayar/${id}`);
+      .toBe(`${PAY_LINK_CANONICAL_ORIGIN}/bayar/${id}`);
   });
 
   it('preview *.pages.dev dibiarkan — ia menjalankan resolver', () => {
