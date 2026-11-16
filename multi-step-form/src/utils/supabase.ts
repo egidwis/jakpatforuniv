@@ -6721,7 +6721,10 @@ export const tempoCancelBlockReason = async (paymentId: string): Promise<string 
     s.air_on_credit_at && s.start_date && new Date(s.start_date).getTime() <= Date.now());
   if (aired.length === 0) return null;
   return `Tagihan tempo ini tidak bisa dibatalkan: ${aired.map((s: any) => `#${s.booking_id}`).join(', ')} `
-    + 'sudah mulai tayang, jadi utangnya tetap penuh. Tandai lunas kalau uangnya diterima di luar DOKU.';
+    + 'sudah mulai tayang, jadi utangnya tetap penuh. Tandai lunas kalau uangnya diterima di luar DOKU.'
+    // Insiden Mun#07 (16 Nov 2026): tanpa kalimat ini satu-satunya jalan yang
+    // terlihat adalah menghentikan tayang lalu memesan ulang.
+    + ' Untuk mengganti nominal atau anggota tagihan, pakai "Terbitkan Ulang Tagihan Tempo" di kartu jadwalnya. Iklannya tetap tayang.';
 };
 
 /** Versi sinkron untuk kartu — dari data yang sudah termuat. */

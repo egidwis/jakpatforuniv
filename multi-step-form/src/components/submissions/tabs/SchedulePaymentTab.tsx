@@ -20,6 +20,7 @@ import { cardStateOf, pickTargetSchedule } from './scheduleCardActions';
 import { notifyScheduleChange } from '@/utils/notifyScheduleChange';
 import { openWhatsApp, slotBookedMessage } from '@/utils/waMessage';
 import { dokuLinkWarning } from '@/utils/dokuLinkWarning';
+import { reissueTempoCopy } from './reissueTempo';
 
 // ─────────────────────────────────────────────────────────────
 // Tab: Jadwal & Bayar.
@@ -211,6 +212,9 @@ export function SchedulePaymentTab({
         lines: [
           'Halaman iklannya ditutup sekarang, dan kuota tanggal itu bebas lagi.',
           'Utangnya TETAP PENUH: iklan ini sudah tayang. Tagihan temponya tidak dibatalkan dan masih bisa dibayar peneliti lewat link bayar yang sama.',
+          // Insiden Mun#07 (16 Nov 2026): "hentikan lalu pesan ulang" dipakai
+          // untuk menagih ulang, dan iklan yang sedang tayang mati.
+          'Kalau tujuanmu menagih ulang atau mengganti nominal, JANGAN hentikan. Pakai "Terbitkan Ulang Tagihan Tempo". Jadwal yang dihentikan tidak bisa ditayangkan lagi dari dashboard.',
           'Penelitinya akan menerima email bahwa jadwal tayangnya dihentikan.',
         ],
         confirmLabel: 'Ya, Hentikan Tayang',
@@ -320,6 +324,32 @@ export function SchedulePaymentTab({
    * baru. Itu bedanya dengan "Tayangkan Dulu", yang justru disembunyikan di
    * keadaan ini.
    */
+  /**
+   * "Terbitkan Ulang Tagihan Tempo" — konfirmasi cakupan, lalu formulir tagihan
+   * tempo yang sama dengan "Buat Tagihan (tempo)". `writeInvoiceRows` mencabut
+   * tagihan lama jadwal ini lebih dulu; jadwalnya TIDAK disentuh, jadi iklan
+   * yang sedang tayang tidak berhenti (insiden Mun#07, 16 Nov 2026).
+   */
+  const handleReissueTempo = useCallback((entry: AdScheduleEntry) => {
+    if (!onCreateTempoInvoice) return;
+    const open = billings.get(entry.id)?.openInvoice;
+    if (!open?.paymentId) return;
+    const group = groups.get(open.paymentId);
+    const otherTitles = (group?.members ?? [])
+      .filter((m) => !m.isDead && m.scheduleId !== entry.id)
+      .map((m) => m.title);
+    setPendingConfirm({
+      ...reissueTempoCopy({
+        bookingId: entry.bookingId,
+        paymentId: open.paymentId,
+        memberCount: group?.memberCount ?? 1,
+        otherTitles,
+      }),
+      tone: 'neutral',
+      onConfirm: async () => onCreateTempoInvoice(entry),
+    });
+  }, [billings, groups, onCreateTempoInvoice]);
+
   const handleResumeCredit = useCallback((entry: AdScheduleEntry) => {
     const open = billings.get(entry.id)?.openInvoice;
     const group = open?.paymentId ? groups.get(open.paymentId) : undefined;
@@ -816,6 +846,7 @@ export function SchedulePaymentTab({
             onCreateTempoInvoice={onCreateTempoInvoice}
             // Permukaan yang sama dengan "Tayangkan Dulu": hanya drawer admin.
             onResumeCredit={onCreateTempoInvoice ? handleResumeCredit : undefined}
+            onReissueTempo={onCreateTempoInvoice ? handleReissueTempo : undefined}
             /*
               `lifecycle.isPaid` berlingkup ORDER dan dibaca dari transaksi
               terbaru yang dimuat saat dashboard dibuka — tempo SUSULAN yang

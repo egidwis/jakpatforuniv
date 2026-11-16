@@ -528,6 +528,13 @@ describe('tempo SUSULAN — pelunasan manual & kunci K8 (jadwal sudah lunas, buk
     responder = cancelResponder('2026-08-30T01:00:00Z');
     expect(await tempoCancelBlockReason('JFU-INV-t-1')).toMatch(/tidak bisa dibatalkan/);
   });
+
+  it('K8: pesannya menunjuk ke Terbitkan Ulang — iklannya tetap tayang', async () => {
+    responder = cancelResponder('2026-08-30T01:00:00Z');
+    const reason = await tempoCancelBlockReason('JFU-INV-t-1');
+    expect(reason).toMatch(/Terbitkan Ulang Tagihan Tempo/);
+    expect(reason).toMatch(/Iklannya tetap tayang\.$/);
+  });
 });
 
 describe('Tandai Lunas SATUAN — link DOKU dimatikan lebih dulu (settleScheduleAsPaid)', () => {

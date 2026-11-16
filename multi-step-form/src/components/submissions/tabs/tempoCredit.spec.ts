@@ -122,6 +122,38 @@ describe('aksi kartu', () => {
     expect(last?.destructive).toBe(true);
   });
 
+  /*
+    Insiden Mun#07 (16 Nov 2026): satu-satunya jalan menagih ulang yang
+    terlihat adalah menghentikan tayang lalu memesan ulang — iklannya berhenti
+    dan pesanan barunya Rp 0 tanpa reward. Terbitkan Ulang mengganti TAGIHAN
+    saja; jadwalnya tidak disentuh.
+  */
+  it('kredit + tagihan tempo terbuka → menu menawarkan Terbitkan Ulang, sebelum Hentikan Tayang', () => {
+    const p = planFor('airing_on_credit', entry(), billingWith(tempoInvoice()));
+    const ids = p.menu.map((a) => a.id);
+    expect(ids).toContain('reissue_tempo');
+    expect(ids.indexOf('reissue_tempo')).toBeLessThan(ids.indexOf('cancel_schedule'));
+    expect(p.menu.find((a) => a.id === 'reissue_tempo')?.label).toBe('Terbitkan Ulang Tagihan Tempo');
+  });
+
+  it('kredit tanpa tagihan → tetap tempo_invoice, tanpa reissue_tempo', () => {
+    const p = planFor('airing_on_credit', entry(), billingWith(null));
+    expect([p.primary?.id, ...p.menu.map((a) => a.id)]).not.toContain('reissue_tempo');
+  });
+
+  it('kredit + tagihan terbuka NON-tempo → tanpa reissue_tempo', () => {
+    const p = planFor('airing_on_credit', entry(), billingWith(tempoInvoice({ isTempo: false, tempoLinkLapsed: false })));
+    expect(p.menu.map((a) => a.id)).not.toContain('reissue_tempo');
+  });
+
+  it('tanpa jalur tempo (can.tempoInvoice false) → tanpa reissue_tempo', () => {
+    const p = planCardActions({
+      state: 'airing_on_credit', entry: entry(), billing: billingWith(tempoInvoice()), isLate: false,
+      can: { ...ALL, tempoInvoice: false },
+    });
+    expect(p.menu.map((a) => a.id)).not.toContain('reissue_tempo');
+  });
+
   it('"Tayangkan Dulu" ditawarkan di awaiting_invoice / waiting_payment / hold_lapsed', () => {
     const plain = entry({ airOnCreditAt: null, status: 'waiting_payment' });
     for (const s of ['awaiting_invoice', 'waiting_payment', 'hold_lapsed'] as const) {

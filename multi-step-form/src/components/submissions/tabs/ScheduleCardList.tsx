@@ -131,6 +131,8 @@ interface CardActions {
    * anggota tagihannya; tidak menerbitkan tagihan atau link baru.
    */
   onResumeCredit?: (entry: AdScheduleEntry) => void;
+  /** "Terbitkan Ulang Tagihan Tempo" — dialog konfirmasi lalu formulir tagihan tempo. */
+  onReissueTempo?: (entry: AdScheduleEntry) => void;
   /** Menerima `entry`: pelunasan berlingkup SATU jadwal sejak sql/51. */
   onMarkPaid: ((entry: AdScheduleEntry) => void) | null;
   /** Batalkan pelunasan manual. Tombolnya hanya tampil kalau `billing.paymentChannel === 'MANUAL_VERIFIED'` — lihat gerbang di `unmarkScheduleAsPaid`. */
@@ -808,6 +810,7 @@ function CardActionBar({
       case 'top_up':          return actions.onCreateInvoice(entry);
       case 'tempo_invoice':   return actions.onCreateTempoInvoice?.(entry);
       case 'resume_credit':   return actions.onResumeCredit?.(entry);
+      case 'reissue_tempo':   return actions.onReissueTempo?.(entry);
       case 'mark_paid':       return actions.onMarkPaid?.(entry);
       case 'unmark_paid':     return actions.onUnmarkPaid?.(entry);
       case 'cancel_schedule': return actions.onCancelSchedule?.(entry);
@@ -1199,12 +1202,14 @@ function ScheduleCard({
 }
 
 export function ScheduleCardList({
-  entries, billings, submission, groups = new Map(), onEditSchedule, onCreateSchedule, onCreateInvoice, onCreateTempoInvoice, onResumeCredit, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onNotifySlot, onOpenReview,
+  entries, billings, submission, groups = new Map(), onEditSchedule, onCreateSchedule, onCreateInvoice, onCreateTempoInvoice, onResumeCredit, onReissueTempo, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onNotifySlot, onOpenReview,
 }: {
   /** "Tayangkan Dulu" — lihat `CardActions.onCreateTempoInvoice`. */
   onCreateTempoInvoice?: (entry: AdScheduleEntry) => void;
   /** "Tayangkan Sekarang" — lihat `CardActions.onResumeCredit`. */
   onResumeCredit?: (entry: AdScheduleEntry) => void;
+  /** "Terbitkan Ulang Tagihan Tempo" — dialog konfirmasi lalu formulir tagihan tempo. */
+  onReissueTempo?: (entry: AdScheduleEntry) => void;
   entries: AdScheduleEntry[];
   billings: Map<string, ScheduleBilling>;
   /**
@@ -1338,7 +1343,7 @@ export function ScheduleCardList({
           isOnly={isOnly}
           isOpen={openId === e.id}
           onToggle={() => setOpenId((prev) => (prev === e.id ? null : e.id))}
-          actions={{ onEditSchedule, onCreateInvoice, onCreateTempoInvoice, onResumeCredit, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onNotifySlot, onOpenReview }}
+          actions={{ onEditSchedule, onCreateInvoice, onCreateTempoInvoice, onResumeCredit, onReissueTempo, onMarkPaid, onUnmarkPaid, onCancelInvoice, onCancelSchedule, onNotifySlot, onOpenReview }}
           groups={groups}
         />
       ))}

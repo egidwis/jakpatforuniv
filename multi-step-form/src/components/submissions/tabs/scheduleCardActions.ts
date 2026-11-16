@@ -70,6 +70,7 @@ export type ActionId =
   | 'invoice'         // Buat Tagihan
   | 'tempo_invoice'   // Tayangkan Dulu / Buat Tagihan (tempo) — dialog tagihan dengan tempo menyala
   | 'resume_credit'   // Tayangkan Sekarang — tagihan tempo sudah terbit, penandaan tayangnya belum
+  | 'reissue_tempo'   // Terbitkan Ulang Tagihan Tempo — ganti tagihan, jadwal tetap tayang
   | 'top_up'          // Tagih Susulan
   | 'mark_paid'
   | 'unmark_paid'
@@ -454,11 +455,16 @@ export function planCardActions(input: {
 
       ⚠️ TIDAK ADA "Ganti Tanggal". Memindah tanggal membuat tagihan temponya
       basi (`is_stale`) dan utangnya lenyap dari hitungan; untuk iklan yang
-      sudah tayang itu bahkan tidak bermakna. Jalannya: hentikan, lalu pesan
-      jadwal baru.
+      sudah tayang itu bahkan tidak bermakna.
 
       ⚠️ "Batalkan tagihan" TIDAK di sini — ia hidup di baris tagihan, dan
       disembunyikan di sana begitu ada anggota yang mulai tayang (K8).
+
+      Menagih ulang (salah nominal, pisah/keluarkan anggota grup) = "Terbitkan
+      Ulang Tagihan Tempo": formulir tagihan tempo yang sama, dan
+      `writeInvoiceRows` mencabut tagihan lama jadwal ini lebih dulu. Jadwalnya
+      TIDAK disentuh. Jalan lama "hentikan lalu pesan baru" mematikan iklan dan
+      melahirkan perpanjangan Rp 0 tanpa reward (insiden Mun#07, 16 Nov 2026).
     */
     case 'airing_on_credit': {
       const hasBill = billing?.openInvoice != null;
@@ -471,10 +477,12 @@ export function planCardActions(input: {
       };
       const canStop = can.cancelSchedule && entry.status !== 'cancelled';
       const primary = !hasBill && can.createInvoice ? tempoBill : (can.markPaid ? markPaid : null);
+      const canReissue = !!billing?.openInvoice?.isTempo && !!can.tempoInvoice && can.createInvoice;
       return {
         primary,
         menu: [
           ...(primary?.id === 'tempo_invoice' && can.markPaid ? [markPaid] : []),
+          ...(canReissue ? [{ id: 'reissue_tempo', label: 'Terbitkan Ulang Tagihan Tempo' } as CardAction] : []),
           ...(canStop ? [stop] : []),
         ],
       };
