@@ -71,8 +71,10 @@ export function groupInfoFor(
     memberCount: group.memberCount,
     isLead,
     leadTitle: lead?.title || '(tanpa judul)',
+    // Anggota mati (dikeluarkan dari tagihan) tidak ditagih lagi — jangan
+    // disebut sebagai "pesanan lain" yang ikut dibayar (insiden Mun11, 16 Nov).
     others: group.members
-      .filter((m) => !sourceId || m.sourceId !== sourceId)
+      .filter((m) => (group.allDead || !m.isDead) && (!sourceId || m.sourceId !== sourceId))
       .map((m) => ({ title: m.title, amount: m.amount, isPaid: m.isPaid })),
     allPaid: group.allPaid,
   };

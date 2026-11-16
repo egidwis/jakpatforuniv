@@ -27,6 +27,7 @@ const groupOf = (members: InvoiceGroupMember[]): Map<string, InvoiceGroup> =>
     paymentId: 'JFU-INV-abc-1',
     members,
     memberCount: members.length,
+    deadCount: 0,
     total: members.reduce((s, m) => s + m.amount, 0),
     allPaid: members.length > 0 && members.every((m) => m.isPaid),
     isTempo: false,
@@ -39,7 +40,36 @@ const TIGA = [
   member({ sourceId: 'src-3', scheduleId: 'sch-3', title: 'Tracer Study', startDate: '2026-09-18T08:00:00Z' }),
 ];
 
+/** Bentuk yang dikirim `fetchInvoiceGroups` bila sebagian anggota mati. */
+const groupWithDead = (live: InvoiceGroupMember[], dead: InvoiceGroupMember[]): Map<string, InvoiceGroup> =>
+  new Map([['JFU-INV-abc-1', {
+    paymentId: 'JFU-INV-abc-1',
+    members: [...live, ...dead],
+    memberCount: live.length,
+    deadCount: dead.length,
+    total: live.reduce((s, m) => s + m.amount, 0),
+    allPaid: false,
+    allDead: false,
+    isTempo: true,
+    supersededBy: null,
+  }]]);
+
 describe('groupInfoFor', () => {
+  it('others tidak memuat anggota mati; total & memberCount dari anggota hidup', () => {
+    const dup = member({ sourceId: 'src-1', title: 'Survei Satu (dobel)', status: 'expired', isDead: true });
+    const info = groupInfoFor(groupWithDead([TIGA[1], TIGA[2]], [dup]), 'JFU-INV-abc-1', 'src-2')!;
+
+    expect(info.isLead).toBe(true);
+    expect(info.memberCount).toBe(2);
+    expect(info.total).toBe(2_220_000);
+    expect(info.others.map((o) => o.title)).toEqual(['Tracer Study']);
+  });
+
+  it('grup yang tinggal 1 anggota hidup → null (diperlakukan tagihan tunggal)', () => {
+    const dup = member({ sourceId: 'src-1', status: 'expired', isDead: true });
+    expect(groupInfoFor(groupWithDead([TIGA[1]], [dup]), 'JFU-INV-abc-1', 'src-2')).toBeNull();
+  });
+
   it('mengembalikan null untuk tagihan beranggota satu — N=1 tidak boleh berubah sedikit pun', () => {
     expect(groupInfoFor(groupOf([member({})]), 'JFU-INV-abc-1', 'src-1')).toBeNull();
   });

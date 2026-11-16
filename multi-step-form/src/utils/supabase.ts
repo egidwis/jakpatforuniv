@@ -2040,12 +2040,19 @@ export interface InvoiceGroupMember {
 
 export interface InvoiceGroup {
   paymentId: string;
-  /** Urut tanggal tayang paling awal dulu — anggota pertama adalah "lead". */
-  members: InvoiceGroupMember[];
-  memberCount: number;
   /**
-   * Σ porsi tiap anggota. ⚠️ JANGAN dihitung dari satu baris dikali N: PPN 11%
-   * dibulatkan per baris, jadi `Σ round(sᵢ×0,11) ≠ round(Σsᵢ×0,11)`.
+   * SEMUA baris: anggota hidup dulu (urut tanggal tayang paling awal), lalu yang
+   * mati. Anggota pertama adalah "lead".
+   */
+  members: InvoiceGroupMember[];
+  /** Anggota HIDUP saja — kecuali semua mati (`allDead`), lalu semua. */
+  memberCount: number;
+  /** Anggota yang barisnya mati (dikeluarkan/batal/kedaluwarsa). */
+  deadCount: number;
+  /**
+   * Σ porsi anggota yang dihitung `memberCount`. ⚠️ JANGAN dihitung dari satu
+   * baris dikali N: PPN 11% dibulatkan per baris, jadi
+   * `Σ round(sᵢ×0,11) ≠ round(Σsᵢ×0,11)`.
    */
   total: number;
   allPaid: boolean;
@@ -2155,13 +2162,26 @@ export const fetchInvoiceGroups = async (
       // sini. Ia punya kembaran di SQL (`lead` di `authoritative_payment_url()`,
       // sql/85) yang dipakai resolver `/bayar/` untuk memutuskan siapa yang
       // boleh diteruskan ke DOKU. Dua salinan TypeScript berarti tiga definisi.
-      members.sort(compareLeadOrder);
+      /*
+        ⚠️ ANGGOTA MATI DI BELAKANG, DAN TIDAK DIHITUNG — selama masih ada yang
+        hidup. Satu pesanan bisa dikeluarkan dari tagihan gabungan dengan
+        membatalkan jadwalnya: barisnya jadi `expired` tapi `payment_id`-nya
+        tetap. Menghitungnya membuat panel admin, kartu peneliti, dan tombol
+        bayar menyebut nominal yang tidak pernah ditagih DOKU (insiden Mun11,
+        16 Nov 2026), dan kalau ia yang paling awal, ia merebut kursi lead.
+        Kembarannya di SQL: CTE `grp_live` di `authoritative_payment_url()`
+        (sql/139). Seluruh anggota mati = riwayat → perilaku lama.
+      */
+      members.sort((a, b) => Number(!!a.isDead) - Number(!!b.isDead) || compareLeadOrder(a, b));
+      const live = members.filter((m) => !m.isDead);
+      const counted = live.length > 0 ? live : members;
       const ownRows = invRows.filter((r) => r.payment_id === paymentId);
       out.set(paymentId, {
         paymentId,
         members,
-        memberCount: members.length,
-        total: members.reduce((sum, m) => sum + m.amount, 0),
+        memberCount: counted.length,
+        deadCount: members.length - live.length,
+        total: counted.reduce((sum, m) => sum + m.amount, 0),
         allPaid: members.length > 0 && members.every((m) => m.isPaid),
         allDead: members.length > 0 && members.every((m) => m.isDead),
         isTempo: ownRows.some((r) => !!r.is_tempo),
@@ -2174,6 +2194,15 @@ export const fetchInvoiceGroups = async (
     return out;
   }
 };
+
+/**
+ * Anggota yang benar-benar ditanggung tagihan ini: yang hidup, atau semuanya
+ * bila seluruh grup sudah mati. Anggota yang dikeluarkan (barisnya mati) tidak
+ * boleh ikut dilunasi/dibalik — membalik baris mati jadi `paid` adalah
+ * pendapatan fiktif (pelajaran sql/101).
+ */
+const membersInScope = (group: InvoiceGroup): InvoiceGroupMember[] =>
+  group.allDead ? group.members : group.members.filter((m) => !m.isDead);
 
 /** Hasil pelunasan manual satu tagihan gabungan — per anggota, bukan borongan. */
 export interface GroupSettleResult {
@@ -2236,7 +2265,7 @@ export const settleGroupAsPaid = async (paymentId: string): Promise<GroupSettleR
     dokuReason: doku.reason,
   };
 
-  for (const member of group.members) {
+  for (const member of membersInScope(group)) {
     const entry = member.scheduleId ? entryById.get(member.scheduleId) : undefined;
     if (!entry) {
       result.failed.push({
@@ -2315,7 +2344,7 @@ export const unsettleGroupAsPaid = async (paymentId: string): Promise<GroupUnset
     touched: { invoices: 0, transactions: 0 },
   };
 
-  for (const member of group.members) {
+  for (const member of membersInScope(group)) {
     const entry = member.scheduleId ? entryById.get(member.scheduleId) : undefined;
     if (!entry) {
       result.failed.push({

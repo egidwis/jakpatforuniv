@@ -200,6 +200,53 @@ describe('fetchInvoiceGroups', () => {
     responder = () => { throw new Error('jaringan mati'); };
     await expect(fetchInvoiceGroups([PID])).resolves.toEqual(new Map());
   });
+
+  /*
+    Insiden 16 Nov 2026 (Mun11 dobel): satu anggota dikeluarkan lewat
+    pembatalan jadwalnya → barisnya `expired` tapi tetap ber-payment_id sama.
+    Panel admin, kartu peneliti, dan dokumen sama-sama menghitung 7 pesanan
+    padahal yang ditagih 6.
+  */
+  const withStatuses = (statuses: Record<string, string>) => (op: Op) => {
+    if (op.verb === 'select' && op.table === 'invoices'
+        && !op.filters.some((f) => f.col === 'payment_id' && f.op === 'eq')) {
+      return { data: INVOICE_ROWS.map((r) => ({ ...r, status: statuses[r.schedule_id] ?? r.status })), error: null };
+    }
+    return happyResponder(op);
+  };
+
+  it('anggota mati tidak dihitung, dan lead pindah ke anggota hidup pertama', async () => {
+    // sch-1 = tayang PALING AWAL, dan justru dia yang mati.
+    responder = withStatuses({ 'sch-1': 'expired' });
+    const g = (await fetchInvoiceGroups([PID])).get(PID)!;
+
+    expect(g.memberCount).toBe(2);
+    expect(g.total).toBe(2_220_000);
+    expect(g.deadCount).toBe(1);
+    expect(g.members.map((m) => m.bookingId)).toEqual(['BOOK2', 'BOOK3', 'BOOK1']);
+    expect(g.allDead).toBe(false);
+  });
+
+  it('semua anggota mati → perilaku lama (dihitung semua, urutan tayang)', async () => {
+    responder = withStatuses({ 'sch-1': 'cancelled', 'sch-2': 'cancelled', 'sch-3': 'expired' });
+    const g = (await fetchInvoiceGroups([PID])).get(PID)!;
+
+    expect(g.memberCount).toBe(3);
+    expect(g.total).toBe(3_330_000);
+    expect(g.deadCount).toBe(3);
+    expect(g.allDead).toBe(true);
+    expect(g.members.map((m) => m.bookingId)).toEqual(['BOOK1', 'BOOK2', 'BOOK3']);
+  });
+
+  it('settleGroupAsPaid melewati anggota mati', async () => {
+    responder = withStatuses({ 'sch-1': 'expired' });
+    const res = await settleGroupAsPaid(PID);
+
+    expect(res.settled.map((s) => s.title)).toEqual(['Riset UMKM', 'Tracer Study']);
+    const invUpdates = ops.filter((o) => o.table === 'invoices' && o.verb === 'update');
+    expect(invUpdates.map((o) => o.filters.find((f) => f.col === 'schedule_id')?.val))
+      .toEqual(['sch-2', 'sch-3']);
+  });
 });
 
 describe('settleGroupAsPaid', () => {

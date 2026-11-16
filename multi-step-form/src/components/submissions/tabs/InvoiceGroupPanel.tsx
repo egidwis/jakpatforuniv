@@ -93,7 +93,9 @@ export function InvoiceGroupPanel({
     let totalPpn = 0;
     let hasAllSub = true;
 
-    const bundles = group.members.map((m) => {
+    // Pesan WA menagih yang BENAR-BENAR ditagih: anggota yang dikeluarkan
+    // (barisnya mati) tidak ikut, kecuali seluruh grup memang riwayat.
+    const bundles = (dead ? group.members : group.members.filter((m) => !m.isDead)).map((m) => {
       const tx = (m.scheduleId ? txBySchedule.get(m.scheduleId) : null)
         ?? (m.submissionId ? txBySubmission.get(m.submissionId) : null);
       const sub = m.submissionId ? subById.get(m.submissionId) : null;
@@ -198,6 +200,9 @@ export function InvoiceGroupPanel({
         <span className={`text-[11px] font-bold uppercase tracking-wide ${dead ? 'text-slate-600' : 'text-blue-900'}`}>
           Tagihan gabungan{group.isTempo ? ' tempo' : ''} · {group.memberCount} pesanan
         </span>
+        {!dead && group.deadCount > 0 && (
+          <span className="text-[11px] text-slate-500">· {group.deadCount} dikeluarkan</span>
+        )}
       </div>
 
       <div className="flex items-center justify-between gap-2 text-[11px]">
