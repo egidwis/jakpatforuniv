@@ -1,71 +1,60 @@
 // Domain-based routing middleware
-// jakpatforuniv.com → serve homepage (static files from /homepage/)
-// submit.jakpatforuniv.com → serve React SPA (default behavior)
+//
+// jakpatforuniv.com (apex, canonical):
+//   `/` and the legal pages → static homepage (public/homepage/)
+//   everything else         → React SPA + Pages Functions
+// www.jakpatforuniv.com → 301 to apex
+// submit.jakpatforuniv.com → 301 to apex once REDIRECT_SUBMIT_TO_APEX is on;
+//   `/api/*` is always served directly on every host (DOKU webhooks and the
+//   Supabase cron POST there, and a redirected POST is not reliably replayed).
+// *.pages.dev, localhost, wildcard user subdomains → SPA, unchanged.
+//
+// `/homepage/*` and `/assets/*` never reach this file (see public/_routes.json).
+
+export const APEX_HOST = 'jakpatforuniv.com';
+const WWW_HOST = 'www.jakpatforuniv.com';
+const SUBMIT_HOST = 'submit.jakpatforuniv.com';
+
+// Turn on only after the apex is attached to this Pages project and the
+// Cloudflare zone redirect `jakpatforuniv.com/* → submit…/homepage/*` is
+// removed — otherwise the two redirects loop.
+export const REDIRECT_SUBMIT_TO_APEX = false;
+
+const HOMEPAGE_PATHS = {
+  '/': '/homepage/index.html',
+  '/privacy-policy': '/homepage/privacy-policy.html',
+  '/privacy-policy.html': '/homepage/privacy-policy.html',
+  '/terms-conditions': '/homepage/terms-conditions.html',
+  '/terms-conditions.html': '/homepage/terms-conditions.html',
+  '/syarat-ketentuan': '/homepage/terms-conditions.html',
+};
 
 export async function onRequest(context) {
   const { request, next, env } = context;
   const url = new URL(request.url);
   const hostname = url.hostname;
 
-  // Check if request is for the homepage domain
-  const isHomepageDomain =
-    hostname === 'jakpatforuniv.com' ||
-    hostname === 'www.jakpatforuniv.com';
+  const isLegacyHost =
+    hostname === WWW_HOST || (REDIRECT_SUBMIT_TO_APEX && hostname === SUBMIT_HOST);
 
-  if (!isHomepageDomain) {
-    // submit.jakpatforuniv.com or *.pages.dev → proceed normally (React SPA)
+  if (isLegacyHost) {
+    const redirectable = request.method === 'GET' || request.method === 'HEAD';
+    if (!redirectable || url.pathname.startsWith('/api/')) {
+      return next();
+    }
+    return Response.redirect(`https://${APEX_HOST}${url.pathname}${url.search}`, 301);
+  }
+
+  if (hostname !== APEX_HOST) {
     return next();
   }
 
-  // Halaman dan API webinar dirender Pages Function di kedua domain.
-  if (
-    url.pathname === '/webinar' ||
-    url.pathname.startsWith('/webinar/') ||
-    url.pathname.startsWith('/api/webinar/')
-  ) {
+  const homepageFile = HOMEPAGE_PATHS[url.pathname];
+  if (!homepageFile) {
     return next();
   }
 
-  // --- Homepage domain routing ---
-  let filePath = url.pathname;
-
-  // If path already starts with /homepage/, serve it directly
-  // (this handles relative asset paths when browser is at /homepage/)
-  if (filePath.startsWith('/homepage/') || filePath === '/homepage') {
-    // Serve directly from assets
-    return serveAsset(env, request, url, filePath);
-  }
-
-  // Root → homepage index
-  if (filePath === '/' || filePath === '') {
-    filePath = '/homepage/index.html';
-  }
-  // Legal pages
-  else if (filePath === '/privacy-policy.html' || filePath === '/privacy-policy') {
-    filePath = '/homepage/privacy-policy.html';
-  }
-  else if (filePath === '/terms-conditions.html' || filePath === '/terms-conditions') {
-    filePath = '/homepage/terms-conditions.html';
-  }
-  // Static assets (CSS, JS, images)
-  else if (
-    filePath.endsWith('.css') ||
-    filePath.endsWith('.js') ||
-    filePath.endsWith('.png') ||
-    filePath.endsWith('.webp') ||
-    filePath.endsWith('.jpg') ||
-    filePath.endsWith('.svg') ||
-    filePath.endsWith('.ico') ||
-    filePath.startsWith('/assets/')
-  ) {
-    filePath = '/homepage' + filePath;
-  }
-  // Any other path → homepage index
-  else {
-    filePath = '/homepage/index.html';
-  }
-
-  return serveAsset(env, request, url, filePath);
+  return serveAsset(env, request, url, homepageFile);
 }
 
 async function serveAsset(env, request, originalUrl, filePath) {
@@ -74,27 +63,13 @@ async function serveAsset(env, request, originalUrl, filePath) {
 
   let response = await env.ASSETS.fetch(new Request(assetUrl, request));
 
-  // If ASSETS returns a redirect, follow it server-side
-  // so the browser URL stays clean
+  // ASSETS answers `/x.html` with a 308 to `/x`; follow it server-side so the
+  // browser URL stays clean.
   if (response.status >= 300 && response.status < 400) {
     const location = response.headers.get('Location');
     if (location) {
       const redirectUrl = new URL(location, assetUrl);
       response = await env.ASSETS.fetch(new Request(redirectUrl, request));
-    }
-  }
-
-  // If 404, fall back to homepage index
-  if (response.status === 404) {
-    const fallbackUrl = new URL(originalUrl);
-    fallbackUrl.pathname = '/homepage/index.html';
-    response = await env.ASSETS.fetch(new Request(fallbackUrl, request));
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get('Location');
-      if (location) {
-        const redirectUrl = new URL(location, fallbackUrl);
-        response = await env.ASSETS.fetch(new Request(redirectUrl, request));
-      }
     }
   }
 
