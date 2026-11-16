@@ -289,6 +289,25 @@ function Details({ view }: { view: AuditView }) {
               </div>
             </div>
           )}
+
+          {pii.minor.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-slate-500 dark:text-slate-400">
+                AI sempat menandai {pii.minor.length} pertanyaan, tapi kemungkinannya kecil — tidak dihitung sebagai data pribadi
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {pii.minor.map((f, i) => (
+                  <span
+                    key={i}
+                    title={f.context ? `Catatan AI: ${f.context}` : undefined}
+                    className="max-w-full truncate rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400"
+                  >
+                    &quot;{f.snippet}&quot;
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </>
       )}
 

@@ -34,9 +34,13 @@ export interface AuditView {
   isStale: boolean;
   platformLabel: string;
   count: AuditCountView;
-  /** Temuan diurutkan per `confidence`; `types` = semua jenis, tanpa duplikat. */
-  pii: { total: number; top: FormAuditFinding[]; rest: number; types: string[] };
-  /** Terbaca, jumlah cocok, nol temuan — kartu boleh diringkas satu baris. */
+  /**
+   * `total`/`top`/`rest`/`types` hanya menghitung temuan `high` & `medium`,
+   * diurutkan per `confidence`. Temuan `low` masuk `minor`: tetap terlihat di
+   * rincian sebagai bukti, tapi TIDAK dihitung sebagai "data pribadi".
+   */
+  pii: { total: number; top: FormAuditFinding[]; rest: number; types: string[]; minor: FormAuditFinding[] };
+  /** Terbaca, jumlah cocok, nol temuan yang dihitung — kartu boleh diringkas satu baris. */
   isClean: boolean;
   summary: string;
   auditedAt: string | null;
@@ -76,8 +80,19 @@ export function auditViewOf(
   const orderNow = submission.questionCount || 0;
   const delta = detected == null ? null : detected - orderNow;
 
-  const findings = readState === 'unreadable' ? [] : [...(audit.pii?.findings ?? [])];
-  findings.sort((a, b) => (CONFIDENCE_RANK[a.confidence] ?? 3) - (CONFIDENCE_RANK[b.confidence] ?? 3));
+  const all = readState === 'unreadable' ? [] : [...(audit.pii?.findings ?? [])];
+  all.sort((a, b) => (CONFIDENCE_RANK[a.confidence] ?? 3) - (CONFIDENCE_RANK[b.confidence] ?? 3));
+  // ⛔ Mengapa `low` tidak dihitung: LLM mencatat pertanyaan demografi biasa
+  // (nama perusahaan, kota/kabupaten, jenis kelamin, fakultas) sebagai temuan
+  // `low`, sering dengan catatan "ini bukan data pribadi" — lalu kartu menulis
+  // "2 data pribadi" (order Listya Ningrum, 9 Nov 2026). Terukur pada 198 audit
+  // produksi: 13 temuan `low`, seluruhnya demografi; data pribadi sungguhan
+  // (HP, email, NIK, NIM, e-wallet) semuanya `high`/`medium`. Bukan membuangnya:
+  // tetap tampil di `minor`. `pii.status` / `has_pii` buatan LLM tetap TIDAK
+  // dibaca (lihat catatan "bukti, bukan vonis" di atas) — yang dipakai hanya
+  // `confidence` per temuan.
+  const findings = all.filter((f) => f.confidence !== 'low');
+  const minor = all.filter((f) => f.confidence === 'low');
 
   return {
     readState,
@@ -95,6 +110,7 @@ export function auditViewOf(
       top: findings.slice(0, PII_TOP),
       rest: Math.max(0, findings.length - PII_TOP),
       types: Array.from(new Set(findings.map((f) => f.type))),
+      minor,
     },
     isClean: readState === 'read' && findings.length === 0 && delta === 0,
     summary: audit.summary || '',

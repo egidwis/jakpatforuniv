@@ -40,6 +40,10 @@ const OUTCOME_LABELS: Record<string, string> = {
   // sql/77 — request yang ditolak sebelum fase tulis. Tanpa entri di ketiga
   // peta ini, chip-nya mencetak slug mentah dan hint-nya kosong: kelas bug
   // yang persis ditutup 65369c1.
+  webinar_over_quota: 'Webinar: lewat kuota',
+  webinar_duplicate_paid: 'Webinar: bayar dua kali',
+  webinar_not_found: 'Webinar: invoice tidak dikenali',
+  webinar_paid_on_cancelled: 'Webinar: dibayar saat acara batal',
   rejected_auth: 'Ditolak: autentikasi',
   rejected_payload: 'Ditolak: payload tak terbaca',
   handler_crashed: 'Handler error',
@@ -54,6 +58,10 @@ const OUTCOME_VARIANTS: Record<string, ChipVariant> = {
   // Merah: uangnya sudah diterima dan BELUM tercatat sebagai pendapatan.
   // Ini bukan peringatan, ini selisih buku yang menunggu orang.
   paid_on_dead_bill: 'red',
+  webinar_over_quota: 'amber',
+  webinar_duplicate_paid: 'orange',
+  webinar_not_found: 'amber',
+  webinar_paid_on_cancelled: 'red',
   rejected_auth: 'orange',
   rejected_payload: 'orange',
   handler_crashed: 'red',
@@ -71,6 +79,14 @@ const OUTCOME_HINTS: Record<string, string> = {
   // kegagalan teknis. Yang dibutuhkan keputusan manusia.
   paid_on_dead_bill:
     'Uang SUDAH diterima DOKU tapi BELUM tercatat sebagai pendapatan: tagihannya sudah dibatalkan/kedaluwarsa, jadi jadwalnya sengaja tidak disentuh. Pindahkan pembayaran ini ke tagihan yang masih hidup, atau proses sebagai kelebihan bayar. Kirim ulang notifikasi tidak akan menolong.',
+  webinar_over_quota:
+    'Pembayaran sudah dicatat dan tiket tetap terbit, tetapi jumlah tiket lunas melewati kuota. Pastikan kapasitas Zoom cukup.',
+  webinar_duplicate_paid:
+    'Akun ini sudah punya pembayaran lunas lain untuk acara yang sama, dan keduanya sudah dicatat. Hubungi pembelinya, lalu putuskan apakah kelebihan bayarnya direfund manual.',
+  webinar_not_found:
+    'Invoice WBN- ini tidak ada di webinar_orders. Kirim ulang notifikasi tidak akan menolong; telusuri di dashboard DOKU siapa yang membayar.',
+  webinar_paid_on_cancelled:
+    'Pembayaran masuk sesudah acara dibatalkan. Uangnya sudah dicatat dan e-tiket tidak dikirim. Hubungi pembelinya, lalu putuskan apakah direfund manual.',
   rejected_auth:
     'DOKU menelepon dan KITA yang menolak di gerbang autentikasi — bedakan dari "tidak ada baris sama sekali", yang berarti DOKU tidak pernah menelepon. Periksa notification URL & secret ?k= di dashboard DOKU.',
   rejected_payload:

@@ -16,6 +16,7 @@ import {
   withCountEvidence,
   AI_TEXT_LIMIT,
 } from './_formParsers.js';
+import { buildAuditSystemPrompt, buildAuditUserPrompt } from './_auditPrompt.js';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const AUDIT_MODEL = 'google/gemini-2.5-flash-lite';
@@ -303,68 +304,9 @@ async function runSemanticAuditWithAI(params) {
 
   const snippetForAi = text.slice(0, AI_TEXT_LIMIT); // Guard token limits
 
-  const systemPrompt = `Anda adalah Jakpat AI Compliance & Survey Quality Inspector.
-Tugas Anda adalah memeriksa teks formulir kuesioner survei hasil scraping dan menghasilkan audit terstruktur.
-
-Kategori yang harus dievaluasi:
-1. "question_count":
-   - Hitung estimasi jumlah pertanyaan aktual yang ada di kuesioner (catatan penting: pada pertanyaan tabel Likert / Matrix / Grid, setiap baris sub-pernyataan dihitung sebagai 1 butir pertanyaan).
-   - Bandingkan dengan jumlah pertanyaan yang dilaporkan peneliti saat order (reported: ${reportedQuestionCount || 0}).
-   - Tentukan status: "match" (jika sama atau selisih 0), "mismatch_over" (pertanyaan aktual lebih banyak dari yang dilaporkan), atau "mismatch_under" (pertanyaan aktual lebih sedikit).
-
-2. "pii" (Personal Identifiable Information / Data Pribadi):
-   - Kategori yang dilarang/diaudit: "phone", "email", "nik", "name", "address", "nim", "ewallet", "other".
-   - Perhatikan konteks:
-     * Jika pertanyaan meminta nomor HP / Nama Lengkap / Email responden di awal/inti survei -> ini PELANGGARAN ("violation").
-     * Jika pertanyaan hanya meminta nomor e-wallet / kontak di bagian akhir KHUSUS untuk pengiriman hadiah/reward undian -> ini "warning" (perlu review manual, bukan langsung reject).
-     * Pertanyaan demografi umum (usia, gender, kota tanpa alamat jalan lengkap) -> AMAN ("clean").
-
-3. "randomizer":
-   - Cek apakah kuesioner menyebutkan pengacakan urutan soal atau opsi jawaban (misal "urutan diacak", "acak stimulus").
-
-4. "recommendation":
-   - "ready_to_approve": Tidak ada PII, jumlah pertanyaan cocok, tidak ada isu randomizer.
-   - "needs_manual_review": Ada selisih kecil pertanyaan atau kontak e-wallet hadiah undian opsional.
-   - "reject_or_revise": Ada data pribadi sensitif terlarang (NIK, No HP wajib responden) atau jumlah pertanyaan melebihi kuota secara signifikan.
-
-Format balasan HARUS HANYA JSON murni tanpa markdown/backticks, dengan struktur:
-{
-  "status": "clean" | "warning" | "flagged",
-  "question_count": {
-    "reported": number,
-    "actual_detected": number,
-    "diff": number,
-    "status": "match" | "mismatch_over" | "mismatch_under"
-  },
-  "pii": {
-    "has_pii": boolean,
-    "status": "clean" | "warning" | "violation",
-    "findings": [
-      {
-        "type": "phone" | "email" | "nik" | "name" | "address" | "nim" | "ewallet" | "other",
-        "snippet": "teks potongan",
-        "context": "konteks pertanyaan",
-        "confidence": "high" | "medium" | "low"
-      }
-    ]
-  },
-  "randomizer": {
-    "detected": boolean,
-    "signals": ["sinyal 1"]
-  },
-  "recommendation": "ready_to_approve" | "needs_manual_review" | "reject_or_revise",
-  "summary": "Ringkasan kesimpulan dalam 1-2 kalimat Bahasa Indonesia yang jelas untuk admin. Jika ada selisih jumlah pertanyaan, jelaskan dengan lugas (contoh: 'Jumlah pertanyaan aktual di kuesioner sebanyak 40 butir (termasuk baris pernyataan dalam tabel Grid), melebihi paket yang dilaporkan saat order yaitu 2 pertanyaan (kelebihan 38 butir).')",
-  "detected_questions_sample": ["Contoh pertanyaan 1", "Contoh pertanyaan 2"]
-}`;
-
-  const userPrompt = `Data Kuesioner:
-Platform: ${platform}
-Reported Questions: ${reportedQuestionCount || 0}
-Preliminary Regex Scan: ${JSON.stringify(preliminaryFindings)}
-
-Konten Teks Kuesioner:
-${snippetForAi}
-`;
+  // Isi prompt ada di `_auditPrompt.js` (bisa diuji). Aturan `findings` di sana.
+  const systemPrompt = buildAuditSystemPrompt(reportedQuestionCount);
+  const userPrompt = buildAuditUserPrompt({ platform, reportedQuestionCount, preliminaryFindings, snippetForAi });
 
   const response = await fetch(OPENROUTER_API_URL, {
     method: 'POST',

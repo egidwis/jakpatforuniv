@@ -430,7 +430,7 @@ function InvoiceRow({
  * supaya tidak terbaca sebagai aturan yang masih berlaku.
  */
 function BillingSection({
-  entry, billing, state, actions, groups,
+  entry, billing, state, actions, groups, researcherName, phoneNumber,
 }: {
   entry: AdScheduleEntry;
   billing: ScheduleBilling | undefined;
@@ -438,6 +438,8 @@ function BillingSection({
   actions: CardActions;
   /** Anggota tiap tagihan gabungan, dikunci `payment_id`. */
   groups: Map<string, InvoiceGroup>;
+  researcherName?: string | null;
+  phoneNumber?: string | null;
 }) {
   if (state === 'cancelled') {
     /**
@@ -699,6 +701,8 @@ function BillingSection({
           currentScheduleId={entry.id}
           // Tagihan tempo tidak punya "hidup s/d" (K3) — umur link-nya detail teknis.
           expiresAt={g.isTempo ? null : invoices.find((i) => i.paymentId === g.paymentId)?.expiresAt ?? null}
+          researcherName={researcherName ?? entry.researcherName}
+          phoneNumber={phoneNumber}
         />
       ))}
 
@@ -887,6 +891,8 @@ function ScheduleCard({
   entry: AdScheduleEntry;
   billing: ScheduleBilling | undefined;
   submission: {
+    researcherName?: string | null;
+    phone_number?: string | null;
     questionCount?: number | null;
     question_count?: number | null;
     distribution_type?: string | null;
@@ -1139,7 +1145,15 @@ function ScheduleCard({
         </div>
       )}
 
-      <BillingSection entry={entry} billing={billing} state={state} actions={actions} groups={groups} />
+      <BillingSection
+        entry={entry}
+        billing={billing}
+        state={state}
+        actions={actions}
+        groups={groups}
+        researcherName={submission.researcherName}
+        phoneNumber={submission.phone_number}
+      />
 
       {/* Baris "Peneliti melihat" — lihat `ResearcherSeesLine`. */}
       <ResearcherSeesLine state={state} isLate={isLate} billing={billing} byOrder={isCancelledByOrder(entry)} lapse={lapse} cancelledBy={entry.cancelledBy} />
@@ -1202,7 +1216,7 @@ export function ScheduleCardList({
    * gara-gara satu query tambahan gagal.
    */
   groups?: Map<string, InvoiceGroup>;
-  submission: { questionCount?: number | null; distribution_type?: string | null; submission_status?: string | null; status?: string | null };
+  submission: { researcherName?: string | null; phone_number?: string | null; questionCount?: number | null; distribution_type?: string | null; submission_status?: string | null; status?: string | null };
   onEditSchedule: (entry: AdScheduleEntry) => void;
   onCreateSchedule?: (isExtraAd: boolean) => void;
   /** Lompat ke tab Review — lihat `CardActions.onOpenReview`. */

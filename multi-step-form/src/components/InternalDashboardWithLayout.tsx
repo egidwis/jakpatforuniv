@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, BarChart2, Users, CalendarDays, Bot, PanelLeftClose, PanelLeftOpen, Target } from 'lucide-react';
+import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, BarChart2, Users, CalendarDays, Bot, PanelLeftClose, PanelLeftOpen, Target, Presentation } from 'lucide-react';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { cn, useMediaQuery } from '@/lib/utils';
@@ -12,13 +12,14 @@ import { PublishPageManagement } from './PublishPageManagement';
 import { CustomersPage } from './CustomersPage';
 import { CustomMissionRequestsPage } from './CustomMissionRequestsPage';
 import MiminAISetup from '../pages/internal-dash/MiminAISetup';
+import { WebinarAdminPage } from './webinar-admin/WebinarAdminPage';
 import { useAuth } from '../context/AuthContext';
 import { getAllChatSessions, supabase } from '../utils/supabase';
 
 // 'ad-schedules' = papan Schedule (Phase 3, membaca tabel ad_schedules). Ia
 // menggantikan 'scheduling' (Page Calendar), yang dipensiunkan 2026-08-08 setelah
 // hidup berdampingan sebagai pembanding.
-type Page = 'submissions' | 'custom-missions' | 'transactions' | 'analytics' | 'customers' | 'conversations' | 'ad-schedules' | 'publish-page' | 'mimin-setup';
+type Page = 'submissions' | 'custom-missions' | 'transactions' | 'analytics' | 'customers' | 'conversations' | 'ad-schedules' | 'publish-page' | 'mimin-setup' | 'webinar';
 
 export function InternalDashboardWithLayout() {
   // Supabase Auth
@@ -30,6 +31,8 @@ export function InternalDashboardWithLayout() {
    *  jadi monitoring dan pekerjaan halamannya pindah ke papan. */
   const [focusSchedule, setFocusSchedule] = useState<{ bookingId: string } | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  /** Form webinar punya perubahan yang belum tersimpan (acara terbit memakai Simpan perubahan). */
+  const [webinarDirty, setWebinarDirty] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(
     () => localStorage.getItem('admin-sidebar-collapsed') === 'true'
   );
@@ -183,6 +186,8 @@ export function InternalDashboardWithLayout() {
   };
 
   const handlePageChange = (page: Page) => {
+    if (currentPage === 'webinar' && page !== 'webinar' && webinarDirty
+      && !window.confirm('Perubahan acara webinar belum disimpan. Tetap pindah menu?')) return;
     setCurrentPage(page);
     setIsSidebarOpen(false); // Close sidebar on mobile after navigation
   };
@@ -251,6 +256,11 @@ export function InternalDashboardWithLayout() {
           id: 'publish-page' as Page,
           label: 'Pages',
           icon: Globe,
+        },
+        {
+          id: 'webinar' as Page,
+          label: 'Webinar',
+          icon: Presentation,
         },
       ]
     },
@@ -623,6 +633,9 @@ export function InternalDashboardWithLayout() {
             <div className="container mx-auto p-4 md:p-8 h-full">
               <MiminAISetup />
             </div>
+          ) : currentPage === 'webinar' ? (
+            // Tanpa pembungkus: daftar & form mengurus padding dan bar tombol menempelnya sendiri.
+            <WebinarAdminPage onDirtyChange={setWebinarDirty} />
           ) : currentPage === 'ad-schedules' ? (
             // Tanpa pembungkus `container`: papan ini mengurus paddingnya sendiri,
             // sama seperti Submissions dan Transaksi. Pembungkus dengan padding

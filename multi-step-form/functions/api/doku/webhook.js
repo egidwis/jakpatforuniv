@@ -21,6 +21,11 @@
 //   2. PATCH yang penting memakai `Prefer: return=representation` dan MEMERIKSA
 //      array balikannya. Array kosong = 0 baris cocok = kegagalan diam-diam yang
 //      dari luar tampak seperti sukses.
+//      ⚠️ KECUALI bila filternya menguji kolom yang diubah PATCH itu sendiri,
+//      terutama lewat `or=`/`and=`: PostgREST menerapkan ulang filter logika ke
+//      baris yang dikembalikan, jadi balasannya `[]` walau barisnya BERUBAH
+//      (insiden e-tiket webinar 5 Nov 2026). Klaim bersyarat seperti itu lewat
+//      claimRow() di functions/api/webinar/_claim.js (token + baca-balik).
 //   3. Kegagalan tulis membalas HTTP 500 supaya DOKU retry (dibatasi
 //      MAX_WRITE_ATTEMPTS agar tidak jadi badai), mencatat baris di
 //      doku_webhook_events, dan mengirim email ke admin.
@@ -30,6 +35,7 @@ import { sendWebhookAlert } from './_webhook-alert.js';
 import { sendPaymentReceipt } from './_payment-receipt.js';
 import { sendKilatPaidAlert } from './_kilat-paid-alert.js';
 import { cancelDokuOrder } from './_doku-cancel.js';
+import { deliverWebinarTicket, isWebinarInvoice, processWebinarPayment, WEBINAR_ALERT_OUTCOMES } from './_webinar.js';
 
 // Setelah sekian kali percobaan gagal untuk satu invoice, berhenti meminta DOKU
 // retry (balas 200) — kegagalannya jelas bukan transien lagi. Baris audit dan
@@ -546,6 +552,23 @@ export async function onRequest(context) {
       });
     }
 
+    // Notifikasi SNAP tidak bertanda tangan, dan gerbang ?k= di verifyDokuAuth
+    // bergantung pada env. Tiket webinar bernilai langsung bagi pembeli yang tahu
+    // nomor invoicenya sendiri, jadi jalur ini selalu mewajibkan secret.
+    if (
+      isWebinarInvoice(invoiceNumber) &&
+      (!context.env.DOKU_WEBHOOK_SECRET ||
+        new URL(context.request.url).searchParams.get('k') !== context.env.DOKU_WEBHOOK_SECRET)
+    ) {
+      return await rejectAndLog(context, {
+        rawBodyText,
+        outcome: REJECT_OUTCOMES.auth,
+        httpStatus: 401,
+        errorMessage: 'Invoice WBN- tanpa secret ?k= yang benar.',
+        responseBody: { error: 'Unauthorized' },
+      });
+    }
+
     console.log(`Webhook DOKU: Invoice: ${invoiceNumber}, Status: ${status}`);
 
     // Map status DOKU ke status aplikasi
@@ -567,15 +590,27 @@ export async function onRequest(context) {
     // ======================================================================
     let outcome = 'ok';
     let errorMessage = null;
+    const isWebinar = isWebinarInvoice(invoiceNumber);
+    let webinarSendTicket = false;
     try {
-      const result = await processPaymentUpdate(context.env, {
-        invoiceNumber,
-        amount,
-        appStatus,
-        paymentChannel
-      });
+      const result = isWebinar
+        ? await processWebinarPayment({
+            sb: resolveSupabase(context.env),
+            sbFetch,
+            invoiceNumber,
+            amount,
+            appStatus,
+            paymentChannel
+          })
+        : await processPaymentUpdate(context.env, {
+            invoiceNumber,
+            amount,
+            appStatus,
+            paymentChannel
+          });
       outcome = result.outcome;
       errorMessage = result.errorMessage || null;
+      webinarSendTicket = result.sendTicket === true;
     } catch (dbError) {
       // Dulu blok ini hanya console.error lalu tetap balas 200 — itu persis
       // yang membuat pembayaran hilang diam-diam pada insiden 2026-08-10.
@@ -621,6 +656,7 @@ export async function onRequest(context) {
       outcome === 'amount_mismatch' ||
       outcome === 'no_submission_found' ||
       outcome === 'paid_on_dead_bill' ||
+      WEBINAR_ALERT_OUTCOMES.has(outcome) ||
       (outcome === 'write_failed' && attempt === 1);
 
     if (needsAlert) {
@@ -642,8 +678,25 @@ export async function onRequest(context) {
       }
     }
 
+    // Tiket tetap terbit pada alarm lewat kuota dan bayar dobel, jadi syaratnya
+    // bukan `outcome === 'ok'` melainkan keputusan webinar_mark_paid.
+    if (webinarSendTicket) {
+      const ticketPromise = deliverWebinarTicket({
+        env: context.env,
+        sb: resolveSupabase(context.env),
+        sbFetch,
+        invoiceNumber
+      });
+      if (typeof context.waitUntil === 'function') {
+        context.waitUntil(ticketPromise);
+      } else {
+        await ticketPromise;
+      }
+    }
+
     // Kirim email kuitansi (receipt) ke peneliti saat pembayaran lunas berhasil dicatat.
-    if (outcome === 'ok' && appStatus === 'completed') {
+    // Webinar punya kwitansi sendiri di e-tiket.
+    if (outcome === 'ok' && appStatus === 'completed' && !isWebinar) {
       const receiptPromise = sendPaymentReceipt(context.env, {
         invoiceNumber,
         amount,

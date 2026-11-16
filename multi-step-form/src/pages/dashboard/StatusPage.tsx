@@ -35,6 +35,7 @@ import { PublicationPhase } from '@/components/status/PublicationPhase';
 import { buildScheduleCards } from '@/components/status/airingPeriods';
 import { groupInfoFor } from '@/components/status/invoiceGroups';
 import { CreateOrderCards, NewOrderFab } from '@/components/CreateOrderCards';
+import { WebinarTicketStrip } from '@/components/webinar/WebinarHomeEntries';
 import { canUseKilatSelfServe } from '@/utils/kilatAccess';
 import { deriveOrderUiState, getActiveDashboardPhase, type OrderGroup } from '@/components/status/deriveOrderUiState';
 import { AdsEntryModal } from '@/components/AdsEntryModal';
@@ -947,6 +948,9 @@ export function StatusPage() {
                     {/* Hari libur tim admin (Phase 5 §5.4b) — hanya pada tanggal libur aktif. Di DALAM
                         bingkai (bukan di atas kepala kaca) supaya kepala tetap menempel di atas kolom. */}
                     <AdminHolidayBanner className="mb-4" />
+                    {/* Tiket webinar juga di DALAM bingkai: di atas kolom ia tertutup kepala kaca
+                        (absolute top-0) dan hanya menyisakan celah kosong di bawah kepala. */}
+                    <WebinarTicketStrip className="mb-4" />
                     {submissions.length === 0 ? (
                         /* Modern, Clean & Elevated Empty State Card */
                         <Card className="border border-slate-200/90 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] bg-white/95 rounded-2xl overflow-hidden">

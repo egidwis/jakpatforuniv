@@ -43,7 +43,7 @@ const CHECKOUT_TARGET = '/checkout/v1/payment';
  * penerbit baru jadi tindakan SADAR — orang yang menambahkannya harus lewat
  * berkas ini, dan karena itu membaca catatan di atas.
  */
-const KNOWN_ISSUERS = ['_tempo.js', 'checkout.js', 'create-payment.js'];
+const KNOWN_ISSUERS = ['_tempo.js', 'checkout.js', 'create-payment.js', 'webinar/checkout.js'];
 
 /**
  * Penerbit yang umur link-nya KONSTANTA, bukan masukan pemanggil — jadi tidak
@@ -53,11 +53,16 @@ const KNOWN_ISSUERS = ['_tempo.js', 'checkout.js', 'create-payment.js'];
  * tanggal jatuh tempo, jadi link-nya selalu umur maksimal (7 hari) dan
  * diperbarui lagi oleh `/bayar/` saat habis. Umurnya dikunci tes di bawah.
  */
-const FIXED_LIFETIME_ISSUERS = ['_tempo.js'];
+const FIXED_LIFETIME_ISSUERS = ['_tempo.js', 'webinar/checkout.js'];
 
 const sourceFiles = readdirSync(DIR)
   .filter((f) => f.endsWith('.js') && !f.endsWith('.spec.js'))
-  .map((f) => ({ name: f, body: readFileSync(join(DIR, f), 'utf8') }));
+  .map((f) => ({ name: f, body: readFileSync(join(DIR, f), 'utf8') }))
+  .concat(
+    readdirSync(join(DIR, '../webinar'))
+      .filter((f) => f.endsWith('.js') && !f.endsWith('.spec.js'))
+      .map((f) => ({ name: `webinar/${f}`, body: readFileSync(join(DIR, '../webinar', f), 'utf8') })),
+  );
 
 const issuers = sourceFiles.filter((f) => f.body.includes(CHECKOUT_TARGET));
 
@@ -101,6 +106,19 @@ describe('umur link DOKU — jaring pengaman pengganti setelan dashboard', () =>
       expect(f.body, `${f.name}: default umur link bukan 60 menit`)
         .toMatch(/(\|\||:)\s*60\b/);
     }
+  });
+
+  it('tagihan webinar selalu 30 menit, lebih pendek dari tahanan kursi 40 menit', async () => {
+    const { buildWebinarCheckoutPayload } = await import('../webinar/checkout.js');
+    const payload = buildWebinarCheckoutPayload({
+      env: {},
+      origin: 'https://submit.jakpatforuniv.com',
+      order: { order_id: 'o', amount: 50000, invoice_number: 'WBN-1', item_name: 'A' },
+      buyer: { email: 'a@b.test', name: 'A', phone: '0812' },
+    });
+    expect(payload.payment.payment_due_date).toBe(30);
+    expect(payload.payment.payment_method_types).toEqual(['QRIS']);
+    expect(payload.order.line_items).toEqual([{ name: 'A', price: 50000, quantity: 1 }]);
   });
 
   it('pembaruan tagihan tempo selalu 7 hari — sama dengan MAX_INVOICE_MINUTES', async () => {

@@ -14,9 +14,28 @@ interface BlockEditorProps {
     content: any;
     onChange: (content: any) => void;
     editable?: boolean;
+    // Prop di bawah opsional; bawaannya = perilaku Pages yang sudah ada.
+    /** Bucket unggahan gambar. Bawaan `page-uploads`. */
+    uploadBucket?: string;
+    /** Awalan path berkas di bucket, mis. `deskripsi/`. */
+    uploadPathPrefix?: string;
+    /** false = gambar `data:` yang ditempel ditolak editor (webinar: server juga menolaknya). */
+    allowBase64?: boolean;
+    placeholder?: string;
+    /** Path berkas → URL yang disimpan. Bawaan: URL publik Supabase. */
+    resolveUploadedUrl?: (path: string) => string;
 }
 
-export function BlockEditor({ content, onChange, editable = true }: BlockEditorProps) {
+export function BlockEditor({
+    content,
+    onChange,
+    editable = true,
+    uploadBucket = 'page-uploads',
+    uploadPathPrefix = '',
+    allowBase64 = true,
+    placeholder = 'Write something amazing...',
+    resolveUploadedUrl,
+}: BlockEditorProps) {
     const isInternalUpdate = useRef(false);
 
     const editor = useEditor({
@@ -24,7 +43,7 @@ export function BlockEditor({ content, onChange, editable = true }: BlockEditorP
             StarterKit,
             Image.configure({
                 inline: true,
-                allowBase64: true,
+                allowBase64,
             }),
             Link.configure({
                 openOnClick: false,
@@ -35,7 +54,7 @@ export function BlockEditor({ content, onChange, editable = true }: BlockEditorP
                 },
             }),
             Placeholder.configure({
-                placeholder: 'Write something amazing...',
+                placeholder,
             }),
         ],
         content: content,
@@ -90,16 +109,20 @@ export function BlockEditor({ content, onChange, editable = true }: BlockEditorP
                     const compressedFile = await imageCompression(file, options);
 
                     // Upload to Supabase
-                    const fileName = `${Date.now()}-${file.name}`;
+                    // URL lewat proxy CDN tidak meng-encode ulang path, jadi namanya dibersihkan.
+                    const baseName = resolveUploadedUrl
+                        ? file.name.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9.-]/g, '')
+                        : file.name;
+                    const fileName = `${uploadPathPrefix}${Date.now()}-${baseName}`;
                     const { error } = await supabase.storage
-                        .from('page-uploads')
+                        .from(uploadBucket)
                         .upload(fileName, compressedFile);
 
                     if (error) throw error;
 
-                    const { data: { publicUrl } } = supabase.storage
-                        .from('page-uploads')
-                        .getPublicUrl(fileName);
+                    const publicUrl = resolveUploadedUrl
+                        ? resolveUploadedUrl(fileName)
+                        : supabase.storage.from(uploadBucket).getPublicUrl(fileName).data.publicUrl;
 
                     // Insert image into editor
                     editor.chain().focus().setImage({ src: publicUrl }).run();

@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase, cancelInvoice, fetchInvoiceGroups, tempoCancelBlockReason } from '../utils/supabase';
+import { fetchAllRows } from '@/utils/fetchAllRows';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,18 +11,32 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Search, RefreshCw, Download, Filter, ChevronDown, ReceiptText, Wallet, ListFilter, X } from 'lucide-react';
-import { formatPaymentChannel } from '../utils/paymentChannel';
-import { isPaidTx } from '../utils/analytics/revenue';
+import { Search, RefreshCw, Download, Filter, ChevronDown, ChevronLeft, ChevronRight, ReceiptText, Wallet, ListFilter, X } from 'lucide-react';
+import { paginate } from '@/components/publish-pages/catalogSearch';
 import { cn, useMediaQuery } from '@/lib/utils';
+import { downloadCsv } from '@/utils/csv';
+import { toWibYmd } from '@/utils/airing-window';
 import {
   type Transaction,
-  parseTransactionNote,
   formatIDR,
   matchesStatusFilter,
   statusFilterLabel,
   STATUS_FILTER_IDS,
 } from './transactions/types';
+import {
+  type Product,
+  PRODUCT_IDS,
+  PRODUCT_LABELS,
+  productOfTransaction,
+  isRevenueTx,
+  txMonthWib,
+  productCounts,
+  revenueByProduct,
+  categoryRevenue as categoryRevenueOf,
+  matchesTransactionSearch,
+  isCancellableInvoice,
+  transactionCsv,
+} from './transactions/product';
 import { ConfirmDialog, type ConfirmRequest } from '@/components/ui/confirm-dialog';
 import { TransactionListRow } from './transactions/TransactionListRow';
 import { buildTxGroupIndex } from './transactions/types';
@@ -49,6 +64,8 @@ export function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  /** Fase 4: Semua / Iklan / Kilat / Webinar — aturannya di `productOfTransaction`. */
+  const [productFilter, setProductFilter] = useState<'all' | Product>('all');
   const [selectedMonth, setSelectedMonth] = useState<number>(-1);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [openTransactionId, setOpenTransactionId] = useState<string | null>(null);
@@ -83,26 +100,42 @@ export function TransactionsPage() {
         sama sekali (papan Schedule gagal memuat sejak hari pertama karenanya).
         Menyaring di sisi `invoices` menghindarinya sepenuhnya.
       */
-      const [txRes, invRes] = await Promise.all([
-        supabase
-          .from('transactions')
-          .select(`
+      /*
+        Fase 4 webinar: embed BIASA (bukan `!inner`) supaya baris tiket — yang
+        memang tanpa order iklan (CHECK `transactions_webinar_has_no_ad_order`)
+        — ikut termuat. Saringan `.or()` menjaga perilaku lama untuk baris iklan:
+        3 baris yatim tanpa order (uji lama Rp 1.110) tetap tersembunyi seperti
+        di bawah `!inner`. Ini BACAAN, jadi jebakan `or=` + PATCH representasi
+        (insiden e-tiket 5 Nov) tidak berlaku.
+
+        `ad_schedules(distribution_type)` lewat FK tunggal `schedule_id` — sumber
+        utama aturan Kilat; `form_submissions.distribution_type` cadangannya.
+      */
+      const [txRows, invRes] = await Promise.all([
+        fetchAllRows<Transaction>(() =>
+          supabase
+            .from('transactions')
+            .select(`
             *,
-            form_submissions!inner(
+            form_submissions(
               id,
               title,
               full_name,
               email,
               start_date,
-              end_date
-            )
+              end_date,
+              distribution_type
+            ),
+            ad_schedules(distribution_type)
           `)
-          .order('created_at', { ascending: false }),
+            .or('form_submission_id.not.is.null,entity_type.eq.webinar')
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: true }),
+        ),
         supabase.from('invoices').select('payment_id').eq('status', 'pending'),
       ]);
 
-      if (txRes.error) throw txRes.error;
-      setTransactions(txRes.data || []);
+      setTransactions(txRows);
 
       /*
         Kegagalan di sini GAGAL TERTUTUP, bukan melempar: daftar transaksi adalah
@@ -137,24 +170,58 @@ export function TransactionsPage() {
     fetchTransactions();
   }, []);
 
-  const filteredTransactions = useMemo(() => {
-    const searchLower = searchTerm.toLowerCase().trim();
-    const cleanSearch = searchLower.replace(/^#/, '');
-    return transactions.filter((t) => {
-      const date = new Date(t.created_at || '');
-      const isSameMonth = selectedMonth === -1 || date.getMonth() === selectedMonth;
-      const isSameYear = date.getFullYear() === selectedYear;
+  /**
+   * Cakupan CHIP produk: periode + status + cari, TANPA produk. Angka di chip =
+   * jumlah baris yang tampil saat chip itu diklik; rincian per produk di
+   * dropdown Pendapatan memakai cakupan yang sama.
+   *
+   * Periode menurut kalender WIB (`txMonthWib`), bukan jam perangkat — sama
+   * dengan kueri SQL gerbang Fase 4. Sebelumnya `getMonth()` lokal: admin di
+   * luar WIB melihat transaksi tengah malam di bulan yang salah.
+   */
+  const scopeTransactions = useMemo(
+    () =>
+      transactions.filter((t) => {
+        const { year, month } = txMonthWib(t);
+        return (
+          year === selectedYear &&
+          (selectedMonth === -1 || month === selectedMonth) &&
+          matchesStatusFilter(t, statusFilter) &&
+          matchesTransactionSearch(t, searchTerm)
+        );
+      }),
+    [transactions, searchTerm, selectedMonth, selectedYear, statusFilter]
+  );
 
-      const matchesSearch =
-        !searchLower ||
-        t.form_submissions?.title.toLowerCase().includes(searchLower) ||
-        t.form_submissions?.full_name.toLowerCase().includes(searchLower) ||
-        t.payment_id?.toLowerCase().includes(cleanSearch) ||
-        (t.form_submission_id && t.form_submission_id.toLowerCase().includes(cleanSearch));
+  /** Daftar = cakupan chip + produk. Footer, Pendapatan, dan rincian kategori mengikuti ini. */
+  const filteredTransactions = useMemo(
+    () =>
+      productFilter === 'all'
+        ? scopeTransactions
+        : scopeTransactions.filter((t) => productOfTransaction(t) === productFilter),
+    [scopeTransactions, productFilter]
+  );
 
-      return matchesSearch && isSameMonth && isSameYear && matchesStatusFilter(t, statusFilter);
-    });
-  }, [transactions, searchTerm, selectedMonth, selectedYear, statusFilter]);
+  const productChipCounts = useMemo(() => productCounts(scopeTransactions), [scopeTransactions]);
+  const productRevenue = useMemo(() => revenueByProduct(scopeTransactions), [scopeTransactions]);
+  /** "Nov 2026 · Webinar" — cakupan angka di kartu Pendapatan. */
+  const revenueScopeLabel = [
+    selectedMonth === -1 ? `${selectedYear}` : `${MONTHS[selectedMonth].slice(0, 3)} ${selectedYear}`,
+    productFilter === 'all' ? null : PRODUCT_LABELS[productFilter],
+  ].filter(Boolean).join(' · ');
+
+  /*
+    Paginasi TAMPILAN, 50 baris per halaman (helper & ukuran yang sama dengan
+    katalog Pages). Datanya tetap dimuat utuh: chip, Pendapatan, rincian, dan
+    CSV harus menghitung SELURUH periode — paginasi di server akan membuat
+    angka-angka itu hanya menghitung satu halaman. Yang berat adalah merender
+    ratusan baris sekaligus, bukan ~1.000 baris JSON.
+  */
+  const [page, setPage] = useState(1);
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { setPage(1); }, [searchTerm, selectedMonth, selectedYear, statusFilter, productFilter]);
+  const paged = useMemo(() => paginate(filteredTransactions, page), [filteredTransactions, page]);
+  useEffect(() => { listRef.current?.scrollTo({ top: 0 }); }, [paged.page]);
 
   /**
    * Tagihan gabungan di dalam daftar ini, dikunci `payment_id`.
@@ -169,35 +236,16 @@ export function TransactionsPage() {
   const totalRevenue = useMemo(
     () =>
       filteredTransactions
-        // DOKU menulis lunas dengan dua kata: 'completed' dan 'paid'. Menyaring
-        // 'completed' saja membuang 8 pembayaran nyata senilai Rp 4.469.810 dan
-        // membuat halaman ini melaporkan uang yang berbeda dari Analytics &
-        // Customers untuk order yang sama. `isPaidTx` adalah definisi bersamanya.
-        .filter(isPaidTx)
+        // `isRevenueTx` = `isPaidTx` (DOKU menulis lunas sebagai 'completed' DAN
+        // 'paid' — menyaring 'completed' saja pernah membuang 8 pembayaran nyata)
+        // — termasuk transaksi uji, karena uangnya sungguh masuk. Refund tidak lunas.
+        .filter(isRevenueTx)
         .reduce((sum, t) => sum + t.amount, 0),
     [filteredTransactions]
   );
 
-  // Revenue per category from transaction notes
-  const categoryRevenue = useMemo(
-    () =>
-      filteredTransactions
-        .filter(isPaidTx)
-        .reduce((acc, t) => {
-          const { items } = parseTransactionNote(t.note);
-          if (items.length > 0) {
-            items.forEach((item) => {
-              const cat = item.category || 'Lainnya';
-              const total = (item.price || 0) * (item.qty || 1);
-              acc[cat] = (acc[cat] || 0) + total;
-            });
-          } else {
-            acc['Lainnya'] = (acc['Lainnya'] || 0) + t.amount;
-          }
-          return acc;
-        }, {} as Record<string, number>),
-    [filteredTransactions]
-  );
+  // Revenue per category from transaction notes — aturan pendapatan yang sama.
+  const categoryRevenue = useMemo(() => categoryRevenueOf(filteredTransactions), [filteredTransactions]);
 
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = { all: transactions.length };
@@ -213,19 +261,8 @@ export function TransactionsPage() {
       null
     : null;
 
-  /**
-   * Tagihan sungguhan yang masih hidup — satu-satunya yang boleh dibatalkan.
-   *
-   * Cerminan `canCancel` di `ScheduleCardList` (`!isPaid && !isDead &&
-   * source === 'invoice' && !!paymentId`). Seperti di sana, tagihan yang
-   * TERLEWAT batas bayar, tersusul, atau basi TETAP boleh dibatalkan — justru
-   * itu yang paling ingin dibersihkan admin. Menggerbangnya dengan "sudah
-   * lewat/dicoret" adalah bug yang sudah ditemukan sekali di kartu jadwal.
-   */
-  const canCancelInvoice = (t: Transaction): boolean =>
-    (t.status ?? '').trim().toLowerCase() === 'pending' &&
-    !!t.payment_id &&
-    liveInvoiceIds.has(t.payment_id);
+  /** Aturannya (dan alasannya) di `isCancellableInvoice` — baris webinar tidak pernah. */
+  const canCancelInvoice = (t: Transaction): boolean => isCancellableInvoice(t, liveInvoiceIds);
 
   /**
    * ⚠️ KATA-KATANYA SENGAJA IDENTIK dengan tab Reservasi Jadwal
@@ -319,36 +356,10 @@ export function TransactionsPage() {
     });
   };
 
+  /** Header lama utuh + Produk/Uji di ujung; lewat `downloadCsv` (BOM + kutip ganda). */
   const handleExportCsv = () => {
-    const headers = ['Transaction ID', 'Survey Title', 'Researcher', 'Payment Method', 'Payment Channel', 'Amount', 'Status', 'Created At', 'Invoice Number'];
-    const csvContent = [
-      headers.join(','),
-      ...filteredTransactions.map((t) =>
-        [
-          `"${t.id}"`,
-          `"${(t.form_submissions?.title || '').replace(/"/g, '""')}"`,
-          `"${(t.form_submissions?.full_name || '').replace(/"/g, '""')}"`,
-          `"${t.payment_method}"`,
-          `"${t.payment_channel ? formatPaymentChannel(t.payment_channel) : ''}"`,
-          `"${t.amount}"`,
-          `"${t.status}"`,
-          `"${new Date(t.created_at).toLocaleString()}"`,
-          `"${t.payment_id || ''}"`,
-        ].join(',')
-      ),
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    if (link.download !== undefined) {
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `transactions_export_${new Date().toISOString().split('T')[0]}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
+    const { headers, rows } = transactionCsv(filteredTransactions);
+    downloadCsv(`transactions_export_${toWibYmd(new Date())}.csv`, headers, rows);
   };
 
   return (
@@ -426,7 +437,7 @@ export function TransactionsPage() {
               <div className="flex-1 min-w-[200px] max-w-md relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
-                  placeholder="Cari ID transaksi, nama, atau email..."
+                  placeholder="Cari invoice, judul, nama, email..."
                   className="w-full pl-9 bg-gray-50/50 border-gray-200 focus:bg-white focus:border-blue-500 transition-all h-9 text-sm"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -444,18 +455,24 @@ export function TransactionsPage() {
                 </button>
               )}
 
-              <div className="flex items-center gap-1 ml-auto">
-                {/* Total Pendapatan — compact trigger, breakdown in dropdown */}
+              {/* Pendapatan — kartu hijau; label menyebut cakupan aktif (periode · produk). */}
+              <div className="ml-auto">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-emerald-700 hover:bg-emerald-50 transition-colors select-none"
+                      className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-1.5 text-left transition-colors hover:border-emerald-300 hover:bg-emerald-100/70 select-none"
                       title="Breakdown pendapatan"
                     >
-                      <span className="text-[10px] uppercase font-bold tracking-wide text-emerald-600">Pendapatan</span>
-                      <span className="text-sm font-bold">{formatIDR(totalRevenue)}</span>
-                      <ChevronDown className="w-3.5 h-3.5 text-emerald-500" />
+                      <span className="flex flex-col leading-tight">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                          Pendapatan · {revenueScopeLabel}
+                        </span>
+                        <span className="text-lg font-extrabold tabular-nums tracking-tight text-emerald-800">
+                          {formatIDR(totalRevenue)}
+                        </span>
+                      </span>
+                      <ChevronDown className="h-4 w-4 shrink-0 text-emerald-600" />
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-[340px] p-0 shadow-2xl border-gray-100 rounded-xl mt-2 animate-in fade-in zoom-in-95 duration-200">
@@ -464,9 +481,31 @@ export function TransactionsPage() {
                         <span className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Breakdown Pendapatan</span>
                         <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">Lunas</Badge>
                       </div>
-                      <div className="text-3xl font-extrabold text-gray-900 mb-6 tracking-tight">{formatIDR(totalRevenue)}</div>
-                      <div className="h-px bg-gray-100 w-full mb-5" />
-                      <div className="space-y-4">
+                      <div className="text-3xl font-extrabold text-gray-900 mb-5 tracking-tight">{formatIDR(totalRevenue)}</div>
+
+                      {/* Per produk — cakupan chip (tanpa filter produk), jadi saat
+                          "Semua" aktif ketiganya berjumlah sama dengan total di atas.
+                          Produk yang sedang dipilih ditebalkan. */}
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Per produk</p>
+                      <div className="space-y-2 mb-5">
+                        {PRODUCT_IDS.map((id) => {
+                          const r = productRevenue[id];
+                          const active = productFilter === id;
+                          return (
+                            <div key={id} className="flex justify-between items-center gap-3 text-sm">
+                              <span className={cn(active ? 'font-bold text-gray-900' : 'text-gray-600')}>{PRODUCT_LABELS[id]}</span>
+                              <span className={cn('mono text-right', active ? 'font-bold text-gray-900' : 'font-semibold text-gray-800')}>
+                                {formatIDR(r.amount)}
+                                {r.tests > 0 && <span className="ml-1 text-xs font-normal text-gray-500">· termasuk {r.tests} uji</span>}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="h-px bg-gray-100 w-full mb-4" />
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Per kategori item</p>
+                      <div className="space-y-3">
                         {Object.entries(categoryRevenue).map(([cat, amount]) => (
                           <div key={cat} className="flex justify-between items-center text-sm group">
                             <span className="text-gray-600 group-hover:text-gray-900 transition-colors">{cat}</span>
@@ -479,13 +518,47 @@ export function TransactionsPage() {
                           </div>
                         )}
                       </div>
-                      <div className="mt-6 pt-4 border-t border-gray-50">
-                        <p className="text-[10px] text-gray-400 text-center">Data diperbarui secara real-time</p>
+                      <div className="mt-5 pt-3 border-t border-gray-100">
+                        <p className="text-[11px] text-gray-500 text-center">Refund tidak dihitung. Transaksi uji ikut dihitung karena uangnya masuk.</p>
                       </div>
                     </div>
                   </DropdownMenuContent>
                 </DropdownMenu>
+              </div>
+            </div>
 
+            {/* Toolbar row 2: chip produk (Fase 4) · filter status · export · reload.
+                Angka chip = baris yang tampil bila chip diklik. Di HP chip digeser
+                ke samping; ikon tetap diam di kanan (di luar area geser). */}
+            <div className="shrink-0 flex items-center gap-2 px-4 pb-3">
+              <div className="min-w-0 flex-1 overflow-x-auto" role="tablist" aria-label="Filter produk">
+                <div className="flex w-max gap-2">
+                {(['all', ...PRODUCT_IDS] as const).map((id) => {
+                  const active = productFilter === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setProductFilter(id)}
+                      className={cn(
+                        'h-7 shrink-0 whitespace-nowrap rounded-full border px-3 text-xs font-semibold transition-colors',
+                        active
+                          ? 'border-slate-800 bg-slate-800 text-white'
+                          : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                      )}
+                    >
+                      {id === 'all' ? 'Semua' : PRODUCT_LABELS[id]}
+                      <span className={cn('ml-1.5 tabular-nums', active ? 'text-white/80' : 'text-gray-500')}>
+                        {productChipCounts[id]}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+              <div className="flex shrink-0 items-center gap-1">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -542,12 +615,12 @@ export function TransactionsPage() {
             </div>
 
             {/* Scrollable rows & sticky header region */}
-            <div className="flex-1 min-h-0 overflow-y-auto">
+            <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto">
               {/* Sticky column header */}
               <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 px-4 h-10 flex items-center gap-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
                 <span className="hidden sm:block w-[76px] shrink-0">Tanggal</span>
                 <span className="hidden md:block w-[200px] shrink-0">Invoice</span>
-                <span className="flex-1">Survei</span>
+                <span className="flex-1">Pesanan</span>
                 <span className="shrink-0 sm:w-[110px] text-right">Total</span>
                 <span className="shrink-0 sm:w-[88px]">Status</span>
                 <span className="hidden sm:block w-[110px] shrink-0">Metode</span>
@@ -583,7 +656,7 @@ export function TransactionsPage() {
                 </div>
               ) : (
                 <div className="divide-y divide-gray-100">
-                  {filteredTransactions.map((transaction) => (
+                  {paged.slice.map((transaction) => (
                     <TransactionListRow
                       key={transaction.id}
                       transaction={transaction}
@@ -597,8 +670,43 @@ export function TransactionsPage() {
             </div>
 
             {/* Footer count */}
-            <div className="shrink-0 border-t border-gray-200 px-4 py-3 text-sm text-gray-500">
-              Total: <span className="font-bold text-gray-900">{filteredTransactions.length}</span> transaksi
+            <div className="shrink-0 flex items-center justify-between gap-3 border-t border-gray-200 px-4 py-2.5 text-sm text-gray-500">
+              <span className="min-w-0 truncate tabular-nums">
+                {paged.total === 0 ? (
+                  <>Total: <span className="font-bold text-gray-900">0</span> transaksi</>
+                ) : (
+                  <>
+                    {paged.from}–{paged.to} dari <span className="font-bold text-gray-900">{paged.total}</span> transaksi
+                  </>
+                )}
+              </span>
+              {paged.totalPages > 1 && (
+                <div className="flex items-center gap-2.5 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7 rounded-lg border-gray-200 text-gray-500 hover:text-gray-900 hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => setPage(paged.page - 1)}
+                    disabled={paged.page <= 1}
+                    title="Halaman sebelumnya"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </Button>
+                  <div className="text-xs font-semibold text-gray-700 min-w-[64px] text-center tabular-nums">
+                    Hal. {paged.page}/{paged.totalPages}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7 rounded-lg border-gray-200 text-gray-500 hover:text-gray-900 hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => setPage(paged.page + 1)}
+                    disabled={paged.page >= paged.totalPages}
+                    title="Halaman berikutnya"
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 

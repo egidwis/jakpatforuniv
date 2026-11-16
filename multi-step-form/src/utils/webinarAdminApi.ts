@@ -1,0 +1,175 @@
+import { supabase } from './supabase';
+import type { AdminWebinarEvent, FieldKey, WebinarColumns } from './webinarAdmin';
+import type { AdminWebinarOrder } from './webinarParticipants';
+
+/** Galat bertipe dari /api/admin/webinar; `field`/`fields` menunjuk isian form. */
+export class WebinarAdminError extends Error {
+    status: number;
+    code?: string;
+    field?: FieldKey;
+    fields?: FieldKey[];
+    sold?: number;
+    constructor(message: string, status: number, data?: { code?: string; field?: FieldKey; fields?: FieldKey[]; sold?: number }) {
+        super(message);
+        this.status = status;
+        this.code = data?.code;
+        this.field = data?.field;
+        this.fields = data?.fields;
+        this.sold = data?.sold;
+    }
+}
+
+/**
+ * Simpan jadwal / batalkan acara / terbitkan rekaman: jumlah peserta lunas yang akan
+ * menerima email. Email dikirim cron per peserta dalam ±1 menit (sql/136b).
+ */
+export interface NotifyNotice {
+    notify_scheduled?: number;
+}
+
+export interface CancelResult extends NotifyNotice {
+    event: AdminWebinarEvent;
+    pending_cancelled: number;
+    doku_cancelled: number;
+    doku_failed: { invoice: string; reason: string }[];
+}
+
+export interface ParticipantsResult {
+    event: AdminWebinarEvent;
+    orders: AdminWebinarOrder[];
+    /** Video kelas: webinar asalnya (Iterasi 7). */
+    source?: { id: string; title: string; slug: string } | null;
+    /** Webinar: Video kelas yang dikaitkan (Iterasi 8). */
+    video?: { id: string; title: string; slug: string } | null;
+}
+
+export interface CheckOrderResult {
+    checked: boolean;
+    status: string;
+    reason?: 'too_soon' | 'recently_checked' | 'doku_error' | 'unpaid';
+    dokuStatus?: string | null;
+    outcome?: string;
+}
+
+type Patch = Partial<WebinarColumns>;
+
+async function webinarAdmin<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    const res = await fetch('/api/admin/webinar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ action, ...payload }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new WebinarAdminError(body?.error || 'Terjadi kendala. Coba lagi beberapa saat.', res.status, body ?? undefined);
+    // 200 tanpa JSON (mis. index.html SPA saat Function belum terpasang) bukan sukses.
+    if (body === null || typeof body !== 'object') {
+        throw new WebinarAdminError('Server tidak menjawab. Coba lagi beberapa saat.', res.status, { code: 'bad_response' });
+    }
+    return body as T;
+}
+
+export const listWebinarEvents = () =>
+    webinarAdmin<{ events: AdminWebinarEvent[] }>('list').then((r) => r.events);
+
+export const getWebinarEvent = (id: string) =>
+    webinarAdmin<{ event: AdminWebinarEvent }>('get', { id }).then((r) => r.event);
+
+export const createWebinarEvent = (patch: Patch) =>
+    webinarAdmin<{ event: AdminWebinarEvent }>('create', { patch }).then((r) => r.event);
+
+export const saveWebinarEvent = (id: string, patch: Patch, expectedUpdatedAt: string, confirmScheduleChange = false) =>
+    saveWebinarEventWithNotice(id, patch, expectedUpdatedAt, confirmScheduleChange).then((r) => r.event);
+
+/** Seperti saveWebinarEvent, ditambah kabar email otomatis bila jadwal acara terjual berubah. */
+export const saveWebinarEventWithNotice = (id: string, patch: Patch, expectedUpdatedAt: string, confirmScheduleChange = false) =>
+    webinarAdmin<{ event: AdminWebinarEvent } & NotifyNotice>('save', { id, patch, expectedUpdatedAt, confirmScheduleChange });
+
+export const publishWebinarEvent = (id: string, patch: Patch, expectedUpdatedAt: string) =>
+    webinarAdmin<{ event: AdminWebinarEvent }>('publish', { id, patch, expectedUpdatedAt }).then((r) => r.event);
+
+export const closeWebinarSales = (id: string) =>
+    webinarAdmin<{ event: AdminWebinarEvent }>('close-sales', { id }).then((r) => r.event);
+
+export const cancelWebinarEvent = (id: string) => webinarAdmin<CancelResult>('cancel', { id });
+
+export const deleteWebinarEvent = (id: string) => webinarAdmin<{ deleted: string; files_removed?: boolean }>('delete', { id });
+
+// ── Fase 3: peserta ─────────────────────────────────────────────────────────
+
+export const listParticipants = (id: string) => webinarAdmin<ParticipantsResult>('participants', { id });
+
+export const getParticipant = (orderId: string) =>
+    webinarAdmin<{ order: AdminWebinarOrder; account_email: string | null }>('participant', { orderId });
+
+/** `email` diisi bila admin mengoreksi alamat tujuan e-tiket. */
+export const resendTicket = (orderId: string, email?: string) =>
+    webinarAdmin<{ sent: true; email: string }>('resend-ticket', { orderId, ...(email ? { email } : {}) });
+
+export const checkOrder = (orderId: string) => webinarAdmin<CheckOrderResult>('check-order', { orderId });
+
+export const refundOrder = (orderId: string, note: string) =>
+    webinarAdmin<{ outcome: 'ok' | 'already_refunded'; refunded_at?: string }>('refund', { orderId, note });
+
+// ── Fase 4: pembeli webinar untuk halaman Customers ──────────────────────
+
+/**
+ * Satu tiket lunas/refund milik sebuah akun. Sengaja TANPA data pribadi
+ * pembeli (nama, email, WA): profil akunnya sudah ada di Customers.
+ */
+export interface WebinarBuyerTicket {
+    order_id: string;
+    auth_user_id: string;
+    kind: 'live' | 'replay';
+    status: 'paid' | 'refunded';
+    amount: number;
+    paid_at: string | null;
+    invoice_number: string;
+    event_title: string;
+    event_starts_at: string | null;
+    is_test: boolean;
+}
+
+export const getWebinarBuyers = () => webinarAdmin<{ tickets: WebinarBuyerTicket[] }>('buyers', {});
+
+// ── Fase 5A: rekaman (R2) & materi ─────────────────────────────────────────
+
+export interface RecordingStart {
+    key: string;
+    uploadId: string;
+    partSize: number;
+}
+
+export const startRecordingUpload = (id: string, fileName: string, size: number) =>
+    webinarAdmin<RecordingStart>('recording-upload-start', { id, fileName, size });
+export const recordingPartUrls = (id: string, key: string, uploadId: string, partNumbers: number[]) =>
+    webinarAdmin<{ urls: { partNumber: number; url: string }[] }>('recording-part-urls', { id, key, uploadId, partNumbers }).then((r) => r.urls);
+export const completeRecordingUpload = (
+    id: string, req: { key: string; uploadId: string; parts: { partNumber: number; etag: string }[]; minutes: number },
+) => webinarAdmin<{ event: AdminWebinarEvent; size: number; old_deleted: boolean | null }>('recording-upload-complete', { id, ...req });
+export const abortRecordingUpload = (id: string, key: string, uploadId: string) =>
+    webinarAdmin<{ aborted: true }>('recording-upload-abort', { id, key, uploadId });
+export const recordingPreview = (id: string) =>
+    webinarAdmin<{ url: string; expires_at: string }>('recording-preview', { id });
+export const saveWebinarMaterials = (id: string, path: string) =>
+    webinarAdmin<{ event: AdminWebinarEvent }>('materials-save', { id, path }).then((r) => r.event);
+export const publishRecording = (id: string) =>
+    webinarAdmin<{ event: AdminWebinarEvent; already?: boolean } & NotifyNotice>('recording-publish', {
+        id, confirmations: { speakerPermission: true, facesTrimmed: true },
+    });
+
+// ── Kaitan Video kelas ↔ webinar (Iterasi 8) ───────────────────────────────
+
+export interface LinkResult extends NotifyNotice {
+    event: AdminWebinarEvent;
+    video: AdminWebinarEvent;
+}
+
+/** Kaitkan Video kelas ke webinar: pemegang tiket webinar menonton rekaman Video kelas itu. */
+export const linkVideo = (webinarId: string, videoId: string) =>
+    webinarAdmin<LinkResult>('link-video', { id: webinarId, videoId });
+
+/** Lepas kaitan (id = Video kelas). Ditolak 409 link_locked bila pemegang tiket sudah menonton. */
+export const unlinkVideo = (videoId: string) =>
+    webinarAdmin<{ video: AdminWebinarEvent }>('unlink-video', { id: videoId }).then((r) => r.video);

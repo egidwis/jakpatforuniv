@@ -39,6 +39,12 @@
         ],
         "createdAt": "2026-09-29T07:02:23.841Z",
         "reason": "Claude: titik indikator 'Mimin sedang mengetik' (pola chat konvensional, dari commit 41ccf8c, di luar perubahan tarif)"
+      },
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-11-03T05:13:02.051Z",
+        "reason": "Project design system: Inter is the chosen face for all JFU surfaces (design-system-adoption-plan memory; dashboard and homepage already use Inter)"
       }
     ]
   }

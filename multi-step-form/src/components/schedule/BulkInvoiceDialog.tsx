@@ -349,12 +349,35 @@ export function BulkInvoiceDialog({
 
       // Baru DI SINI link-nya boleh keluar.
       if (notify) {
+        const isKilat = bundles.some((b) => b.entry.distributionType === 'kilat');
+        const groupSum = groupTotals(payload);
         sendToTab(waTab, buyer.phone_number, invoiceReadyMessage({
           researcherName: buyer.researcherName,
-          bundles: bundles.map((b) => ({ title: b.title, startDate: b.entry.startDate })),
+          bundles: bundles.map((b) => {
+            const bt = bundleTotals(b.items);
+            return {
+              title: b.title || b.entry.title || 'Survei Anda',
+              surveyUrl: b.surveyUrl,
+              startDate: b.entry.startDate,
+              endDate: b.entry.endDate,
+              kilatSlotHour: b.entry.kilatSlotHour,
+              items: b.items.map((it) => ({
+                name: it.name,
+                qty: it.qty,
+                price: it.price,
+                total: it.qty * it.price,
+              })),
+              subtotal: bt.subtotal,
+              ppn: bt.ppn,
+              amount: bt.amount,
+            };
+          }),
+          subtotal: groupSum.subtotal,
+          ppn: groupSum.ppn,
           amount,
           invoiceUrl: bundlePayUrl,
           tempo,
+          isKilat,
         }));
       }
 
@@ -658,7 +681,7 @@ export async function findBillableOrdersForAccount(
 ): Promise<SurveySubmission[]> {
   const { data, error } = await supabase
     .from('form_submissions')
-    .select('id, title, created_at, auth_user_id, full_name, email, phone_number, question_count')
+    .select('id, title, survey_url, created_at, auth_user_id, full_name, email, phone_number, question_count')
     .eq('auth_user_id', authUserId)
     .order('created_at', { ascending: false })
     .limit(50);
@@ -678,6 +701,7 @@ export async function findBillableOrdersForAccount(
   const candidateSubmissions = rows.map((r: any) => ({
     id: r.id,
     formTitle: r.title || 'Untitled Survey',
+    formUrl: r.survey_url || '',
     submittedAt: r.created_at,
     questionCount: r.question_count ?? null,
   }));
@@ -691,7 +715,7 @@ export async function findBillableOrdersForAccount(
       auth_user_id: r.auth_user_id,
       formId: String(r.id).substring(0, 8),
       formTitle: r.title || 'Untitled Survey',
-      formUrl: '',
+      formUrl: r.survey_url || '',
       researcherName: r.full_name || '',
       researcherEmail: r.email || '',
       submittedAt: r.created_at,

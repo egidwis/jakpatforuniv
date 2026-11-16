@@ -1,4 +1,6 @@
 import type { ChipVariant } from '../ui/chip';
+import type { WebinarBuyerTicket } from '@/utils/webinarAdminApi';
+import { formatIDR } from '@/utils/currency';
 
 export interface RawSubmission {
   id: string;
@@ -34,6 +36,11 @@ export interface Customer {
   submissions: RawSubmission[];
   invoiceNames: InvoiceName[];
   isLinked: boolean;
+  /**
+   * Tiket webinar lunas/refund milik akun ini (Fase 4). `undefined` = data
+   * pembeli webinar belum/tidak termuat — dibedakan dari `[]` (termuat, kosong).
+   */
+  webinarTickets?: WebinarBuyerTicket[];
 }
 
 /** A distinct per-survey Nama Invoice used by this account (search-only). */
@@ -239,9 +246,40 @@ export function customerDisplayId(c: Customer): string {
   return value.slice(0, 8);
 }
 
-export type CustomerTier = 'vvip' | 'vip' | 'returning' | 'new' | 'unpaid';
+/**
+ * Tempelkan tiket webinar ke customer lewat `authUserId` (pembeli wajib login).
+ * Tiket untuk akun yang tidak ada di daftar diabaikan — setiap akun sudah
+ * punya baris profil, jadi itu hanya terjadi bila akunnya terhapus.
+ */
+export function attachWebinarTickets(customers: Customer[], tickets: WebinarBuyerTicket[]): Customer[] {
+  const byUser = new Map<string, WebinarBuyerTicket[]>();
+  for (const t of tickets) {
+    const list = byUser.get(t.auth_user_id);
+    if (list) list.push(t);
+    else byUser.set(t.auth_user_id, [t]);
+  }
+  return customers.map((c) => ({ ...c, webinarTickets: (c.authUserId && byUser.get(c.authUserId)) || [] }));
+}
+
+export const webinarTicketCount = (c: Pick<Customer, 'webinarTickets'>): number => c.webinarTickets?.length ?? 0;
+
+const wibEventDate = new Intl.DateTimeFormat('id-ID', {
+  timeZone: 'Asia/Jakarta', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+});
+
+/** "Sen, 9 Nov 2026 · Rp 1.000 · Lunas" — tanggal acara menurut WIB. */
+export function webinarTicketSummary(t: WebinarBuyerTicket): string {
+  const when = t.kind === 'replay' ? 'Video kelas' : t.event_starts_at ? wibEventDate.format(new Date(t.event_starts_at)) : 'Jadwal belum ditentukan';
+  return [when, formatIDR(Number(t.amount) || 0), t.status === 'refunded' ? 'Refund' : 'Lunas'].join(' · ');
+}
+
+export type CustomerTier = 'vvip' | 'vip' | 'returning' | 'new' | 'unpaid' | 'webinar';
 
 export function customerTier(c: Customer): CustomerTier {
+  // Pembeli webinar tanpa satu pun pesanan iklan: bukan "Belum Paid", karena
+  // mereka sudah membayar — hanya bukan untuk iklan. Akun yang punya pesanan
+  // iklan tetap di tier lamanya (chip Webinar menandai tiketnya).
+  if (c.totalOrders === 0 && webinarTicketCount(c) > 0) return 'webinar';
   if (!c.paidCount || c.paidCount === 0) return 'unpaid';
   if (c.paidCount >= 5 && c.totalSpent >= 5_000_000) return 'vvip';
   if (c.paidCount >= 3 && c.totalSpent >= 1_000_000) return 'vip';

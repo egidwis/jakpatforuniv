@@ -5,7 +5,7 @@ import { Chip } from '../ui/chip';
 import { DetailSheet, DetailSheetSection } from '../data-list/DetailSheet';
 import { DetailPane } from '../data-list/DetailPane';
 import { formatIDR } from '@/utils/currency';
-import { type Customer, formatDate, submissionStatusChip } from './types';
+import { type Customer, formatDate, submissionStatusChip, webinarTicketSummary } from './types';
 import { CustomerTierChip } from './CustomerTierChip';
 
 interface CustomerDetailSheetProps {
@@ -106,6 +106,24 @@ export function CustomerDetailSheet({
           </div>
         </dl>
       </DetailSheetSection>
+
+      {/* Fase 4 (C11): tiket webinar akun ini. Data tanpa PII dari aksi admin `buyers`. */}
+      {customer.webinarTickets && customer.webinarTickets.length > 0 && (
+        <DetailSheetSection title={`Tiket webinar (${customer.webinarTickets.length})`}>
+          <div className="divide-y divide-gray-100 rounded-lg border border-gray-100">
+            {customer.webinarTickets.map((t) => (
+              <div key={t.order_id} className="px-3 py-2.5">
+                <p className="flex min-w-0 items-center gap-1.5">
+                  <span className="text-sm font-medium text-gray-900 truncate" title={t.event_title}>{t.event_title}</span>
+                  {t.is_test && <Chip variant="slate" size="xs" className="shrink-0">Uji</Chip>}
+                </p>
+                <p className="text-[11px] text-gray-500 mt-0.5">{webinarTicketSummary(t)}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-gray-500">Peserta &amp; refund dikelola di menu Webinar.</p>
+        </DetailSheetSection>
+      )}
 
       <DetailSheetSection title={`Riwayat Order (${customer.submissions.length})`}>
         <div className="divide-y divide-gray-100 rounded-lg border border-gray-100">

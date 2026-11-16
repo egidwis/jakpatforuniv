@@ -25,22 +25,60 @@ const COMPRESSION_OPTIONS = {
     useWebWorker: true,
 };
 
+/**
+ * Kompres lalu unggah satu gambar; mengembalikan URL yang disimpan. Dipakai
+ * BannerPicker dan foto pembicara webinar, supaya aturan kompresi & nama berkas
+ * hanya ada di satu tempat.
+ */
+export async function uploadPickedImage(
+    file: File,
+    {
+        bucket = 'page-uploads',
+        pathPrefix = 'banners/',
+        resolveUrl,
+    }: { bucket?: string; pathPrefix?: string; resolveUrl?: (path: string) => string } = {},
+): Promise<string> {
+    const compressedFile = await imageCompression(file, COMPRESSION_OPTIONS);
+    const fileName = `${pathPrefix}${Date.now()}-${file.name.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9.-]/g, '')}`;
+
+    const { error: uploadError } = await supabase.storage
+        .from(bucket)
+        .upload(fileName, compressedFile);
+
+    if (uploadError) throw uploadError;
+
+    return resolveUrl ? resolveUrl(fileName) : supabase.storage.from(bucket).getPublicUrl(fileName).data.publicUrl;
+}
+
 export function BannerPicker({
     value,
     onChange,
     /** Dibuka? Galeri "recent" baru diambil saat terlihat, bukan saat dipasang. */
     active = true,
+    uploadBucket = 'page-uploads',
+    pathPrefix = 'banners/',
+    /** Sembunyikan tab RECENT (dan jangan ambil survey_pages). Webinar: berkas halaman survei bisa terhapus storage-cleanup.js. */
+    hideRecent = false,
+    resolveUploadedUrl,
+    labels,
 }: {
     value: string;
     onChange: (url: string) => void;
     active?: boolean;
+    uploadBucket?: string;
+    pathPrefix?: string;
+    hideRecent?: boolean;
+    /** Path berkas → URL yang disimpan. Bawaan: URL publik Supabase. */
+    resolveUploadedUrl?: (path: string) => string;
+    /** Teks tombol & toast; bawaan berbahasa Inggris seperti Pages. */
+    labels?: { upload?: string; uploaded?: string; failed?: string };
 }) {
     const [tab, setTab] = useState<'upload' | 'link' | 'library'>('upload');
     const [uploading, setUploading] = useState(false);
     const [recentBanners, setRecentBanners] = useState<string[]>([]);
 
     useEffect(() => {
-        if (!active) return;
+        if (!active || hideRecent) return;
         let cancelled = false;
         (async () => {
             const { data } = await supabase
@@ -55,7 +93,7 @@ export function BannerPicker({
             setRecentBanners(Array.from(new Set(data.map((d) => d.banner_url).filter(Boolean))));
         })();
         return () => { cancelled = true; };
-    }, [active]);
+    }, [active, hideRecent]);
 
     const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -63,39 +101,29 @@ export function BannerPicker({
 
         setUploading(true);
         try {
-            const compressedFile = await imageCompression(file, COMPRESSION_OPTIONS);
-            const fileName = `banners/${Date.now()}-${file.name.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9.-]/g, '')}`;
-
-            const { error: uploadError } = await supabase.storage
-                .from('page-uploads')
-                .upload(fileName, compressedFile);
-
-            if (uploadError) throw uploadError;
-
-            const { data: { publicUrl } } = supabase.storage
-                .from('page-uploads')
-                .getPublicUrl(fileName);
-
-            onChange(publicUrl);
-            toast.success('Banner uploaded successfully');
+            const url = await uploadPickedImage(file, { bucket: uploadBucket, pathPrefix, resolveUrl: resolveUploadedUrl });
+            onChange(url);
+            toast.success(labels?.uploaded ?? 'Banner uploaded successfully');
         } catch (error: any) {
             console.error('Upload failed:', error);
-            toast.error('Upload failed: ' + error.message);
+            toast.error(`${labels?.failed ?? 'Upload failed'}: ${error.message}`);
         } finally {
             setUploading(false);
         }
     };
+
+    const tabs = ([
+        ['upload', 'UPLOAD'],
+        ['library', 'RECENT'],
+        ['link', 'URL'],
+    ] as const).filter(([id]) => !(hideRecent && id === 'library'));
 
     return (
         <div className="bg-white rounded-lg p-2.5 border border-gray-200 shadow-sm relative overflow-hidden group">
             {!value ? (
                 <div className="flex flex-col gap-2.5">
                     <div className="flex bg-gray-100 p-1 rounded-md w-full">
-                        {([
-                            ['upload', 'UPLOAD'],
-                            ['library', 'RECENT'],
-                            ['link', 'URL'],
-                        ] as const).map(([id, label]) => (
+                        {tabs.map(([id, label]) => (
                             <button
                                 key={id}
                                 type="button"
@@ -121,7 +149,7 @@ export function BannerPicker({
                             ) : (
                                 <div className="flex flex-col items-center text-center">
                                     <Upload className="w-4 h-4 text-gray-400 mb-1" />
-                                    <span className="text-[11px] font-medium text-gray-600">Click to Upload</span>
+                                    <span className="text-[11px] font-medium text-gray-600">{labels?.upload ?? 'Click to Upload'}</span>
                                 </div>
                             )}
                         </div>
