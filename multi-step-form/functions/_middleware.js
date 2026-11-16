@@ -9,7 +9,9 @@
 //   Supabase cron POST there, and a redirected POST is not reliably replayed).
 // *.pages.dev, localhost, wildcard user subdomains → SPA, unchanged.
 //
-// `/homepage/*` and `/assets/*` never reach this file (see public/_routes.json).
+// Old `/homepage/…` page URLs 301 to their clean apex path. The homepage's
+// images, CSS, JS and the SPA's `/assets/*` never reach this file (see
+// public/_routes.json).
 
 export const APEX_HOST = 'jakpatforuniv.com';
 const WWW_HOST = 'www.jakpatforuniv.com';
@@ -29,6 +31,19 @@ const HOMEPAGE_PATHS = {
   '/syarat-ketentuan': '/homepage/terms-conditions.html',
 };
 
+// Must not be served through `_redirects`: serveAsset fetches these same files
+// from ASSETS, which would apply the redirect and land on the SPA.
+const LEGACY_HOMEPAGE_PATHS = {
+  '/homepage': '/',
+  '/homepage/': '/',
+  '/homepage/index': '/',
+  '/homepage/index.html': '/',
+  '/homepage/privacy-policy': '/privacy-policy',
+  '/homepage/privacy-policy.html': '/privacy-policy',
+  '/homepage/terms-conditions': '/terms-conditions',
+  '/homepage/terms-conditions.html': '/terms-conditions',
+};
+
 export async function onRequest(context) {
   const { request, next, env } = context;
   const url = new URL(request.url);
@@ -42,11 +57,17 @@ export async function onRequest(context) {
     if (!redirectable || url.pathname.startsWith('/api/')) {
       return next();
     }
-    return Response.redirect(`https://${APEX_HOST}${url.pathname}${url.search}`, 301);
+    const path = LEGACY_HOMEPAGE_PATHS[url.pathname] ?? url.pathname;
+    return Response.redirect(`https://${APEX_HOST}${path}${url.search}`, 301);
   }
 
   if (hostname !== APEX_HOST) {
     return next();
+  }
+
+  const cleanPath = LEGACY_HOMEPAGE_PATHS[url.pathname];
+  if (cleanPath) {
+    return Response.redirect(`https://${APEX_HOST}${cleanPath}${url.search}`, 301);
   }
 
   const homepageFile = HOMEPAGE_PATHS[url.pathname];

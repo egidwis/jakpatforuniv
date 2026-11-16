@@ -58,6 +58,19 @@ describe('apex jakpatforuniv.com', () => {
   });
 
   it.each([
+    ['/homepage', '/'],
+    ['/homepage/', '/'],
+    ['/homepage/index.html', '/'],
+    ['/homepage/?utm_source=ig', '/?utm_source=ig'],
+    ['/homepage/privacy-policy.html', '/privacy-policy'],
+    ['/homepage/terms-conditions', '/terms-conditions'],
+  ])('URL lama %s 301 ke alamat bersih %s', async (path, clean) => {
+    const res = await run(`https://jakpatforuniv.com${path}`).promise;
+    expect(res.status).toBe(301);
+    expect(res.headers.get('Location')).toBe(`https://jakpatforuniv.com${clean}`);
+  });
+
+  it.each([
     '/dashboard',
     '/dashboard/forms/new',
     '/login',
@@ -112,6 +125,16 @@ describe('submit.jakpatforuniv.com', () => {
       expect(res).toBe(NEXT_RESPONSE);
     }
   });
+
+  it('homepage lama langsung ke alamat bersih apex, satu lompatan', async () => {
+    const res = await run('https://submit.jakpatforuniv.com/homepage/?utm_source=ig').promise;
+    if (REDIRECT_SUBMIT_TO_APEX) {
+      expect(res.status).toBe(301);
+      expect(res.headers.get('Location')).toBe('https://jakpatforuniv.com/?utm_source=ig');
+    } else {
+      expect(res).toBe(NEXT_RESPONSE);
+    }
+  });
 });
 
 describe('host lain tidak tersentuh', () => {
@@ -119,6 +142,7 @@ describe('host lain tidak tersentuh', () => {
     'https://abc123.jakpatforuniv-submit.pages.dev/',
     'http://localhost:8788/',
     'https://budi.jakpatforuniv.com/survei-saya',
+    'https://abc123.jakpatforuniv-submit.pages.dev/homepage/',
   ])('%s → aplikasi', async (url) => {
     const { promise, next } = run(url);
     expect(await promise).toBe(NEXT_RESPONSE);
