@@ -21,6 +21,7 @@ import { notifyScheduleChange } from '@/utils/notifyScheduleChange';
 import { openWhatsApp, slotBookedMessage } from '@/utils/waMessage';
 import { dokuLinkWarning } from '@/utils/dokuLinkWarning';
 import { reissueTempoCopy } from './reissueTempo';
+import { newScheduleGuardOf, newScheduleGuardCopy, type NewScheduleGuard } from './newScheduleGuard';
 
 // ─────────────────────────────────────────────────────────────
 // Tab: Jadwal & Bayar.
@@ -71,7 +72,8 @@ export function SchedulePaymentTab({
    * baru mewarisinya (flag-nya hidup di `survey_pages`, satu baris per order),
    * jadi kalender harus membaca kolam yang benar sejak awal.
    */
-  onCreateSchedule: (isExtraAd: boolean) => void;
+  /** `guard` terisi bila admin sudah melewati popup pengaman (lapis 1) — formulirnya memasang lapis 2. */
+  onCreateSchedule: (isExtraAd: boolean, guard?: NewScheduleGuard) => void;
   onEditFormDetails: (submission: SurveySubmission) => void;
   onConvertDistribution: (submission: SurveySubmission, target: 'regular' | 'kilat') => Promise<void>;
   onExtendCreated: () => void;
@@ -870,7 +872,25 @@ export function SchedulePaymentTab({
             variant="outline"
             size="sm"
             className="w-full justify-center h-8 text-xs font-medium text-violet-600 hover:text-violet-700 border-violet-200 hover:border-violet-300 bg-white hover:bg-violet-50"
-            onClick={() => onCreateSchedule(schedules[0]?.isExtraAd ?? false)}
+            onClick={() => {
+              const isExtraAd = schedules[0]?.isExtraAd ?? false;
+              /*
+                Pengaman lapis 1 (insiden Mun#07–Mun12, 16 Nov 2026): admin
+                bermaksud memindah tanggal, tapi melahirkan perpanjangan Rp 0
+                tanpa reward. Hanya muncul di keadaan yang DITOLAK untuk
+                peneliti — popup yang muncul terus melatih admin mengklik lewat.
+              */
+              const guard = newScheduleGuardOf(submission, schedules);
+              if (!guard) { onCreateSchedule(isExtraAd); return; }
+              const copy = newScheduleGuardCopy(guard);
+              setPendingConfirm({
+                title: copy.title,
+                lines: copy.lines,
+                confirmLabel: copy.confirmLabel,
+                tone: 'danger',
+                onConfirm: async () => onCreateSchedule(isExtraAd, guard),
+              });
+            }}
           >
             <CalendarPlus className="w-3.5 h-3.5 mr-1.5" /> Jadwal Iklan Baru
           </Button>

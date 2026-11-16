@@ -80,6 +80,12 @@ export interface ScheduleFormProps {
    */
   isExtraAd?: boolean;
   /**
+   * Pengaman lapis 2 "Jadwal Iklan Baru" (lapis 1 = popup di tab). Bila ada,
+   * kotak peringatan + centang wajib muncul, dan Simpan nonaktif sampai
+   * dicentang. Sumbernya `newScheduleGuardCopy` (insiden Mun#07–Mun12).
+   */
+  acknowledgement?: { lines: string[]; label: string };
+  /**
    * Order induknya JFU Kilat. Kilat tidak punya kolam iklan tambahan sama
    * sekali, jadi togglenya tidak ditawarkan.
    *
@@ -138,6 +144,7 @@ export function ScheduleForm({
   orderDuration,
   entry,
   isExtraAd = false,
+  acknowledgement,
   isKilatOrder = false,
   questionCount,
   currentPrizePerWinner = 0,
@@ -151,6 +158,8 @@ export function ScheduleForm({
   const isCreate = mode === 'create';
   const isKilat = !isCreate && entry?.distributionType === 'kilat';
 
+  // Selalu mulai belum dicentang: formulir dipasang ulang tiap kali dibuka.
+  const [acknowledged, setAcknowledged] = useState(false);
   const [selectedYmd, setSelectedYmd] = useState<string | null>(
     !isCreate && entry?.startDate ? toWibYmd(new Date(entry.startDate)) : null
   );
@@ -563,7 +572,8 @@ export function ScheduleForm({
     toast.success('Jadwal iklan baru dibuat.');
   };
 
-  const canSave = !!selectedYmd && !isLoadingSlots && duration >= 1;
+  const canSave = !!selectedYmd && !isLoadingSlots && duration >= 1
+    && (!acknowledgement || acknowledged);
   const saveLabel = isCreate ? 'Buat jadwal' : 'Simpan jadwal';
 
   const actionNode = renderActions
@@ -985,6 +995,23 @@ export function ScheduleForm({
             </div>
           </div>
         )
+      )}
+
+      {acknowledgement && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 space-y-1.5">
+          {acknowledgement.lines.map((line) => (
+            <p key={line} className="leading-snug">{line}</p>
+          ))}
+          <label className="flex items-start gap-2 pt-1 font-medium cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-3.5 w-3.5 accent-amber-600"
+              checked={acknowledged}
+              onChange={(e) => setAcknowledged(e.target.checked)}
+            />
+            <span>{acknowledgement.label}</span>
+          </label>
+        </div>
       )}
 
       {actions}

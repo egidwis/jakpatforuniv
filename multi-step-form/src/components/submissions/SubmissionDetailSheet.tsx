@@ -59,6 +59,7 @@ import { firstScheduleRateInstant, updateFormDetails, type AdScheduleEntry } fro
 import { repriceMessage } from '@/utils/repriceMessage';
 import { openWhatsApp, reviewFeedbackMessage } from '@/utils/waMessage';
 import { toast } from 'sonner';
+import { newScheduleGuardCopy, type NewScheduleGuard } from './tabs/newScheduleGuard';
 
 const REASONS = {
   ACCESS_LOCKED:
@@ -106,7 +107,8 @@ type SubView =
   | { kind: 'edit'; entry: AdScheduleEntry }
   /** `tempo` = dibuka dari "Tayangkan Dulu" / "Buat Tagihan (tempo)" (sql/102). */
   | { kind: 'invoice'; entry: AdScheduleEntry; tempo?: boolean }
-  | { kind: 'create'; isExtraAd: boolean }
+  /** `guard` = admin sudah melewati popup pengaman jadwal baru (lapis 1); formulir memasang lapis 2. */
+  | { kind: 'create'; isExtraAd: boolean; guard?: NewScheduleGuard }
   | null;
 
 interface SubmissionDetailSheetProps {
@@ -480,7 +482,7 @@ export function SubmissionDetailSheet({
           onEditSchedule={(entry) => setSubView({ kind: 'edit', entry })}
           onCreateInvoice={(entry) => setSubView({ kind: 'invoice', entry })}
           onCreateTempoInvoice={(entry) => setSubView({ kind: 'invoice', entry, tempo: true })}
-          onCreateSchedule={(isExtraAd) => setSubView({ kind: 'create', isExtraAd })}
+          onCreateSchedule={(isExtraAd, guard) => setSubView({ kind: 'create', isExtraAd, guard })}
           onEditFormDetails={onEditFormDetails}
           onConvertDistribution={onConvertDistribution}
           onExtendCreated={onExtendCreated}
@@ -583,6 +585,12 @@ export function SubmissionDetailSheet({
         orderDuration={submission.duration}
         entry={subView.kind === 'edit' ? subView.entry : undefined}
         isExtraAd={subView.kind === 'create' ? subView.isExtraAd : undefined}
+        acknowledgement={subView.kind === 'create' && subView.guard
+          ? (() => {
+              const copy = newScheduleGuardCopy(subView.guard);
+              return { lines: copy.lines.slice(1), label: copy.ackLabel };
+            })()
+          : undefined}
         isKilatOrder={submission.distribution_type === 'kilat'}
         questionCount={submission.questionCount}
         currentPrizePerWinner={submission.prize_per_winner || 0}
