@@ -2,22 +2,13 @@
 // Internationalization (i18n) System
 // ========================================
 
-// Get current language from localStorage or browser
+// Get current language from localStorage (defaults to Indonesian 'id')
 function getInitialLanguage() {
-    // Check localStorage first
     const savedLang = localStorage.getItem('jakpat-language');
     if (savedLang && (savedLang === 'id' || savedLang === 'en')) {
         return savedLang;
     }
-
-    // Fallback to browser language detection
-    const browserLang = navigator.language || navigator.userLanguage;
-    // If browser language starts with 'id' (Indonesian), use Indonesian
-    if (browserLang.toLowerCase().startsWith('id')) {
-        return 'id';
-    }
-    // Otherwise default to English
-    return 'en';
+    return 'id';
 }
 
 // Current active language

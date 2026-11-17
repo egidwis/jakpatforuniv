@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jakpat for Universities - Skripsian dan Penelitian Mudah dan Cepat</title>
-    <meta name="description" content="Platform iklan survei untuk mahasiswa dan akademisi. Iklankan surveymu ke 2 juta+ responden Jakpat di seluruh Indonesia.">
-    <meta name="keywords" content="survei mahasiswa, penelitian akademik, responden survei, Jakpat, iklan survei Indonesia">
+    <title>Jakpat for Universities - Sebarkan Survei &amp; Kumpulkan Responden</title>
+    <meta name="description" content="Sebarkan kuesioner riset &amp; skripsimu ke 2 juta+ responden aktif Jakpat di seluruh Indonesia. Tersedia mode Iklan Survei harian, Kilat Survei (up to 400 responden dalam 2 jam), dan Market Research.">
+    <meta name="keywords" content="responden survei, responden kuesioner, jakpat for universities, sebar kuesioner skripsi, iklan survei, kilat survei, responden penelitian mahasiswa">
 
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="/homepage/assets/images/logo-jakpat-universities.png">
@@ -16,8 +16,8 @@
     <link rel="alternate" hreflang="x-default" href="https://jakpatforuniv.com/" />
 
     <!-- Open Graph Meta Tags -->
-    <meta property="og:title" content="Jakpat for Universities - Survey Advertising Platform">
-    <meta property="og:description" content="Platform iklan survei untuk mahasiswa dan akademisi. Iklankan surveymu ke 2 juta+ responden Jakpat di seluruh Indonesia.">
+    <meta property="og:title" content="Jakpat for Universities - Sebarkan Survei &amp; Kumpulkan Responden">
+    <meta property="og:description" content="Sebarkan kuesioner riset &amp; skripsimu ke 2 juta+ responden aktif Jakpat di seluruh Indonesia.">
     <meta property="og:image" content="https://jakpatforuniv.com/homepage/assets/images/logo-jakpat-universities.png">
     <meta property="og:url" content="https://jakpatforuniv.com/">
     <meta property="og:type" content="website">
@@ -27,8 +27,8 @@
 
     <!-- Twitter Card Meta Tags -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Jakpat for Universities - Survey Advertising Platform">
-    <meta name="twitter:description" content="Platform iklan survei untuk mahasiswa dan akademisi. Iklankan surveymu ke 2 juta+ responden Jakpat di seluruh Indonesia.">
+    <meta name="twitter:title" content="Jakpat for Universities - Sebarkan Survei &amp; Kumpulkan Responden">
+    <meta name="twitter:description" content="Sebarkan kuesioner riset &amp; skripsimu ke 2 juta+ responden aktif Jakpat di seluruh Indonesia.">
     <meta name="twitter:image" content="https://jakpatforuniv.com/homepage/assets/images/logo-jakpat-universities.png">
 
     <!-- Canonical URL -->
@@ -37,10 +37,10 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
     <!-- External Stylesheet -->
-    <link rel="stylesheet" href="/homepage/styles.css?v=2025-perf-optimized">
+    <link rel="stylesheet" href="/homepage/styles.css?v=2026-11-17">
 
     <!-- JSON-LD Structured Data -->
     <script type="application/ld+json">
@@ -50,7 +50,7 @@
         "name": "Jakpat for Universities",
         "url": "https://jakpatforuniv.com",
         "logo": "https://jakpatforuniv.com/homepage/assets/images/logo-jakpat-universities.png",
-        "description": "Platform iklan survei untuk mahasiswa dan akademisi. Iklankan surveymu ke 2 juta+ responden Jakpat di seluruh Indonesia.",
+        "description": "Platform distribusi kuesioner dan pengumpulan responden penelitian akademik dengan akses ke 2 juta+ responden terverifikasi Jakpat di seluruh Indonesia.",
         "founder": {
             "@type": "Organization",
             "name": "Jakpat"
@@ -78,9 +78,9 @@
     {
         "@context": "https://schema.org",
         "@type": "Service",
-        "serviceType": "Survey Advertising Platform",
+        "serviceType": "Academic Survey Distribution Platform",
         "name": "Jakpat for Universities",
-        "description": "Layanan iklan survei untuk membantu mahasiswa dan dosen mengumpulkan data penelitian dengan cepat dan mudah",
+        "description": "Layanan distribusi kuesioner akademik (Iklan Survei harian, Kilat Survei dalam 2 jam, dan Market Research) untuk mahasiswa dan dosen.",
         "provider": {
             "@type": "Organization",
             "name": "Jakpat for Universities"
@@ -114,30 +114,33 @@
     </script>
 </head>
 <body>
-    <!-- Navigation -->
+    <!-- Floating Pill Navigation -->
     <nav class="nav" role="navigation" aria-label="Navigasi utama">
         <div class="nav-container">
             <a href="/" class="logo" aria-label="Kembali ke beranda Jakpat for Universities">
-                <img src="/homepage/assets/images/logo-navbar.webp" alt="Jakpat for Universities Logo" class="logo-image" loading="lazy">
-                Jakpat for Universities
+                <img src="/homepage/assets/images/logo-navbar.webp" alt="Jakpat for Universities Logo" class="logo-image" width="28" height="28">
+                <span>Jakpat for Universities</span>
             </a>
-            <!-- Struktur sama dengan navbar halaman /webinar (functions/webinar/[[path]].js). -->
+
             <ul class="nav-links" role="list">
-                <li><a href="#beranda" data-i18n="nav.home">Beranda</a></li>
+                <li><a href="#beranda" class="active" data-i18n="nav.home">Beranda</a></li>
+                <li><a href="#layanan" data-i18n="nav.services">Layanan</a></li>
+                <li><a href="#cara-kerja" data-i18n="nav.howItWorks">Cara Kerja</a></li>
+                <li><a href="#testimoni" data-i18n="nav.testimonials">Testimoni</a></li>
                 <li><a href="/webinar" data-i18n="nav.webinar">Webinar</a></li>
-                <li><a href="/pages" data-i18n="nav.surveys">Survei</a></li>
+                <li><a href="/pages" data-i18n="nav.surveys">Daftar Survei</a></li>
             </ul>
 
             <!-- Language Switcher - Desktop -->
             <div class="nav-language-switcher" role="region" aria-label="Pilih Bahasa">
                 <div class="language-toggle">
-                    <span class="globe-icon">🌐</span>
+                    <span class="globe-icon" aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                    </span>
                     <button class="lang-btn active" data-lang="id" aria-label="Bahasa Indonesia" aria-pressed="true">
-                        <span class="flag">🇮🇩</span>
                         <span class="lang-code">ID</span>
                     </button>
                     <button class="lang-btn" data-lang="en" aria-label="English" aria-pressed="false">
-                        <span class="flag">🇬🇧</span>
                         <span class="lang-code">EN</span>
                     </button>
                 </div>
@@ -155,16 +158,15 @@
 
     <!-- Mobile Menu -->
     <div id="mobile-menu" class="mobile-menu" role="navigation" aria-label="Menu mobile">
-        <!-- Language Switcher - Mobile -->
         <div class="mobile-language-switcher" role="region" aria-label="Pilih Bahasa">
             <div class="language-toggle">
-                <span class="globe-icon">🌐</span>
+                <span class="globe-icon" aria-hidden="true">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                </span>
                 <button class="lang-btn active" data-lang="id" aria-label="Bahasa Indonesia" aria-pressed="true">
-                    <span class="flag">🇮🇩</span>
                     <span class="lang-code">ID</span>
                 </button>
                 <button class="lang-btn" data-lang="en" aria-label="English" aria-pressed="false">
-                    <span class="flag">🇬🇧</span>
                     <span class="lang-code">EN</span>
                 </button>
             </div>
@@ -172,423 +174,460 @@
 
         <ul role="list">
             <li><a href="#beranda" data-i18n="nav.home">Beranda</a></li>
+            <li><a href="#layanan" data-i18n="nav.services">Layanan</a></li>
+            <li><a href="#cara-kerja" data-i18n="nav.howItWorks">Cara Kerja</a></li>
+            <li><a href="#testimoni" data-i18n="nav.testimonials">Testimoni</a></li>
             <li><a href="/webinar" data-i18n="nav.webinar">Webinar</a></li>
-            <li><a href="/pages" data-i18n="nav.surveys">Survei</a></li>
+            <li><a href="/pages" data-i18n="nav.surveys">Daftar Survei</a></li>
+            <li><a href="/dashboard" class="mobile-dash-link" data-i18n="nav.dashboard">Dashboard</a></li>
         </ul>
     </div>
 
-    <!-- Hero Section -->
-    <section class="hero" id="beranda" aria-labelledby="hero-heading">
-        <!-- Animated Background Blobs -->
-        <div class="hero-blob-1" aria-hidden="true"></div>
-        <div class="hero-blob-2" aria-hidden="true"></div>
-
-        <div class="hero-container">
-            <div class="hero-content">
-                <h1 id="hero-heading" data-i18n="hero.heading">Riset Stuck Karena Susah Dapat Responden?</h1>
-                <p class="hero-subheadline" data-i18n="hero.subheadline">Iklankan surveymu ke <strong>2 juta+ responden Jakpat</strong> di seluruh Indonesia. Bayar <strong>per hari tayang</strong>, pilih durasi iklan sesuai kebutuhanmu!</p>
-
-                <div class="hero-cta-wrapper">
-                    <a href="/dashboard" class="cta-button" aria-label="Iklankan survey Anda sekarang di Jakpat for Universities" data-i18n="hero.ctaButton">🚀 Iklankan Survey Sekarang</a>
-                    <!-- Pintu kedua (Fase 6): diisi script.js dari /api/webinar/events; tersembunyi sampai open:true. -->
-                    <div class="hero-webinar-door-row">
-                        <a href="/webinar" class="hero-webinar-door" id="hero-webinar-door" hidden>
-                            <span class="hero-webinar-door-label" data-i18n="webinar.doorLabel">Webinar &amp; Kelas</span>
-                            <span class="hero-webinar-door-text" id="hero-webinar-door-text" data-i18n="webinar.doorEmpty">Belajar riset bareng praktisi, jadwal berikutnya segera diumumkan</span>
-                            <span class="hero-webinar-door-arrow" aria-hidden="true">→</span>
-                        </a>
-                    </div>
+    <main>
+        <!-- Hero Section (Hero Page 1 v2 — Darwin × Mindly Style) -->
+        <section class="hero" id="beranda" aria-labelledby="hero-heading">
+            <div class="hero-top-copy">
+                <div class="hero-eyebrow">
+                    <span class="hero-eyebrow-dot" aria-hidden="true"></span>
+                    <span data-i18n="hero.eyebrow">Dipercaya peneliti dari 18+ Universitas</span>
                 </div>
+                <h1 id="hero-heading" data-i18n="hero.heading">Riset Stuck Karena<br>Susah Cari Responden?</h1>
+                <p class="hero-subheadline" data-i18n="hero.subheadline">Sebarkan kuesionermu ke <strong>2 juta+ responden aktif Jakpat</strong> di seluruh Indonesia.</p>
 
-                <!-- Stats Badges - Compact -->
-                <div class="hero-stats-badges">
-                    <div class="stat-badge">
-                        <span class="badge-icon">💰</span>
-                        <span class="badge-text" data-i18n="hero.badgePrice">Tarif <strong>per hari tayang</strong></span>
-                    </div>
-                    <div class="stat-badge">
-                        <span class="badge-icon">👥</span>
-                        <span class="badge-text" data-i18n="hero.badgeLocation">Tersebar di <strong>seluruh Indonesia</strong></span>
-                    </div>
-                    <div class="stat-badge">
-                        <span class="badge-icon">⚡</span>
-                        <span class="badge-text" data-i18n="hero.badgeSpeed">Rata-rata <strong>300+ responden/hari</strong></span>
-                    </div>
-                </div>
-                <p class="stats-disclaimer" data-i18n="hero.disclaimer">*Hasil bergantung jumlah pertanyaan & insentif yang ditawarkan</p>
-            </div>
-            <div class="hero-visual">
-                <img src="/homepage/assets/images/hero-students-celebrating.webp" alt="Happy students celebrating" class="hero-image" loading="lazy">
-            </div>
-        </div>
-    </section>
-
-    <!-- University Trust Section -->
-    <section class="university-trust" aria-labelledby="trust-heading">
-        <div class="trust-container">
-            <div class="trust-header">
-                <h2 id="trust-heading" data-i18n="trust.heading">Dipercaya oleh <span class="highlight-number">18+</span> Universitas</h2>
-                <p data-i18n="trust.subtitle">Dari UGM, UI, ITS, IPB, Binus, hingga universitas internasional</p>
-            </div>
-
-            <!-- Marquee Row 1 - Left to Right -->
-            <div class="logo-marquee" role="region" aria-label="Logo universitas mitra baris pertama">
-                <div class="marquee-content marquee-left" aria-hidden="true">
-                    <img src="/homepage/assets/images/logos/univ-ugm.webp" alt="Universitas Gadjah Mada" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-its.webp" alt="Institut Teknologi Sepuluh Nopember" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-ui.webp" alt="Universitas Indonesia" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-ipb.webp" alt="Institut Pertanian Bogor" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-binus.webp" alt="Binus University" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-undip.webp" alt="Universitas Diponegoro" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-uny.webp" alt="Universitas Negeri Yogyakarta" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-umy.webp" alt="Universitas Muhammadiyah Yogyakarta" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-unjani.webp" alt="Universitas Jenderal Ahmad Yani" loading="lazy">
-                    <!-- Duplicate for seamless loop -->
-                    <img src="/homepage/assets/images/logos/univ-ugm.webp" alt="Universitas Gadjah Mada" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-its.webp" alt="Institut Teknologi Sepuluh Nopember" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-ui.webp" alt="Universitas Indonesia" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-ipb.webp" alt="Institut Pertanian Bogor" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-binus.webp" alt="Binus University" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-undip.webp" alt="Universitas Diponegoro" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-uny.webp" alt="Universitas Negeri Yogyakarta" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-umy.webp" alt="Universitas Muhammadiyah Yogyakarta" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-unjani.webp" alt="Universitas Jenderal Ahmad Yani" loading="lazy">
+                <div class="hero-cta-row">
+                    <a href="/dashboard" class="cta-button" aria-label="Sebarkan survei Anda sekarang di Jakpat for Universities">
+                        <span data-i18n="hero.ctaButton">Sebarkan Survei Sekarang →</span>
+                    </a>
+                    <!-- Dynamic Webinar Door: populated by script.js when /api/webinar/events returns open:true -->
+                    <a href="/webinar" class="hero-webinar-door" id="hero-webinar-door" hidden>
+                        <span class="hero-webinar-door-label" data-i18n="webinar.doorLabel">Webinar</span>
+                        <span class="hero-webinar-door-text" id="hero-webinar-door-text" data-i18n="webinar.doorEmpty">Jadwal kelas riset berikutnya segera diumumkan</span>
+                    </a>
                 </div>
             </div>
 
-            <!-- Marquee Row 2 - Right to Left -->
-            <div class="logo-marquee" role="region" aria-label="Logo universitas mitra baris kedua">
-                <div class="marquee-content marquee-right" aria-hidden="true">
-                    <img src="/homepage/assets/images/logos/univ-waseda.webp" alt="Waseda University" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-bpd.webp" alt="Bank Pembangunan Daerah" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-cnu.webp" alt="Chonnam National University" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-ithb.webp" alt="Institut Teknologi Harapan Bangsa" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-ubm.webp" alt="Universitas Bunda Mulia" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-umby.webp" alt="Universitas Mercu Buana Yogyakarta" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-unj.webp" alt="Universitas Negeri Jakarta" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-upj.webp" alt="Universitas Pembangunan Jaya" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-utem.webp" alt="Universitas Teknikal Malaysia Melaka" loading="lazy">
-                    <!-- Duplicate for seamless loop -->
-                    <img src="/homepage/assets/images/logos/univ-waseda.webp" alt="Waseda University" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-bpd.webp" alt="Bank Pembangunan Daerah" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-cnu.webp" alt="Chonnam National University" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-ithb.webp" alt="Institut Teknologi Harapan Bangsa" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-ubm.webp" alt="Universitas Bunda Mulia" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-umby.webp" alt="Universitas Mercu Buana Yogyakarta" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-unj.webp" alt="Universitas Negeri Jakarta" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-upj.webp" alt="Universitas Pembangunan Jaya" loading="lazy">
-                    <img src="/homepage/assets/images/logos/univ-utem.webp" alt="Universitas Teknikal Malaysia Melaka" loading="lazy">
+            <div class="hero-stage">
+                <svg class="hero-orbit-svg" viewBox="0 0 1140 490" fill="none" aria-hidden="true">
+                    <ellipse cx="570" cy="285" rx="410" ry="110" stroke="rgba(25,118,210,0.16)" stroke-width="1.2" stroke-dasharray="5 5"/>
+                </svg>
+
+                <div class="hero-portrait-wrap">
+                    <img src="/homepage/assets/images/hero-student-portrait.jpg"
+                         alt="Mahasiswa Indonesia memegang laptop dan buku catatan riset skripsi"
+                         class="hero-portrait-img"
+                         width="1200"
+                         height="896"
+                         fetchpriority="high"
+                         decoding="async">
                 </div>
+
+                <!-- Floating Testimonial Highlight 1 -->
+                <article class="hero-q-card c1">
+                    <p class="hero-q-quote" data-i18n="hero.float1Quote">“Hasil uji reliability, validity, dan normality datanya bagus.”</p>
+                    <footer class="hero-q-meta">
+                        <div class="hero-q-avatar" style="background:#1976D2" aria-hidden="true">SY</div>
+                        <div>
+                            <div class="hero-q-name">Syaifa</div>
+                            <div class="hero-q-role" data-i18n="hero.float1Role">Dosen Ilmu Komunikasi, UGM</div>
+                        </div>
+                    </footer>
+                </article>
+
+                <!-- Floating Testimonial Highlight 2 -->
+                <article class="hero-q-card c2">
+                    <p class="hero-q-quote" data-i18n="hero.float2Quote">“Sehari responden masuk 2x lipat dibanding cari sendiri 3 hari.”</p>
+                    <footer class="hero-q-meta">
+                        <div class="hero-q-avatar" style="background:#0284C7" aria-hidden="true">HW</div>
+                        <div>
+                            <div class="hero-q-name">Hilwa</div>
+                            <div class="hero-q-role" data-i18n="hero.float2Role">Mahasiswa, UGM</div>
+                        </div>
+                    </footer>
+                </article>
+
+                <!-- Floating Testimonial Highlight 3 -->
+                <article class="hero-q-card c3">
+                    <p class="hero-q-quote" data-i18n="hero.float3Quote">“Menyelamatkan riset saya yang stuck. Terjangkau untuk mahasiswa.”</p>
+                    <footer class="hero-q-meta">
+                        <div class="hero-q-avatar" style="background:#0F172A" aria-hidden="true">AH</div>
+                        <div>
+                            <div class="hero-q-name">Ade Hendraputra</div>
+                            <div class="hero-q-role" data-i18n="hero.float3Role">Waseda University</div>
+                        </div>
+                    </footer>
+                </article>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <!-- Services Section -->
-    <section class="services" id="layanan" aria-labelledby="services-heading">
-        <div class="services-container">
-            <div class="services-header">
-                <h2 id="services-heading" data-i18n="services.heading">Cara kerjanya gimana sih?</h2>
-                <p class="services-subtitle" data-i18n="services.subtitle">Cuma butuh beberapa langkah buat mulai dapet responden</p>
-            </div>
-
-            <div class="process-steps">
-                <div class="process-step">
-                    <div class="step-icon" aria-hidden="true">
-                        📋
-                        <div class="step-number">01</div>
-                    </div>
-                    <div class="step-content">
-                        <h3 data-i18n="services.step1Title">Isi order form</h3>
-                        <p data-i18n="services.step1Desc">Lengkapi detail surveymu di form pemesanan.</p>
-                    </div>
-                </div>
-
-                <div class="process-step">
-                    <div class="step-icon" aria-hidden="true">
-                        ✅
-                        <div class="step-number">02</div>
-                    </div>
-                    <div class="step-content">
-                        <h3 data-i18n="services.step2Title">Admin cek & beri feedback</h3>
-                        <p data-i18n="services.step2Desc">Tim Jakpat akan memverifikasi dan memberikan masukan jika perlu.</p>
-                    </div>
-                </div>
-
-                <div class="process-step">
-                    <div class="step-icon" aria-hidden="true">
-                        📢
-                        <div class="step-number">03</div>
-                    </div>
-                    <div class="step-content">
-                        <h3 data-i18n="services.step3Title">Surveimu diiklankan</h3>
-                        <p data-i18n="services.step3Desc">Kami publikasikan surveymu di website Jakpat.</p>
-                    </div>
-                </div>
-
-                <div class="process-step">
-                    <div class="step-icon" aria-hidden="true">
-                        🎉
-                        <div class="step-number">04</div>
-                    </div>
-                    <div class="step-content">
-                        <h3 data-i18n="services.step4Title">Tunggu hasilnya penuh 🎉</h3>
-                        <p data-i18n="services.step4Desc">Duduk santai dan pantau responden masuk.</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Testimonials Section -->
-    <section class="testimonials" id="testimoni" aria-labelledby="testimonials-heading">
-        <div class="testimonials-container">
-            <h2 id="testimonials-heading" data-i18n="testimonials.heading">Testimoni Mahasiswa dan Dosen 💕</h2>
-            <p class="testimonials-disclaimer" data-i18n="testimonials.disclaimer" style="text-align: center; color: #666; font-size: 0.9rem; margin-bottom: 1.5rem;"></p>
-            <div class="testimonials-grid" role="list">
-                <div class="testimonial-card">
-                    <div class="author">
-                        <div class="name">Ade Hendraputra</div>
-                        <div class="title">Asian Pacific Studies, Waseda University</div>
-                    </div>
-                    <div class="quote">
-                        "Wah, Jakpat fo Universities menyelamatkan penelitian saya yang stuck di responden awal yang rendah, Harga terjangkau untuk mahasiswa, sekarang mau second order malah, sukses selalu jakpat dan terima kasih para responden semua"
-                    </div>
-                </div>
-
-                <div class="testimonial-card">
-                    <div class="author">
-                        <div class="name">Yohandi</div>
-                        <div class="title">Mahasiswa MBA, Asia Pacific University Malaysia</div>
-                    </div>
-                    <div class="quote">
-                        "Satisfied banget karena hasil uji nya juga valid ya. Terus dlm 2 hari itu saya dpt sekitar 2000 an respon.. mungkin juga karena kriteria responden yang agak luas. intinya memuaskan menggunakan jasa pengiklanan dari jakpat for universities."
-                    </div>
-                </div>
-
-                <div class="testimonial-card">
-                    <div class="author">
-                        <div class="name">Syaifa</div>
-                        <div class="title">Dosen Ilmu Komunikasi, UGM</div>
-                    </div>
-                    <div class="quote">
-                        "Jakpat for Universities ini sangat membantu dalam proses pengumpulan data. Hasil reliability, validity, dan normality test dari data yang diperoleh bagus. Selain itu, screening awal yang disupport oleh Jakpat sangat membantu menyortir responden yang relevan dengan kebutuhan riset. Terima kasih sekali!"
-                    </div>
-                </div>
-
-                <div class="testimonial-card">
-                    <div class="author">
-                        <div class="name">Habib</div>
-                        <div class="title">Sarjana Muda Teknologi Kejuruteraan Mekanikal, UTeM</div>
-                    </div>
-                    <div class="quote">
-                        "Dengan menggunakan Jakpat for universities ni, saya rasa sangat membantu untuk penelitian thesis saya, khusus dalam proses pengumpulan data yang sangat cepat dan efisyen. Team support juga sangat membantu ketika ditanya..kipidap bang"
-                    </div>
-                </div>
-
-                <div class="testimonial-card">
-                    <div class="author">
-                        <div class="name">Gita Widya</div>
-                        <div class="title">Dosen Psikologi, UPJ</div>
-                    </div>
-                    <div class="quote">
-                        "Buat aku, Jakpat for Universities tuh kayak bestie: affordable, cepat tanggap, dan reliable banget. Bahkan kalau tanggal merah, asal udah deal, PIC tetep bisa dihubungi. Pokoknya bikin perjalanan ngejar target jauh lebih smooth dan happy. Serius deh, rasanya kayak punya tim superhero yang selalu ada kalau aku butuh data, selalu standby buat nolongin—ngga bikin deg-degan lagi."
-                    </div>
-                </div>
-
-                <div class="testimonial-card">
-                    <div class="author">
-                        <div class="name">Dinda</div>
-                        <div class="title">Mahasiswa MBTI, Telkom University</div>
-                    </div>
-                    <div class="quote">
-                        "Jakpat for Universities membantu banget untuk mengumpulkan responden penelitianku. Prosesnya cepat, seamless, dan team-nya helpful ✨✨✨makasih banyak JFU!"
-                    </div>
-                </div>
-
-                <div class="testimonial-card">
-                    <div class="author">
-                        <div class="name">Hilwa</div>
-                        <div class="title">Mahasiswa Ilmu Komunikasi, UGM</div>
-                    </div>
-                    <div class="quote">
-                        "Jujur aku sama temen temen terbantu banget sama Jakpat karena emang kita kesulitan untuk cari responden. Thankyou Jakpat sudah membantu kita buat dpt responden dengan cara cepet (iklan di jakpat sehari responden yang masuk 2x lipat lebih banyak di banding waktu kita cari responden pribadi dalam waktu 3 hari)😭😭"
-                    </div>
-                </div>
-
-                <div class="testimonial-card">
-                    <div class="author">
-                        <div class="name">Merliana</div>
-                        <div class="title">Mahasiswa Informatika, UNJANI</div>
-                    </div>
-                    <div class="quote">
-                        "Wahh mantapp hasilnya di luar dugaan, jadi aku bisa ngeliat dri survey itu buat akar permasalahannya. mantapp terbaik aku nyaranin ke temen juga inii jakpatt 🙂"
-                    </div>
-                </div>
-
-                <div class="testimonial-card">
-                    <div class="author">
-                        <div class="name">Caroline</div>
-                        <div class="title">Mahasiswa Jurusan Branding, Prasmul Business School</div>
-                    </div>
-                    <div class="quote">
-                        "Oke bgt membantu bgt ak sbg mahasiswa buat collect data dan dpt banyak insights"
-                    </div>
-                </div>
+        <!-- Section 2: Scenario-Driven Service Cards (Eksplorasi 2) -->
+        <section class="scenarios-section" id="layanan" aria-labelledby="scenarios-heading">
+            <div class="section-head">
+                <h2 id="scenarios-heading" data-i18n="scenarios.heading">Mana Kondisi Risetmu Saat Ini?</h2>
+                <p data-i18n="scenarios.subtitle">Pilih jalur distribusi yang paling cocok dengan waktu, budget, dan target sampelmu.</p>
             </div>
 
-            <div class="testimonials-controls">
-                <button class="show-more-btn" onclick="toggleTestimonials()" aria-expanded="false" aria-controls="testimonials-grid">
-                    <span class="show-text" data-i18n="testimonials.showMore">Lihat Testimoni Lainnya (+6)</span>
-                    <span class="hide-text" style="display: none;" data-i18n="testimonials.showLess">Sembunyikan Testimoni</span>
-                </button>
-            </div>
-        </div>
-    </section>
-
-    <!-- Comparison Section -->
-    <section class="comparison" id="perbandingan" aria-labelledby="comparison-heading">
-        <div class="comparison-container">
-            <div class="comparison-header">
-                <h2 id="comparison-heading" data-i18n="comparison.heading">Perbandingan dan <span class="highlight-academic">Perbedaan Paket</span></h2>
-                <p style="font-size: 1.2rem; color: #666; max-width: 600px; margin: 0 auto;" data-i18n="comparison.subtitle">Pilih layanan yang sesuai dengan kebutuhan penelitian dan budget akademikmu</p>
-            </div>
-
-            <div class="comparison-table">
-                <div class="comparison-card">
-                    <div class="card-header">
-                        <h3 class="card-title" data-i18n="comparison.card1Title">Jakpat Market Research</h3>
-                        <div class="card-subtitle" data-i18n="comparison.card1Subtitle">Survey in App</div>
+            <div class="scen-grid">
+                <!-- Scenario 1: Iklan Survei -->
+                <article class="sc-card c-blue">
+                    <div>
+                        <blockquote class="sc-quote">
+                            <span class="sc-tag" data-i18n="scenarios.card1Tag">Kondisi 01 · Santai &amp; Hemat</span>
+                            <p data-i18n="scenarios.card1Quote">“Waktu skripsiku masih cukup longgar, aku ingin kumpulkan responden bertahap dengan biaya paling terjangkau.”</p>
+                        </blockquote>
+                        <h3 class="sc-name" data-i18n="scenarios.card1Name">Iklan Survei</h3>
+                        <div class="sc-metric">
+                            <span class="big-num" data-i18n="scenarios.card1BigNum">300+</span>
+                            <span class="big-unit" data-i18n="scenarios.card1BigUnit">responden / hari tayang*</span>
+                        </div>
+                        <p class="sc-desc" data-i18n="scenarios.card1Desc">Survei dipajang di aplikasi Jakpat. Kamu membayar per hari tayang dan bebas menentukan durasi harinya.</p>
+                        <ul class="sc-pills" role="list">
+                            <li class="sc-p">
+                                <span class="sc-dot" style="background:#1976D2" aria-hidden="true"></span>
+                                <span data-i18n="scenarios.card1Point1">Tarif paling hemat untuk mahasiswa</span>
+                            </li>
+                            <li class="sc-p">
+                                <span class="sc-dot" style="background:#1976D2" aria-hidden="true"></span>
+                                <span data-i18n="scenarios.card1Point2">Bebas pilih durasi 1 hingga beberapa hari</span>
+                            </li>
+                        </ul>
                     </div>
+                    <footer>
+                        <a href="/dashboard" class="sc-btn" data-i18n="scenarios.card1Cta">Pilih Iklan Survei →</a>
+                    </footer>
+                </article>
 
-                    <ul class="feature-list">
-                        <li class="feature-item pricing-feature">
-                            <div class="feature-icon">💰</div>
-                            <div class="feature-text" data-i18n="comparison.card1Feature1">
-                                <strong>Harga fleksibel</strong> sesuai tipe pertanyaan & target responden
-                            </div>
-                        </li>
-                        <li class="feature-item targeting-feature">
-                            <div class="feature-icon">🎯</div>
-                            <div class="feature-text" data-i18n="comparison.card1Feature2">
-                                <strong>Fitur lengkap</strong> untuk kebutuhan riset mendalam
-                            </div>
-                        </li>
-                        <li class="feature-item distribution-feature">
-                            <div class="feature-icon">📊</div>
-                            <div class="feature-text" data-i18n="comparison.card1Feature3">
-                                <strong>Dashboard analytics</strong> real-time & laporan profesional
-                            </div>
-                        </li>
-                        <li class="feature-item capacity-feature">
-                            <div class="feature-icon">🤝</div>
-                            <div class="feature-text" data-i18n="comparison.card1Feature4">
-                                <strong>Support tim</strong> untuk setup & optimasi survei
-                            </div>
-                        </li>
-                        <li class="feature-item tools-feature">
-                            <div class="feature-icon">🎯</div>
-                            <div class="feature-text" data-i18n="comparison.card1Feature5">
-                                <strong>Targeting advanced</strong> (demografi, behavior, lokasi spesifik)
-                            </div>
-                        </li>
-                        <li class="feature-item support-feature">
-                            <div class="feature-icon">✅</div>
-                            <div class="feature-text" data-i18n="comparison.card1Feature6">
-                                <strong>Quality control</strong> otomatis untuk data berkualitas
-                            </div>
-                        </li>
-                    </ul>
+                <!-- Scenario 2: Kilat Survei -->
+                <article class="sc-card c-amber">
+                    <div>
+                        <blockquote class="sc-quote">
+                            <span class="sc-tag" data-i18n="scenarios.card2Tag">Kondisi 02 · Kejar Deadline · Baru</span>
+                            <p data-i18n="scenarios.card2Quote">“Jadwal olah data atau sidang sudah dekat! Aku butuh ratusan responden masuk hari ini juga.”</p>
+                        </blockquote>
+                        <h3 class="sc-name" data-i18n="scenarios.card2Name">Kilat Survei</h3>
+                        <div class="sc-metric">
+                            <span class="big-num" data-i18n="scenarios.card2BigNum">Up to 400</span>
+                            <span class="big-unit" data-i18n="scenarios.card2BigUnit">responden dalam 2 jam*</span>
+                        </div>
+                        <p class="sc-desc" data-i18n="scenarios.card2Desc">Kirim push notification langsung ke HP responden aktif pada gelombang pukul 11:00 atau 15:00 WIB.</p>
+                        <ul class="sc-pills" role="list">
+                            <li class="sc-p">
+                                <span class="sc-dot" style="background:#D97706" aria-hidden="true"></span>
+                                <span data-i18n="scenarios.card2Point1">Notifikasi langsung muncul di layar HP</span>
+                            </li>
+                            <li class="sc-p">
+                                <span class="sc-dot" style="background:#D97706" aria-hidden="true"></span>
+                                <span data-i18n="scenarios.card2Point2">Respon terkumpul dalam hitungan jam</span>
+                            </li>
+                        </ul>
+                    </div>
+                    <footer>
+                        <a href="/dashboard" class="sc-btn" data-i18n="scenarios.card2Cta">Pesan Kilat Sekarang →</a>
+                    </footer>
+                </article>
 
-                    <div class="text-link-container">
-                        <a href="https://business.jakpat.net" class="text-link-cta" data-i18n="comparison.card1Cta">Pelajari lebih lanjut →</a>
+                <!-- Scenario 3: Market Research -->
+                <article class="sc-card c-slate">
+                    <div>
+                        <blockquote class="sc-quote">
+                            <span class="sc-tag" data-i18n="scenarios.card3Tag">Kondisi 03 · Kriteria Khusus</span>
+                            <p data-i18n="scenarios.card3Quote">“Penelitianku mewajibkan kriteria demografi spesifik dan kuota responden yang dijamin pasti.”</p>
+                        </blockquote>
+                        <h3 class="sc-name" data-i18n="scenarios.card3Name">Market Research</h3>
+                        <div class="sc-metric">
+                            <span class="big-num" data-i18n="scenarios.card3BigNum">100%</span>
+                            <span class="big-unit" data-i18n="scenarios.card3BigUnit">sesuai filter &amp; target kuota</span>
+                        </div>
+                        <p class="sc-desc" data-i18n="scenarios.card3Desc">Survei in-app dengan filter lokasi, usia, SES, perilaku, serta dashboard analytics real-time.</p>
+                        <ul class="sc-pills" role="list">
+                            <li class="sc-p">
+                                <span class="sc-dot" style="background:#0F172A" aria-hidden="true"></span>
+                                <span data-i18n="scenarios.card3Point1">Filter demografi &amp; kebiasaan presisi</span>
+                            </li>
+                            <li class="sc-p">
+                                <span class="sc-dot" style="background:#0F172A" aria-hidden="true"></span>
+                                <span data-i18n="scenarios.card3Point2">Quality control otomatis &amp; laporan</span>
+                            </li>
+                        </ul>
+                    </div>
+                    <footer>
+                        <a href="https://business.jakpat.net" class="sc-btn" target="_blank" rel="noopener noreferrer" data-i18n="scenarios.card3Cta">Ke Market Research ↗</a>
+                    </footer>
+                </article>
+            </div>
+
+            <p class="scenarios-disclaimer" data-i18n="scenarios.disclaimer">*Estimasi jumlah responden bergantung pada panjang pertanyaan, kriteria screening, dan insentif yang ditawarkan.</p>
+        </section>
+
+        <!-- Section 3: How It Works (Opsi C — Staggered Orbital Wave Cards) -->
+        <section class="orbit-section" id="cara-kerja" aria-labelledby="services-heading">
+            <div class="section-head orbit-head">
+                <h2 id="services-heading" data-i18n="services.heading">Alur Singkat dari Form ke Responden</h2>
+                <p data-i18n="services.subtitle">Mendukung semua platform kuesioner tanpa perlu migrasi pertanyaan.</p>
+            </div>
+
+            <div class="wave-stage">
+                <svg class="wave-svg" viewBox="0 0 1040 245" fill="none" aria-hidden="true">
+                    <path d="M 90 80 C 230 80, 250 155, 385 155 C 520 155, 530 75, 650 75 C 770 75, 790 150, 930 150" stroke="#93C5FD" stroke-width="1.8" stroke-dasharray="6 6"/>
+                </svg>
+
+                <article class="o-card s1">
+                    <span class="o-pill" data-i18n="services.step1Pill">01 · Kuesioner</span>
+                    <h3 data-i18n="services.step1Title">Tempel Link Survei</h3>
+                    <p data-i18n="services.step1Desc">Pakai Google Form, Typeform, Qualtrics, MS Form, atau JFU Form.</p>
+                    <span class="mini-chip" data-i18n="services.step1Chip">Semua platform didukung</span>
+                </article>
+
+                <article class="o-card s2">
+                    <span class="o-pill" data-i18n="services.step2Pill">02 · Distribusi</span>
+                    <h3 data-i18n="services.step2Title">Pilih Mode &amp; Jadwal</h3>
+                    <p data-i18n="services.step2Desc">Atur durasi hari tayang Iklan atau pilih jam gelombang Kilat.</p>
+                    <span class="mini-chip" data-i18n="services.step2Chip">Harian / Gelombang Kilat</span>
+                </article>
+
+                <article class="o-card s3">
+                    <span class="o-pill" data-i18n="services.step3Pill">03 · Quality Check</span>
+                    <h3 data-i18n="services.step3Title">Dicek Tim JFU</h3>
+                    <p data-i18n="services.step3Desc">Kami pastikan form lancar dibuka &amp; nyaman diisi responden.</p>
+                    <span class="mini-chip" data-i18n="services.step3Chip">✓ Feedback optimasi</span>
+                </article>
+
+                <article class="o-card s4">
+                    <span class="o-pill o-pill-amber" data-i18n="services.step4Pill">04 · Selesai</span>
+                    <h3 data-i18n="services.step4Title">Responden Masuk</h3>
+                    <p data-i18n="services.step4Desc">Survei tayang otomatis, pantau statusnya langsung di Dashboard.</p>
+                    <span class="mini-chip" data-i18n="services.step4Chip">2M+ responden se-Indonesia</span>
+                </article>
+            </div>
+        </section>
+
+        <!-- Section 4: Social Proof — 18+ Universities & Testimonials (Opsi 1) -->
+        <section class="testimonials" id="testimoni" aria-labelledby="testimonials-heading">
+            <div class="testimonials-container">
+                <div class="section-head sp-header">
+                    <span class="sp-eyebrow" data-i18n="testimonials.eyebrow">Dipercaya Civitas Akademika</span>
+                    <h2 id="testimonials-heading" data-i18n="testimonials.heading">Pengalaman Peneliti Bersama JFU</h2>
+                    <p data-i18n="testimonials.subtitle">Digunakan oleh mahasiswa dan dosen dari 18+ universitas di Indonesia maupun mancanegara.</p>
+                </div>
+
+                <!-- Integrated University Logo Strip -->
+                <div class="logo-strip-box" role="region" aria-label="Daftar universitas mitra">
+                    <div class="logo-strip-label" data-i18n="trust.stripLabel"><strong>18+ Kampus</strong><br>Telah Terbantu</div>
+                    <div class="logo-row">
+                        <img src="/homepage/assets/images/logos/univ-ugm.webp" alt="Universitas Gadjah Mada" loading="lazy" width="72" height="32">
+                        <img src="/homepage/assets/images/logos/univ-ui.webp" alt="Universitas Indonesia" loading="lazy" width="72" height="32">
+                        <img src="/homepage/assets/images/logos/univ-its.webp" alt="Institut Teknologi Sepuluh Nopember" loading="lazy" width="72" height="32">
+                        <img src="/homepage/assets/images/logos/univ-ipb.webp" alt="Institut Pertanian Bogor" loading="lazy" width="72" height="32">
+                        <img src="/homepage/assets/images/logos/univ-binus.webp" alt="Binus University" loading="lazy" width="72" height="32">
+                        <img src="/homepage/assets/images/logos/univ-undip.webp" alt="Universitas Diponegoro" loading="lazy" width="72" height="32">
+                        <img src="/homepage/assets/images/logos/univ-uny.webp" alt="Universitas Negeri Yogyakarta" loading="lazy" width="72" height="32">
+                        <img src="/homepage/assets/images/logos/univ-waseda.webp" alt="Waseda University" loading="lazy" width="84" height="32">
+                        <img src="/homepage/assets/images/logos/univ-cnu.webp" alt="Chonnam National University" loading="lazy" width="72" height="32">
                     </div>
                 </div>
 
-                <div class="comparison-card highlighted">
-                    <div class="card-header">
-                        <h3 class="card-title" data-i18n="comparison.card2Title">Jakpat for Universities</h3>
-                        <div class="card-subtitle" data-i18n="comparison.card2Subtitle">Iklan Survei</div>
-                    </div>
+                <!-- 9 Editorial Testimonial Cards (3 visible by default, +6 expandable) -->
+                <div class="testimonials-grid" id="testimonials-grid" role="list">
+                    <article class="testimonial-card featured" role="listitem">
+                        <div>
+                            <span class="t-role-pill role-dosen" data-i18n="testimonials.t1Role">Dosen · UGM</span>
+                            <p class="t-quote" data-i18n="testimonials.t1Quote">
+                                “Sangat membantu dalam pengumpulan data. <mark>Hasil reliability, validity, dan normality test dari data yang diperoleh bagus.</mark> Screening awal yang disupport Jakpat juga membantu menyortir responden yang relevan.”
+                            </p>
+                        </div>
+                        <footer class="t-author">
+                            <div class="t-avatar" style="background:#DBEAFE;color:#1E40AF" aria-hidden="true">SY</div>
+                            <div>
+                                <div class="t-name">Syaifa</div>
+                                <div class="t-univ" data-i18n="testimonials.t1Title">Dosen Ilmu Komunikasi, UGM</div>
+                            </div>
+                        </footer>
+                    </article>
 
-                    <ul class="feature-list">
-                        <li class="feature-item pricing-feature">
-                            <div class="feature-icon">💰</div>
-                            <div class="feature-text" data-i18n="comparison.card2Feature1">
-                                <strong>Harga hemat</strong>, dihitung dari jumlah pertanyaan dan durasi penayangan
+                    <article class="testimonial-card" role="listitem">
+                        <div>
+                            <span class="t-role-pill role-intl" data-i18n="testimonials.t2Role">Mahasiswa · Malaysia</span>
+                            <p class="t-quote" data-i18n="testimonials.t2Quote">
+                                “Satisfied banget karena hasil ujinya valid. <mark class="amber">Dalam 2 hari saya dapat sekitar 2.000-an respon</mark> karena kriteria cukup luas. Intinya memuaskan menggunakan layanan dari Jakpat for Universities.”
+                            </p>
+                        </div>
+                        <footer class="t-author">
+                            <div class="t-avatar" style="background:#FEF3C7;color:#B45309" aria-hidden="true">YH</div>
+                            <div>
+                                <div class="t-name">Yohandi</div>
+                                <div class="t-univ" data-i18n="testimonials.t2Title">Mahasiswa MBA, Asia Pacific University</div>
                             </div>
-                        </li>
-                        <li class="feature-item targeting-feature">
-                            <div class="feature-icon">✅</div>
-                            <div class="feature-text" data-i18n="comparison.card2Feature2">
-                                <strong>Proses mudah</strong> - isi form, tunggu approval, langsung tayang
-                            </div>
-                        </li>
-                        <li class="feature-item distribution-feature">
-                            <div class="feature-icon">⚡</div>
-                            <div class="feature-text" data-i18n="comparison.card2Feature3">
-                                <strong>Tanpa setup rumit</strong> - surveimu langsung dipromosikan
-                            </div>
-                        </li>
-                        <li class="feature-item capacity-feature">
-                            <div class="feature-icon">💬</div>
-                            <div class="feature-text" data-i18n="comparison.card2Feature4">
-                                <strong>Feedback dari tim</strong> untuk optimasi survei
-                            </div>
-                        </li>
-                        <li class="feature-item tools-feature">
-                            <div class="feature-icon">👥</div>
-                            <div class="feature-text" data-i18n="comparison.card2Feature5">
-                                <strong>Targeting dasar</strong> (umum untuk semua user Jakpat)
-                            </div>
-                        </li>
-                        <li class="feature-item support-feature">
-                            <div class="feature-icon">🎓</div>
-                            <div class="feature-text" data-i18n="comparison.card2Feature6">
-                                <strong>Cocok untuk akademisi</strong> dengan budget terbatas
-                            </div>
-                        </li>
-                    </ul>
+                        </footer>
+                    </article>
 
-                    <a href="/dashboard" class="cta-button-comparison" data-i18n="comparison.card2Cta">Iklankan Survey Sekarang</a>
+                    <article class="testimonial-card" role="listitem">
+                        <div>
+                            <span class="t-role-pill role-dosen" data-i18n="testimonials.t3Role">Dosen · UPJ</span>
+                            <p class="t-quote" data-i18n="testimonials.t3Quote">
+                                “Buat aku, JFU tuh kayak bestie: <mark>affordable, cepat tanggap, dan reliable banget.</mark> Bahkan kalau tanggal merah, PIC tetap bisa dihubungi. Perjalanan ngejar target responden jadi jauh lebih tenang.”
+                            </p>
+                        </div>
+                        <footer class="t-author">
+                            <div class="t-avatar" style="background:#E0E7FF;color:#3730A3" aria-hidden="true">GW</div>
+                            <div>
+                                <div class="t-name">Gita Widya</div>
+                                <div class="t-univ" data-i18n="testimonials.t3Title">Dosen Psikologi, Universitas Pembangunan Jaya</div>
+                            </div>
+                        </footer>
+                    </article>
+
+                    <!-- Extra 6 Testimonials (Revealed when .testimonials-expanded is active) -->
+                    <article class="testimonial-card extra-testimonial" role="listitem">
+                        <div>
+                            <span class="t-role-pill role-intl" data-i18n="testimonials.t4Role">Mahasiswa · Jepang</span>
+                            <p class="t-quote" data-i18n="testimonials.t4Quote">
+                                “Jakpat for Universities <mark>menyelamatkan penelitian saya yang stuck di responden awal yang rendah.</mark> Harga terjangkau untuk mahasiswa, sekarang mau second order malah. Sukses selalu Jakpat!”
+                            </p>
+                        </div>
+                        <footer class="t-author">
+                            <div class="t-avatar" style="background:#E2E8F0;color:#0F172A" aria-hidden="true">AH</div>
+                            <div>
+                                <div class="t-name">Ade Hendraputra</div>
+                                <div class="t-univ" data-i18n="testimonials.t4Title">Asian Pacific Studies, Waseda University</div>
+                            </div>
+                        </footer>
+                    </article>
+
+                    <article class="testimonial-card extra-testimonial" role="listitem">
+                        <div>
+                            <span class="t-role-pill role-mhs" data-i18n="testimonials.t5Role">Mahasiswa · UGM</span>
+                            <p class="t-quote" data-i18n="testimonials.t5Quote">
+                                “Jujur terbantu banget karena kami kesulitan cari responden. <mark class="amber">Sehari responden yang masuk 2x lipat lebih banyak</mark> dibanding waktu kami cari responden pribadi dalam waktu 3 hari.”
+                            </p>
+                        </div>
+                        <footer class="t-author">
+                            <div class="t-avatar" style="background:#DBEAFE;color:#1E40AF" aria-hidden="true">HW</div>
+                            <div>
+                                <div class="t-name">Hilwa</div>
+                                <div class="t-univ" data-i18n="testimonials.t5Title">Mahasiswa Ilmu Komunikasi, UGM</div>
+                            </div>
+                        </footer>
+                    </article>
+
+                    <article class="testimonial-card extra-testimonial" role="listitem">
+                        <div>
+                            <span class="t-role-pill role-intl" data-i18n="testimonials.t6Role">Mahasiswa · Malaysia</span>
+                            <p class="t-quote" data-i18n="testimonials.t6Quote">
+                                “Sangat membantu untuk penelitian thesis saya, <mark>khususnya dalam proses pengumpulan data yang sangat cepat dan efisien.</mark> Team support juga sangat membantu ketika ditanya.”
+                            </p>
+                        </div>
+                        <footer class="t-author">
+                            <div class="t-avatar" style="background:#FEF3C7;color:#B45309" aria-hidden="true">HB</div>
+                            <div>
+                                <div class="t-name">Habib</div>
+                                <div class="t-univ" data-i18n="testimonials.t6Title">Teknologi Kejuruteraan Mekanikal, UTeM</div>
+                            </div>
+                        </footer>
+                    </article>
+
+                    <article class="testimonial-card extra-testimonial" role="listitem">
+                        <div>
+                            <span class="t-role-pill role-mhs" data-i18n="testimonials.t7Role">Mahasiswa · Telkom Univ</span>
+                            <p class="t-quote" data-i18n="testimonials.t7Quote">
+                                “Membantu banget untuk mengumpulkan responden penelitianku. <mark>Prosesnya cepat, seamless, dan timnya sangat helpful.</mark> Terima kasih banyak JFU!”
+                            </p>
+                        </div>
+                        <footer class="t-author">
+                            <div class="t-avatar" style="background:#E0E7FF;color:#3730A3" aria-hidden="true">DN</div>
+                            <div>
+                                <div class="t-name">Dinda</div>
+                                <div class="t-univ" data-i18n="testimonials.t7Title">Mahasiswa MBTI, Telkom University</div>
+                            </div>
+                        </footer>
+                    </article>
+
+                    <article class="testimonial-card extra-testimonial" role="listitem">
+                        <div>
+                            <span class="t-role-pill role-mhs" data-i18n="testimonials.t8Role">Mahasiswa · UNJANI</span>
+                            <p class="t-quote" data-i18n="testimonials.t8Quote">
+                                “Hasilnya di luar dugaan, <mark>jadi aku bisa melihat akar permasalahan risetku dari data survei tersebut.</mark> Terbaik, aku langsung menyarankan JFU ke teman-teman juga.”
+                            </p>
+                        </div>
+                        <footer class="t-author">
+                            <div class="t-avatar" style="background:#DBEAFE;color:#1E40AF" aria-hidden="true">ML</div>
+                            <div>
+                                <div class="t-name">Merliana</div>
+                                <div class="t-univ" data-i18n="testimonials.t8Title">Mahasiswa Informatika, UNJANI</div>
+                            </div>
+                        </footer>
+                    </article>
+
+                    <article class="testimonial-card extra-testimonial" role="listitem">
+                        <div>
+                            <span class="t-role-pill role-mhs" data-i18n="testimonials.t9Role">Mahasiswa · Prasmul</span>
+                            <p class="t-quote" data-i18n="testimonials.t9Quote">
+                                “Oke banget dan <mark>sangat membantu aku sebagai mahasiswa buat collect data</mark> serta mendapatkan banyak insights responden yang relevan.”
+                            </p>
+                        </div>
+                        <footer class="t-author">
+                            <div class="t-avatar" style="background:#F1F5F9;color:#0F172A" aria-hidden="true">CR</div>
+                            <div>
+                                <div class="t-name">Caroline</div>
+                                <div class="t-univ" data-i18n="testimonials.t9Title">Mahasiswa Branding, Prasmul Business School</div>
+                            </div>
+                        </footer>
+                    </article>
+                </div>
+
+                <div class="testimonials-controls">
+                    <button type="button" class="show-more-btn" onclick="toggleTestimonials()" aria-expanded="false" aria-controls="testimonials-grid">
+                        <span class="show-text" data-i18n="testimonials.showMore">Lihat 6 Cerita Peneliti Lainnya ↓</span>
+                        <span class="hide-text" style="display: none;" data-i18n="testimonials.showLess">Sembunyikan Cerita Lainnya ↑</span>
+                    </button>
                 </div>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <!-- Webinar: section sementara. Terisi dari /api/webinar/events; tanpa isi tetap tersembunyi. -->
-    <section class="webinar-home" id="webinar" aria-labelledby="webinar-heading" hidden>
-        <div class="webinar-home-container">
-            <div class="webinar-home-header">
-                <h2 id="webinar-heading" data-i18n="webinar.heading">Webinar Mendatang</h2>
-                <p data-i18n="webinar.subtitle">Belajar riset langsung dari praktisinya</p>
+        <!-- Dynamic Webinar Section: populated by script.js when /api/webinar/events returns open:true -->
+        <section class="webinar-home" id="webinar" aria-labelledby="webinar-heading" hidden>
+            <div class="webinar-home-container">
+                <div class="section-head">
+                    <h2 id="webinar-heading" data-i18n="webinar.heading">Webinar &amp; Kelas Riset</h2>
+                    <p data-i18n="webinar.subtitle">Belajar metodologi dan olah data langsung dari praktisinya</p>
+                </div>
+                <div class="webinar-home-list" id="webinar-home-list"></div>
             </div>
-            <div class="webinar-home-list" id="webinar-home-list"></div>
-        </div>
-    </section>
+        </section>
 
-    <!-- CTA Section -->
-    <section class="cta-section" aria-labelledby="final-cta-heading">
-        <div class="cta-container">
-            <h2 id="final-cta-heading" data-i18n="cta.heading">Siap mulai riset yang lebih mudah?</h2>
-            <p data-i18n="cta.subtitle">Bergabung dengan ribuan mahasiswa yang sudah merasakan kemudahan riset dengan Jakpat for Universities</p>
-            <a href="/dashboard" class="cta-button-white" aria-label="Mulai iklankan survey di Jakpat for Universities" data-i18n="cta.button">Mulai Iklankan Survey!</a>
-        </div>
-    </section>
+        <!-- Section 5: Final CTA & Clean Footer (Opsi 1 Glass Horizon) -->
+        <section class="cta-section" aria-labelledby="final-cta-heading">
+            <div class="cta-box">
+                <div class="cta-copy">
+                    <h2 id="final-cta-heading" data-i18n="cta.heading">Siap Kumpulkan Responden Tanpa Stuck?</h2>
+                    <p data-i18n="cta.subtitle">Pilih mode Iklan Harian atau Gelombang Kilat langsung dari Dashboard Peneliti JFU.</p>
+                </div>
+                <div class="cta-actions">
+                    <a href="/dashboard" class="cta-button-white" aria-label="Mulai sebarkan survei di Dashboard Jakpat for Universities" data-i18n="cta.button">Mulai Sebarkan Survei →</a>
+                    <a href="https://wa.me/6282326825552" class="cta-button-secondary" target="_blank" rel="noopener noreferrer" data-i18n="cta.secondaryButton">Tanya Tim JFU</a>
+                </div>
+            </div>
+        </section>
+    </main>
 
     <!-- Footer -->
     <footer class="footer" role="contentinfo">
         <div class="footer-container">
-            <nav class="footer-links" aria-label="Footer navigation">
-                <a href="/" data-i18n="footer.home">Beranda</a>
+            <div class="footer-brand">
+                <img src="/homepage/assets/images/logo-navbar.webp" alt="Jakpat for Universities" loading="lazy" width="24" height="24">
+                <span>Jakpat for Universities</span>
+            </div>
+            <nav class="footer-links" aria-label="Navigasi footer">
+                <a href="#beranda" data-i18n="footer.home">Beranda</a>
+                <a href="/webinar" data-i18n="footer.webinar">Webinar</a>
+                <a href="/pages" data-i18n="footer.surveys">Daftar Survei</a>
                 <a href="/privacy-policy.html" data-i18n="footer.privacy">Kebijakan Privasi</a>
-                <a href="/terms-conditions.html" data-i18n="footer.terms">Syarat & Ketentuan</a>
+                <a href="/terms-conditions.html" data-i18n="footer.terms">Syarat &amp; Ketentuan</a>
             </nav>
-            <p data-i18n="footer.copyright">&copy; 2025 Jakpat for Universities. All rights reserved.</p>
+            <p class="footer-copy" data-i18n="footer.copyright">&copy; 2026 Jakpat for Universities.</p>
         </div>
     </footer>
 
     <!-- External JavaScript -->
-    <script src="/homepage/translations.js"></script>
-    <script src="/homepage/script.js"></script>
+    <script src="/homepage/translations.js?v=2026-11-17"></script>
+    <script src="/homepage/script.js?v=2026-11-17"></script>
 </body>
 </html>
