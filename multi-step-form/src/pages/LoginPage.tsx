@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { signInWithGoogle, signInWithPassword, signUp } from '../utils/supabase';
 import { Navigate, useLocation, Link } from 'react-router-dom';
@@ -14,12 +14,22 @@ import { authErrorText } from '../utils/inAppBrowser';
 
 const inputClass = "flex h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 hover:bg-slate-50 focus:bg-white focus:outline-none focus:ring-4 focus:ring-jfu-primary/10 focus:border-jfu-primary transition-all disabled:opacity-50 dark:bg-gray-900 dark:border-gray-700 dark:text-white";
 
-export default function LoginPage() {
+export default function LoginPage({ initialMode }: { initialMode?: 'login' | 'signup' }) {
     const { session, loading } = useAuth();
     const { t } = useLanguage();
+    const location = useLocation();
+    const resolveMode = (): 'login' | 'signup' => {
+        if (initialMode) return initialMode;
+        const paramMode = new URLSearchParams(location.search).get('mode');
+        return paramMode === 'signup' ? 'signup' : 'login';
+    };
     const [isLoggingIn, setIsLoggingIn] = useState(false);
-    const [mode, setMode] = useState<'login' | 'signup'>('login');
+    const [mode, setMode] = useState<'login' | 'signup'>(resolveMode);
     const [showPassword, setShowPassword] = useState(false);
+
+    useEffect(() => {
+        setMode(resolveMode());
+    }, [initialMode, location.search]);
 
     // Form States
     const [email, setEmail] = useState('');
@@ -32,7 +42,6 @@ export default function LoginPage() {
     const [referralSource, setReferralSource] = useState('');
     const [referralSourceOther, setReferralSourceOther] = useState('');
 
-    const location = useLocation();
     const from = location.state?.from?.pathname || '/dashboard';
     const isWebinarPurchase = from.startsWith('/dashboard/webinar/beli/');
 

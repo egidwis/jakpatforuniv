@@ -78,7 +78,7 @@ function AppContent() {
 
   // If accessing via custom wildcard subdomain (e.g. budi.jakpatforuniv.com)
   const subdomainUser = getSubdomainUsername();
-  if (subdomainUser && !location.pathname.startsWith('/dashboard') && !location.pathname.startsWith('/login')) {
+  if (subdomainUser && !location.pathname.startsWith('/dashboard') && !location.pathname.startsWith('/login') && !location.pathname.startsWith('/register')) {
     return (
       <Routes>
         <Route path="/f/:formId" element={<PublicFormPage />} />
@@ -187,7 +187,8 @@ function AppContent() {
         <Route path="/f/:username/:slug" element={<PublicFormPage />} />
 
         {/* Auth Routes - Standalone Full Screen with unified background */}
-        <Route path="/login" element={<LoginPage />} />
+        <Route path="/login" element={<LoginPage initialMode="login" />} />
+        <Route path="/register" element={<LoginPage initialMode="signup" />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
 

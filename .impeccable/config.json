@@ -56,6 +56,12 @@
         ],
         "createdAt": "2026-10-05T07:28:11.834Z",
         "reason": "Agent: struck-through list price uses text-slate-500 only on the inactive white column. The active column uses text-emerald-700. Plan keeps RateTable unchanged."
+      },
+      {
+        "rule": "overused-font",
+        "value": "plus jakarta sans",
+        "createdAt": "2026-11-16T13:11:33.126Z",
+        "reason": "user confirmed 16 Nov 2026: homepage stays on Plus Jakarta Sans for now (existing brand font)"
       }
     ]
   }

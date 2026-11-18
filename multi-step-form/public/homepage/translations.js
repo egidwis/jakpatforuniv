@@ -2,21 +2,16 @@ const translations = {
     id: {
         // Meta tags
         meta: {
-            description: "Sebarkan kuesioner riset & skripsimu ke 2 juta+ responden aktif Jakpat di seluruh Indonesia. Tersedia mode Iklan Survei harian, Kilat Survei (up to 400 responden dalam 2 jam), dan Market Research.",
+            description: "Sebarkan kuesioner riset & skripsimu ke 2 juta+ responden aktif Jakpat di seluruh Indonesia. Tersedia mode Iklan Survei harian, Kilat Survei via push notification, dan Market Research.",
             keywords: "responden survei, responden kuesioner, jakpat for universities, sebar kuesioner skripsi, iklan survei, kilat survei, responden penelitian mahasiswa"
         },
 
         // Navigation
         nav: {
             home: "Beranda",
-            services: "Layanan",
-            howItWorks: "Cara Kerja",
-            testimonials: "Testimoni",
-            comparison: "Perbandingan",
             webinar: "Webinar",
-            surveys: "Daftar Survei",
-            cta: "Dashboard",
-            dashboard: "Dashboard",
+            surveys: "Survei",
+            dashboard: "Login",
             ariaLabel: "Navigasi utama",
             logoAriaLabel: "Jakpat for Universities - Beranda",
             hamburgerAriaLabel: "Buka menu navigasi",
@@ -25,11 +20,11 @@ const translations = {
 
         // Hero Section (Hero Page 1 v2)
         hero: {
-            eyebrow: "Dipercaya peneliti dari 18+ Universitas",
+            eyebrow: "Dipakai peneliti di 205+ kampus dalam &amp; luar negeri",
             heading: "Riset Stuck Karena<br>Susah Cari Responden?",
             subheadline: "Sebarkan kuesionermu ke <strong>2 juta+ responden aktif Jakpat</strong> di seluruh Indonesia.",
             ctaButton: "Sebarkan Survei Sekarang →",
-            ctaAriaLabel: "Sebarkan survei Anda sekarang di Jakpat for Universities",
+            ctaAriaLabel: "Daftar akun untuk sebarkan survei di Jakpat for Universities",
             float1Quote: "“Hasil uji reliability, validity, dan normality datanya bagus.”",
             float1Role: "Dosen Ilmu Komunikasi, UGM",
             float2Quote: "“Sehari responden masuk 2x lipat dibanding cari sendiri 3 hari.”",
@@ -40,39 +35,31 @@ const translations = {
 
         // Scenario Cards Section (Eksplorasi 2)
         scenarios: {
-            heading: "Mana Kondisi Risetmu Saat Ini?",
-            subtitle: "Pilih jalur distribusi yang paling cocok dengan waktu, budget, dan target sampelmu.",
-            card1Tag: "Kondisi 01 · Santai & Hemat",
-            card1Quote: "“Waktu skripsiku masih cukup longgar, aku ingin kumpulkan responden bertahap dengan biaya paling terjangkau.”",
+            heading: "Pilih Jalur Distribusi yang Sesuai Risetmu",
+            subtitle: "Tiga cara menyebarkan survei dengan mekanisme yang transparan sejak awal.",
+            card1Tag: "Jangkauan Maksimal · Hemat",
             card1Name: "Iklan Survei",
-            card1BigNum: "300+",
-            card1BigUnit: "responden / hari tayang*",
-            card1Desc: "Survei dipajang di aplikasi Jakpat. Kamu membayar per hari tayang dan bebas menentukan durasi harinya.",
-            card1Point1: "Tarif paling hemat untuk mahasiswa",
-            card1Point2: "Bebas pilih durasi 1 hingga beberapa hari",
+            card1Desc: "Survei ditayangkan di feed aplikasi Jakpat — cocok untuk yang jadwalnya masih santai.",
+            card1Point1: "<strong>Rata-rata 250++ responden per hari:</strong> bayar per hari tayang dengan durasi fleksibel 1 hingga beberapa hari.",
+            card1Point2: "<strong>Profil acak + screening:</strong> pasang filter awal di form jika risetmu butuh kriteria khusus.",
+            card1Point3: "<strong>Dicek sebelum tayang:</strong> tinjauan admin maks. 2 hari kerja agar kuesioner lancar di aplikasi.",
             card1Cta: "Pilih Iklan Survei →",
 
-            card2Tag: "Kondisi 02 · Kejar Deadline · Baru",
-            card2Quote: "“Jadwal olah data atau sidang sudah dekat! Aku butuh ratusan responden masuk hari ini juga.”",
+            card2Tag: "Kecepatan Maksimal · Baru",
             card2Name: "Kilat Survei",
-            card2BigNum: "Up to 400",
-            card2BigUnit: "responden dalam 2 jam*",
-            card2Desc: "Kirim push notification langsung ke HP responden aktif pada gelombang pukul 11:00 atau 15:00 WIB.",
-            card2Point1: "Notifikasi langsung muncul di layar HP",
-            card2Point2: "Respon terkumpul dalam hitungan jam",
+            card2Desc: "Notifikasi langsung masuk ke HP responden — cocok untuk yang lagi kejar deadline.",
+            card2Point1: "<strong>Up to 400 responden dalam 2 jam:</strong> bantu kejar target data riset lebih cepat saat deadline semakin dekat.",
+            card2Point2: "<strong>Pilih jam pengiriman terjadwal:</strong> pesan min. 2 jam &amp; bayar min. 1 jam sebelum jadwal kirim.",
+            card2Point3: "<strong>Profil acak + verifikasi cepat:</strong> kuesioner dicek terlebih dulu sebelum notifikasi dikirim.",
             card2Cta: "Pesan Kilat Sekarang →",
 
-            card3Tag: "Kondisi 03 · Kriteria Khusus",
-            card3Quote: "“Penelitianku mewajibkan kriteria demografi spesifik dan kuota responden yang dijamin pasti.”",
+            card3Tag: "Kriteria Khusus · Kuota Pasti",
             card3Name: "Market Research",
-            card3BigNum: "100%",
-            card3BigUnit: "sesuai filter & target kuota",
-            card3Desc: "Survei in-app dengan filter lokasi, usia, SES, perilaku, serta dashboard analytics real-time.",
-            card3Point1: "Filter demografi & kebiasaan presisi",
-            card3Point2: "Quality control otomatis & laporan",
-            card3Cta: "Ke Market Research ↗",
-
-            disclaimer: "*Estimasi jumlah responden bergantung pada panjang pertanyaan, kriteria screening, dan insentif yang ditawarkan."
+            card3Desc: "Survei ditargetkan sesuai profil responden — cocok untuk riset berkriteria khusus.",
+            card3Point1: "<strong>Filter demografi &amp; kebiasaan presisi:</strong> lokasi, usia, SES, hingga perilaku spesifik.",
+            card3Point2: "<strong>Target kuota terjamin:</strong> jumlah responden sesuai kuota yang disepakati.",
+            card3Point3: "<strong>Diskusi langsung dengan peneliti ahli Jakpat:</strong> konsultasikan desain survei dan kualitas data risetmu.",
+            card3Cta: "Ke Market Research ↗"
         },
 
         // How It Works Section (Opsi C Orbital Wave)
@@ -86,8 +73,8 @@ const translations = {
 
             step2Pill: "02 · Distribusi",
             step2Title: "Pilih Mode & Jadwal",
-            step2Desc: "Atur durasi hari tayang Iklan atau pilih jam gelombang Kilat.",
-            step2Chip: "Harian / Gelombang Kilat",
+            step2Desc: "Atur durasi hari tayang Iklan atau pilih jam pengiriman Kilat.",
+            step2Chip: "Iklan Harian / Kilat",
 
             step3Pill: "03 · Quality Check",
             step3Title: "Dicek Tim JFU",
@@ -100,17 +87,17 @@ const translations = {
             step4Chip: "2M+ responden se-Indonesia"
         },
 
-        // University Trust & Testimonials (Opsi 1)
+        // University Trust Showcase (Architectural Anchor Strip below Hero)
         trust: {
-            stripLabel: "<strong>18+ Kampus</strong><br>Telah Terbantu",
-            marqueeAriaLabel1: "Daftar universitas asal peneliti pengguna Jakpat for Universities",
-            marqueeAriaLabel2: "Daftar universitas mitra internasional"
+            anchorCaption: "Dipercaya mahasiswa, dosen &amp; tim riset lintas kampus",
+            stripLabel: "<span class=\"logo-stat-row\"><strong>180+</strong> Kampus Indonesia</span><span class=\"logo-stat-row\"><strong>25+</strong> Kampus Luar Negeri</span>",
+            marqueeAriaLabel1: "Daftar universitas asal peneliti pengguna Jakpat for Universities"
         },
 
         testimonials: {
             eyebrow: "Dipercaya Civitas Akademika",
             heading: "Pengalaman Peneliti Bersama JFU",
-            subtitle: "Digunakan oleh mahasiswa dan dosen dari 18+ universitas di Indonesia maupun mancanegara.",
+            subtitle: "Digunakan oleh mahasiswa dan dosen dari 180+ perguruan tinggi Indonesia dan 25+ universitas luar negeri.",
             showMore: "Lihat 6 Cerita Peneliti Lainnya ↓",
             showLess: "Sembunyikan Cerita Lainnya ↑",
 
@@ -151,24 +138,21 @@ const translations = {
             t9Title: "Mahasiswa Branding, Prasmul Business School"
         },
 
-        // Webinar Section
+        // Webinar Floating Card
         webinar: {
-            heading: "Webinar & Kelas Riset",
-            subtitle: "Belajar metodologi dan olah data langsung dari praktisinya",
             cta: "Lihat Webinar",
             ppn: "termasuk PPN",
-            doorLabel: "Webinar",
-            doorVideo: "Video Kelas",
-            doorEmpty: "Jadwal kelas riset berikutnya segera diumumkan"
+            replayLabel: "Video Kelas",
+            regionAriaLabel: "Pengumuman webinar mendatang",
+            closeAriaLabel: "Tutup pengumuman webinar"
         },
 
         // Final CTA Section (Opsi 1 Glass Horizon)
         cta: {
             heading: "Siap Kumpulkan Responden Tanpa Stuck?",
-            subtitle: "Pilih mode Iklan Harian atau Gelombang Kilat langsung dari Dashboard Peneliti JFU.",
+            subtitle: "Pilih mode Iklan Harian atau Kilat Survei langsung dari Dashboard Peneliti JFU.",
             button: "Mulai Sebarkan Survei →",
-            secondaryButton: "Tanya Tim JFU",
-            buttonAriaLabel: "Mulai sebarkan survei di Dashboard Jakpat for Universities"
+            buttonAriaLabel: "Daftar akun untuk mulai sebarkan survei di Jakpat for Universities"
         },
 
         // Footer
@@ -186,28 +170,23 @@ const translations = {
         // Structured Data (JSON-LD)
         structuredData: {
             orgDescription: "Platform distribusi kuesioner dan pengumpulan responden penelitian akademik dengan akses ke 2 juta+ responden terverifikasi Jakpat di seluruh Indonesia.",
-            serviceDescription: "Layanan distribusi kuesioner akademik (Iklan Survei harian, Kilat Survei dalam 2 jam, dan Market Research) untuk mahasiswa dan dosen."
+            serviceDescription: "Layanan distribusi kuesioner akademik (Iklan Survei harian, Kilat Survei via push notification, dan Market Research) untuk mahasiswa dan dosen."
         }
     },
 
     en: {
         // Meta tags
         meta: {
-            description: "Distribute your academic survey & thesis questionnaire to 2M+ active Jakpat respondents across Indonesia. Choose Daily Survey Ads, Flash Blast (up to 400 respondents in 2 hours), or Market Research.",
+            description: "Distribute your academic survey & thesis questionnaire to 2M+ active Jakpat respondents across Indonesia. Choose Daily Survey Ads, Kilat Push Survey, or Market Research.",
             keywords: "survey respondents indonesia, academic survey distribution, jakpat for universities, thesis respondents, flash survey, student research indonesia"
         },
 
         // Navigation
         nav: {
             home: "Home",
-            services: "Services",
-            howItWorks: "How It Works",
-            testimonials: "Testimonials",
-            comparison: "Comparison",
             webinar: "Webinars",
-            surveys: "Survey List",
-            cta: "Dashboard",
-            dashboard: "Dashboard",
+            surveys: "Surveys",
+            dashboard: "Login",
             ariaLabel: "Main navigation",
             logoAriaLabel: "Jakpat for Universities - Home",
             hamburgerAriaLabel: "Open navigation menu",
@@ -216,11 +195,11 @@ const translations = {
 
         // Hero Section (Hero Page 1 v2)
         hero: {
-            eyebrow: "Trusted by researchers from 18+ Universities",
+            eyebrow: "Used by researchers across 205+ local &amp; global campuses",
             heading: "Research Stuck Because<br>Respondents Are Hard to Find?",
             subheadline: "Distribute your questionnaire to <strong>2 million+ active Jakpat respondents</strong> across Indonesia.",
             ctaButton: "Distribute Survey Now →",
-            ctaAriaLabel: "Distribute your survey now on Jakpat for Universities",
+            ctaAriaLabel: "Create an account to distribute your survey on Jakpat for Universities",
             float1Quote: "“The reliability, validity, and normality test results were great.”",
             float1Role: "Communication Lecturer, UGM",
             float2Quote: "“In one day we got 2x more respondents than searching manually for 3 days.”",
@@ -231,39 +210,31 @@ const translations = {
 
         // Scenario Cards Section (Eksplorasi 2)
         scenarios: {
-            heading: "What Is Your Current Research Situation?",
-            subtitle: "Choose the distribution track that best fits your timeline, budget, and sample requirements.",
-            card1Tag: "Scenario 01 · Steady & Budget-Friendly",
-            card1Quote: "“My thesis deadline is still flexible—I want to collect respondents gradually at the most student-friendly cost.”",
+            heading: "Choose the Distribution Track for Your Study",
+            subtitle: "Three transparent ways to share your questionnaire with clear mechanics from the start.",
+            card1Tag: "Maximum Reach · Budget-Friendly",
             card1Name: "Survey Ads",
-            card1BigNum: "300+",
-            card1BigUnit: "respondents / airing day*",
-            card1Desc: "Your survey is featured on the Jakpat app feed. Pay per airing day and freely choose how many days it runs.",
-            card1Point1: "Most affordable rate for students",
-            card1Point2: "Flexible 1-day to multi-day duration",
+            card1Desc: "Featured on the Jakpat app feed — great when your research schedule is flexible.",
+            card1Point1: "<strong>Average 250++ respondents per day:</strong> pay per airing day with flexible 1-day to multi-day duration.",
+            card1Point2: "<strong>Random profiles + screening:</strong> add initial screening questions if your study needs specific criteria.",
+            card1Point3: "<strong>Reviewed before airing:</strong> checked by admin within 2 working days to run smoothly.",
             card1Cta: "Choose Survey Ads →",
 
-            card2Tag: "Scenario 02 · Tight Deadline · New",
-            card2Quote: "“My data analysis or thesis defense is right around the corner! I need hundreds of responses coming in today.”",
+            card2Tag: "Maximum Speed · New",
             card2Name: "Kilat Survey",
-            card2BigNum: "Up to 400",
-            card2BigUnit: "respondents in 2 hours*",
-            card2Desc: "Send direct push notifications to active respondents’ phones during the 11:00 or 15:00 WIB wave.",
-            card2Point1: "Instant push notification to phones",
-            card2Point2: "Responses collected within hours",
+            card2Desc: "Direct notification to respondents’ phones — built for researchers on a tight deadline.",
+            card2Point1: "<strong>Up to 400 respondents in 2 hours:</strong> gather responses faster when your deadline is tight.",
+            card2Point2: "<strong>Pick a scheduled send time:</strong> book at least 2 hours &amp; complete payment 1 hour before dispatch.",
+            card2Point3: "<strong>Random profiles + quick review:</strong> questionnaire is checked first before notifications are sent.",
             card2Cta: "Order Kilat Now →",
 
-            card3Tag: "Scenario 03 · Custom Criteria",
-            card3Quote: "“My study requires strict demographic filters and a guaranteed respondent quota.”",
+            card3Tag: "Custom Criteria · Guaranteed Quota",
             card3Name: "Market Research",
-            card3BigNum: "100%",
-            card3BigUnit: "matched filters & target quota",
-            card3Desc: "In-app survey with precise location, age, SES, and behavioral filters plus real-time analytics.",
-            card3Point1: "Precise demographic & behavioral targeting",
-            card3Point2: "Automated quality control & reporting",
-            card3Cta: "Go to Market Research ↗",
-
-            disclaimer: "*Estimated respondent counts depend on questionnaire length, screening criteria, and incentives offered."
+            card3Desc: "Targeted directly to your desired respondent profile — ideal for custom criteria.",
+            card3Point1: "<strong>Precise demographic &amp; habit filters:</strong> location, age, SES, and behavioral targeting.",
+            card3Point2: "<strong>Guaranteed quota target:</strong> respondent volume matches your agreed sample size.",
+            card3Point3: "<strong>Direct discussion with Jakpat’s expert researchers:</strong> consult on survey design and data quality.",
+            card3Cta: "Go to Market Research ↗"
         },
 
         // How It Works Section (Opsi C Orbital Wave)
@@ -277,8 +248,8 @@ const translations = {
 
             step2Pill: "02 · Distribution",
             step2Title: "Pick Mode & Schedule",
-            step2Desc: "Set daily airing duration for Ads or pick a Kilat wave time.",
-            step2Chip: "Daily / Kilat Wave",
+            step2Desc: "Set daily airing duration for Ads or pick a Kilat send time.",
+            step2Chip: "Daily Ads / Kilat",
 
             step3Pill: "03 · Quality Check",
             step3Title: "Reviewed by JFU Team",
@@ -291,17 +262,17 @@ const translations = {
             step4Chip: "2M+ respondents nationwide"
         },
 
-        // University Trust & Testimonials (Opsi 1)
+        // University Trust Showcase (Architectural Anchor Strip below Hero)
         trust: {
-            stripLabel: "<strong>18+ Universities</strong><br>Supported",
-            marqueeAriaLabel1: "Partner universities using Jakpat for Universities",
-            marqueeAriaLabel2: "International partner universities"
+            anchorCaption: "Trusted by students, lecturers &amp; research teams",
+            stripLabel: "<span class=\"logo-stat-row\"><strong>180+</strong> Indonesian Campuses</span><span class=\"logo-stat-row\"><strong>25+</strong> Global Campuses</span>",
+            marqueeAriaLabel1: "Partner universities using Jakpat for Universities"
         },
 
         testimonials: {
             eyebrow: "Trusted by Academics",
             heading: "Researcher Experiences with JFU",
-            subtitle: "Used by students and lecturers from 18+ universities across Indonesia and abroad.",
+            subtitle: "Used by students and lecturers from 180+ Indonesian universities and 25+ international campuses.",
             showMore: "View 6 More Researcher Stories ↓",
             showLess: "Hide Additional Stories ↑",
 
@@ -342,24 +313,21 @@ const translations = {
             t9Title: "Branding Student, Prasmul Business School"
         },
 
-        // Webinar Section
+        // Webinar Floating Card
         webinar: {
-            heading: "Upcoming Research Webinars",
-            subtitle: "Learn research methodology and data analysis directly from practitioners",
             cta: "View Webinar",
             ppn: "incl. VAT",
-            doorLabel: "Webinar",
-            doorVideo: "Class Replay",
-            doorEmpty: "Next research class schedule will be announced soon"
+            replayLabel: "Class Replay",
+            regionAriaLabel: "Upcoming webinar announcement",
+            closeAriaLabel: "Dismiss webinar announcement"
         },
 
         // Final CTA Section (Opsi 1 Glass Horizon)
         cta: {
             heading: "Ready to Collect Respondents Without Getting Stuck?",
-            subtitle: "Choose Daily Survey Ads or Kilat Wave directly from the JFU Researcher Dashboard.",
+            subtitle: "Choose Daily Survey Ads or Kilat Survey directly from the JFU Researcher Dashboard.",
             button: "Distribute Survey Now →",
-            secondaryButton: "Ask JFU Team",
-            buttonAriaLabel: "Start distributing your survey on the Jakpat for Universities Dashboard"
+            buttonAriaLabel: "Create an account to distribute your survey on Jakpat for Universities"
         },
 
         // Footer
@@ -377,7 +345,7 @@ const translations = {
         // Structured Data (JSON-LD)
         structuredData: {
             orgDescription: "Academic questionnaire distribution and respondent collection platform with access to 2 million+ verified Jakpat respondents across Indonesia.",
-            serviceDescription: "Academic survey distribution services (Daily Survey Ads, 2-hour Kilat Survey, and Market Research) for university students and lecturers."
+            serviceDescription: "Academic survey distribution services (Daily Survey Ads, Kilat Push Survey, and Market Research) for university students and lecturers."
         }
     }
 };

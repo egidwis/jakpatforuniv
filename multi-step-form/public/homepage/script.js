@@ -144,13 +144,20 @@ function updateAriaLabels(lang, data) {
         ctaButtonWhite.setAttribute('aria-label', data.cta.buttonAriaLabel);
     }
 
-    // Marquee
-    const marquees = document.querySelectorAll('.logo-marquee');
-    if (marquees.length > 0 && data.trust.marqueeAriaLabel1) {
-        marquees[0]?.setAttribute('aria-label', data.trust.marqueeAriaLabel1);
+    // University trust anchor ARIA label
+    const logoStrip = document.querySelector('.university-trust');
+    if (logoStrip && data.trust.marqueeAriaLabel1) {
+        logoStrip.setAttribute('aria-label', data.trust.marqueeAriaLabel1);
     }
-    if (marquees.length > 1 && data.trust.marqueeAriaLabel2) {
-        marquees[1]?.setAttribute('aria-label', data.trust.marqueeAriaLabel2);
+
+    // Floating Webinar Card
+    const webinarFloat = document.getElementById('webinar-float');
+    if (webinarFloat && data.webinar && data.webinar.regionAriaLabel) {
+        webinarFloat.setAttribute('aria-label', data.webinar.regionAriaLabel);
+    }
+    const webinarClose = document.getElementById('webinar-float-close');
+    if (webinarClose && data.webinar && data.webinar.closeAriaLabel) {
+        webinarClose.setAttribute('aria-label', data.webinar.closeAriaLabel);
     }
 }
 
@@ -249,43 +256,31 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     });
 });
 
-// Navigation background on scroll + active section tracking
+// Navigation background on scroll + active link state
 window.addEventListener('scroll', () => {
     const nav = document.querySelector('.nav');
 
-    // Add scrolled class for navbar shrink effect
-    if (window.scrollY > 50) {
-        nav.classList.add('scrolled');
-    } else {
-        nav.classList.remove('scrolled');
+    // Add scrolled class for navbar elevation effect
+    if (nav) {
+        if (window.scrollY > 50) {
+            nav.classList.add('scrolled');
+        } else {
+            nav.classList.remove('scrolled');
+        }
     }
 
-    // Track active section
-    const sections = document.querySelectorAll('section[id]');
-    const navLinks = document.querySelectorAll('.nav-links a');
-
-    let currentSection = '';
-
-    sections.forEach(section => {
-        const sectionTop = section.offsetTop;
-        const sectionHeight = section.clientHeight;
-        if (window.scrollY >= (sectionTop - 200)) {
-            currentSection = section.getAttribute('id');
-        }
-    });
-
-    navLinks.forEach(link => {
-        link.classList.remove('active');
-        if (link.getAttribute('href') === `#${currentSection}`) {
-            link.classList.add('active');
-        }
-    });
+    // Keep Home highlighted on the landing page (Webinar & Survey link to separate routes)
+    const homeLink = document.querySelector('.nav-links a[href="#beranda"]');
+    if (homeLink && !homeLink.classList.contains('active')) {
+        homeLink.classList.add('active');
+    }
 });
 
 // Testimonials toggle functionality
 function toggleTestimonials() {
     const container = document.querySelector('.testimonials-container');
     const button = document.querySelector('.show-more-btn');
+    if (!container || !button) return;
     const showText = button.querySelector('.show-text');
     const hideText = button.querySelector('.hide-text');
 
@@ -304,29 +299,74 @@ function toggleTestimonials() {
     }
 }
 
-// Webinar: section sementara. Isi dan aturannya datang dari _view.js di server.
-(function initWebinarSection() {
-    var section = document.getElementById('webinar');
-    var list = document.getElementById('webinar-home-list');
-    if (!section || !list || typeof fetch !== 'function') return;
+// Webinar floating card: diisi dinamis dari /api/webinar/events; bisa ditutup per sesi.
+(function initWebinarFloat() {
+    var widget = document.getElementById('webinar-float');
+    var inner = document.getElementById('webinar-float-inner');
+    var closeBtn = document.getElementById('webinar-float-close');
+    if (!widget || !inner || typeof fetch !== 'function') return;
+
+    var supportsDisplayTransition;
+    function canTransitionDisplay() {
+        if (supportsDisplayTransition !== undefined) return supportsDisplayTransition;
+        if (!window.CSS || !CSS.supports || !CSS.supports('transition-behavior', 'allow-discrete') || !document.body) {
+            supportsDisplayTransition = false;
+            return false;
+        }
+        var probe = document.createElement('div');
+        probe.style.cssText = 'transition: display 1s allow-discrete !important; display: block;';
+        document.body.appendChild(probe);
+        getComputedStyle(probe).display;
+        probe.style.display = 'none';
+        supportsDisplayTransition = getComputedStyle(probe).display === 'block';
+        probe.remove();
+        return supportsDisplayTransition;
+    }
+
+    function hideWebinarFloat() {
+        if (canTransitionDisplay()) {
+            widget.hidden = true;
+            return;
+        }
+        widget.setAttribute('data-closing', '');
+        var animations = typeof widget.getAnimations === 'function' ? widget.getAnimations() : [];
+        if (animations.length === 0) {
+            widget.removeAttribute('data-closing');
+            widget.hidden = true;
+            return;
+        }
+        Promise.race([
+            Promise.allSettled(animations.map(function (a) { return a.finished; })),
+            new Promise(function (resolve) { setTimeout(resolve, 600); })
+        ]).then(function () {
+            if (widget.hasAttribute('data-closing')) {
+                widget.removeAttribute('data-closing');
+                widget.hidden = true;
+            }
+        });
+    }
+
+    function isDismissed(key) {
+        try {
+            return sessionStorage.getItem(key) === '1';
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function markDismissed(key) {
+        try {
+            sessionStorage.setItem(key, '1');
+        } catch (e) {
+            // Ignore storage restrictions
+        }
+    }
 
     function text(tag, className, value) {
         var el = document.createElement(tag);
-        el.className = className;
+        if (className) el.className = className;
         el.textContent = value;
         return el;
-    }
-
-    function poster(view) {
-        if (/^https:\/\//i.test(view.poster_url || '')) {
-            var img = document.createElement('img');
-            img.className = 'webinar-home-poster';
-            img.src = view.poster_url;
-            img.alt = view.title;
-            img.loading = 'lazy';
-            return img;
-        }
-        return text('div', 'webinar-home-poster', view.title);
     }
 
     function translated(key, fallback) {
@@ -334,65 +374,252 @@ function toggleTestimonials() {
         return (data && data.webinar && data.webinar[key]) || fallback;
     }
 
-    function card(view) {
-        var a = document.createElement('a');
-        a.className = 'webinar-home-card';
-        a.href = view.detail_url;
-        a.appendChild(poster(view));
-
-        var body = document.createElement('div');
-        body.className = 'webinar-home-body';
-        var tone = view.tone === 'on_sale' ? ' is-sale' : (view.tone === 'ended' ? ' is-ended' : '');
-        body.appendChild(text('span', 'webinar-home-badge' + tone, view.badge));
-        body.appendChild(text('div', 'webinar-home-title', view.title));
-        if (view.schedule_label) body.appendChild(text('p', 'webinar-home-meta', view.schedule_label));
-        if (view.state === 'coming_soon' && view.note) body.appendChild(text('p', 'webinar-home-meta', view.note));
-        var speaker = (view.speakers || []).map(function (s) {
-            return [s && s.name, s && s.title].filter(Boolean).join(', ');
-        }).filter(Boolean).join(' · ');
-        if (speaker) body.appendChild(text('p', 'webinar-home-meta', speaker));
-        if (view.price_label) {
-            var price = text('p', 'webinar-home-price', view.price_label + ' ');
-            price.appendChild(text('small', '', '· ' + translated('ppn', 'termasuk PPN')));
-            body.appendChild(price);
+    function createPoster(view) {
+        if (/^https:\/\//i.test(view.poster_url || '')) {
+            var img = document.createElement('img');
+            img.className = 'wf-poster';
+            img.src = view.poster_url;
+            img.alt = view.title || 'Poster Webinar';
+            img.width = 1280;
+            img.height = 720;
+            img.decoding = 'async';
+            img.addEventListener('load', function () {
+                if (img.naturalWidth && img.naturalHeight) {
+                    img.style.aspectRatio = img.naturalWidth + ' / ' + img.naturalHeight;
+                }
+            });
+            return img;
         }
-        var cta = text('span', 'webinar-home-cta', translated('cta', 'Lihat Webinar') + ' →');
-        cta.setAttribute('data-i18n', 'webinar.cta');
-        body.appendChild(cta);
-        a.appendChild(body);
-        return a;
+        var fallback = document.createElement('div');
+        fallback.className = 'wf-poster-fallback';
+        fallback.setAttribute('aria-hidden', 'true');
+        var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', '28');
+        svg.setAttribute('height', '28');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('stroke-width', '2');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('stroke-linejoin', 'round');
+        var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', '3');
+        rect.setAttribute('y', '4');
+        rect.setAttribute('width', '18');
+        rect.setAttribute('height', '18');
+        rect.setAttribute('rx', '2');
+        var p1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        p1.setAttribute('x1', '16'); p1.setAttribute('y1', '2'); p1.setAttribute('x2', '16'); p1.setAttribute('y2', '6');
+        var p2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        p2.setAttribute('x1', '8'); p2.setAttribute('y1', '2'); p2.setAttribute('x2', '8'); p2.setAttribute('y2', '6');
+        var p3 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        p3.setAttribute('x1', '3'); p3.setAttribute('y1', '10'); p3.setAttribute('x2', '21'); p3.setAttribute('y2', '10');
+        svg.appendChild(rect);
+        svg.appendChild(p1);
+        svg.appendChild(p2);
+        svg.appendChild(p3);
+        fallback.appendChild(svg);
+        return fallback;
     }
 
-    // Pintu Webinar di hero: acara pilihan _view.js (tiket dijual → habis → segera
-    // hadir → Video kelas), atau teks umum bila belum ada acara. Selalu tampil
-    // selama webinar terbuka, supaya ritme 1–2 acara per bulan tidak membuatnya hilang.
-    function fillDoor(hero) {
-        var door = document.getElementById('hero-webinar-door');
-        var label = door && door.querySelector('.hero-webinar-door-label');
-        var doorText = document.getElementById('hero-webinar-door-text');
-        if (!door || !label || !doorText) return;
-        if (hero && hero.title) {
-            door.href = hero.detail_url || '/webinar';
-            var isVideo = hero.kind === 'replay';
-            label.setAttribute('data-i18n', isVideo ? 'webinar.doorVideo' : 'webinar.doorLabel');
-            label.textContent = isVideo ? translated('doorVideo', 'Video kelas') : translated('doorLabel', 'Webinar & Kelas');
-            doorText.removeAttribute('data-i18n');
-            doorText.textContent = !isVideo && hero.short_date ? hero.title + ' · ' + hero.short_date : hero.title;
+    function renderWidget(view) {
+        inner.textContent = '';
+
+        var top = document.createElement('div');
+        top.className = 'wf-topbar';
+        var toneClass = view.tone === 'on_sale'
+            ? ' is-sale'
+            : (view.tone === 'soon' ? ' is-soon' : (view.tone === 'held' ? ' is-held' : ''));
+        top.appendChild(text('span', 'wf-badge' + toneClass, view.badge || 'Webinar'));
+        if (view.seats_label) {
+            top.appendChild(text('span', 'wf-seats', view.seats_label));
         }
-        door.hidden = false;
+        inner.appendChild(top);
+
+        var content = document.createElement('div');
+        content.className = 'wf-content';
+        content.appendChild(createPoster(view));
+
+        var body = document.createElement('div');
+        body.className = 'wf-body';
+
+        var heading = document.createElement('h3');
+        heading.className = 'wf-title';
+        heading.id = 'webinar-float-title';
+        var link = document.createElement('a');
+        link.className = 'wf-link';
+        link.href = view.detail_url || '/webinar';
+        link.textContent = view.title;
+        heading.appendChild(link);
+        body.appendChild(heading);
+
+        var metaText = view.schedule_label || view.kind_label || view.note || '';
+        if (metaText) {
+            body.appendChild(text('p', 'wf-meta', metaText));
+        }
+
+        var footer = document.createElement('div');
+        footer.className = 'wf-footer';
+        if (view.price_label) {
+            footer.appendChild(text('span', 'wf-price', view.price_label));
+        }
+        var ctaWrap = document.createElement('span');
+        ctaWrap.className = 'wf-cta';
+        ctaWrap.setAttribute('aria-hidden', 'true');
+        var ctaSpan = text('span', '', translated('cta', 'Lihat Webinar'));
+        ctaSpan.setAttribute('data-i18n', 'webinar.cta');
+        ctaWrap.appendChild(ctaSpan);
+        ctaWrap.appendChild(document.createTextNode(' →'));
+        footer.appendChild(ctaWrap);
+        body.appendChild(footer);
+
+        content.appendChild(body);
+        inner.appendChild(content);
     }
 
     fetch('/api/webinar/events')
         .then(function (res) { return res.ok ? res.json() : null; })
         .then(function (data) {
-            // Pintu hero hanya tampil bila server bilang webinar terbuka.
-            if (data && data.open === true) fillDoor(data.hero);
             var items = data && data.open === true && Array.isArray(data.homepage) ? data.homepage : [];
             if (items.length === 0) return;
-            list.className = 'webinar-home-list ' + (items.length === 1 ? 'is-one' : 'is-two');
-            items.forEach(function (view) { list.appendChild(card(view)); });
-            section.hidden = false;
+
+            var primary = items[0];
+            var dismissKey = 'jfu-webinar-dismissed-' + (primary.slug || primary.id || 'active');
+            if (isDismissed(dismissKey)) return;
+
+            renderWidget(primary);
+
+            if (closeBtn) {
+                closeBtn.addEventListener('click', function () {
+                    markDismissed(dismissKey);
+                    hideWebinarFloat();
+                });
+            }
+
+            widget.removeAttribute('data-closing');
+            widget.hidden = false;
         })
         .catch(function (err) { console.error('[webinar]', err); });
 })();
+
+// Hero Interactive Layers: Cursor Parallax & Scroll Fallback (Clean Editorial Focus)
+(function initHeroInteractions() {
+    var hero = document.getElementById('beranda');
+    if (!hero) return;
+
+    var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion) return;
+
+    // 1. Subtle Desktop Cursor Parallax (fine pointer only)
+    var finePointer = window.matchMedia && window.matchMedia('(pointer: fine)').matches;
+    if (finePointer) {
+        var targetX = 0;
+        var targetY = 0;
+        var currentX = 0;
+        var currentY = 0;
+        var rafId = null;
+
+        function animateCursor() {
+            currentX += (targetX - currentX) * 0.12;
+            currentY += (targetY - currentY) * 0.12;
+
+            hero.style.setProperty('--hero-mx', currentX.toFixed(2) + 'px');
+            hero.style.setProperty('--hero-my', currentY.toFixed(2) + 'px');
+
+            if (Math.abs(targetX - currentX) > 0.05 || Math.abs(targetY - currentY) > 0.05) {
+                rafId = window.requestAnimationFrame(animateCursor);
+            } else {
+                currentX = targetX;
+                currentY = targetY;
+                hero.style.setProperty('--hero-mx', currentX.toFixed(2) + 'px');
+                hero.style.setProperty('--hero-my', currentY.toFixed(2) + 'px');
+                rafId = null;
+            }
+        }
+
+        function scheduleCursorUpdate() {
+            if (rafId === null) {
+                rafId = window.requestAnimationFrame(animateCursor);
+            }
+        }
+
+        hero.addEventListener('pointermove', function (e) {
+            if (e.pointerType && e.pointerType !== 'mouse' && e.pointerType !== 'pen') return;
+            var rect = hero.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+            var normX = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
+            var normY = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
+            targetX = normX * 14;
+            targetY = normY * 10;
+            scheduleCursorUpdate();
+        });
+
+        hero.addEventListener('pointerleave', function () {
+            targetX = 0;
+            targetY = 0;
+            scheduleCursorUpdate();
+        });
+    }
+
+    // 2. Scroll Parallax Fallback when CSS Scroll-Driven Animations are unavailable
+    var supportsScrollTimeline = window.CSS && CSS.supports && CSS.supports('(animation-timeline: view()) and (animation-range: entry)');
+    if (!supportsScrollTimeline) {
+        var topCopy = hero.querySelector('.hero-top-copy');
+        var orbitSvg = hero.querySelector('.hero-orbit-svg');
+        var scrollLayers = [
+            ['.hero-portrait-wrap', 16],
+            ['.hero-q-slot.c1', -44],
+            ['.hero-q-slot.c2', -58],
+            ['.hero-q-slot.c3', -30]
+        ].map(function (pair) {
+            return [hero.querySelector(pair[0]), pair[1]];
+        }).filter(function (pair) {
+            return Boolean(pair[0]);
+        });
+
+        var scrollTicking = false;
+        function updateHeroScrollFallback() {
+            scrollTicking = false;
+            var rect = hero.getBoundingClientRect();
+            var h = Math.max(rect.height, 1);
+            var progress = Math.min(1, Math.max(0, -rect.top / h));
+
+            if (topCopy) {
+                topCopy.style.opacity = String((1 - 0.65 * progress).toFixed(3));
+            }
+            if (orbitSvg) {
+                var scale = (1 + 0.04 * progress).toFixed(3);
+                orbitSvg.style.transform = 'translate3d(0,' + (16 * progress).toFixed(1) + 'px,0) scale(' + scale + ')';
+            }
+            scrollLayers.forEach(function (pair) {
+                pair[0].style.transform = 'translate3d(0,' + (pair[1] * progress).toFixed(1) + 'px,0)';
+            });
+        }
+
+        function onHeroScroll() {
+            if (!scrollTicking) {
+                scrollTicking = true;
+                window.requestAnimationFrame(updateHeroScrollFallback);
+            }
+        }
+
+        if (typeof IntersectionObserver === 'function') {
+            var observer = new IntersectionObserver(function (entries) {
+                entries.forEach(function (entry) {
+                    if (entry.isIntersecting) {
+                        window.addEventListener('scroll', onHeroScroll, { passive: true });
+                        onHeroScroll();
+                    } else {
+                        window.removeEventListener('scroll', onHeroScroll);
+                    }
+                });
+            }, { threshold: 0 });
+            observer.observe(hero);
+        } else {
+            window.addEventListener('scroll', onHeroScroll, { passive: true });
+        }
+        updateHeroScrollFallback();
+    }
+})();
+
 
