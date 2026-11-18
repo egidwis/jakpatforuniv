@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useLocation, Outlet } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import { AppNav } from './AppNav';
 import { ProfileCompletionSheet } from './ProfileCompletionSheet';
 import { AdminAwayModalHost } from './status/AdminAwayModal';
@@ -105,7 +106,17 @@ export function DashboardLayout() {
         />
 
         <main className={isChat ? 'min-w-0 flex-1' : 'min-w-0 pb-10 flex-1'}>
-          <Outlet />
+          {/* Halaman dashboard dimuat lazy (App.tsx): navbar tetap tampil, hanya
+              area konten yang menunggu chunk-nya. */}
+          <Suspense
+            fallback={
+              <div role="status" aria-label="Memuat halaman" className="flex justify-center py-24">
+                <Loader2 aria-hidden="true" className="h-7 w-7 animate-spin text-[#1976D2]" />
+              </div>
+            }
+          >
+            <Outlet />
+          </Suspense>
         </main>
 
         {/* Satu host modal mode libur untuk seluruh dashboard peneliti — juga

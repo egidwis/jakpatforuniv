@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { hiddenFromFeed, isKilatPage } from './SurveyListingPage';
+import { hiddenFromFeed, isKilatPage, listingEndCutoffIso, LISTING_END_GRACE_MS } from './SurveyListingPage';
 
 /**
  * ⚠️ TES INI ADALAH SABUK PENGAMAN, BUKAN PELENGKAP.
@@ -267,5 +267,29 @@ describe('dashboard admin: Kilat punya tab & label sendiri', () => {
         expect(iKilat).toBeGreaterThan(-1);
         expect(iAnn).toBeGreaterThan(-1);
         expect(iKilat).toBeLessThan(iAnn);
+    });
+});
+
+/**
+ * Pra-filter tanggal di kueri /pages (Nov 2026). Ia hanya boleh MEMPERKECIL
+ * unduhan, tidak boleh membuang halaman yang masih tayang: filter browser tetap
+ * otoritatif, dan pra-filter wajib superset-nya.
+ */
+describe('pra-filter publish_end_date /pages', () => {
+    const LISTING_SRC = readFileSync(path.resolve(__dirname, 'SurveyListingPage.tsx'), 'utf8');
+
+    it('kueri memakai cutoff dari jam yang sama dengan filter browser', () => {
+        expect(LISTING_SRC).toContain('.or(`publish_end_date.is.null,publish_end_date.gte.${listingEndCutoffIso(now)}`)');
+        // `now` dideklarasikan SEKALI, sebelum kueri — bukan jam kedua sesudahnya.
+        const loadPages = LISTING_SRC.slice(LISTING_SRC.indexOf('const loadPages'), LISTING_SRC.indexOf('const loadPages') + 4000);
+        expect(loadPages.match(/const now = new Date\(\)/g)?.length).toBe(1);
+        expect(loadPages.indexOf('const now = new Date()')).toBeLessThan(loadPages.indexOf(".from('survey_pages')"));
+    });
+
+    it('cutoff selalu sebelum "sekarang" (superset dari filter browser)', () => {
+        const now = new Date('2026-11-18T08:00:00.000Z');
+        const cutoff = new Date(listingEndCutoffIso(now));
+        expect(cutoff.getTime()).toBe(now.getTime() - LISTING_END_GRACE_MS);
+        expect(LISTING_END_GRACE_MS).toBeGreaterThan(0);
     });
 });

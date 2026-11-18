@@ -1,41 +1,67 @@
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Toaster } from 'sonner';
 import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
-import { MultiStepForm } from './components/MultiStepForm';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
-
-import { InternalDashboardWithLayout } from './components/InternalDashboardWithLayout';
 import { useLanguage } from './i18n/LanguageContext';
-import PaymentSuccessPage from './pages/PaymentSuccessPage';
-import PaymentFailedPage from './pages/PaymentFailedPage';
-import { InvoicePage } from './pages/InvoicePage';
 import LoginPage from './pages/LoginPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import PrivateRoute from './components/PrivateRoute';
-import { DashboardLayout } from './components/DashboardLayout';
-import { StatusPage } from './pages/dashboard/StatusPage';
-import { WebinarHubPage, WebinarTicketRedirect } from './pages/dashboard/webinar/WebinarHubPage';
-import { WebinarCheckoutPage } from './pages/dashboard/webinar/WebinarCheckoutPage';
-import { WebinarWatchPage } from './pages/dashboard/webinar/WebinarWatchPage';
-import { WebinarGate } from './components/webinar/WebinarGate';
-import { ChatPage } from './pages/dashboard/ChatPage';
-import { ProfilePage } from './pages/dashboard/ProfilePage';
-import { FormListPage } from './pages/dashboard/FormListPage';
-import { FormBuilderPage } from './pages/dashboard/FormBuilderPage';
-import { FormResponsesPage } from './pages/dashboard/FormResponsesPage';
-import { AnalyzerListPage } from './pages/dashboard/AnalyzerListPage';
-import { AnalyzerWorkspacePage } from './pages/dashboard/AnalyzerWorkspacePage';
 import { PublicFormPage } from './pages/public/PublicFormPage';
 import { getSubdomainUsername } from './utils/subdomain';
-import { PaymentCheckoutPage } from './pages/PaymentCheckoutPage';
-import { JadwalDanBayarPage } from './pages/dashboard/JadwalDanBayarPage';
-import { JadwalBaruPage } from './pages/dashboard/JadwalBaruPage';
 import { SurveyListingPage } from './pages/public/SurveyListingPage';
 import { SurveyPage } from './pages/public/SurveyPage';
 import { AuthProvider } from './context/AuthContext';
 import { CampaignTracker } from './components/CampaignTracker';
+import { BootLoader } from './components/BootLoader';
+import { RouteErrorBoundary } from './components/RouteErrorBoundary';
+import { NotFoundPage } from './pages/NotFoundPage';
+import { lazyNamed } from './utils/lazyRoute';
+// ⚠️ Satu-satunya pemuat @tailwind base/components/utilities. Dulu ikut eager
+// lewat InternalDashboardWithLayout; kini dashboard admin lazy, jadi diimpor di
+// sini — tanpa ini seluruh halaman publik tampil tanpa Tailwind. Wajib SEBELUM
+// styles.css (urutan cascade lama). Dijaga src/appCodeSplit.spec.ts.
+import './components/InternalDashboard.css';
 import './styles.css';
+
+/*
+ * ⚠️ CODE SPLITTING. Hanya rute yang dibuka langsung oleh orang luar
+ * (responden /pages & /f, login, /c) yang dimuat eager. Semua halaman dashboard
+ * & admin lazy — dulu seluruh aplikasi satu berkas 6,2 MB dan /login, /pages
+ * blank lama di ponsel. src/appCodeSplit.spec.ts menjaga daftar eager ini.
+ */
+const loadDashboardLayout = () => import('./components/DashboardLayout');
+const loadStatusPage = () => import('./pages/dashboard/StatusPage');
+const DashboardLayout = lazyNamed(loadDashboardLayout, 'DashboardLayout');
+const StatusPage = lazyNamed(loadStatusPage, 'StatusPage');
+const MultiStepForm = lazyNamed(() => import('./components/MultiStepForm'), 'MultiStepForm');
+const InternalDashboardWithLayout = lazyNamed(() => import('./components/InternalDashboardWithLayout'), 'InternalDashboardWithLayout');
+const PaymentSuccessPage = lazyNamed(() => import('./pages/PaymentSuccessPage'), 'default');
+const PaymentFailedPage = lazyNamed(() => import('./pages/PaymentFailedPage'), 'default');
+const InvoicePage = lazyNamed(() => import('./pages/InvoicePage'), 'InvoicePage');
+const WebinarHubPage = lazyNamed(() => import('./pages/dashboard/webinar/WebinarHubPage'), 'WebinarHubPage');
+const WebinarTicketRedirect = lazyNamed(() => import('./pages/dashboard/webinar/WebinarHubPage'), 'WebinarTicketRedirect');
+const WebinarCheckoutPage = lazyNamed(() => import('./pages/dashboard/webinar/WebinarCheckoutPage'), 'WebinarCheckoutPage');
+const WebinarWatchPage = lazyNamed(() => import('./pages/dashboard/webinar/WebinarWatchPage'), 'WebinarWatchPage');
+const WebinarGate = lazyNamed(() => import('./components/webinar/WebinarGate'), 'WebinarGate');
+const ChatPage = lazyNamed(() => import('./pages/dashboard/ChatPage'), 'ChatPage');
+const ProfilePage = lazyNamed(() => import('./pages/dashboard/ProfilePage'), 'ProfilePage');
+const FormListPage = lazyNamed(() => import('./pages/dashboard/FormListPage'), 'FormListPage');
+const FormBuilderPage = lazyNamed(() => import('./pages/dashboard/FormBuilderPage'), 'FormBuilderPage');
+const FormResponsesPage = lazyNamed(() => import('./pages/dashboard/FormResponsesPage'), 'FormResponsesPage');
+const AnalyzerListPage = lazyNamed(() => import('./pages/dashboard/AnalyzerListPage'), 'AnalyzerListPage');
+const AnalyzerWorkspacePage = lazyNamed(() => import('./pages/dashboard/AnalyzerWorkspacePage'), 'AnalyzerWorkspacePage');
+const PaymentCheckoutPage = lazyNamed(() => import('./pages/PaymentCheckoutPage'), 'PaymentCheckoutPage');
+const JadwalDanBayarPage = lazyNamed(() => import('./pages/dashboard/JadwalDanBayarPage'), 'JadwalDanBayarPage');
+const JadwalBaruPage = lazyNamed(() => import('./pages/dashboard/JadwalBaruPage'), 'JadwalBaruPage');
+
+// Peneliti yang membuka /dashboard langsung: unduh chunk layout (+ Status bila
+// di index) SEJAJAR dengan pembacaan sesi, bukan sesudahnya. Galat diabaikan di
+// sini — lazyNamed akan mencoba lagi dan menangani kegagalan.
+if (typeof window !== 'undefined' && /^\/dashboard(\/|$)/.test(window.location.pathname)) {
+  loadDashboardLayout().catch(() => {});
+  if (/^\/dashboard\/?$/.test(window.location.pathname)) loadStatusPage().catch(() => {});
+}
 
 function ExternalRedirect({ to }: { to: string }) {
   useEffect(() => {
@@ -195,7 +221,7 @@ function AppContent() {
         {/* Invoice Route - Standalone Full Screen (without container/footer wrapper) */}
         <Route path="/invoices/:paymentId" element={<PrivateRoute><InvoicePage /></PrivateRoute>} />
 
-        {/* Public Survey Directory - Standalone Full-Bleed Shell (consistent with /homepage/) */}
+        {/* Public Survey Directory - Standalone Full-Bleed Shell (selaras dengan landing page `/`) */}
         <Route path="/pages" element={<SurveyListingPage />} />
 
         {/* Public Content Routes - Wrapped in Container */}
@@ -207,10 +233,14 @@ function AppContent() {
               <Route path="/payment-failed" element={<PaymentFailedPage />} />
               <Route path="/payment-retry" element={<PaymentRetryRedirect />} />
               <Route path="/pages/:slug" element={<SurveyPage />} />
-              <Route path="/privacy-policy" element={<ExternalRedirect to="/homepage/privacy-policy.html" />} />
-              <Route path="/privacy-policy.html" element={<ExternalRedirect to="/homepage/privacy-policy.html" />} />
-              <Route path="/terms-conditions" element={<ExternalRedirect to="/homepage/terms-conditions.html" />} />
-              <Route path="/terms-conditions.html" element={<ExternalRedirect to="/homepage/terms-conditions.html" />} />
+              {/* Di apex, middleware melayani halaman legal sebelum SPA; rute ini hanya
+                  tercapai di host lain (pages.dev, localhost). Target WAJIB absolut —
+                  target relatif `/privacy-policy` akan berputar ke rute ini lagi. */}
+              <Route path="/privacy-policy" element={<ExternalRedirect to="https://jakpatforuniv.com/privacy-policy" />} />
+              <Route path="/privacy-policy.html" element={<ExternalRedirect to="https://jakpatforuniv.com/privacy-policy" />} />
+              <Route path="/terms-conditions" element={<ExternalRedirect to="https://jakpatforuniv.com/terms-conditions" />} />
+              <Route path="/terms-conditions.html" element={<ExternalRedirect to="https://jakpatforuniv.com/terms-conditions" />} />
+              <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </PublicLayout>
         } />
@@ -234,7 +264,11 @@ function App() {
   return (
     <Router>
       <AuthProvider>
-        <AppContent />
+        <RouteErrorBoundary>
+          <Suspense fallback={<BootLoader />}>
+            <AppContent />
+          </Suspense>
+        </RouteErrorBoundary>
       </AuthProvider>
     </Router>
   );

@@ -693,7 +693,7 @@ export function StepCheckout({
             <p className="text-center text-xs text-slate-600 leading-relaxed px-1">
               {t('byContinuingAgree')}{' '}
               <a
-                href="/homepage/privacy-policy.html"
+                href="/privacy-policy"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-semibold text-jfu-primary hover:text-jfu-dark underline decoration-blue-300 hover:decoration-blue-500 transition-colors"
@@ -702,7 +702,7 @@ export function StepCheckout({
               </a>
               {' '}{t('andText')}{' '}
               <a
-                href="/homepage/terms-conditions.html"
+                href="/terms-conditions"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-semibold text-jfu-primary hover:text-jfu-dark underline decoration-blue-300 hover:decoration-blue-500 transition-colors"

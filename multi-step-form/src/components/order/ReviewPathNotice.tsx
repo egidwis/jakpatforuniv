@@ -68,7 +68,7 @@ export function ReviewPathNotice({ formData, divertedAway = false }: {
                 </span>
               ))}
               <a
-                href="/homepage/terms-conditions.html"
+                href="/terms-conditions"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-[11px] font-semibold text-jfu-primary hover:underline"

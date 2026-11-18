@@ -22,8 +22,18 @@ const RESERVED_SUBDOMAINS = new Set([
  * E.g. jakpatforuniv.com?user=budi -> 'budi'
  */
 export function getSubdomainUsername(hostname: string = window.location.hostname): string | null {
+  return subdomainUserFrom(hostname, window.location.search);
+}
+
+/**
+ * Versi murni getSubdomainUsername (tanpa `window`), dipakai juga oleh penentu
+ * skeleton boot (src/components/boot/bootRoute.ts).
+ * ⚠️ KEMBAR: skrip inline di index.html menyalin aturan ini (ia tak bisa impor).
+ * Ubah di sini → ubah di sana; src/bootSkeletonContract.spec.ts menjaganya.
+ */
+export function subdomainUserFrom(hostname: string, search: string): string | null {
   // Check URL query param override (useful for dev/testing)
-  const urlParams = new URLSearchParams(window.location.search);
+  const urlParams = new URLSearchParams(search);
   const paramUser = urlParams.get('user') || urlParams.get('username');
   if (paramUser) {
     return paramUser.toLowerCase();

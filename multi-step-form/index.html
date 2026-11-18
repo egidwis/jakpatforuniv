@@ -5,11 +5,181 @@
     <link rel="icon" type="image/webp" href="/favicon.webp" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Jakpat for Universities</title>
+    <!--
+      Penentu skeleton boot. Berjalan SEBELUM CSS/JS apa pun supaya tampilan pertama
+      sudah benar: /pages → skeleton daftar survei, /pages/:slug → skeleton survei,
+      selain itu → loader bermerek. Responden di ponsel tidak boleh melihat layar
+      putih atau loader "workspace" peneliti sementara JS diunduh.
+      ⚠️ KEMBAR dengan src/components/boot/bootRoute.ts dan src/utils/subdomain.ts
+      (skrip ini tak bisa impor). src/bootSkeletonContract.spec.ts menjalankan skrip
+      ini terhadap tabel kasus yang sama dengan versi React.
+    -->
+    <script>
+      (function () {
+        var kind = 'app', lang = 'id', generic = 'page';
+        try {
+          var p = location.pathname.toLowerCase();
+          if (/^\/(dashboard|login|register)(\/|$)/.test(p)) generic = 'workspace';
+          var q = new URLSearchParams(location.search);
+          var user = q.get('user') || q.get('username');
+          var host = location.hostname, parts = host.toLowerCase().split('.');
+          var reserved = ' www submit app api admin dashboard internal staging dev localhost ';
+          var isReserved = reserved.indexOf(' ' + parts[0] + ' ') !== -1;
+          if (!user) {
+            if (host.indexOf('localhost') !== -1) {
+              if (parts.length >= 2 && parts[0] !== 'localhost' && !isReserved) user = parts[0];
+            } else if (parts.length >= 3 && !isReserved) {
+              user = parts[0];
+            }
+          }
+          if (!user) {
+            if (/^\/pages\/?$/.test(p)) kind = 'pages';
+            else if (/^\/pages\/[^/]+\/?$/.test(p)) kind = 'survey';
+          }
+        } catch (e) {}
+        try {
+          if (localStorage.getItem('jakpat-language') === 'en') lang = 'en';
+        } catch (e) {}
+        var d = document.documentElement;
+        d.setAttribute('data-boot', kind);
+        d.setAttribute('data-boot-lang', lang);
+        d.setAttribute('data-boot-generic', generic);
+      })();
+    </script>
+    <!--
+      CSS loader & skeleton boot. HARUS di <head>: React mengganti seluruh isi #root
+      saat render pertama, dan BootLoader (src/components/BootLoader.tsx) memakai
+      kelas .jfu-* yang sama selama sesi dibaca — kalau CSS ini ada di dalam #root,
+      ia ikut hilang dan loader React tampil tanpa gaya.
+    -->
+    <style>
+      .jfu-initial-loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background-color: #f8fafc;
+        font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        z-index: 99999;
+        overflow: hidden;
+        user-select: none;
+      }
+
+      .jfu-loader-glow {
+        position: absolute;
+        width: 320px;
+        height: 320px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(24, 124, 255, 0.18) 0%, rgba(56, 189, 248, 0.08) 45%, transparent 70%);
+        filter: blur(40px);
+        animation: jfu-glow-pulse 3s ease-in-out infinite alternate;
+        pointer-events: none;
+      }
+
+      .jfu-loader-card {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 2rem;
+        z-index: 1;
+      }
+
+      .jfu-loader-logo-wrap {
+        position: relative;
+        width: 72px;
+        height: 72px;
+        border-radius: 20px;
+        background: #ffffff;
+        box-shadow: 0 4px 20px -2px rgba(24, 124, 255, 0.15), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+        border: 1px solid rgba(226, 232, 240, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 1.25rem;
+        animation: jfu-logo-breathe 2.4s ease-in-out infinite;
+      }
+
+      .jfu-loader-logo {
+        width: 44px;
+        height: 44px;
+        object-fit: contain;
+      }
+
+      .jfu-loader-title {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #0f172a;
+        letter-spacing: -0.02em;
+        margin-bottom: 0.35rem;
+      }
+
+      .jfu-loader-subtitle {
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: #64748b;
+        margin-bottom: 1.5rem;
+      }
+
+      .jfu-progress-track {
+        width: 140px;
+        height: 4px;
+        background: #e2e8f0;
+        border-radius: 9999px;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .jfu-progress-bar {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 50%;
+        background: linear-gradient(90deg, #187cff, #38bdf8);
+        border-radius: 9999px;
+        animation: jfu-shimmer-slide 1.5s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+      }
+
+      @keyframes jfu-glow-pulse {
+        0% { transform: scale(0.85); opacity: 0.5; }
+        100% { transform: scale(1.15); opacity: 0.9; }
+      }
+
+      @keyframes jfu-logo-breathe {
+        0%, 100% { transform: scale(1); box-shadow: 0 4px 20px -2px rgba(24, 124, 255, 0.12), 0 2px 6px -1px rgba(0, 0, 0, 0.04); }
+        50% { transform: scale(1.05); box-shadow: 0 8px 28px -2px rgba(24, 124, 255, 0.24), 0 4px 10px -1px rgba(0, 0, 0, 0.06); }
+      }
+
+      @keyframes jfu-shimmer-slide {
+        0% { left: -50%; width: 30%; }
+        50% { left: 25%; width: 55%; }
+        100% { left: 100%; width: 30%; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .jfu-loader-glow, .jfu-loader-logo-wrap, .jfu-progress-bar { animation: none; }
+      }
+
+      /* Hanya blok statis yang dipilih penentu di atas yang tampil.
+         Pembungkus .jfu-boot-* sengaja tanpa kelas Tailwind (display-nya tak boleh bersaing). */
+      .jfu-boot-pages, .jfu-boot-survey, .jfu-l-en, .jfu-sub-page { display: none; }
+      [data-boot="pages"] .jfu-boot-pages, [data-boot="survey"] .jfu-boot-survey { display: block; }
+      [data-boot="pages"] .jfu-boot-generic, [data-boot="survey"] .jfu-boot-generic { display: none; }
+      [data-boot-lang="en"] .jfu-l-en { display: inline; }
+      [data-boot-lang="en"] .jfu-l-id { display: none; }
+      [data-boot-generic="page"] .jfu-sub-page { display: inline; }
+      [data-boot-generic="page"] .jfu-sub-ws { display: none; }
+    </style>
     <!-- Preload critical resources -->
+    <link rel="preconnect" href="%VITE_SUPABASE_URL%" crossorigin>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    
+    <!-- Tidak render-blocking: tampilan pertama tak menunggu koneksi lintas-origin ke Google. -->
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+
     <!-- Preload Google APIs for Google Drive integration -->
     <link rel="preconnect" href="https://apis.google.com">
     <link rel="preconnect" href="https://accounts.google.com">
@@ -18,128 +188,160 @@
   </head>
   <body>
     <div id="root">
-      <!-- High-Performance Pre-React Branded Loader (Concept 1: Breathing Logo + Shimmer Progress) -->
-      <style>
-        .jfu-initial-loader {
-          position: fixed;
-          inset: 0;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          background-color: #f8fafc;
-          font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          z-index: 99999;
-          overflow: hidden;
-          user-select: none;
-        }
+      <!-- Seluruh isi #root diganti React saat render pertama. -->
 
-        .jfu-loader-glow {
-          position: absolute;
-          width: 320px;
-          height: 320px;
-          border-radius: 50%;
-          background: radial-gradient(circle, rgba(24, 124, 255, 0.18) 0%, rgba(56, 189, 248, 0.08) 45%, transparent 70%);
-          filter: blur(40px);
-          animation: jfu-glow-pulse 3s ease-in-out infinite alternate;
-          pointer-events: none;
-        }
-
-        .jfu-loader-card {
-          position: relative;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          text-align: center;
-          padding: 2rem;
-          z-index: 1;
-        }
-
-        .jfu-loader-logo-wrap {
-          position: relative;
-          width: 72px;
-          height: 72px;
-          border-radius: 20px;
-          background: #ffffff;
-          box-shadow: 0 4px 20px -2px rgba(24, 124, 255, 0.15), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
-          border: 1px solid rgba(226, 232, 240, 0.8);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin-bottom: 1.25rem;
-          animation: jfu-logo-breathe 2.4s ease-in-out infinite;
-        }
-
-        .jfu-loader-logo {
-          width: 44px;
-          height: 44px;
-          object-fit: contain;
-        }
-
-        .jfu-loader-title {
-          font-size: 1.05rem;
-          font-weight: 700;
-          color: #0f172a;
-          letter-spacing: -0.02em;
-          margin-bottom: 0.35rem;
-        }
-
-        .jfu-loader-subtitle {
-          font-size: 0.8125rem;
-          font-weight: 500;
-          color: #64748b;
-          margin-bottom: 1.5rem;
-        }
-
-        .jfu-progress-track {
-          width: 140px;
-          height: 4px;
-          background: #e2e8f0;
-          border-radius: 9999px;
-          overflow: hidden;
-          position: relative;
-        }
-
-        .jfu-progress-bar {
-          position: absolute;
-          top: 0;
-          bottom: 0;
-          left: 0;
-          width: 50%;
-          background: linear-gradient(90deg, #187cff, #38bdf8);
-          border-radius: 9999px;
-          animation: jfu-shimmer-slide 1.5s cubic-bezier(0.65, 0, 0.35, 1) infinite;
-        }
-
-        @keyframes jfu-glow-pulse {
-          0% { transform: scale(0.85); opacity: 0.5; }
-          100% { transform: scale(1.15); opacity: 0.9; }
-        }
-
-        @keyframes jfu-logo-breathe {
-          0%, 100% { transform: scale(1); box-shadow: 0 4px 20px -2px rgba(24, 124, 255, 0.12), 0 2px 6px -1px rgba(0, 0, 0, 0.04); }
-          50% { transform: scale(1.05); box-shadow: 0 8px 28px -2px rgba(24, 124, 255, 0.24), 0 4px 10px -1px rgba(0, 0, 0, 0.06); }
-        }
-
-        @keyframes jfu-shimmer-slide {
-          0% { left: -50%; width: 30%; }
-          50% { left: 25%; width: 55%; }
-          100% { left: 100%; width: 30%; }
-        }
-      </style>
-
-      <div class="jfu-initial-loader">
-        <div class="jfu-loader-glow"></div>
-        <div class="jfu-loader-card">
-          <div class="jfu-loader-logo-wrap">
-            <img src="/favicon.webp" alt="Jakpat Logo" class="jfu-loader-logo" />
-          </div>
-          <div class="jfu-loader-title">Jakpat for Universities</div>
-          <div class="jfu-loader-subtitle">Menyiapkan workspace kamu...</div>
-          <div class="jfu-progress-track">
-            <div class="jfu-progress-bar"></div>
+      <!-- Loader bermerek (rute selain halaman responden). Markup = BootLoader.tsx. -->
+      <div class="jfu-boot-generic">
+        <div class="jfu-initial-loader" role="status" aria-label="Memuat Jakpat for Universities">
+          <div class="jfu-loader-glow"></div>
+          <div class="jfu-loader-card">
+            <div class="jfu-loader-logo-wrap">
+              <img src="/favicon.webp" alt="" class="jfu-loader-logo" />
+            </div>
+            <div class="jfu-loader-title">Jakpat for Universities</div>
+            <div class="jfu-loader-subtitle"><span class="jfu-sub-ws">Menyiapkan workspace kamu...</span><span class="jfu-sub-page">Memuat halaman...</span></div>
+            <div class="jfu-progress-track">
+              <div class="jfu-progress-bar"></div>
+            </div>
           </div>
         </div>
+      </div>
+
+      <!-- Skeleton /pages. Markup = SurveyListPageSkeleton (src/components/boot/SurveyListSkeleton.tsx). -->
+      <div class="jfu-boot-pages">
+        <div data-boot-skeleton="pages" class="min-h-screen flex flex-col bg-[#f8fafc] text-[#0f172a] font-jakarta antialiased [color-scheme:light] relative overflow-x-hidden">
+          <div class="relative z-10 overflow-hidden">
+            <div aria-hidden="true" class="pointer-events-none absolute inset-0 opacity-35" style="background-image:radial-gradient(circle, rgba(25, 118, 210, 0.08) 1px, transparent 1px);background-size:24px 24px"></div>
+            <div class="relative z-30 pt-4 px-3 sm:px-6 lg:px-10">
+              <div class="max-w-[1280px] mx-auto bg-white/70 rounded-[20px] px-4 sm:px-6 py-3 border border-white/85 shadow-[0_10px_35px_rgba(25,118,210,0.09),0_2px_6px_rgba(15,23,42,0.03),inset_0_1px_1px_rgba(255,255,255,0.95)] flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2.5 shrink-0">
+                  <img src="/favicon.webp" alt="" width="32" height="32" class="h-7 sm:h-8 w-auto" />
+                  <span class="font-bold text-sm sm:text-lg tracking-tight text-[#1976D2]">Jakpat for Universities</span>
+                </div>
+                <div aria-hidden="true" class="hidden md:flex items-center gap-1">
+                  <span class="h-9 w-20 rounded-full bg-slate-200/70"></span>
+                  <span class="h-9 w-20 rounded-full bg-slate-200/70"></span>
+                  <span class="h-9 w-28 rounded-full bg-[#1976D2]/[0.12]"></span>
+                </div>
+                <div aria-hidden="true" class="flex items-center gap-2 sm:gap-2.5">
+                  <span class="hidden sm:inline-block h-9 w-36 rounded-full bg-[#1976D2]/25"></span>
+                  <span class="md:hidden inline-block w-9 h-9 rounded-xl bg-slate-200/70"></span>
+                </div>
+              </div>
+            </div>
+            <div class="relative z-10 max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-10 pt-8 pb-6 sm:pt-10 sm:pb-7">
+              <div class="text-center max-w-xl mx-auto space-y-2 py-2">
+                <h1 class="text-3xl sm:text-4xl font-extrabold text-[#1a1a1a] tracking-[-0.02em] leading-tight"><span class="jfu-l-id">Daftar Survei Terbaru</span><span class="jfu-l-en">Latest Surveys</span></h1>
+                <p class="text-sm sm:text-base text-[#555555] leading-relaxed"><span class="jfu-l-id">Bantu riset mahasiswa dan menangkan undian saldo e-wallet resmi Jakpat.</span><span class="jfu-l-en">Support university research and win official Jakpat e-wallet lucky draws.</span></p>
+              </div>
+            </div>
+          </div>
+          <div class="flex-1 w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-10 pb-14">
+            <div role="status" aria-busy="true">
+              <span class="sr-only"><span class="jfu-l-id">Memuat daftar survei terbaru</span><span class="jfu-l-en">Loading latest surveys</span></span>
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+              <div data-skeleton-card="" class="rounded-[20px] bg-white/60 border border-white/80 shadow-[0_8px_30px_rgba(25,118,210,0.08),inset_0_1px_1px_rgba(255,255,255,0.95)] overflow-hidden animate-pulse motion-reduce:animate-none">
+                <div class="aspect-[2.5/1] bg-slate-200/80"></div>
+                <div class="p-5 space-y-3">
+                  <div class="flex items-center justify-between gap-2"><div class="h-3.5 w-24 bg-slate-200 rounded-full"></div><div class="h-3.5 w-20 bg-slate-100 rounded-full"></div></div>
+                  <div class="h-5 w-11/12 bg-slate-200 rounded-lg"></div>
+                  <div class="h-4 w-4/5 bg-slate-100 rounded-lg"></div>
+                  <div class="pt-3.5 border-t border-slate-900/[0.06] flex justify-between items-center">
+                    <div class="space-y-1.5"><div class="h-5 w-28 bg-slate-200 rounded-md"></div><div class="h-3 w-20 bg-slate-100 rounded-md"></div></div>
+                    <div class="h-8 w-20 bg-slate-200 rounded-full"></div>
+                  </div>
+                </div>
+              </div>
+              <div data-skeleton-card="" class="rounded-[20px] bg-white/60 border border-white/80 shadow-[0_8px_30px_rgba(25,118,210,0.08),inset_0_1px_1px_rgba(255,255,255,0.95)] overflow-hidden animate-pulse motion-reduce:animate-none">
+                <div class="aspect-[2.5/1] bg-slate-200/80"></div>
+                <div class="p-5 space-y-3">
+                  <div class="flex items-center justify-between gap-2"><div class="h-3.5 w-24 bg-slate-200 rounded-full"></div><div class="h-3.5 w-20 bg-slate-100 rounded-full"></div></div>
+                  <div class="h-5 w-11/12 bg-slate-200 rounded-lg"></div>
+                  <div class="h-4 w-4/5 bg-slate-100 rounded-lg"></div>
+                  <div class="pt-3.5 border-t border-slate-900/[0.06] flex justify-between items-center">
+                    <div class="space-y-1.5"><div class="h-5 w-28 bg-slate-200 rounded-md"></div><div class="h-3 w-20 bg-slate-100 rounded-md"></div></div>
+                    <div class="h-8 w-20 bg-slate-200 rounded-full"></div>
+                  </div>
+                </div>
+              </div>
+              <div data-skeleton-card="" class="rounded-[20px] bg-white/60 border border-white/80 shadow-[0_8px_30px_rgba(25,118,210,0.08),inset_0_1px_1px_rgba(255,255,255,0.95)] overflow-hidden animate-pulse motion-reduce:animate-none">
+                <div class="aspect-[2.5/1] bg-slate-200/80"></div>
+                <div class="p-5 space-y-3">
+                  <div class="flex items-center justify-between gap-2"><div class="h-3.5 w-24 bg-slate-200 rounded-full"></div><div class="h-3.5 w-20 bg-slate-100 rounded-full"></div></div>
+                  <div class="h-5 w-11/12 bg-slate-200 rounded-lg"></div>
+                  <div class="h-4 w-4/5 bg-slate-100 rounded-lg"></div>
+                  <div class="pt-3.5 border-t border-slate-900/[0.06] flex justify-between items-center">
+                    <div class="space-y-1.5"><div class="h-5 w-28 bg-slate-200 rounded-md"></div><div class="h-3 w-20 bg-slate-100 rounded-md"></div></div>
+                    <div class="h-8 w-20 bg-slate-200 rounded-full"></div>
+                  </div>
+                </div>
+              </div>
+              <div data-skeleton-card="" class="rounded-[20px] bg-white/60 border border-white/80 shadow-[0_8px_30px_rgba(25,118,210,0.08),inset_0_1px_1px_rgba(255,255,255,0.95)] overflow-hidden animate-pulse motion-reduce:animate-none">
+                <div class="aspect-[2.5/1] bg-slate-200/80"></div>
+                <div class="p-5 space-y-3">
+                  <div class="flex items-center justify-between gap-2"><div class="h-3.5 w-24 bg-slate-200 rounded-full"></div><div class="h-3.5 w-20 bg-slate-100 rounded-full"></div></div>
+                  <div class="h-5 w-11/12 bg-slate-200 rounded-lg"></div>
+                  <div class="h-4 w-4/5 bg-slate-100 rounded-lg"></div>
+                  <div class="pt-3.5 border-t border-slate-900/[0.06] flex justify-between items-center">
+                    <div class="space-y-1.5"><div class="h-5 w-28 bg-slate-200 rounded-md"></div><div class="h-3 w-20 bg-slate-100 rounded-md"></div></div>
+                    <div class="h-8 w-20 bg-slate-200 rounded-full"></div>
+                  </div>
+                </div>
+              </div>
+              <div data-skeleton-card="" class="rounded-[20px] bg-white/60 border border-white/80 shadow-[0_8px_30px_rgba(25,118,210,0.08),inset_0_1px_1px_rgba(255,255,255,0.95)] overflow-hidden animate-pulse motion-reduce:animate-none">
+                <div class="aspect-[2.5/1] bg-slate-200/80"></div>
+                <div class="p-5 space-y-3">
+                  <div class="flex items-center justify-between gap-2"><div class="h-3.5 w-24 bg-slate-200 rounded-full"></div><div class="h-3.5 w-20 bg-slate-100 rounded-full"></div></div>
+                  <div class="h-5 w-11/12 bg-slate-200 rounded-lg"></div>
+                  <div class="h-4 w-4/5 bg-slate-100 rounded-lg"></div>
+                  <div class="pt-3.5 border-t border-slate-900/[0.06] flex justify-between items-center">
+                    <div class="space-y-1.5"><div class="h-5 w-28 bg-slate-200 rounded-md"></div><div class="h-3 w-20 bg-slate-100 rounded-md"></div></div>
+                    <div class="h-8 w-20 bg-slate-200 rounded-full"></div>
+                  </div>
+                </div>
+              </div>
+              <div data-skeleton-card="" class="rounded-[20px] bg-white/60 border border-white/80 shadow-[0_8px_30px_rgba(25,118,210,0.08),inset_0_1px_1px_rgba(255,255,255,0.95)] overflow-hidden animate-pulse motion-reduce:animate-none">
+                <div class="aspect-[2.5/1] bg-slate-200/80"></div>
+                <div class="p-5 space-y-3">
+                  <div class="flex items-center justify-between gap-2"><div class="h-3.5 w-24 bg-slate-200 rounded-full"></div><div class="h-3.5 w-20 bg-slate-100 rounded-full"></div></div>
+                  <div class="h-5 w-11/12 bg-slate-200 rounded-lg"></div>
+                  <div class="h-4 w-4/5 bg-slate-100 rounded-lg"></div>
+                  <div class="pt-3.5 border-t border-slate-900/[0.06] flex justify-between items-center">
+                    <div class="space-y-1.5"><div class="h-5 w-28 bg-slate-200 rounded-md"></div><div class="h-3 w-20 bg-slate-100 rounded-md"></div></div>
+                    <div class="h-8 w-20 bg-slate-200 rounded-full"></div>
+                  </div>
+                </div>
+              </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Skeleton /pages/:slug. Markup = SurveyDetailSkeleton (src/components/boot/SurveyListSkeleton.tsx). -->
+      <div class="jfu-boot-survey">
+        <main data-boot-skeleton="survey" class="container py-8">
+          <div role="status" aria-busy="true" class="min-h-screen bg-gray-50 pb-20">
+            <div class="aspect-[2.5/1] w-full bg-slate-200/80 animate-pulse motion-reduce:animate-none"></div>
+            <div class="max-w-4xl mx-auto px-0 sm:px-4 -mt-4 sm:-mt-10 relative z-10 w-full">
+              <div class="bg-white border-t-4 border-t-blue-500 rounded-none sm:rounded-xl sm:shadow-lg px-4 py-5 md:p-6 space-y-4">
+                <div class="flex items-center gap-2 text-sm font-medium text-slate-500">
+                  <img src="/favicon.webp" alt="" width="20" height="20" class="h-5 w-5" />
+                  <span><span class="jfu-l-id">Memuat survei…</span><span class="jfu-l-en">Loading survey…</span></span>
+                </div>
+                <div class="animate-pulse motion-reduce:animate-none space-y-4">
+                  <div class="h-6 w-24 bg-blue-100 rounded-full"></div>
+                  <div class="h-7 w-11/12 bg-slate-200 rounded-lg"></div>
+                  <div class="h-7 w-3/5 bg-slate-200 rounded-lg"></div>
+                  <div class="h-20 w-full bg-slate-100 rounded-xl"></div>
+                  <div class="h-4 w-full bg-slate-100 rounded-md"></div>
+                  <div class="h-4 w-5/6 bg-slate-100 rounded-md"></div>
+                  <div class="h-11 w-full bg-blue-200/70 rounded-lg"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>

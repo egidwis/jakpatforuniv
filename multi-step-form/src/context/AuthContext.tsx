@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabase';
+import { BootLoader } from '../components/BootLoader';
 
 interface AuthContextType {
     user: User | null;
@@ -40,7 +41,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return (
         <AuthContext.Provider value={{ user, session, loading, signOut }}>
-            {!loading && children}
+            {/* Dulu `{!loading && children}`: layar PUTIH selama sesi dibaca —
+                lama di ponsel, apalagi saat token perlu di-refresh. */}
+            {loading ? <BootLoader /> : children}
         </AuthContext.Provider>
     );
 }

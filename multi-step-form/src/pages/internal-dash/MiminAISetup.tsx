@@ -1395,6 +1395,10 @@ const MiminAISetup: React.FC = () => {
                 color: #111827 !important;
                 -webkit-text-fill-color: #111827 !important;
               }
+              /* CSS editor dimuat lazy (chunk dashboard admin), SESUDAH Tailwind/
+                 styles.css, sehingga .w-md-editor{border-radius:3px} mengalahkan
+                 rounded-lg. <style> di body ini selalu menang (urutan dokumen). */
+              .w-md-editor { border-radius: var(--radius); }
             `}</style>
             <MDEditor
               value={systemPrompt}

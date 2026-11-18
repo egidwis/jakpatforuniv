@@ -45,6 +45,15 @@
         "value": "inter",
         "createdAt": "2026-11-03T05:13:02.051Z",
         "reason": "Project design system: Inter is the chosen face for all JFU surfaces (design-system-adoption-plan memory; dashboard and homepage already use Inter)"
+      },
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "src/components/boot/SurveyListSkeleton.tsx"
+        ],
+        "createdAt": "2026-11-18T21:50:56.522Z",
+        "reason": "Claude: skeleton must mirror the live card at SurveyPage.tsx:1047 (border-t-4 border-t-blue-500 sm:rounded-xl) so the loading-to-page swap has no visual jump; the design itself is pre-existing"
       }
     ]
   }

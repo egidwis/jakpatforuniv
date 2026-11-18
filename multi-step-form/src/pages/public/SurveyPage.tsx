@@ -13,7 +13,10 @@ import { Loader2, CheckCircle, AlertCircle, ArrowRight, ArrowLeft, Check, Smartp
 import { toast } from 'sonner';
 import imageCompression from 'browser-image-compression';
 
-import heic2any from 'heic2any';
+// heic2any (±1,3 MB) dimuat HANYA saat responden mengunggah HEIC — lihat isHeicFile.
+// Impor statis dulu menjadikannya bagian bundel utama semua halaman. Dijaga src/appCodeSplit.spec.ts.
+import { useLanguage } from '@/i18n/LanguageContext';
+import { SurveyDetailCardSkeleton } from '@/components/boot/SurveyListSkeleton';
 
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 const MAX_RAW_FILE_SIZE = 10 * 1024 * 1024; // 10MB max raw input
@@ -100,6 +103,7 @@ function pickDisplayBatch(batches: BatchReward[]): BatchReward | null {
 
 export function SurveyPage() {
     const { slug } = useParams();
+    const { language } = useLanguage();
     const [loading, setLoading] = useState(true);
     const [pageData, setPageData] = useState<any>(null);
     const [submitting, setSubmitting] = useState(false);
@@ -358,6 +362,7 @@ export function SurveyPage() {
             // Step 1: HEIC/HEIF auto-conversion
             if (isHeicFile(file)) {
                 try {
+                    const { default: heic2any } = await import('heic2any');
                     const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.8 });
                     imageFile = new File(
                         [Array.isArray(blob) ? blob[0] : blob],
@@ -956,11 +961,9 @@ export function SurveyPage() {
     };
 
     if (loading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-            </div>
-        );
+        // Skeleton berbentuk kartu survei (bukan spinner polos) — responden dari app
+        // Jakpat langsung tahu ia di halaman survei. Sama dengan skeleton boot F1/F2.
+        return <SurveyDetailCardSkeleton lang={language} />;
     }
 
     if (!pageData) {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Navigate } from 'react-router-dom';
 import { FileText, CreditCard, LogOut, Menu, X, MessageSquare, Globe, HardDrive, BarChart2, Users, CalendarDays, Bot, PanelLeftClose, PanelLeftOpen, Target, Presentation } from 'lucide-react';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
@@ -235,8 +236,8 @@ export function InternalDashboardWithLayout() {
   // Admin-only guard: redirect non-admin users to /dashboard
   const ADMIN_EMAIL = 'product@jakpat.net';
   if (user.email !== ADMIN_EMAIL) {
-    window.location.href = '/dashboard';
-    return null;
+    // Dulu `window.location.href` + `return null`: layar kosong sampai SPA dimuat ulang penuh.
+    return <Navigate to="/dashboard" replace />;
   }
 
   const menuGroups = [

@@ -86,7 +86,16 @@ export const FormResponsesPage: React.FC = () => {
     );
   }
 
-  if (!form) return null;
+  // Dulu `return null`: id salah / form terhapus = area konten kosong tanpa penjelasan.
+  if (!form) {
+    return (
+      <div role="alert" className="flex flex-col items-center justify-center min-h-[60vh] gap-3 px-4 text-center">
+        <p className="text-base font-semibold text-gray-900">Form tidak ditemukan</p>
+        <p className="text-sm text-gray-500 max-w-sm">Form ini mungkin sudah dihapus atau tautannya salah.</p>
+        <Button variant="outline" onClick={() => navigate('/dashboard/forms')}>Kembali ke daftar form</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">

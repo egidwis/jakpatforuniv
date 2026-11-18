@@ -17,6 +17,8 @@ import { compareDisplayOrder, type OrderablePage } from '@/utils/adOrdering';
 import { publicPagePath } from '@/utils/page-url';
 import { hiddenFromFeed, isKilatPage } from '@/components/publish-pages/types';
 import { useLanguage } from '@/i18n/LanguageContext';
+import { BOOT_COPY } from '@/components/boot/bootRoute';
+import { SurveyListCardsSkeleton } from '@/components/boot/SurveyListSkeleton';
 import logoMark from '@/assets/Jakpat Navbar Logo.webp';
 
 /**
@@ -142,6 +144,12 @@ function formatCriteriaPreview(raw: string | null | undefined): string | null {
     return cleaned.length > 0 ? cleaned : null;
 }
 
+/** Batas bawah publish_end_date untuk pra-filter kueri (lihat loadPages). */
+export const LISTING_END_GRACE_MS = 2 * 24 * 60 * 60 * 1000;
+export function listingEndCutoffIso(now: Date): string {
+    return new Date(now.getTime() - LISTING_END_GRACE_MS).toISOString();
+}
+
 const FOCUS_RING =
     'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1976D2]';
 
@@ -159,8 +167,9 @@ const COPY = {
         navServices: 'Layanan',
         navSurveys: 'Daftar Survei',
         navAdvertise: 'Iklankan Survei',
-        heading: 'Daftar Survei Terbaru',
-        subtitle: 'Bantu riset mahasiswa dan menangkan undian saldo e-wallet resmi Jakpat.',
+        // Sumber tunggal: BOOT_COPY (skeleton boot & index.html memakai teks yang sama).
+        heading: BOOT_COPY.id.heading,
+        subtitle: BOOT_COPY.id.subtitle,
         announcementPrefix: 'Pengumuman:',
         announcementAction: 'Lihat daftar',
         filterGroupLabel: 'Filter kategori halaman',
@@ -186,7 +195,7 @@ const COPY = {
         ctaJoin: 'Ikuti',
         ctaOpen: 'Buka',
         opensNewTab: '(membuka tab baru)',
-        loadingLabel: 'Memuat daftar survei terbaru',
+        loadingLabel: BOOT_COPY.id.loadingList,
         emptyAllTitle: 'Belum Ada Survei Aktif',
         emptyAllDesc: 'Kami sedang menyiapkan survei riset berikutnya. Cek lagi nanti ya!',
         emptyFilterTitle: 'Belum Ada Halaman di Kategori Ini',
@@ -217,8 +226,8 @@ const COPY = {
         navServices: 'Services',
         navSurveys: 'Survey List',
         navAdvertise: 'Advertise Survey',
-        heading: 'Latest Surveys',
-        subtitle: 'Support university research and win official Jakpat e-wallet lucky draws.',
+        heading: BOOT_COPY.en.heading,
+        subtitle: BOOT_COPY.en.subtitle,
         announcementPrefix: 'Announcement:',
         announcementAction: 'View list',
         filterGroupLabel: 'Filter page category',
@@ -244,7 +253,7 @@ const COPY = {
         ctaJoin: 'Join',
         ctaOpen: 'Open',
         opensNewTab: '(opens in a new tab)',
-        loadingLabel: 'Loading latest surveys',
+        loadingLabel: BOOT_COPY.en.loadingList,
         emptyAllTitle: 'No Active Surveys Right Now',
         emptyAllDesc: 'We are preparing the next batch of student research surveys. Please check back soon!',
         emptyFilterTitle: 'No Pages in This Category',
@@ -300,6 +309,7 @@ export function SurveyListingPage() {
         setLoadError(false);
 
         try {
+            const now = new Date();
             const { data, error } = await supabase
                 .from('survey_pages')
                 // `distribution_type` ikut ditarik SEMATA untuk menyaring Kilat di
@@ -310,13 +320,20 @@ export function SurveyListingPage() {
                     'id, slug, title, banner_url, redirect_url, submission_id, is_published, is_extra_ad, display_order, publish_start_date, publish_end_date, created_at, views_count, form_submissions!submission_id(prize_per_winner, winner_count, distribution_type, criteria_responden)'
                 )
                 .eq('is_published', true)
+                // Pra-filter: jangan unduh halaman yang sudah lama berakhir. Sampai
+                // Nov 2026 kueri ini menarik SEMUA halaman terbit (579 baris, 414 KB;
+                // 94% sudah berakhir) hanya untuk dibuang di bawah — di ponsel itu
+                // bagian besar dari "blank lama". Cutoff = jam yang SAMA dengan filter
+                // di bawah dikurangi 2 hari, jadi hasilnya selalu SUPERSET dari yang
+                // lolos filter browser (yang tetap otoritatif) meski jam perangkat salah.
+                // ⚠️ KEMBAR: functions/api/surveys.js memakai pra-filter yang sama.
+                .or(`publish_end_date.is.null,publish_end_date.gte.${listingEndCutoffIso(now)}`)
                 // Base order; final ordering applied in JS via compareDisplayOrder.
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
 
             // Client-side filtering for schedule
-            const now = new Date();
             const activePages = ((data || []) as ListingPageRow[]).filter((page) => {
                 // ── Kilat tidak pernah tampil di sini (Phase 5, sql/95) ───────
                 // Kilat punya halaman, tapi halamannya adalah tujuan pendaratan
@@ -626,14 +643,14 @@ export function SurveyListingPage() {
                     }}
                 />
 
-                {/* Floating Glass Pill Navbar (consistent with /homepage/ & enhanced glassmorphism) */}
+                {/* Floating Glass Pill Navbar (selaras dengan landing page `/` & enhanced glassmorphism) */}
                 <div className="relative z-30 pt-4 px-3 sm:px-6 lg:px-10">
                     <nav
                         aria-label={copy.primaryNavLabel}
                         className="max-w-[1280px] mx-auto bg-white/70 backdrop-blur-2xl backdrop-saturate-150 rounded-[20px] px-4 sm:px-6 py-3 border border-white/85 shadow-[0_10px_35px_rgba(25,118,210,0.09),0_2px_6px_rgba(15,23,42,0.03),inset_0_1px_1px_rgba(255,255,255,0.95)] flex items-center justify-between gap-3"
                     >
                         <a
-                            href="/homepage/"
+                            href="/"
                             className={`flex items-center gap-2.5 shrink-0 rounded-xl group ${FOCUS_RING}`}
                         >
                             <img
@@ -652,7 +669,7 @@ export function SurveyListingPage() {
                         <ul className="hidden md:flex items-center gap-1 list-none m-0 p-0">
                             <li>
                                 <a
-                                    href="/homepage/"
+                                    href="/"
                                     className={`px-3.5 py-2 rounded-full text-sm font-medium text-[#555555] hover:text-[#1976D2] hover:bg-[#1976D2]/[0.08] transition-colors motion-reduce:transition-none ${FOCUS_RING}`}
                                 >
                                     {copy.navHome}
@@ -660,7 +677,7 @@ export function SurveyListingPage() {
                             </li>
                             <li>
                                 <a
-                                    href="/homepage/#layanan"
+                                    href="/#layanan"
                                     className={`px-3.5 py-2 rounded-full text-sm font-medium text-[#555555] hover:text-[#1976D2] hover:bg-[#1976D2]/[0.08] transition-colors motion-reduce:transition-none ${FOCUS_RING}`}
                                 >
                                     {copy.navServices}
@@ -748,7 +765,7 @@ export function SurveyListingPage() {
                             <ul className="space-y-1 list-none m-0 p-0">
                                 <li>
                                     <a
-                                        href="/homepage/"
+                                        href="/"
                                         onClick={() => setMobileMenuOpen(false)}
                                         className={`block px-3.5 py-2.5 rounded-xl text-sm font-medium text-[#555555] hover:text-[#1976D2] hover:bg-[#1976D2]/[0.08] ${FOCUS_RING}`}
                                     >
@@ -757,7 +774,7 @@ export function SurveyListingPage() {
                                 </li>
                                 <li>
                                     <a
-                                        href="/homepage/#layanan"
+                                        href="/#layanan"
                                         onClick={() => setMobileMenuOpen(false)}
                                         className={`block px-3.5 py-2.5 rounded-xl text-sm font-medium text-[#555555] hover:text-[#1976D2] hover:bg-[#1976D2]/[0.08] ${FOCUS_RING}`}
                                     >
@@ -842,34 +859,8 @@ export function SurveyListingPage() {
             {/* Main Directory Content */}
             <main className="flex-1 w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-10 pb-14">
                 {loading ? (
-                    /* Skeleton Loading View */
-                    <div role="progressbar" aria-label={copy.loadingLabel} aria-busy="true">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
-                            {Array.from({ length: 6 }).map((_, idx) => (
-                                <div
-                                    key={idx}
-                                    className="rounded-[20px] bg-white/60 backdrop-blur-xl backdrop-saturate-150 border border-white/80 shadow-[0_8px_30px_rgba(25,118,210,0.08),inset_0_1px_1px_rgba(255,255,255,0.95)] overflow-hidden animate-pulse motion-reduce:animate-none"
-                                >
-                                    <div className="aspect-[2.5/1] bg-slate-200/80" />
-                                    <div className="p-5 space-y-3">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div className="h-3.5 w-24 bg-slate-200 rounded-full" />
-                                            <div className="h-3.5 w-20 bg-slate-100 rounded-full" />
-                                        </div>
-                                        <div className="h-5 w-11/12 bg-slate-200 rounded-lg" />
-                                        <div className="h-4 w-4/5 bg-slate-100 rounded-lg" />
-                                        <div className="pt-3.5 border-t border-slate-900/[0.06] flex justify-between items-center">
-                                            <div className="space-y-1.5">
-                                                <div className="h-5 w-28 bg-slate-200 rounded-md" />
-                                                <div className="h-3 w-20 bg-slate-100 rounded-md" />
-                                            </div>
-                                            <div className="h-8 w-20 bg-slate-200 rounded-full" />
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+                    /* Skeleton Loading View — bentuk sama dengan skeleton boot (F1/F2) */
+                    <SurveyListCardsSkeleton label={copy.loadingLabel} />
                 ) : loadError ? (
                     /* Dedicated Error + Retry State */
                     <div
@@ -1277,7 +1268,7 @@ export function SurveyListingPage() {
                 </div>
             </main>
 
-            {/* Full-Bleed Gradient Footer (consistent with /homepage/) */}
+            {/* Full-Bleed Gradient Footer (selaras dengan landing page `/`) */}
             <footer className="bg-gradient-to-br from-[#1976D2] to-[#42A5F5] text-white py-8 px-4 sm:px-8">
                 <div className="max-w-[1280px] mx-auto text-center space-y-3">
                     <nav
@@ -1285,7 +1276,7 @@ export function SurveyListingPage() {
                         className="flex flex-wrap items-center justify-center gap-6 text-sm font-medium"
                     >
                         <a
-                            href="/homepage/"
+                            href="/"
                             className="text-white/90 hover:text-white hover:underline underline-offset-4 rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                         >
                             {copy.navHome}
@@ -1298,13 +1289,13 @@ export function SurveyListingPage() {
                             {copy.navSurveys}
                         </Link>
                         <a
-                            href="/homepage/privacy-policy.html"
+                            href="/privacy-policy"
                             className="text-white/90 hover:text-white hover:underline underline-offset-4 rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                         >
                             {copy.footerPrivacy}
                         </a>
                         <a
-                            href="/homepage/terms-conditions.html"
+                            href="/terms-conditions"
                             className="text-white/90 hover:text-white hover:underline underline-offset-4 rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                         >
                             {copy.footerTerms}
