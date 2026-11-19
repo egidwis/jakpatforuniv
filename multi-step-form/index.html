@@ -47,6 +47,52 @@
       })();
     </script>
     <!--
+      Watchdog boot. Layar putih tanpa jejak (Safari iPhone, 19 Nov 2026): kalau
+      React belum ter-mount 12 s sejak HTML diurai, laporkan ke /api/client-log
+      (protokol HTTP, aset yang sudah/belum selesai) dan tampilkan "Muat ulang".
+      Dihitung sejak sini, BUKAN DOMContentLoaded (yang ikut menunggu JS utama).
+      Dokumen yang dipulihkan dari bfcache sebelum React jalan → muat ulang.
+      React menandai window.__jfuBoot.mounted (src/bootSignals.ts, App.tsx).
+      Dijaga src/bootSkeletonContract.spec.ts.
+    -->
+    <script id="jfu-boot-watchdog">
+      (function () {
+        var boot = window.__jfuBoot = { mounted: false };
+        function report(kind, persisted) {
+          try {
+            var nav = performance.getEntriesByType('navigation')[0] || {};
+            var done = performance.getEntriesByType('resource').filter(function (e) {
+              return e.name.indexOf('/assets/') !== -1;
+            }).map(function (e) { return e.name.split('/').pop(); });
+            var pending = [].slice.call(document.querySelectorAll('script[src],link[rel="stylesheet"],link[rel="modulepreload"]')).map(function (el) {
+              return String(el.src || el.href || '').split('/').pop();
+            }).filter(function (n) { return n && done.indexOf(n) === -1; });
+            var conn = navigator.connection || {};
+            var body = JSON.stringify({
+              kind: kind, path: location.pathname, ua: navigator.userAgent, stage: document.readyState,
+              sinceNavMs: Math.round(performance.now()), proto: nav.nextHopProtocol || '', net: conn.effectiveType || '',
+              persisted: !!persisted, detail: 'pending=' + pending.join(',') + ' done=' + done.slice(-15).join(',')
+            });
+            if (!(navigator.sendBeacon && navigator.sendBeacon('/api/client-log', new Blob([body], { type: 'text/plain' })))) {
+              fetch('/api/client-log', { method: 'POST', body: body, keepalive: true }).catch(function () {});
+            }
+          } catch (e) {}
+        }
+        setTimeout(function () {
+          if (boot.mounted) return;
+          report('boot-watchdog');
+          var el = document.getElementById('jfu-boot-stuck');
+          if (el) el.style.display = 'flex';
+        }, 12000);
+        window.addEventListener('pageshow', function (e) {
+          if (e.persisted && !boot.mounted) {
+            report('bfcache-unmounted', true);
+            location.reload();
+          }
+        });
+      })();
+    </script>
+    <!--
       CSS loader & skeleton boot. HARUS di <head>: React mengganti seluruh isi #root
       saat render pertama, dan BootLoader (src/components/BootLoader.tsx) memakai
       kelas .jfu-* yang sama selama sesi dibaca — kalau CSS ini ada di dalam #root,
@@ -189,6 +235,12 @@
   <body>
     <div id="root">
       <!-- Seluruh isi #root diganti React saat render pertama. -->
+
+      <!-- Ditampilkan watchdog (skrip jfu-boot-watchdog di <head>) bila React belum jalan 12 s. Gaya inline: CSS utama bisa jadi yang macet. -->
+      <div id="jfu-boot-stuck" style="display:none;position:fixed;left:16px;right:16px;bottom:24px;z-index:100000;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-radius:16px;background:#0f172a;color:#fff;font:500 14px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 10px 30px rgba(15,23,42,.25)">
+        <span>Halaman lambat dimuat.</span>
+        <button type="button" onclick="location.reload()" style="border:0;border-radius:9999px;background:#1976D2;color:#fff;padding:8px 16px;font:600 14px system-ui,-apple-system,sans-serif">Muat ulang</button>
+      </div>
 
       <!-- Loader bermerek (rute selain halaman responden). Markup = BootLoader.tsx. -->
       <div class="jfu-boot-generic">

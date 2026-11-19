@@ -22,6 +22,13 @@ interface ReloadDeps {
     now: () => number;
 }
 
+/**
+ * Batas tunggu sesudah reload(). Normalnya halaman ter-unload jauh sebelum
+ * ini dan timer ikut mati. Kalau tidak (reload diabaikan/diblokir browser),
+ * jangan biarkan Suspense di fallback selamanya — lempar ke boundary.
+ */
+export const RELOAD_STUCK_MS = 4_000;
+
 function defaultDeps(): ReloadDeps {
     return {
         storage: window.sessionStorage,
@@ -46,8 +53,11 @@ export async function importWithReload<M>(loader: () => Promise<M>, deps?: Reloa
             throw err;
         }
         d.reload();
-        // Halaman sedang dimuat ulang; jangan biarkan Suspense keluar dari fallback.
-        return new Promise<M>(() => {});
+        // Halaman sedang dimuat ulang; Suspense tetap di fallback. Kalau ternyata
+        // tidak ter-unload dalam RELOAD_STUCK_MS, galat asli dilempar ke boundary.
+        return new Promise<M>((_, reject) => {
+            setTimeout(() => reject(err), RELOAD_STUCK_MS);
+        });
     }
 }
 

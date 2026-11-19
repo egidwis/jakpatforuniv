@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { reportClientEvent } from '../utils/clientLog';
 
 /**
  * Jaring terakhir untuk rute lazy yang tetap gagal dimuat setelah satu kali
@@ -14,6 +15,7 @@ export class RouteErrorBoundary extends Component<{ children: ReactNode }, { fai
 
     componentDidCatch(error: unknown, info: ErrorInfo) {
         console.error('[RouteErrorBoundary]', error, info.componentStack);
+        reportClientEvent({ kind: 'react-boundary', error, detail: info.componentStack ?? undefined });
     }
 
     render() {

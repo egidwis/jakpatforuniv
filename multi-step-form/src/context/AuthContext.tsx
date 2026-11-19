@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabase';
 import { BootLoader } from '../components/BootLoader';
+import { reportClientEvent } from '../utils/clientLog';
+import { bootSession } from './authBoot';
 
 interface AuthContextType {
     user: User | null;
@@ -18,12 +20,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Check active sessions and sets the user
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
-            setUser(session?.user ?? null);
-            setLoading(false);
-        });
+        // Sesi awal. ⚠️ Dulu `getSession().then(...)` tanpa catch/batas waktu:
+        // kunci navigator.locks yang dipegang dokumen beku membuatnya menggantung
+        // selamanya (loader abadi). bootSession menjamin lanjut ≤ 8 s.
+        const cancelBoot = bootSession(
+            () => supabase.auth.getSession().then(({ data }) => data.session),
+            (session) => {
+                setSession(session);
+                setUser(session?.user ?? null);
+                setLoading(false);
+            },
+            (outcome, error) => reportClientEvent({ kind: `auth-boot-${outcome}`, error, stage: 'auth' }),
+        );
 
         // Listen for changes on auth state (sign in, sign out, etc.)
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -32,7 +40,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setLoading(false);
         });
 
-        return () => subscription.unsubscribe();
+        return () => {
+            cancelBoot();
+            subscription.unsubscribe();
+        };
     }, []);
 
     const signOut = async () => {

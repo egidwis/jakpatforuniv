@@ -17,6 +17,8 @@ import { BootLoader } from './components/BootLoader';
 import { RouteErrorBoundary } from './components/RouteErrorBoundary';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { lazyNamed } from './utils/lazyRoute';
+import { authStorageKeyFor, dashboardPreloadsFor, hasStoredSession } from './utils/storedSession';
+import { markBootMounted } from './bootSignals';
 // ⚠️ Satu-satunya pemuat @tailwind base/components/utilities. Dulu ikut eager
 // lewat InternalDashboardWithLayout; kini dashboard admin lazy, jadi diimpor di
 // sini — tanpa ini seluruh halaman publik tampil tanpa Tailwind. Wajib SEBELUM
@@ -32,6 +34,8 @@ import './styles.css';
  */
 const loadDashboardLayout = () => import('./components/DashboardLayout');
 const loadStatusPage = () => import('./pages/dashboard/StatusPage');
+const loadWebinarGate = () => import('./components/webinar/WebinarGate');
+const loadWebinarCheckout = () => import('./pages/dashboard/webinar/WebinarCheckoutPage');
 const DashboardLayout = lazyNamed(loadDashboardLayout, 'DashboardLayout');
 const StatusPage = lazyNamed(loadStatusPage, 'StatusPage');
 const MultiStepForm = lazyNamed(() => import('./components/MultiStepForm'), 'MultiStepForm');
@@ -41,9 +45,9 @@ const PaymentFailedPage = lazyNamed(() => import('./pages/PaymentFailedPage'), '
 const InvoicePage = lazyNamed(() => import('./pages/InvoicePage'), 'InvoicePage');
 const WebinarHubPage = lazyNamed(() => import('./pages/dashboard/webinar/WebinarHubPage'), 'WebinarHubPage');
 const WebinarTicketRedirect = lazyNamed(() => import('./pages/dashboard/webinar/WebinarHubPage'), 'WebinarTicketRedirect');
-const WebinarCheckoutPage = lazyNamed(() => import('./pages/dashboard/webinar/WebinarCheckoutPage'), 'WebinarCheckoutPage');
+const WebinarCheckoutPage = lazyNamed(loadWebinarCheckout, 'WebinarCheckoutPage');
 const WebinarWatchPage = lazyNamed(() => import('./pages/dashboard/webinar/WebinarWatchPage'), 'WebinarWatchPage');
-const WebinarGate = lazyNamed(() => import('./components/webinar/WebinarGate'), 'WebinarGate');
+const WebinarGate = lazyNamed(loadWebinarGate, 'WebinarGate');
 const ChatPage = lazyNamed(() => import('./pages/dashboard/ChatPage'), 'ChatPage');
 const ProfilePage = lazyNamed(() => import('./pages/dashboard/ProfilePage'), 'ProfilePage');
 const FormListPage = lazyNamed(() => import('./pages/dashboard/FormListPage'), 'FormListPage');
@@ -55,12 +59,21 @@ const PaymentCheckoutPage = lazyNamed(() => import('./pages/PaymentCheckoutPage'
 const JadwalDanBayarPage = lazyNamed(() => import('./pages/dashboard/JadwalDanBayarPage'), 'JadwalDanBayarPage');
 const JadwalBaruPage = lazyNamed(() => import('./pages/dashboard/JadwalBaruPage'), 'JadwalBaruPage');
 
-// Peneliti yang membuka /dashboard langsung: unduh chunk layout (+ Status bila
-// di index) SEJAJAR dengan pembacaan sesi, bukan sesudahnya. Galat diabaikan di
-// sini — lazyNamed akan mencoba lagi dan menangani kegagalan.
-if (typeof window !== 'undefined' && /^\/dashboard(\/|$)/.test(window.location.pathname)) {
-  loadDashboardLayout().catch(() => {});
-  if (/^\/dashboard\/?$/.test(window.location.pathname)) loadStatusPage().catch(() => {});
+// Peneliti yang membuka /dashboard langsung: unduh chunk rute itu SEJAJAR
+// dengan pembacaan sesi, bukan berantai sesudahnya. HANYA bila ada sesi
+// tersimpan (atau baru kembali dari Google) — pengunjung "Beli tiket" yang
+// belum login akan dialihkan ke /login, jadi unduhan itu sia-sia (+0,6 s di 4G
+// lambat) dan dibatalkan saat ia menekan Back. Galat diabaikan di sini —
+// lazyNamed akan mencoba lagi dan menangani kegagalan.
+if (typeof window !== 'undefined') {
+  const loc = window.location;
+  let storage: Storage | null = null;
+  try { storage = window.localStorage; } catch { /* mode privat ketat */ }
+  const signedIn = hasStoredSession(storage, authStorageKeyFor(import.meta.env.VITE_SUPABASE_URL || ''));
+  const loaders = { layout: loadDashboardLayout, status: loadStatusPage, webinarGate: loadWebinarGate, webinarCheckout: loadWebinarCheckout };
+  for (const part of dashboardPreloadsFor(loc.pathname, loc.search, loc.hash, signedIn)) {
+    loaders[part]().catch(() => {});
+  }
 }
 
 function ExternalRedirect({ to }: { to: string }) {
@@ -255,6 +268,8 @@ function AppContent() {
 function App() {
   // Effect to apply theme when app loads
   useEffect(() => {
+    // Watchdog boot di index.html: JS utama sudah jalan & React sudah commit.
+    markBootMounted();
     // Force light theme
     document.documentElement.setAttribute('data-theme', 'light');
     document.documentElement.classList.remove('dark');

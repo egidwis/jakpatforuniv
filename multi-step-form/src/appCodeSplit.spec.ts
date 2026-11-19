@@ -36,6 +36,8 @@ const EAGER_ALLOWED = new Set([
     './components/RouteErrorBoundary',
     './pages/NotFoundPage',
     './utils/lazyRoute',
+    './utils/storedSession',
+    './bootSignals',
     './components/InternalDashboard.css',
     './styles.css',
 ]);

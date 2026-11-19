@@ -47,9 +47,28 @@ describe('importWithReload', () => {
     it('penanda lama (> 10 s): boleh reload lagi', async () => {
         const storage = memoryStorage({ [RELOAD_MARKER_KEY]: '1000' });
         const reload = vi.fn();
-        importWithReload(() => Promise.reject(new Error('chunk')), { storage, reload, now: () => 60_000 });
+        importWithReload(() => Promise.reject(new Error('chunk')), { storage, reload, now: () => 60_000 }).catch(() => {});
         await new Promise((r) => setTimeout(r, 0));
         expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('reload tidak terjadi (halaman tak ter-unload) → setelah 4 s lempar galat aslinya ke boundary', async () => {
+        vi.useFakeTimers();
+        try {
+            const reload = vi.fn();
+            const p = importWithReload(() => Promise.reject(new Error('chunk')), { storage: memoryStorage(), reload, now: () => 50_000 });
+            const outcome = p.then(() => 'ok', (e: Error) => e.message);
+            await vi.advanceTimersByTimeAsync(3_999);
+            expect(reload).toHaveBeenCalledTimes(1);
+            let done = false;
+            outcome.then(() => { done = true; });
+            await vi.advanceTimersByTimeAsync(0);
+            expect(done).toBe(false);
+            await vi.advanceTimersByTimeAsync(1);
+            await expect(outcome).resolves.toBe('chunk');
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('storage melempar (mode privat): lempar galat aslinya, jangan reload membabi buta', async () => {
