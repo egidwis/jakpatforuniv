@@ -1,0 +1,4 @@
+# Keluaran Vite ber-hash: nama berubah setiap isinya berubah → cache selamanya.
+# Dijaga src/staticHeaders.spec.ts (public/assets tak boleh ada).
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
