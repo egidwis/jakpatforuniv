@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { getOwnProfile, isProfileComplete, type ResearcherProfile } from '@/utils/supabase';
 import { createInFlightGate } from '@/utils/inFlightGate';
 import {
-    checkoutErrorText, fetchMyWebinarOrders, fetchWebinarEvent, ownedFor, previewWebinarVoucher, startWebinarCheckout, webinarContactError,
+    checkoutErrorText, fetchMyWebinarOrders, fetchWebinarEvent, ownedFor, payInSameTabNow, previewWebinarVoucher, startWebinarCheckout, webinarContactError,
     WebinarApiError, webinarTicketHref, type WebinarCheckoutResult, type WebinarContact, type WebinarEventView, type WebinarVoucherPreview,
 } from '@/utils/webinarApi';
 import { FieldRow, SectionLabel } from '@/components/SurveyFieldRow';
@@ -120,8 +120,11 @@ export function WebinarCheckoutPage() {
             toast.error(voucherChecking ? 'Voucher sedang dicek. Tunggu sebentar.' : (voucher?.message ?? 'Kode voucher belum berlaku.'));
             return;
         }
-        // Tab dibuka sebelum await supaya tidak kena pemblokir popup.
-        const tab = window.open('about:blank', '_blank');
+        // Desktop: tab dibuka sebelum await supaya tidak kena pemblokir popup.
+        // Ponsel/tablet: TANPA tab baru — tab about:blank langsung aktif dan, bila
+        // apa pun tertunda, pembeli hanya melihat putih (iPhone, Nov 2026). Cabang
+        // `else` di bawah lalu membawa ke DOKU di tab ini; DOKU kembali ke tiket.
+        const tab = payInSameTabNow() ? null : window.open('about:blank', '_blank');
         setPaying(true);
         try {
             const result = await gate.run(() => startWebinarCheckout(slug, consent, useAccountData ? null : {
