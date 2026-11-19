@@ -17,6 +17,7 @@ import {
   buildEventView, buildListing, joinWindow,
 } from '../api/webinar/_view.js';
 import { escapeHtml, renderBlocks } from './_render-blocks.js';
+import { withSpaPrefetch } from './_spa-assets.js';
 
 const CANONICAL_ORIGIN = SITE_URL;
 const HOME_URL = 'https://jakpatforuniv.com/';
@@ -286,7 +287,17 @@ async function handleJoin(sb, token, now = Date.now()) {
   return ticketPage();
 }
 
-export async function onRequest({ request, env, params }) {
+// Halaman bertombol beli diberi prefetch JS/CSS SPA — lihat _spa-assets.js.
+export async function onRequest(context) {
+  const response = await handleWebinar(context);
+  try {
+    return await withSpaPrefetch(response, context.env, context.request);
+  } catch {
+    return response;
+  }
+}
+
+async function handleWebinar({ request, env, params }) {
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     return new Response('Method Not Allowed', { status: 405, headers: { Allow: 'GET, HEAD' } });
   }
