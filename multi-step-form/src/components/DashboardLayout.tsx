@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useState } from 'react';
+import { AmbientBackdrop } from './AmbientBackdrop';
 import { useLocation, Outlet } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { AppNav } from './AppNav';
@@ -27,53 +28,8 @@ export function DashboardLayout() {
 
   return (
     <div className="min-h-screen bg-[#f8fafc] font-jakarta dark:bg-gray-900 relative">
-      {/* Modern Mesh Aurora Glow (Konsep 1: Biru Jakpat + Sky Cyan + Warm Rose Pink — Terdistribusi di bawah Navbar/Banner) */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 select-none" aria-hidden="true">
-        {/* Titik 1: Mid-Right — Pendaran Biru Jakpat Cerah & Sky Blue (Di bawah Navbar) */}
-        <div
-          className="absolute top-[22%] -right-[6%] md:right-[2%] w-[600px] md:w-[850px] h-[600px] md:h-[850px] rounded-full pointer-events-none transform-gpu"
-          style={{
-            background: 'radial-gradient(circle at center, rgba(24, 124, 255, 0.22) 0%, rgba(56, 189, 248, 0.14) 45%, transparent 75%)',
-            filter: 'blur(90px)',
-          }}
-        />
-
-        {/* Titik 2: Mid-Left — Pendaran Lembut Selaras Biru Jakpat & Sky Cyan */}
-        <div
-          className="absolute top-[28%] -left-[8%] md:-left-[4%] w-[550px] md:w-[800px] h-[550px] md:h-[800px] rounded-full pointer-events-none transform-gpu"
-          style={{
-            background: 'radial-gradient(circle at center, rgba(56, 189, 248, 0.14) 0%, rgba(24, 124, 255, 0.08) 45%, transparent 75%)',
-            filter: 'blur(95px)',
-          }}
-        />
-
-        {/* Titik 3: Lower-Right — Aksen Biru-Ungu Halus Penyeimbang */}
-        <div
-          className="absolute top-[60%] -right-[5%] md:right-[4%] w-[550px] md:w-[750px] h-[550px] md:h-[750px] rounded-full pointer-events-none transform-gpu"
-          style={{
-            background: 'radial-gradient(circle at center, rgba(99, 102, 241, 0.10) 0%, rgba(56, 189, 248, 0.08) 50%, transparent 75%)',
-            filter: 'blur(95px)',
-          }}
-        />
-
-        {/* Titik 4: Lower-Left — Pendaran Sky Cyan & Biru Jakpat Segar */}
-        <div
-          className="absolute top-[65%] -left-[6%] md:left-[0%] w-[600px] md:w-[850px] h-[600px] md:h-[850px] rounded-full pointer-events-none transform-gpu"
-          style={{
-            background: 'radial-gradient(circle at center, rgba(14, 165, 233, 0.20) 0%, rgba(24, 124, 255, 0.12) 45%, transparent 75%)',
-            filter: 'blur(95px)',
-          }}
-        />
-
-        {/* Titik 5: Bottom-Center — Pendaran Lembut Penyeimbang di Bagian Bawah */}
-        <div
-          className="absolute -bottom-[5%] left-[25%] md:left-[35%] w-[500px] md:w-[700px] h-[500px] md:h-[700px] rounded-full pointer-events-none transform-gpu"
-          style={{
-            background: 'radial-gradient(circle at center, rgba(56, 189, 248, 0.18) 0%, rgba(24, 124, 255, 0.10) 50%, transparent 75%)',
-            filter: 'blur(100px)',
-          }}
-        />
-      </div>
+      {/* Pendaran latar: satu lapisan radial-gradient, tanpa filter blur (Safari iPhone putih polos, 20 Nov 2026) — lihat AmbientBackdrop.css. */}
+      <AmbientBackdrop variant="dashboard" />
 
       <div className="relative z-10 flex flex-col min-h-screen">
         <AppNav />

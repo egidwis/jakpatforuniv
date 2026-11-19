@@ -4,6 +4,7 @@ import { signInWithGoogle, signInWithPassword, signUp } from '../utils/supabase'
 import { Navigate, useLocation, Link } from 'react-router-dom';
 // Teks yang sama dipakai skeleton login (index.html + LoginSkeleton).
 import { BOOT_LOGIN_WEBINAR_SUBTITLE } from '../components/boot/bootRoute';
+import { AmbientBackdrop } from '../components/AmbientBackdrop';
 import { Button } from '@/components/ui/button';
 import { Loader2, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
@@ -123,38 +124,11 @@ export default function LoginPage({ initialMode }: { initialMode?: 'login' | 'si
 
     return (
         <div className="relative min-h-screen w-full flex flex-col justify-between bg-[#f8fafc] dark:bg-gray-900 px-4 py-8 overflow-hidden selection:bg-blue-100 selection:text-jfu-primary">
-            {/* Centered Ambient Aura Glow (Pusat pendaran dari tengah di balik kartu login) */}
-            <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 select-none flex items-center justify-center">
-                {/* 1. Main Central Radial Glow (Pusat Biru Jakpat & Sky Blue) */}
-                <div
-                    className="absolute w-[700px] h-[700px] sm:w-[950px] sm:h-[950px] rounded-full transform-gpu"
-                    style={{
-                        background: 'radial-gradient(circle at center, rgba(24, 124, 255, 0.32) 0%, rgba(56, 189, 248, 0.22) 42%, rgba(244, 114, 182, 0.16) 65%, transparent 80%)',
-                        filter: 'blur(95px)',
-                    }}
-                />
-
-                {/* 2. Soft Pink/Rose Accent Ambient (Sedikit di kiri-atas tengah) */}
-                <div
-                    className="absolute -top-[12%] left-1/2 -translate-x-[65%] w-[550px] h-[550px] rounded-full transform-gpu"
-                    style={{
-                        background: 'radial-gradient(circle, rgba(251, 113, 133, 0.22) 0%, transparent 70%)',
-                        filter: 'blur(100px)',
-                    }}
-                />
-
-                {/* 3. Soft Sky Blue Ambient (Sedikit di kanan-bawah tengah) */}
-                <div
-                    className="absolute -bottom-[12%] left-1/2 translate-x-[15%] w-[600px] h-[600px] rounded-full transform-gpu"
-                    style={{
-                        background: 'radial-gradient(circle, rgba(24, 124, 255, 0.25) 0%, transparent 70%)',
-                        filter: 'blur(100px)',
-                    }}
-                />
-            </div>
+            {/* Pendaran latar: satu lapisan radial-gradient, tanpa filter blur (Safari iPhone putih polos, 20 Nov 2026) — lihat AmbientBackdrop.css. */}
+            <AmbientBackdrop variant="login" />
 
             <div className="relative z-10 flex-1 flex items-center justify-center py-4">
-                <div className="w-full max-w-md bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-slate-200/90 dark:border-gray-700 shadow-[0_4px_20px_-2px_rgba(24,124,255,0.06),0_12px_32px_-4px_rgba(0,0,0,0.04)] rounded-2xl overflow-hidden p-6 sm:p-8">
+                <div className="w-full max-w-md bg-white/95 dark:bg-gray-800/95 border border-slate-200/90 dark:border-gray-700 shadow-[0_4px_20px_-2px_rgba(24,124,255,0.06),0_12px_32px_-4px_rgba(0,0,0,0.04)] rounded-2xl overflow-hidden p-6 sm:p-8">
                     {/* Brand Header */}
                     <div className="flex flex-col items-center text-center mb-6">
                     <Link to="/dashboard" className="inline-block mb-3 hover:opacity-90 transition-opacity">

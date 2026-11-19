@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { initialListingFilter, type CategoryFilter } from './listingFilter';
 import { NearViewportImg } from '../../components/NearViewportImg';
+import { AmbientBackdrop } from '../../components/AmbientBackdrop';
 import { Link } from 'react-router-dom';
 import {
     AlertCircle,
@@ -585,58 +586,8 @@ export function SurveyListingPage() {
 
     return (
         <div className="min-h-screen flex flex-col bg-[#f8fafc] text-[#0f172a] font-jakarta antialiased [color-scheme:light] selection:bg-[#1976D2]/15 selection:text-[#1976D2] relative overflow-x-hidden">
-            {/* Centered Ambient Aura Glow (Pusat pendaran lembut selaras dengan halaman Login Peneliti) */}
-            <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 select-none" aria-hidden="true">
-                {/* Titik 1: Top Header — Pendaran Biru Jakpat, Sky Blue & Warm Rose Lembut */}
-                <div
-                    className="absolute -top-[12%] left-1/2 -translate-x-[45%] w-[750px] md:w-[1100px] h-[650px] md:h-[900px] rounded-full pointer-events-none transform-gpu"
-                    style={{
-                        background:
-                            'radial-gradient(circle at center, rgba(24, 124, 255, 0.18) 0%, rgba(56, 189, 248, 0.13) 40%, rgba(244, 114, 182, 0.10) 65%, transparent 80%)',
-                        filter: 'blur(100px)',
-                    }}
-                />
-
-                {/* Titik 2: Soft Pink/Rose Accent (Kiri Atas — persis seperti Titik 2 di LoginPage) */}
-                <div
-                    className="absolute top-[4%] -left-[10%] md:-left-[2%] w-[550px] md:w-[750px] h-[550px] md:h-[750px] rounded-full pointer-events-none transform-gpu"
-                    style={{
-                        background:
-                            'radial-gradient(circle, rgba(251, 113, 133, 0.16) 0%, rgba(244, 114, 182, 0.08) 50%, transparent 75%)',
-                        filter: 'blur(105px)',
-                    }}
-                />
-
-                {/* Titik 3: Mid-Right — Soft Sky Blue & Rose Accent di Balik Kartu Survei */}
-                <div
-                    className="absolute top-[28%] -right-[6%] md:right-[2%] w-[600px] md:w-[850px] h-[600px] md:h-[850px] rounded-full pointer-events-none transform-gpu"
-                    style={{
-                        background:
-                            'radial-gradient(circle at center, rgba(56, 189, 248, 0.15) 0%, rgba(24, 124, 255, 0.10) 45%, transparent 75%)',
-                        filter: 'blur(105px)',
-                    }}
-                />
-
-                {/* Titik 4: Mid-Left — Soft Rose/Pink Penyeimbang di Balik Kartu Baris Tengah */}
-                <div
-                    className="absolute top-[46%] -left-[6%] md:left-[0%] w-[550px] md:w-[800px] h-[550px] md:h-[800px] rounded-full pointer-events-none transform-gpu"
-                    style={{
-                        background:
-                            'radial-gradient(circle, rgba(251, 113, 133, 0.13) 0%, rgba(129, 140, 248, 0.08) 45%, transparent 75%)',
-                        filter: 'blur(105px)',
-                    }}
-                />
-
-                {/* Titik 5: Bottom-Center — Pendaran Lembut di Balik Kartu Bawah & Strip Peneliti */}
-                <div
-                    className="absolute bottom-[2%] left-[15%] md:left-[28%] w-[650px] md:w-[900px] h-[600px] md:h-[850px] rounded-full pointer-events-none transform-gpu"
-                    style={{
-                        background:
-                            'radial-gradient(circle at center, rgba(56, 189, 248, 0.14) 0%, rgba(244, 114, 182, 0.09) 45%, transparent 75%)',
-                        filter: 'blur(110px)',
-                    }}
-                />
-            </div>
+            {/* Pendaran latar: satu lapisan radial-gradient, tanpa filter blur (Safari iPhone putih polos, 20 Nov 2026) — lihat AmbientBackdrop.css. */}
+            <AmbientBackdrop variant="pages" />
 
             {/* Skip Link */}
             <a
