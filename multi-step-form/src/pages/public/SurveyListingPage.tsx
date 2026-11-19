@@ -1,4 +1,6 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { initialListingFilter, type CategoryFilter } from './listingFilter';
+import { NearViewportImg } from '../../components/NearViewportImg';
 import { Link } from 'react-router-dom';
 import {
     AlertCircle,
@@ -94,7 +96,6 @@ interface BatchRewardRow {
     end_date: string | null;
 }
 
-type CategoryFilter = 'all' | 'survey' | 'announcement';
 type SortOption = 'curated' | 'reward' | 'ending';
 
 /**
@@ -201,6 +202,7 @@ const COPY = {
         emptyFilterTitle: 'Belum Ada Halaman di Kategori Ini',
         emptyFilterDesc: 'Coba tampilkan semua kategori untuk melihat halaman lain yang sedang aktif.',
         showAllCategories: 'Tampilkan Semua',
+        noActiveSurveys: 'Belum ada survei aktif saat ini. Berikut pengumuman terbaru.',
         reloadButton: 'Muat Ulang',
         errorTitle: 'Gagal Memuat Daftar Survei',
         errorDesc: 'Koneksi sedang tidak stabil. Silakan coba muat ulang halaman ini.',
@@ -259,6 +261,7 @@ const COPY = {
         emptyFilterTitle: 'No Pages in This Category',
         emptyFilterDesc: 'Switch back to all categories to view other currently active pages.',
         showAllCategories: 'Show All',
+        noActiveSurveys: 'No active surveys right now. Here are the latest announcements.',
         reloadButton: 'Reload',
         errorTitle: 'Unable to Load Surveys',
         errorDesc: 'Your connection appears unstable. Please try loading the list again.',
@@ -283,7 +286,11 @@ export function SurveyListingPage() {
     >({});
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState(false);
-    const [filter, setFilter] = useState<CategoryFilter>('all');
+    // Bawaan "Survei Aktif"; tab akhir ditetapkan SEKALI setelah data pertama
+    // tiba (initialListingFilter: ?tab=, dan pindah ke Pengumuman bila nol survei).
+    const [filter, setFilter] = useState<CategoryFilter>('survey');
+    const [noSurveyNotice, setNoSurveyNotice] = useState(false);
+    const initialFilterApplied = useRef(false);
     const [sortBy, setSortBy] = useState<SortOption>('curated');
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [failedBanners, setFailedBanners] = useState<Record<string, true>>({});
@@ -524,6 +531,14 @@ export function SurveyListingPage() {
             announcement,
         };
     }, [pages]);
+
+    useEffect(() => {
+        if (loading || loadError || initialFilterApplied.current) return;
+        initialFilterApplied.current = true;
+        const initial = initialListingFilter(counts, window.location.search);
+        setFilter(initial.filter);
+        setNoSurveyNotice(initial.noSurveyNotice);
+    }, [loading, loadError, counts]);
 
     const latestAnnouncement = useMemo(() => {
         const announcements = pages.filter((p) => !p.submission_id);
@@ -1024,6 +1039,12 @@ export function SurveyListingPage() {
                             </div>
                         </search>
 
+                        {noSurveyNotice && filter === 'announcement' && (
+                            <p role="status" className="mb-4 text-sm text-slate-600">
+                                {copy.noActiveSurveys}
+                            </p>
+                        )}
+
                         {/* Filtered Empty State vs Clean Survey Card Grid */}
                         {visiblePages.length === 0 ? (
                             <div className="py-14 px-6 text-center bg-white/70 backdrop-blur-2xl backdrop-saturate-150 rounded-[20px] border border-white/85 shadow-[0_10px_35px_rgba(25,118,210,0.08),inset_0_1px_1px_rgba(255,255,255,0.95)]">
@@ -1061,7 +1082,6 @@ export function SurveyListingPage() {
                                     const hasBanner =
                                         Boolean(page.banner_url) && !failedBanners[page.id];
                                     const isLcpCandidate = index === 0;
-                                    const shouldLazyLoad = index >= 3;
 
                                     const cardClassName = `group flex-1 flex flex-col rounded-[20px] bg-white/65 hover:bg-white/80 backdrop-blur-xl backdrop-saturate-150 border border-white/80 hover:border-white shadow-[0_8px_32px_rgba(25,118,210,0.08),0_2px_8px_rgba(15,23,42,0.04),inset_0_1px_1px_rgba(255,255,255,0.95),inset_0_-1px_1px_rgba(255,255,255,0.3)] hover:shadow-[0_20px_40px_rgba(25,118,210,0.16),0_4px_12px_rgba(15,23,42,0.06),inset_0_1px_2px_rgba(255,255,255,1)] hover:-translate-y-1 transition-all duration-300 motion-reduce:transition-none motion-reduce:transform-none overflow-hidden ${FOCUS_RING}`;
 
@@ -1070,16 +1090,16 @@ export function SurveyListingPage() {
                                             {/* Crisp 2.5:1 Poster (no dark muddy scrim) */}
                                             <div className="relative aspect-[2.5/1] w-full overflow-hidden bg-slate-100 ring-1 ring-inset ring-black/5">
                                                 {hasBanner ? (
-                                                    <img
+                                                    // Kartu pertama eager (LCP); sisanya baru diunduh saat
+                                                    // ±300 px dari layar — lihat hooks/nearViewport.ts.
+                                                    <NearViewportImg
+                                                        eager={isLcpCandidate}
                                                         src={getCdnUrl(page.banner_url!)}
                                                         alt=""
                                                         width={1000}
                                                         height={400}
                                                         {...(isLcpCandidate
                                                             ? { fetchPriority: 'high' as const }
-                                                            : {})}
-                                                        {...(shouldLazyLoad
-                                                            ? { loading: 'lazy' as const }
                                                             : {})}
                                                         decoding="async"
                                                         onError={() => markBannerFailed(page.id)}

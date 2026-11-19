@@ -29,6 +29,7 @@ describe('AuthProvider saat sesi dibaca (dulu: layar putih)', () => {
     afterEach(() => { delete (globalThis as any).window; });
 
     it('menampilkan loader, bukan kosong, dan belum merender anak', () => {
+        setLocation('/f/abc');
         const html = render();
         expect(html).toContain('jfu-initial-loader');
         expect(html).not.toContain('ANAK');
@@ -40,6 +41,13 @@ describe('AuthProvider saat sesi dibaca (dulu: layar putih)', () => {
         expect(html).toContain('data-boot-skeleton="pages"');
         expect(html).toContain('Daftar Survei Terbaru');
         expect(html).not.toContain('jfu-initial-loader');
+    });
+
+    it('/login tanpa sesi → skeleton login (jalur Beli tiket), bukan loader "workspace"', () => {
+        const html = render();
+        expect(html).toContain('data-boot-skeleton="login"');
+        expect(html).toContain('Selamat Datang Kembali');
+        expect(html).not.toContain('ANAK');
     });
 
     it('/pages/:slug → skeleton survei', () => {
