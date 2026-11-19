@@ -11,7 +11,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Loader2, CheckCircle, AlertCircle, ArrowRight, ArrowLeft, Check, Smartphone, HelpCircle, ExternalLink, RefreshCw, ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import imageCompression from 'browser-image-compression';
 
 // heic2any (±1,3 MB) dimuat HANYA saat responden mengunggah HEIC — lihat isHeicFile.
 // Impor statis dulu menjadikannya bagian bundel utama semua halaman. Dijaga src/appCodeSplit.spec.ts.
@@ -381,6 +380,8 @@ export function SurveyPage() {
             for (const strategy of COMPRESSION_STRATEGIES) {
                 try {
                     console.log(`[Proof] Trying compression: ${strategy.maxSizeMB}MB, ${strategy.maxWidthOrHeight}px`);
+                    // Dimuat saat dibutuhkan (52 KB) — dijaga src/appCodeSplit.spec.ts.
+                    const { default: imageCompression } = await import('browser-image-compression');
                     compressedFile = await imageCompression(imageFile, {
                         ...strategy,
                         useWebWorker: false,

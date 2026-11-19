@@ -97,3 +97,15 @@ describe('heic2any', () => {
         expect(offenders).toEqual([]);
     });
 });
+
+/*
+ * browser-image-compression (52 KB minified) hanya dipakai saat unggah gambar,
+ * tapi dulu diimpor statis oleh SurveyPage & customForms → ikut di bundel
+ * utama SETIAP rute (/login, /pages). Sama seperti heic2any: hanya import().
+ */
+describe('browser-image-compression', () => {
+    it('tidak pernah diimpor statis di src/', () => {
+        const offenders = walk(src).filter((f) => /^\s*import\s+[^;(]*['"]browser-image-compression['"]/m.test(readFileSync(f, 'utf8')));
+        expect(offenders.map((f) => path.relative(src, f))).toEqual([]);
+    });
+});

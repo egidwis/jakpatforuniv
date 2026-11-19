@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import imageCompression from 'browser-image-compression';
 import { Check, Loader2, Trash2, Upload } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/utils/supabase';
@@ -38,6 +37,8 @@ export async function uploadPickedImage(
         resolveUrl,
     }: { bucket?: string; pathPrefix?: string; resolveUrl?: (path: string) => string } = {},
 ): Promise<string> {
+    // Dimuat saat dibutuhkan (52 KB) — dijaga src/appCodeSplit.spec.ts.
+    const { default: imageCompression } = await import('browser-image-compression');
     const compressedFile = await imageCompression(file, COMPRESSION_OPTIONS);
     const fileName = `${pathPrefix}${Date.now()}-${file.name.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9.-]/g, '')}`;
 

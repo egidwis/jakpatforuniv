@@ -1,5 +1,4 @@
 import { supabase } from './supabase';
-import imageCompression from 'browser-image-compression';
 
 export type QuestionType =
   | 'short_text'
@@ -221,6 +220,8 @@ export async function saveCustomForm(
  * to the shared `page-uploads` Supabase Storage bucket, returning its public URL.
  */
 export async function uploadFormImage(file: File, folder: 'header' | 'block'): Promise<string> {
+  // Dimuat saat dibutuhkan (52 KB) — dijaga src/appCodeSplit.spec.ts.
+  const { default: imageCompression } = await import('browser-image-compression');
   const compressed = await imageCompression(file, {
     maxSizeMB: 0.5,
     maxWidthOrHeight: 1280,

@@ -7,7 +7,6 @@ import Link from '@tiptap/extension-link';
 import { Button } from '@/components/ui/button';
 import { Bold, Italic, List, ListOrdered, Image as ImageIcon, Heading1, Heading2, Link as LinkIcon } from 'lucide-react';
 import { supabase } from '@/utils/supabase';
-import imageCompression from 'browser-image-compression';
 import { toast } from 'sonner';
 
 interface BlockEditorProps {
@@ -106,6 +105,8 @@ export function BlockEditor({
                         maxWidthOrHeight: 1024,
                         useWebWorker: true,
                     };
+                    // Dimuat saat dibutuhkan (52 KB) — dijaga src/appCodeSplit.spec.ts.
+                    const { default: imageCompression } = await import('browser-image-compression');
                     const compressedFile = await imageCompression(file, options);
 
                     // Upload to Supabase
