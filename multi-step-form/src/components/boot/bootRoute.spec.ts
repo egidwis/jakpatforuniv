@@ -7,8 +7,8 @@ import { bootKindFor, bootLoaderSubtitle, BOOT_KIND_CASES } from './bootRoute';
  * skrip inline di index.html — supaya dua penentu kembar itu tidak bisa berbeda.
  */
 describe('bootKindFor', () => {
-    it.each(BOOT_KIND_CASES)('$host $path $search → $kind', ({ path, host, search, kind }) => {
-        expect(bootKindFor(path, host, search)).toBe(kind);
+    it.each(BOOT_KIND_CASES)('$host $path $search $hash sesi=$signedIn → $kind', ({ path, host, search, hash, signedIn, kind }) => {
+        expect(bootKindFor(path, host, search, hash ?? '', signedIn ?? false)).toBe(kind);
     });
 });
 

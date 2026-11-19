@@ -1,6 +1,16 @@
 import { useLanguage } from '@/i18n/LanguageContext';
 import { bootKindFor, bootLoaderSubtitle } from './boot/bootRoute';
 import { SurveyDetailSkeleton, SurveyListPageSkeleton } from './boot/SurveyListSkeleton';
+import { LoginSkeleton } from './boot/LoginSkeleton';
+import { authStorageKeyFor, hasStoredSession } from '@/utils/storedSession';
+
+function signedInNow(): boolean {
+    try {
+        return hasStoredSession(window.localStorage, authStorageKeyFor(import.meta.env.VITE_SUPABASE_URL || ''));
+    } catch {
+        return false;
+    }
+}
 
 /**
  * Pengganti layar kosong selama aplikasi belum siap (sesi dibaca di AuthProvider,
@@ -11,11 +21,12 @@ import { SurveyDetailSkeleton, SurveyListPageSkeleton } from './boot/SurveyListS
  */
 export function BootLoader() {
     const { language } = useLanguage();
-    const loc = typeof window !== 'undefined' ? window.location : { pathname: '/', hostname: '', search: '' };
-    const kind = bootKindFor(loc.pathname, loc.hostname, loc.search);
+    const loc = typeof window !== 'undefined' ? window.location : { pathname: '/', hostname: '', search: '', hash: '' };
+    const kind = bootKindFor(loc.pathname, loc.hostname, loc.search, loc.hash, typeof window !== 'undefined' && signedInNow());
 
     if (kind === 'pages') return <SurveyListPageSkeleton lang={language} />;
     if (kind === 'survey') return <SurveyDetailSkeleton lang={language} />;
+    if (kind === 'login') return <LoginSkeleton lang={language} />;
 
     return (
         <div className="jfu-initial-loader" role="status" aria-label="Memuat Jakpat for Universities">

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { BOOT_COPY, BOOT_KIND_CASES } from './components/boot/bootRoute';
+import { BOOT_COPY, BOOT_KIND_CASES, BOOT_LOGIN_COPY } from './components/boot/bootRoute';
+import { translations } from './i18n/translations';
 
 /**
  * index.html menampilkan skeleton SEBELUM JS selesai diunduh — tahap terlama di
@@ -13,17 +14,26 @@ import { BOOT_COPY, BOOT_KIND_CASES } from './components/boot/bootRoute';
 const html = readFileSync(path.resolve(__dirname, '../index.html'), 'utf8');
 const head = html.slice(0, html.indexOf('</head>'));
 
+// Vite mengganti %VITE_SUPABASE_URL% saat build; di tes diisi URL tiruan.
+const TEST_SUPABASE_URL = 'https://abcd1234.supabase.co';
+const TEST_AUTH_KEY = 'sb-abcd1234-auth-token';
 const bootScript = (() => {
     const m = head.match(/<script>\s*([\s\S]*?data-boot[\s\S]*?)<\/script>/);
     if (!m) throw new Error('skrip penentu rute tidak ada di <head>');
-    return m[1];
+    return m[1].split('%VITE_SUPABASE_URL%').join(TEST_SUPABASE_URL);
 })();
 
-function runBootScript(pathname: string, hostname: string, search: string, saved: string | null) {
+function runBootScript(pathname: string, hostname: string, search: string, saved: string | null, opts: { hash?: string; signedIn?: boolean } = {}) {
     const attrs: Record<string, string> = {};
     const document = { documentElement: { setAttribute: (k: string, v: string) => { attrs[k] = v; } } };
-    const location = { pathname, hostname, search };
-    const localStorage = { getItem: () => saved };
+    const location = { pathname, hostname, search, hash: opts.hash ?? '' };
+    const localStorage = {
+        getItem: (k: string) => {
+            if (k === 'jakpat-language') return saved;
+            if (k === TEST_AUTH_KEY && opts.signedIn) return JSON.stringify({ access_token: 'a', refresh_token: 'r' });
+            return null;
+        },
+    };
     new Function('document', 'location', 'localStorage', 'URLSearchParams', bootScript)(
         document, location, localStorage, URLSearchParams,
     );
@@ -44,8 +54,40 @@ describe('index.html — skeleton boot', () => {
         expect(root).not.toContain('<style');
     });
 
-    it.each(BOOT_KIND_CASES)('penentu inline sama dengan React: $host $path $search → $kind', ({ path: p, host, search, kind }) => {
-        expect(runBootScript(p, host, search, null)['data-boot']).toBe(kind);
+    it.each(BOOT_KIND_CASES)('penentu inline sama dengan React: $host $path $search $hash sesi=$signedIn → $kind', ({ path: p, host, search, hash, signedIn, kind }) => {
+        expect(runBootScript(p, host, search, null, { hash, signedIn })['data-boot']).toBe(kind);
+    });
+
+    it('kunci sesi di skrip inline = bawaan supabase-js (dibentuk dari %VITE_SUPABASE_URL%)', () => {
+        expect(head).toContain("'%VITE_SUPABASE_URL%'");
+        // Sesi rusak (tanpa refresh_token) = belum login.
+        const attrs: Record<string, string> = {};
+        new Function('document', 'location', 'localStorage', 'URLSearchParams', bootScript)(
+            { documentElement: { setAttribute: (k: string, v: string) => { attrs[k] = v; } } },
+            { pathname: '/dashboard', hostname: 'jakpatforuniv.com', search: '', hash: '' },
+            { getItem: (k: string) => (k === TEST_AUTH_KEY ? '{"access_token":"a"}' : null) },
+            URLSearchParams,
+        );
+        expect(attrs['data-boot']).toBe('login');
+    });
+
+    it.each(['id', 'en'] as const)('teks skeleton login = translations.ts (%s) dan ada di index.html', (lang) => {
+        const c = BOOT_LOGIN_COPY[lang];
+        const t = translations[lang];
+        expect(c).toEqual({
+            heading: t.authWelcomeBack, subtitle: t.authLoginSubtitle, tabLogin: t.authTabLogin, tabSignup: t.authTabSignup,
+            google: t.authLoginWithGoogle, orEmail: t.authOrWithEmail, email: t.authEmail, password: t.authPassword, submit: t.authSubmitLogin,
+        });
+        const block = html.slice(html.indexOf('data-boot-skeleton="login"'));
+        for (const text of Object.values(c)) expect(block).toContain(`>${text}<`);
+    });
+
+    it('skeleton login tanpa elemen interaktif (bukan form palsu yang bisa diketik)', () => {
+        const start = html.indexOf('data-boot-skeleton="login"');
+        const end = html.indexOf('jfu-boot-pages', start);
+        const block = html.slice(start, end);
+        expect(block.length).toBeGreaterThan(200);
+        expect(block).not.toMatch(/<(button|input|a|form)\b/);
     });
 
     it('bahasa dibaca dari localStorage jakpat-language, bawaan id', () => {
@@ -78,6 +120,7 @@ describe('index.html — skeleton boot', () => {
         expect(root).toContain('jfu-boot-generic');
         expect(root).toContain('data-boot-skeleton="pages"');
         expect(root).toContain('data-boot-skeleton="survey"');
+        expect(root).toContain('data-boot-skeleton="login"');
     });
 
     it('subjudul loader generik: "workspace" hanya untuk area peneliti', () => {

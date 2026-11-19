@@ -36,6 +36,19 @@
             if (/^\/pages\/?$/.test(p)) kind = 'pages';
             else if (/^\/pages\/[^/]+\/?$/.test(p)) kind = 'survey';
           }
+          // Belum login di /login atau /dashboard/* → skeleton login (jalur "Beli tiket").
+          // ⚠️ KEMBAR: bootKindFor + hasStoredSession/isOAuthReturn (src/utils/storedSession.ts).
+          if (/^\/(login|dashboard)(\/|$)/.test(p)) {
+            var signedIn = false;
+            try {
+              var ref = new URL('%VITE_SUPABASE_URL%').hostname.split('.')[0];
+              var raw = localStorage.getItem('sb-' + ref + '-auth-token');
+              var sess = raw ? JSON.parse(raw) : null;
+              signedIn = !!(sess && typeof sess.refresh_token === 'string' && sess.refresh_token);
+            } catch (e) {}
+            var oauth = q.has('code') || /(^#|&)access_token=/.test(location.hash || '');
+            if (!signedIn && !oauth) kind = 'login';
+          }
         } catch (e) {}
         try {
           if (localStorage.getItem('jakpat-language') === 'en') lang = 'en';
@@ -211,9 +224,9 @@
 
       /* Hanya blok statis yang dipilih penentu di atas yang tampil.
          Pembungkus .jfu-boot-* sengaja tanpa kelas Tailwind (display-nya tak boleh bersaing). */
-      .jfu-boot-pages, .jfu-boot-survey, .jfu-l-en, .jfu-sub-page { display: none; }
-      [data-boot="pages"] .jfu-boot-pages, [data-boot="survey"] .jfu-boot-survey { display: block; }
-      [data-boot="pages"] .jfu-boot-generic, [data-boot="survey"] .jfu-boot-generic { display: none; }
+      .jfu-boot-pages, .jfu-boot-survey, .jfu-boot-login, .jfu-l-en, .jfu-sub-page { display: none; }
+      [data-boot="pages"] .jfu-boot-pages, [data-boot="survey"] .jfu-boot-survey, [data-boot="login"] .jfu-boot-login { display: block; }
+      [data-boot="pages"] .jfu-boot-generic, [data-boot="survey"] .jfu-boot-generic, [data-boot="login"] .jfu-boot-generic { display: none; }
       [data-boot-lang="en"] .jfu-l-en { display: inline; }
       [data-boot-lang="en"] .jfu-l-id { display: none; }
       [data-boot-generic="page"] .jfu-sub-page { display: inline; }
@@ -256,6 +269,41 @@
               <div class="jfu-progress-bar"></div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Skeleton login (belum login di /login & /dashboard/*). Markup = LoginSkeleton (src/components/boot/LoginSkeleton.tsx). -->
+      <div class="jfu-boot-login">
+        <div data-boot-skeleton="login" class="relative min-h-screen w-full flex flex-col justify-between bg-[#f8fafc] px-4 py-8 overflow-hidden">
+          <div class="relative z-10 flex-1 flex items-center justify-center py-4">
+            <div role="status" aria-busy="true" class="w-full max-w-md bg-white/95 border border-slate-200/90 shadow-[0_4px_20px_-2px_rgba(24,124,255,0.06),0_12px_32px_-4px_rgba(0,0,0,0.04)] rounded-2xl overflow-hidden p-6 sm:p-8">
+              <div class="flex flex-col items-center text-center mb-6">
+                <div class="mb-3 h-8 md:h-9 w-36 rounded-lg bg-slate-200/80 animate-pulse motion-reduce:animate-none"></div>
+                <h1 class="text-xl font-extrabold tracking-tight text-slate-900"><span class="jfu-l-id">Selamat Datang Kembali</span><span class="jfu-l-en">Welcome Back</span></h1>
+                <p class="text-xs text-slate-500 mt-1"><span class="jfu-l-id">Masuk ke dashboard Jakpat for Universities</span><span class="jfu-l-en">Log in to your Jakpat for Universities dashboard</span></p>
+              </div>
+              <div class="[display:grid] grid-cols-2 p-1 bg-slate-100/90 rounded-xl mb-6 border border-slate-200/60">
+                <div class="py-2 text-xs font-bold rounded-lg text-center bg-white text-slate-900 shadow-2xs"><span class="jfu-l-id">Masuk</span><span class="jfu-l-en">Log In</span></div>
+                <div class="py-2 text-xs font-bold rounded-lg text-center text-slate-500"><span class="jfu-l-id">Daftar Akun</span><span class="jfu-l-en">Sign Up</span></div>
+              </div>
+              <div class="space-y-4">
+                <div class="w-full h-11 border border-slate-200 bg-white text-slate-700 rounded-xl shadow-2xs flex items-center justify-center gap-2.5">
+                  <span class="w-4 h-4 rounded-full bg-slate-200"></span>
+                  <span class="text-xs font-bold"><span class="jfu-l-id">Masuk dengan Google</span><span class="jfu-l-en">Log in with Google</span></span>
+                </div>
+                <div class="relative my-2">
+                  <div class="absolute inset-0 flex items-center"><span class="w-full border-t border-slate-200"></span></div>
+                  <div class="relative flex justify-center text-[11px] uppercase tracking-wider"><span class="bg-white px-3 text-slate-400 font-semibold"><span class="jfu-l-id">atau dengan email</span><span class="jfu-l-en">or with email</span></span></div>
+                </div>
+                <div class="space-y-3.5">
+                  <div class="space-y-1"><div class="text-xs font-bold text-slate-700">Email</div><div class="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50"></div></div>
+                  <div class="space-y-1"><div class="text-xs font-bold text-slate-700">Password</div><div class="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50"></div></div>
+                  <div class="w-full h-11 bg-gradient-to-r from-jfu-primary to-jfu-light text-white font-bold rounded-xl shadow-xs text-sm flex items-center justify-center mt-2 opacity-70"><span class="jfu-l-id">Masuk ke Akun</span><span class="jfu-l-en">Log In to Account</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="relative z-10 w-full max-w-5xl mx-auto pt-6 pb-2 h-[42px] border-t border-slate-200/60"></div>
         </div>
       </div>
 
