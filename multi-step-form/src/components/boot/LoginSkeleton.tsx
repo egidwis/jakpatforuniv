@@ -1,4 +1,4 @@
-import { BOOT_LOGIN_COPY, type BootLang } from './bootRoute';
+import { BOOT_BRAND, BOOT_LOGIN_COPY, BOOT_LOGIN_WEBINAR_SUBTITLE, type BootLang } from './bootRoute';
 
 /**
  * Skeleton /login untuk pengunjung yang BELUM login — terutama jalur "Beli tiket"
@@ -13,7 +13,7 @@ import { BOOT_LOGIN_COPY, type BootLang } from './bootRoute';
  * dua kolom, tombol kirim). Ubah tata letak di sana → ubah di sini DAN di
  * index.html. Murni tampilan: tanpa tombol, tautan, atau input sungguhan.
  */
-export function LoginSkeleton({ lang }: { lang: BootLang }) {
+export function LoginSkeleton({ lang, webinar = false }: { lang: BootLang; webinar?: boolean }) {
     const c = BOOT_LOGIN_COPY[lang];
     return (
         <div data-boot-skeleton="login" className="relative min-h-screen w-full flex flex-col justify-between bg-[#f8fafc] px-4 py-8 overflow-hidden">
@@ -22,7 +22,7 @@ export function LoginSkeleton({ lang }: { lang: BootLang }) {
                     <div className="flex flex-col items-center text-center mb-6">
                         <div className="mb-3 h-8 md:h-9 w-36 rounded-lg bg-slate-200/80 animate-pulse motion-reduce:animate-none" />
                         <h1 className="text-xl font-extrabold tracking-tight text-slate-900">{c.heading}</h1>
-                        <p className="text-xs text-slate-500 mt-1">{c.subtitle}</p>
+                        <p className="text-xs text-slate-500 mt-1">{webinar ? BOOT_LOGIN_WEBINAR_SUBTITLE : c.subtitle}</p>
                     </div>
                     <div className="[display:grid] grid-cols-2 p-1 bg-slate-100/90 rounded-xl mb-6 border border-slate-200/60">
                         <div className="py-2 text-xs font-bold rounded-lg text-center bg-white text-slate-900 shadow-2xs">{c.tabLogin}</div>
@@ -55,7 +55,10 @@ export function LoginSkeleton({ lang }: { lang: BootLang }) {
                     </div>
                 </div>
             </div>
-            <div className="relative z-10 w-full max-w-5xl mx-auto pt-6 pb-2 h-[42px] border-t border-slate-200/60" />
+            <footer className="relative z-10 w-full max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 pb-2 text-xs text-slate-400 border-t border-slate-200/60">
+                <p>© {BOOT_BRAND}. All rights reserved.</p>
+                <span className="inline-block h-[30px] w-[118px] rounded-lg bg-gray-100 border border-gray-200/50" />
+            </footer>
         </div>
     );
 }

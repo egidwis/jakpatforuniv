@@ -60,6 +60,13 @@ export const BOOT_BRAND = 'Jakpat for Universities';
  * mengimpor translations.ts (140 KB), jadi disalin; bootSkeletonContract.spec.ts
  * memastikan ketiganya (translations, konstanta ini, index.html) sama.
  */
+/** Subjudul LoginPage saat asalnya tombol Beli tiket (hanya bahasa Indonesia, seperti aslinya). */
+export const BOOT_LOGIN_WEBINAR_SUBTITLE = 'Masuk atau daftar untuk melanjutkan pembelian tiket webinar';
+
+export function isWebinarPurchasePath(pathname: string): boolean {
+    return /^\/dashboard\/webinar\/beli\//.test(pathname.toLowerCase());
+}
+
 export const BOOT_LOGIN_COPY = {
     id: {
         heading: 'Selamat Datang Kembali',

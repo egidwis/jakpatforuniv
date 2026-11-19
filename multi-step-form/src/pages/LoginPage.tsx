@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { signInWithGoogle, signInWithPassword, signUp } from '../utils/supabase';
 import { Navigate, useLocation, Link } from 'react-router-dom';
+// Teks yang sama dipakai skeleton login (index.html + LoginSkeleton).
+import { BOOT_LOGIN_WEBINAR_SUBTITLE } from '../components/boot/bootRoute';
 import { Button } from '@/components/ui/button';
 import { Loader2, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
@@ -163,7 +165,7 @@ export default function LoginPage({ initialMode }: { initialMode?: 'login' | 'si
                     </h1>
                     <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">
                         {isWebinarPurchase
-                            ? 'Masuk atau daftar untuk melanjutkan pembelian tiket webinar'
+                            ? BOOT_LOGIN_WEBINAR_SUBTITLE
                             : mode === 'login' ? t('authLoginSubtitle') : t('authSignupSubtitle')}
                     </p>
                 </div>

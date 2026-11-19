@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { BOOT_COPY, BOOT_KIND_CASES, BOOT_LOGIN_COPY } from './components/boot/bootRoute';
+import { BOOT_COPY, BOOT_KIND_CASES, BOOT_LOGIN_COPY, BOOT_LOGIN_WEBINAR_SUBTITLE } from './components/boot/bootRoute';
 import { translations } from './i18n/translations';
 
 /**
@@ -80,6 +80,24 @@ describe('index.html — skeleton boot', () => {
         });
         const block = html.slice(html.indexOf('data-boot-skeleton="login"'));
         for (const text of Object.values(c)) expect(block).toContain(`>${text}<`);
+    });
+
+    it('jalur Beli tiket → subjudul webinar (sama dengan LoginPage), selain itu tidak', () => {
+        expect(runBootScript('/dashboard/webinar/beli/kelas-a', 'jakpatforuniv.com', '', null)['data-boot-login']).toBe('webinar');
+        expect(runBootScript('/login', 'jakpatforuniv.com', '', null)['data-boot-login']).toBe('default');
+        const block = html.slice(html.indexOf('data-boot-skeleton="login"'));
+        expect(block).toContain(`>${BOOT_LOGIN_WEBINAR_SUBTITLE}<`);
+        expect(head).toMatch(/\[data-boot-login="webinar"\] \.jfu-login-webinar/);
+        const loginPage = readFileSync(path.resolve(__dirname, 'pages/LoginPage.tsx'), 'utf8');
+        expect(loginPage).toContain('BOOT_LOGIN_WEBINAR_SUBTITLE');
+        expect(loginPage).not.toContain("'Masuk atau daftar untuk melanjutkan pembelian tiket webinar'");
+    });
+
+    it('footer skeleton login meniru footer LoginPage (tinggi sama → kartu tak melompat)', () => {
+        const start = html.indexOf('data-boot-skeleton="login"');
+        const block = html.slice(start, html.indexOf('jfu-boot-pages', start));
+        expect(block).toContain('<footer class="relative z-10 w-full max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 pb-2 text-xs text-slate-400 border-t border-slate-200/60">');
+        expect(block).toContain('All rights reserved.');
     });
 
     it('skeleton login tanpa elemen interaktif (bukan form palsu yang bisa diketik)', () => {

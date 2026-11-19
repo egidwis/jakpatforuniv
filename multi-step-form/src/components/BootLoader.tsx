@@ -1,5 +1,5 @@
 import { useLanguage } from '@/i18n/LanguageContext';
-import { bootKindFor, bootLoaderSubtitle } from './boot/bootRoute';
+import { bootKindFor, bootLoaderSubtitle, isWebinarPurchasePath } from './boot/bootRoute';
 import { SurveyDetailSkeleton, SurveyListPageSkeleton } from './boot/SurveyListSkeleton';
 import { LoginSkeleton } from './boot/LoginSkeleton';
 import { authStorageKeyFor, hasStoredSession } from '@/utils/storedSession';
@@ -26,7 +26,7 @@ export function BootLoader() {
 
     if (kind === 'pages') return <SurveyListPageSkeleton lang={language} />;
     if (kind === 'survey') return <SurveyDetailSkeleton lang={language} />;
-    if (kind === 'login') return <LoginSkeleton lang={language} />;
+    if (kind === 'login') return <LoginSkeleton lang={language} webinar={isWebinarPurchasePath(loc.pathname)} />;
 
     return (
         <div className="jfu-initial-loader" role="status" aria-label="Memuat Jakpat for Universities">
