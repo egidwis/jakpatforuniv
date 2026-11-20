@@ -62,14 +62,17 @@
     </script>
     <!--
       Prefetch data /pages (Fase 3, 20 Nov 2026). Di 4G lambat kueri survey_pages dulu
-      baru jalan ±2,5 s — setelah JS utama diunduh & dijalankan. Di sini ia mulai sejak
-      HTML, sejajar dengan unduhan JS. Hanya pengunjung TANPA sesi (anon); yang login
-      tetap lewat supabase-js ber-JWT supaya hasilnya sama persis dengan sebelumnya.
+      baru jalan ±2,5 s — setelah JS utama diunduh & dijalankan — lalu kartu masih
+      menunggu RPC hadiah. Di sini keduanya mulai sejak HTML, sejajar dengan unduhan JS:
+      baris dulu, lalu RPC get_batch_rewards_bulk untuk id submission UNIK di baris itu
+      (superset dari yang tampil; RPC murni per id). Hanya pengunjung TANPA sesi (anon);
+      yang login tetap lewat supabase-js ber-JWT supaya hasilnya sama persis.
       Dipakai SEKALI oleh SurveyListingPage (src/utils/listingPrefetch.ts, umur ≤ 30 s);
       gagal apa pun = diam, kueri biasa yang jalan. Filter browser tetap otoritatif.
-      ⚠️ KEMBAR: LISTING_SELECT + buildListingQuery + LISTING_END_GRACE_MS
-      (SurveyListingPage.tsx) dan kunci sesi (src/utils/storedSession.ts).
-      src/listingPrefetch.spec.ts menuntut URL skrip ini IDENTIK dengan buatan supabase-js.
+      ⚠️ KEMBAR: LISTING_SELECT + buildListingQuery + batchRewardsQuery +
+      LISTING_END_GRACE_MS (SurveyListingPage.tsx) dan kunci sesi
+      (src/utils/storedSession.ts). src/listingPrefetch.spec.ts menuntut kedua
+      permintaan skrip ini IDENTIK dengan buatan supabase-js.
     -->
     <script id="jfu-listing-prefetch">
       (function () {
@@ -88,12 +91,28 @@
           u.searchParams.append('is_published', 'eq.true');
           u.searchParams.append('or', '(publish_end_date.is.null,publish_end_date.gte.' + new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString() + ')');
           u.searchParams.append('order', 'created_at.desc');
-          var rows = fetch(u.toString(), { headers: { apikey: key, Authorization: 'Bearer ' + key } }).then(function (r) {
+          var json = function (r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.json();
+          };
+          var rows = fetch(u.toString(), { headers: { apikey: key, Authorization: 'Bearer ' + key } }).then(json);
+          var rewards = rows.then(function (list) {
+            var ids = [], seen = {};
+            for (var i = 0; list && i < list.length; i++) {
+              var sid = list[i] && list[i].submission_id;
+              if (sid && !seen[sid]) { seen[sid] = 1; ids.push(sid); }
+            }
+            // > 200 id: biarkan klien memecahnya per 200 (RPC_CHUNK).
+            if (!ids.length || ids.length > 200) return null;
+            return fetch(base + '/rest/v1/rpc/get_batch_rewards_bulk', {
+              method: 'POST',
+              headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ p_submission_ids: ids })
+            }).then(json);
           });
           rows['catch'](function () {});
-          window.__jfuListing = { at: Date.now(), rows: rows };
+          rewards['catch'](function () {});
+          window.__jfuListing = { at: Date.now(), rows: rows, rewards: rewards };
         } catch (e) {}
       })();
     </script>

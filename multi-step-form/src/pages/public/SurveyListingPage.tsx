@@ -186,6 +186,37 @@ export function buildListingQuery(client: SupabaseClient, now: Date) {
         .order('created_at', { ascending: false });
 }
 
+/**
+ * Hadiah per batch (multi-batch + hadiah perpanjangan). ⚠️ KEMBAR: skrip inline
+ * #jfu-listing-prefetch di index.html — dituntut IDENTIK oleh listingPrefetch.spec.
+ */
+export function batchRewardsQuery(client: SupabaseClient, submissionIds: string[]) {
+    return client.rpc('get_batch_rewards_bulk', { p_submission_ids: submissionIds });
+}
+
+type ListingReward = { prize_per_winner: number; winner_count: number };
+
+/** Kelompokkan baris RPC per submission → batch yang ditampilkan; hanya id di `wanted`. */
+export function rewardsFromBatchRows(
+    rows: BatchRewardRow[],
+    wanted: ReadonlySet<string>,
+): Record<string, ListingReward> {
+    const grouped: Record<string, BatchRewardRow[]> = {};
+    for (const row of rows) {
+        if (!row.submission_id || !wanted.has(row.submission_id)) continue;
+        if (!grouped[row.submission_id]) grouped[row.submission_id] = [];
+        grouped[row.submission_id].push(row);
+    }
+    const out: Record<string, ListingReward> = {};
+    for (const [sid, batches] of Object.entries(grouped)) {
+        const picked = pickDisplayBatch(batches);
+        if (picked) {
+            out[sid] = { prize_per_winner: picked.prize_per_winner || 0, winner_count: picked.winner_count || 0 };
+        }
+    }
+    return out;
+}
+
 const FOCUS_RING =
     'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1976D2]';
 
@@ -357,11 +388,15 @@ export function SurveyListingPage() {
             // (pengunjung tanpa sesi). Sekali pakai; gagal, kedaluwarsa, atau bukan
             // array → kueri biasa. Filter di bawah tetap otoritatif untuk keduanya.
             let rows: ListingPageRow[] | null = null;
+            let prefetchedRewards: Promise<unknown> | null = null;
             const prefetched = takeListingPrefetch();
             if (prefetched) {
                 try {
-                    const result = await prefetched;
-                    if (Array.isArray(result)) rows = result as ListingPageRow[];
+                    const result = await prefetched.rows;
+                    if (Array.isArray(result)) {
+                        rows = result as ListingPageRow[];
+                        prefetchedRewards = prefetched.rewards;
+                    }
                 } catch {
                     /* jatuh ke kueri biasa */
                 }
@@ -420,37 +455,39 @@ export function SurveyListingPage() {
             );
 
             if (submissionIds.length > 0) {
-                const nextRewards: Record<string, { prize_per_winner: number; winner_count: number }> = {};
-                const RPC_CHUNK = 200;
+                let nextRewards: Record<string, ListingReward> | null = null;
 
-                for (let i = 0; i < submissionIds.length; i += RPC_CHUNK) {
-                    const chunk = submissionIds.slice(i, i + RPC_CHUNK);
+                // Fase 3: hadiah yang sudah diminta skrip inline (id unik dari baris
+                // prefetch = superset dari yang tampil). Gagal / bukan array → RPC biasa.
+                if (prefetchedRewards) {
                     try {
-                        const { data: batchData, error: batchError } = await supabase.rpc(
-                            'get_batch_rewards_bulk',
-                            { p_submission_ids: chunk }
-                        );
-                        if (batchError) {
-                            console.error('get_batch_rewards_bulk RPC error:', batchError);
-                            continue;
+                        const result = await prefetchedRewards;
+                        if (Array.isArray(result)) {
+                            nextRewards = rewardsFromBatchRows(result as BatchRewardRow[], new Set(submissionIds));
                         }
-                        const grouped: Record<string, BatchRewardRow[]> = {};
-                        ((batchData || []) as BatchRewardRow[]).forEach((row) => {
-                            if (!row.submission_id) return;
-                            if (!grouped[row.submission_id]) grouped[row.submission_id] = [];
-                            grouped[row.submission_id].push(row);
-                        });
-                        Object.entries(grouped).forEach(([sid, batches]) => {
-                            const picked = pickDisplayBatch(batches);
-                            if (picked) {
-                                nextRewards[sid] = {
-                                    prize_per_winner: picked.prize_per_winner || 0,
-                                    winner_count: picked.winner_count || 0,
-                                };
+                    } catch {
+                        /* jatuh ke RPC biasa */
+                    }
+                }
+
+                if (!nextRewards) {
+                    nextRewards = {};
+                    const RPC_CHUNK = 200;
+                    for (let i = 0; i < submissionIds.length; i += RPC_CHUNK) {
+                        const chunk = submissionIds.slice(i, i + RPC_CHUNK);
+                        try {
+                            const { data: batchData, error: batchError } = await batchRewardsQuery(supabase, chunk);
+                            if (batchError) {
+                                console.error('get_batch_rewards_bulk RPC error:', batchError);
+                                continue;
                             }
-                        });
-                    } catch (rpcErr) {
-                        console.error('get_batch_rewards_bulk RPC error:', rpcErr);
+                            Object.assign(
+                                nextRewards,
+                                rewardsFromBatchRows((batchData || []) as BatchRewardRow[], new Set(chunk)),
+                            );
+                        } catch (rpcErr) {
+                            console.error('get_batch_rewards_bulk RPC error:', rpcErr);
+                        }
                     }
                 }
 

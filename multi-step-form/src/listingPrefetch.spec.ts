@@ -2,16 +2,22 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
-import { buildListingQuery, LISTING_END_GRACE_MS } from './pages/public/SurveyListingPage';
+import {
+    batchRewardsQuery,
+    buildListingQuery,
+    LISTING_END_GRACE_MS,
+    rewardsFromBatchRows,
+} from './pages/public/SurveyListingPage';
 import { takeListingPrefetch, LISTING_PREFETCH_MAX_AGE_MS } from './utils/listingPrefetch';
 
 /**
  * Fase 3 (20 Nov 2026): data /pages diminta SEJAK HTML. Di 4G lambat kueri
- * survey_pages baru jalan ±2,5 s — setelah JS utama diunduh & dijalankan.
- * Skrip inline #jfu-listing-prefetch tidak bisa mengimpor apa pun, jadi URL-nya
- * adalah salinan KEMBAR dari buildListingQuery (supabase-js). Tes ini menjalankan
- * keduanya pada jam yang sama dan menuntut URL yang IDENTIK: kolom yang beda
- * (mis. kolom tanpa hibah anon) atau filter yang beda tidak bisa lolos diam-diam.
+ * survey_pages baru jalan ±2,5 s — setelah JS utama diunduh & dijalankan — dan
+ * kartu menunggu RPC hadiah sesudahnya (loading baru false setelah RPC).
+ * Skrip inline #jfu-listing-prefetch tidak bisa mengimpor apa pun, jadi kedua
+ * permintaannya adalah salinan KEMBAR dari buildListingQuery & batchRewardsQuery
+ * (supabase-js). Tes ini menjalankan keduanya dan menuntut permintaan IDENTIK:
+ * kolom yang beda (mis. tanpa hibah anon) atau filter yang beda tak bisa lolos.
  */
 const html = readFileSync(path.resolve(__dirname, '../index.html'), 'utf8');
 const head = html.slice(0, html.indexOf('</head>'));
@@ -30,17 +36,32 @@ const rawScript = (() => {
 const fill = (script: string, url: string, key: string) =>
     script.split('%VITE_SUPABASE_URL%').join(url).split('%VITE_SUPABASE_ANON_KEY%').join(key);
 
-type Call = { url: string; headers: Headers };
-type Slot = { at: number; rows: Promise<unknown> };
+type Call = { url: string; method: string; body: string | null; headers: Headers };
+type Slot = { at: number; rows: Promise<unknown>; rewards: Promise<unknown> };
 
 const jsonResponse = (body: string, status = 200) =>
     new Response(body, { status, headers: { 'content-type': 'application/json' } });
+
+const record = (calls: Call[], input: RequestInfo | URL, init?: RequestInit) =>
+    calls.push({
+        url: input instanceof Request ? input.url : String(input),
+        method: init?.method ?? 'GET',
+        body: typeof init?.body === 'string' ? init.body : null,
+        headers: new Headers(init?.headers),
+    });
 
 class FixedDate extends Date {
     static now() {
         return NOW;
     }
 }
+
+const ROWS_WITH_SUBMISSIONS = JSON.stringify([
+    { id: 'p1', submission_id: 's1' },
+    { id: 'p2', submission_id: null },
+    { id: 'p3', submission_id: 's1' },
+    { id: 'p4', submission_id: 's2' },
+]);
 
 function runPrefetch(opts: {
     kind?: string;
@@ -49,6 +70,8 @@ function runPrefetch(opts: {
     key?: string;
     unfilled?: boolean;
     storageThrows?: boolean;
+    rowsBody?: string;
+    rowsStatus?: number;
     fetchImpl?: (input: string, init?: RequestInit) => Promise<Response>;
 } = {}) {
     const calls: Call[] = [];
@@ -61,8 +84,10 @@ function runPrefetch(opts: {
         },
     };
     const fetch = (input: string, init?: RequestInit) => {
-        calls.push({ url: String(input), headers: new Headers(init?.headers) });
-        return opts.fetchImpl ? opts.fetchImpl(input, init) : Promise.resolve(jsonResponse('[{"id":"p1"}]'));
+        record(calls, input, init);
+        if (opts.fetchImpl) return opts.fetchImpl(input, init);
+        if (input.includes('/rpc/')) return Promise.resolve(jsonResponse('[{"submission_id":"s1","prize_per_winner":5}]'));
+        return Promise.resolve(jsonResponse(opts.rowsBody ?? '[{"id":"p1"}]', opts.rowsStatus ?? 200));
     };
     const script = opts.unfilled ? rawScript : fill(rawScript, opts.url ?? TEST_URL, opts.key ?? TEST_KEY);
     new Function('document', 'localStorage', 'fetch', 'window', 'Date', 'URL', script)(
@@ -71,18 +96,23 @@ function runPrefetch(opts: {
     return { calls, win };
 }
 
-/** URL & header yang BENAR-BENAR dikirim supabase-js untuk kueri /pages. */
-async function supabaseJsRequest(url = TEST_URL): Promise<Call> {
+/** Klien supabase-js ASLI yang hanya merekam permintaannya. */
+function recordingClient(url = TEST_URL) {
     const calls: Call[] = [];
     const client = createClient(url, TEST_KEY, {
         auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
         global: {
             fetch: (input: RequestInfo | URL, init?: RequestInit) => {
-                calls.push({ url: input instanceof Request ? input.url : String(input), headers: new Headers(init?.headers) });
+                record(calls, input, init);
                 return Promise.resolve(jsonResponse('[]'));
             },
         },
     });
+    return { client, calls };
+}
+
+async function supabaseJsListing(url = TEST_URL): Promise<Call> {
+    const { client, calls } = recordingClient(url);
     await buildListingQuery(client, new Date(NOW));
     expect(calls).toHaveLength(1);
     return calls[0];
@@ -100,16 +130,17 @@ describe('index.html — prefetch data /pages sejak HTML', () => {
 
     it('pengunjung tanpa sesi di /pages: URL & header IDENTIK dengan supabase-js', async () => {
         const { calls } = runPrefetch();
-        const expected = await supabaseJsRequest();
+        const expected = await supabaseJsListing();
         expect(calls).toHaveLength(1);
         expect(calls[0].url).toBe(expected.url);
+        expect(calls[0].method).toBe(expected.method);
         expect(calls[0].headers.get('apikey')).toBe(expected.headers.get('apikey'));
         expect(calls[0].headers.get('authorization')).toBe(expected.headers.get('authorization'));
     });
 
     it('URL env bergaris miring akhir tetap identik', async () => {
         const { calls } = runPrefetch({ url: TEST_URL + '/' });
-        expect(calls[0].url).toBe((await supabaseJsRequest(TEST_URL + '/')).url);
+        expect(calls[0].url).toBe((await supabaseJsListing(TEST_URL + '/')).url);
     });
 
     it('cutoff = jam boot − LISTING_END_GRACE_MS (superset dari filter browser)', () => {
@@ -122,6 +153,36 @@ describe('index.html — prefetch data /pages sejak HTML', () => {
         const { win } = runPrefetch();
         expect(win.__jfuListing?.at).toBe(NOW);
         await expect(win.__jfuListing?.rows).resolves.toEqual([{ id: 'p1' }]);
+    });
+
+    it('hadiah: RPC berantai setelah baris, IDENTIK dengan batchRewardsQuery (id unik, urutan baris)', async () => {
+        const { calls, win } = runPrefetch({ rowsBody: ROWS_WITH_SUBMISSIONS });
+        await expect(win.__jfuListing?.rewards).resolves.toEqual([{ submission_id: 's1', prize_per_winner: 5 }]);
+        expect(calls).toHaveLength(2);
+
+        const { client, calls: sj } = recordingClient();
+        await batchRewardsQuery(client, ['s1', 's2']);
+        expect(sj).toHaveLength(1);
+        expect(calls[1].url).toBe(sj[0].url);
+        expect(calls[1].method).toBe('POST');
+        expect(calls[1].method).toBe(sj[0].method);
+        expect(JSON.parse(calls[1].body ?? 'null')).toEqual(JSON.parse(sj[0].body ?? 'null'));
+        for (const h of ['apikey', 'authorization', 'content-type']) {
+            expect(calls[1].headers.get(h), h).toBe(sj[0].headers.get(h));
+        }
+    });
+
+    it('tanpa submission_id → tanpa RPC, rewards = null', async () => {
+        const { calls, win } = runPrefetch({ rowsBody: '[{"id":"p1","submission_id":null},{"id":"p2"}]' });
+        await expect(win.__jfuListing?.rewards).resolves.toBeNull();
+        expect(calls).toHaveLength(1);
+    });
+
+    it('lebih dari 200 id unik → tanpa RPC (klien memecahnya per 200), rewards = null', async () => {
+        const many = JSON.stringify(Array.from({ length: 201 }, (_, i) => ({ id: `p${i}`, submission_id: `s${i}` })));
+        const { calls, win } = runPrefetch({ rowsBody: many });
+        await expect(win.__jfuListing?.rewards).resolves.toBeNull();
+        expect(calls).toHaveLength(1);
     });
 
     it.each(['app', 'survey', 'login', ''])('kind "%s" → tanpa prefetch', (kind) => {
@@ -151,20 +212,32 @@ describe('index.html — prefetch data /pages sejak HTML', () => {
         expect(win.__jfuListing).toBeUndefined();
     });
 
-    it('respons bukan 2xx → rows menolak (SurveyListingPage jatuh ke kueri biasa)', async () => {
-        const { win } = runPrefetch({ fetchImpl: () => Promise.resolve(jsonResponse('{"message":"x"}', 401)) });
+    it('respons bukan 2xx → rows DAN rewards menolak (SurveyListingPage jatuh ke kueri biasa)', async () => {
+        const { calls, win } = runPrefetch({ rowsBody: '{"message":"x"}', rowsStatus: 401 });
         await expect(win.__jfuListing?.rows).rejects.toThrow('401');
+        await expect(win.__jfuListing?.rewards).rejects.toThrow('401');
+        expect(calls).toHaveLength(1);
     });
 });
 
 describe('takeListingPrefetch — sekali pakai, maksimal 30 s', () => {
-    const slot = (at: number, rows: unknown = Promise.resolve([])) => ({ __jfuListing: { at, rows } as unknown as Slot });
+    const slot = (at: number, rows: unknown = Promise.resolve([]), rewards: unknown = Promise.resolve(null)) =>
+        ({ __jfuListing: { at, rows, rewards } as unknown as Slot });
 
-    it('segar → Promise yang sama, slot dihapus', () => {
+    it('segar → { rows, rewards } yang sama, slot dihapus', () => {
         const rows = Promise.resolve([{ id: 'x' }]);
-        const host = slot(NOW - 1000, rows);
-        expect(takeListingPrefetch(host, NOW)).toBe(rows);
+        const rewards = Promise.resolve([]);
+        const host = slot(NOW - 1000, rows, rewards);
+        const got = takeListingPrefetch(host, NOW);
+        expect(got?.rows).toBe(rows);
+        expect(got?.rewards).toBe(rewards);
         expect(host.__jfuListing).toBeUndefined();
+    });
+
+    it('rewards tidak ada / bukan Promise → rewards null (klien memanggil RPC sendiri)', () => {
+        const noRewards = { __jfuListing: { at: NOW, rows: Promise.resolve([]) } as unknown as Slot };
+        expect(takeListingPrefetch(noRewards, NOW)?.rewards).toBeNull();
+        expect(takeListingPrefetch(slot(NOW, Promise.resolve([]), 'x'), NOW)?.rewards).toBeNull();
     });
 
     it('lewat 30 s → null, slot tetap dihapus', () => {
@@ -192,9 +265,30 @@ describe('takeListingPrefetch — sekali pakai, maksimal 30 s', () => {
     });
 });
 
+describe('rewardsFromBatchRows — aturan pilih batch sama dengan sebelumnya', () => {
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+    const later = new Date(Date.now() + 3 * 86_400_000).toISOString();
+    const past = new Date(Date.now() - 86_400_000).toISOString();
+
+    it('per submission: batch berjalan yang paling cepat berakhir; hanya id yang diminta', () => {
+        const rows = [
+            { submission_id: 's1', period_batch: '2026-11', prize_per_winner: 10, winner_count: 2, end_date: later },
+            { submission_id: 's1', period_batch: '2026-12', prize_per_winner: 20, winner_count: 3, end_date: future },
+            { submission_id: 's2', period_batch: '2026-10', prize_per_winner: 7, winner_count: 1, end_date: past },
+            { submission_id: 's2', period_batch: '2026-09', prize_per_winner: 6, winner_count: 1, end_date: past },
+            { submission_id: 's3', period_batch: '2026-11', prize_per_winner: 99, winner_count: 9, end_date: future },
+            { period_batch: '2026-11', prize_per_winner: 1, winner_count: 1, end_date: future },
+        ];
+        expect(rewardsFromBatchRows(rows, new Set(['s1', 's2']))).toEqual({
+            s1: { prize_per_winner: 20, winner_count: 3 },
+            s2: { prize_per_winner: 7, winner_count: 1 },
+        });
+    });
+});
+
 describe('SurveyListingPage memakai prefetch, lalu kueri biasa', () => {
     const src = readFileSync(path.resolve(__dirname, 'pages/public/SurveyListingPage.tsx'), 'utf8');
-    const loadPages = src.slice(src.indexOf('const loadPages'), src.indexOf('const loadPages') + 3000);
+    const loadPages = src.slice(src.indexOf('const loadPages'), src.indexOf('const loadPages') + 5000);
 
     it('takeListingPrefetch dipanggil sebelum buildListingQuery, hasilnya wajib array', () => {
         const take = loadPages.indexOf('takeListingPrefetch()');
@@ -202,5 +296,13 @@ describe('SurveyListingPage memakai prefetch, lalu kueri biasa', () => {
         expect(take).toBeGreaterThan(-1);
         expect(query).toBeGreaterThan(take);
         expect(loadPages).toContain('Array.isArray(');
+    });
+
+    it('hadiah prefetch dipakai sebelum RPC biasa; RPC biasa lewat batchRewardsQuery', () => {
+        const pre = loadPages.indexOf('await prefetchedRewards');
+        const rpc = loadPages.indexOf('batchRewardsQuery(supabase, chunk)');
+        expect(pre).toBeGreaterThan(-1);
+        expect(rpc).toBeGreaterThan(pre);
+        expect(loadPages).not.toContain("supabase.rpc(");
     });
 });
