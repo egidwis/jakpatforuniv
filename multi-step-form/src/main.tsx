@@ -18,6 +18,10 @@ import { staticFailureHtml } from './bootSignals'
 
 const rootEl = document.getElementById('root')!
 
+// Rotasi hash JS entry (20 Nov 2026) untuk memutus cache immutable browser
+// yang sempat menyimpan fallback text/html di URL index-CRAC9TIn.js.
+document.documentElement.dataset.jfuBuild = '20261120'
+
 // ⚠️ Jaring akar (layar putih tanpa jejak, 19 Nov 2026). RouteErrorBoundary
 // paling luar menangkap galat render di provider mana pun. Yang lolos juga
 // (boundary sendiri melempar) membuat React melepas seluruh pohon → putih;

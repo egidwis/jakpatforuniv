@@ -5,7 +5,6 @@
     "/_headers",
     "/_redirects",
     "/_routes.json",
-    "/assets/*",
     "/homepage/assets/*",
     "/homepage/styles.css",
     "/homepage/legal-pages.css",

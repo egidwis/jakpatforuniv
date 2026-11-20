@@ -10,8 +10,9 @@
 // *.pages.dev, localhost, wildcard user subdomains → SPA, unchanged.
 //
 // Old `/homepage/…` page URLs 301 to their clean apex path. The homepage's
-// images, CSS, JS and the SPA's `/assets/*` never reach this file (see
-// public/_routes.json).
+// images, CSS, JS never reach this file (see public/_routes.json).
+// `/assets/*` DOES pass through here on edge cache miss so a missing Vite
+// asset never falls back to `200 text/html` with `Cache-Control: immutable`.
 
 export const APEX_HOST = 'jakpatforuniv.com';
 const WWW_HOST = 'www.jakpatforuniv.com';
@@ -79,6 +80,15 @@ export async function onRequest(context) {
   const url = new URL(request.url);
   const hostname = url.hostname;
 
+  // Guard /assets/* terhadap cache poisoning SPA fallback (insiden 20 Nov 2026).
+  // public/_redirects punya `/* /index.html 200`, jadi bila file /assets/* belum
+  // terpropagasi saat deploy (atau chunk lama dari tab terbuka), ASSETS mengembalikan
+  // 200 text/html. Bila lolos dengan Cache-Control immutable, Cloudflare CDN dan
+  // browser meng-cache HTML di URL CSS/JS selama 1 tahun (MIME error permanen).
+  if (url.pathname.startsWith('/assets/')) {
+    return serveHashedAsset(env, request);
+  }
+
   const isLegacyHost =
     hostname === WWW_HOST || (REDIRECT_SUBMIT_TO_APEX && hostname === SUBMIT_HOST);
 
@@ -125,4 +135,29 @@ async function serveAsset(env, request, originalUrl, filePath) {
   }
 
   return response;
+}
+
+const IMMUTABLE_ASSET_CACHE = 'public, max-age=31536000, immutable';
+
+async function serveHashedAsset(env, request) {
+  const response = await env.ASSETS.fetch(request);
+  const contentType = (response.headers.get('content-type') || '').toLowerCase();
+
+  if (response.status >= 400 || contentType.includes('text/html')) {
+    return new Response('Not Found', {
+      status: 404,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
+
+  const headers = new Headers(response.headers);
+  headers.set('Cache-Control', IMMUTABLE_ASSET_CACHE);
+  return new Response(response.status === 304 ? null : response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }

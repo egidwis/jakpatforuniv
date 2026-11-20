@@ -35,4 +35,9 @@ describe('public/_headers', () => {
         expect(headers).not.toMatch(/^\/\*$/m);
         expect(headers).not.toMatch(/index\.html/);
     });
+
+    it('/assets/* melewati _middleware.js agar fallback 200 text/html tidak ter-cache immutable', () => {
+        const routes = JSON.parse(readFileSync(path.join(root, 'public/_routes.json'), 'utf8'));
+        expect(routes.exclude).not.toContain('/assets/*');
+    });
 });

@@ -66,3 +66,9 @@
     transform: translateX(100%);
   }
 }
+
+/* Rotasi hash CSS entry (20 Nov 2026) untuk memutus cache immutable browser
+   yang sempat menyimpan fallback text/html di URL index-T2_Rqd8a.css. */
+:root {
+  --jfu-asset-rev: 20261120;
+}

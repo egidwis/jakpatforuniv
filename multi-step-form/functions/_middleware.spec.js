@@ -204,3 +204,65 @@ describe('cleanHomepagePath — semua subpath non-aset di /homepage/* satu 301 k
     expect(next).toHaveBeenCalledOnce();
   });
 });
+
+describe('/assets/* — guard terhadap cache poisoning SPA fallback', () => {
+  function runAsset(url, assetResponse) {
+    const next = vi.fn(async () => NEXT_RESPONSE);
+    const env = {
+      ASSETS: {
+        fetch: vi.fn(async () => assetResponse),
+      },
+    };
+    const request = new Request(url);
+    return { promise: onRequest({ request, next, env }), next, env };
+  }
+
+  it.each([
+    ['https://jakpatforuniv.com/assets/index-abc123.css', 'text/css; charset=utf-8', 'body{}'],
+    ['https://jakpatforuniv.com/assets/js/index-def456.js', 'application/javascript', 'console.log(1)'],
+    ['https://submit.jakpatforuniv.com/assets/index-abc123.css', 'text/css; charset=utf-8', 'body{}'],
+  ])('aset valid %s diteruskan 200 dengan Cache-Control immutable', async (url, ct, body) => {
+    const { promise, next } = runAsset(url, new Response(body, { status: 200, headers: { 'Content-Type': ct } }));
+    const res = await promise;
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toBe(ct);
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=31536000, immutable');
+    expect(await res.text()).toBe(body);
+  });
+
+  it('fallback SPA 200 text/html diubah menjadi 404 + no-store', async () => {
+    const { promise, next } = runAsset(
+      'https://jakpatforuniv.com/assets/index-T2_Rqd8a.css',
+      new Response('<!doctype html><html></html>', {
+        status: 200,
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      }),
+    );
+    const res = await promise;
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toBe(404);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    expect(res.headers.get('Content-Type')).toContain('text/plain');
+  });
+
+  it('aset 404 dari ASSETS dikembalikan 404 + no-store', async () => {
+    const { promise } = runAsset(
+      'https://jakpatforuniv.com/assets/missing.js',
+      new Response('Not Found', { status: 404 }),
+    );
+    const res = await promise;
+    expect(res.status).toBe(404);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+  });
+
+  it('304 Not Modified dipertahankan dengan Cache-Control immutable', async () => {
+    const { promise } = runAsset(
+      'https://jakpatforuniv.com/assets/index-abc123.css',
+      new Response(null, { status: 304, headers: { ETag: '"abc"' } }),
+    );
+    const res = await promise;
+    expect(res.status).toBe(304);
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=31536000, immutable');
+  });
+});
