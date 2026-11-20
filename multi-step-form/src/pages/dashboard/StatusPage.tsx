@@ -35,7 +35,7 @@ import { PublicationPhase } from '@/components/status/PublicationPhase';
 import { buildScheduleCards } from '@/components/status/airingPeriods';
 import { groupInfoFor } from '@/components/status/invoiceGroups';
 import { CreateOrderCards, NewOrderFab } from '@/components/CreateOrderCards';
-import { WebinarTicketStrip } from '@/components/webinar/WebinarHomeEntries';
+import { WebinarFloatCard, WebinarTicketStrip } from '@/components/webinar/WebinarHomeEntries';
 import { canUseKilatSelfServe } from '@/utils/kilatAccess';
 import { deriveOrderUiState, getActiveDashboardPhase, type OrderGroup } from '@/components/status/deriveOrderUiState';
 import { AdsEntryModal } from '@/components/AdsEntryModal';
@@ -115,8 +115,8 @@ function CopyOrderIdBadge({ id }: { id: string }) {
  *  (ponsel, layar pendek) halaman menggulir seperti biasa — bingkai bertinggi tetap di
  *  layar pendek lebih menyiksa daripada berguna. */
 const FRAME_QUERY = '(min-width: 1024px) and (min-height: 700px)';
-/** Jarak bingkai ke tepi bawah layar. */
-const FRAME_BOTTOM_GUTTER = 24;
+/** Jarak bingkai daftar order terhadap UniversalFooter di bagian bawah layar. */
+const FRAME_BOTTOM_GUTTER = 16;
 
 export function StatusPage() {
     const { user } = useAuth();
@@ -181,15 +181,21 @@ export function StatusPage() {
             if (!mq.matches) { setFrameHeight(null); return; }
             // Atas KOLOM, bukan atas bingkai: di mode bingkai kepala melayang di atas bingkai
             // sehingga posisi atas bingkai sendiri berubah antara sebelum & sesudah diukur.
+            // Kurangi juga tinggi UniversalFooter agar footer tetap terlihat di dasar layar
+            // tanpa menggulir keseluruhan halaman desktop.
             const top = (frameEl.parentElement ?? frameEl).getBoundingClientRect().top + window.scrollY;
-            setFrameHeight(Math.floor(window.innerHeight - top - FRAME_BOTTOM_GUTTER));
+            const footerEl = document.querySelector('footer[role="contentinfo"]');
+            const footerHeight = footerEl ? Math.ceil(footerEl.getBoundingClientRect().height) : 0;
+            setFrameHeight(Math.max(280, Math.floor(window.innerHeight - top - footerHeight - FRAME_BOTTOM_GUTTER)));
         };
         measure();
         mq.addEventListener('change', measure);
         window.addEventListener('resize', measure);
-        // Banner profil / skeleton yang muncul belakangan menggeser posisi atas bingkai.
+        // Banner profil / footer / skeleton yang muncul belakangan menggeser sisa tinggi layar.
         const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
         ro?.observe(document.body);
+        const footerEl = document.querySelector('footer[role="contentinfo"]');
+        if (footerEl) ro?.observe(footerEl);
         return () => {
             mq.removeEventListener('change', measure);
             window.removeEventListener('resize', measure);
@@ -803,22 +809,27 @@ export function StatusPage() {
                 untuk ponsel (di atas My Order) dan desktop (di kiri), jadi tanpa
                 kelas `order-*`. ⚠️ Jangan beri `relative` pada <aside>: `.relative`
                 di styles.css dimuat setelah Tailwind dan mengalahkan `lg:sticky`. */}
-            {/* Mode bingkai: halaman harus pas setinggi layar. `-mb-10` meniadakan `pb-10` <main> milik
-                layout bersama (satu-satunya yang tak bisa diubah dari sini); jarak bawah diganti
-                `FRAME_BOTTOM_GUTTER`. */}
+            {/* Mode bingkai: halaman harus pas setinggi layar. `-mb-6` meniadakan `pb-6` <main> milik
+                layout bersama; jarak bawah diganti `FRAME_BOTTOM_GUTTER`. */}
             {/* Ponsel + sudah punya order: nol padding atas, supaya toolbar langsung rata di bawah navbar tanpa
                 celah (kartu aksi yang tadinya jadi pengisi ruang itu disembunyikan). Belum punya order →
                 kartu Create tampil, jadi jarak atas tetap. */}
-            <div className={`max-w-5xl mx-auto px-4 md:px-6 ${submissions.length > 0 ? 'pt-0 lg:pt-8' : 'pt-5 md:pt-8'} grid lg:grid-cols-12 gap-6 items-start ${framed ? 'pb-6 -mb-10' : 'pb-10'}`}>
+            <div className={`max-w-5xl mx-auto px-4 md:px-6 ${submissions.length > 0 ? 'pt-0 lg:pt-6' : 'pt-5 md:pt-6'} grid lg:grid-cols-12 gap-6 items-start ${framed ? 'pb-0 -mb-6' : 'pb-6'}`}>
                 {/* Ponsel + sudah punya order: kartu Create disembunyikan (ia memakan ±55% layar
                     pertama padahal peneliti yang kembali mau melihat status). Penggantinya: FAB
                     "Order baru" dan ikon Chat Mimin di toolbar. Belum punya order → tetap penuh,
                     karena membuat order satu-satunya yang perlu ia lakukan. */}
-                <aside className={`lg:col-span-4 lg:sticky lg:top-24 ${submissions.length > 0 ? 'max-lg:hidden' : ''}`}>
-                    <CreateOrderCards
-                        onOpenAdsModal={() => setEntryProduct('ads')}
-                        onOpenKilatModal={kilatOpen ? () => setEntryProduct('kilat') : undefined}
-                    />
+                <aside
+                    style={framed ? { maxHeight: frameHeight } : undefined}
+                    className={`lg:col-span-4 lg:sticky lg:top-24 ${submissions.length > 0 ? 'max-lg:hidden' : ''} ${framed ? 'overflow-y-auto overscroll-contain -mx-2 px-2 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : ''}`}
+                >
+                    <div className="space-y-3.5">
+                        <CreateOrderCards
+                            onOpenAdsModal={() => setEntryProduct('ads')}
+                            onOpenKilatModal={kilatOpen ? () => setEntryProduct('kilat') : undefined}
+                        />
+                        <WebinarFloatCard variant="sidebar" />
+                    </div>
                 </aside>
 
                 {/* Daftar order — kolom lebar di kanan (desktop), di bawah kartu aksi (ponsel) */}
@@ -1142,6 +1153,14 @@ export function StatusPage() {
                     onOpenAdsModal={() => setEntryProduct('ads')}
                     onOpenKilatModal={kilatOpen ? () => setEntryProduct('kilat') : undefined}
                 />
+            )}
+
+            {/* Kartu webinar mengambang di ponsel ketika kartu "Buat Order Baru" disembunyikan.
+                Di desktop (lg+), kartu webinar berada tepat di bawah "Buat Order Baru". */}
+            {submissions.length > 0 && (
+                <div className="lg:hidden">
+                    <WebinarFloatCard variant="floating" hasMobileFab />
+                </div>
             )}
 
             {/* Floating move to top button */}

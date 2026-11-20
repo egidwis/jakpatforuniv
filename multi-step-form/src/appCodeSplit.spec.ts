@@ -21,6 +21,7 @@ const EAGER_ALLOWED = new Set([
     'sonner',
     'react-router-dom',
     './components/LanguageSwitcher',
+    './components/UniversalFooter',
     './i18n/LanguageContext',
     './pages/LoginPage',
     './pages/ResetPasswordPage',

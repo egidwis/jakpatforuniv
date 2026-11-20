@@ -710,7 +710,7 @@ export const translations = {
     phoneNumber: "Phone Number",
     academicInfo: "Academic Information",
     university: "University",
-    universityPlaceholder: "Type or select university",
+    universityPlaceholder: "Type university or campus name",
     department: "Department",
     departmentPlaceholder: "Type or select department",
     academicStatus: "Academic Status",
@@ -735,12 +735,12 @@ export const translations = {
     errReferralOtherRequired: "Please specify your referral source",
 
     // Academic Status Options
-    academicStatusDosen: "👨‍🏫 Lecturer",
-    academicStatusS3: "🎓 PhD Student",
-    academicStatusS2: "🎓 Master's Student",
-    academicStatusS1: "🎓 Bachelor's Student",
-    academicStatusD3: "🎓 Diploma Student",
-    academicStatusSMA: "📚 High School Student",
+    academicStatusDosen: "Lecturer",
+    academicStatusS3: "PhD Student (S3)",
+    academicStatusS2: "Master's Student (S2)",
+    academicStatusS1: "Bachelor's Student (S1)",
+    academicStatusD3: "Diploma Student (D3)",
+    academicStatusSMA: "High School Student",
 
     // Referral Options
     referralTiktok: "TikTok",
@@ -2104,7 +2104,7 @@ export const translations = {
     phoneNumber: "No Telepon",
     academicInfo: "Informasi Akademik",
     university: "Universitas",
-    universityPlaceholder: "Ketik atau pilih universitas",
+    universityPlaceholder: "Ketik nama universitas atau kampus",
     department: "Jurusan",
     departmentPlaceholder: "Ketik atau pilih jurusan",
     academicStatus: "Status Akademik",
@@ -2129,12 +2129,12 @@ export const translations = {
     errReferralOtherRequired: "Mohon sebutkan sumber informasi Anda",
 
     // Academic Status Options
-    academicStatusDosen: "👨‍🏫 Dosen",
-    academicStatusS3: "🎓 Mahasiswa S3 (Doktor)",
-    academicStatusS2: "🎓 Mahasiswa S2 (Master)",
-    academicStatusS1: "🎓 Mahasiswa S1 (Sarjana)",
-    academicStatusD3: "🎓 Mahasiswa D3 (Diploma)",
-    academicStatusSMA: "📚 Pelajar SMA/SMK",
+    academicStatusDosen: "Dosen",
+    academicStatusS3: "Mahasiswa S3 (Doktor)",
+    academicStatusS2: "Mahasiswa S2 (Master)",
+    academicStatusS1: "Mahasiswa S1 (Sarjana)",
+    academicStatusD3: "Mahasiswa D3 (Diploma)",
+    academicStatusSMA: "Pelajar SMA/SMK",
 
     // Referral Options
     referralTiktok: "TikTok",

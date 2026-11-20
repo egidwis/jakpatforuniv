@@ -559,16 +559,16 @@ main{
 .footer{padding:0 24px 48px;margin-top:auto}
 .has-buybar .footer{padding-bottom:108px}
 .footer-container{
-  max-width:1120px;margin:0 auto;padding-top:24px;
-  border-top:1px solid var(--jfu-border);
+  max-width:1120px;margin:0 auto;padding-top:20px;
+  border-top:1px solid rgba(226,232,240,.7);
   display:flex;align-items:center;justify-content:space-between;gap:20px;
-  font-size:.82rem;color:var(--jfu-slate-600);
+  font-size:.75rem;color:#94A3B8;
 }
-.footer-brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--jfu-ink);white-space:nowrap}
-.footer-brand img{height:24px;width:auto}
+.footer-brand{display:flex;align-items:center;gap:8px;font-weight:500;color:#94A3B8;white-space:nowrap}
+.footer-brand img{height:20px;width:auto;filter:grayscale(100%);opacity:.5}
 .footer-links{display:flex;flex-wrap:wrap;gap:18px;justify-content:center}
-.footer-links a{color:var(--jfu-slate-600);text-decoration:none;font-weight:600;transition:color .2s ease}
-.footer-links a:hover{color:var(--jfu-ink)}
+.footer-links a{color:#94A3B8;text-decoration:none;font-weight:400;transition:color .2s ease}
+.footer-links a:hover{color:#475569}
 
 /* Responsive Breakpoints */
 @media (min-width:640px){
@@ -685,9 +685,6 @@ const navbar = ({ isListing = false } = {}) => `<a href="#konten-utama" class="s
 const footer = () => `<footer class="footer"><div class="footer-container">
 <div class="footer-brand"><img src="${NAV_LOGO_SRC}" alt="" width="24" height="24" loading="lazy"><span>Jakpat for Universities</span></div>
 <nav class="footer-links" aria-label="Footer">
-<a href="${HOME_URL}">Beranda</a>
-<a href="/webinar">Kelas JFU</a>
-<a href="${SITE_URL}/pages">Daftar Survei</a>
 <a href="${SITE_URL}/privacy-policy">Kebijakan Privasi</a>
 <a href="${SITE_URL}/terms-conditions">Syarat &amp; Ketentuan</a>
 </nav>

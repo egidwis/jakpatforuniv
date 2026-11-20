@@ -4,7 +4,6 @@ import { ChevronRight, BarChart3, Zap, MessageCircle, Plus } from 'lucide-react'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { TranslationKey } from '../i18n/translations';
-import { WebinarFooterRow } from '@/components/webinar/WebinarHomeEntries';
 
 interface Product {
     id: string;
@@ -257,7 +256,6 @@ export function CreateOrderCards({ onOpenAdsModal, onOpenKilatModal }: {
             <ProductCardGrid onOpenAdsModal={onOpenAdsModal} onOpenKilatModal={onOpenKilatModal} />
 
             <ChatMiminFooter />
-            <WebinarFooterRow />
         </section>
     );
 }
@@ -298,7 +296,6 @@ export function NewOrderFab({ onOpenAdsModal, onOpenKilatModal }: {
                     </SheetHeader>
                     <ProductCardGrid onOpenAdsModal={onOpenAdsModal} onOpenKilatModal={onOpenKilatModal} onSelect={() => setOpen(false)} />
                     <ChatMiminFooter onNavigate={() => setOpen(false)} />
-                    <WebinarFooterRow onNavigate={() => setOpen(false)} />
                 </SheetContent>
             </Sheet>
         </>

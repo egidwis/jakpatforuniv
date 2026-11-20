@@ -1782,27 +1782,29 @@ a {
 .footer-container {
     max-width: 1080px;
     margin: 0 auto;
-    padding-top: 22px;
-    border-top: 1px solid var(--jfu-border);
+    padding-top: 20px;
+    border-top: 1px solid rgba(226, 232, 240, 0.7);
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 20px;
-    font-size: 0.8rem;
-    color: var(--jfu-slate-600);
+    font-size: 0.75rem;
+    color: #94a3b8;
 }
 
 .footer-brand {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-weight: 700;
-    color: var(--jfu-ink);
+    gap: 8px;
+    font-weight: 500;
+    color: #94a3b8;
 }
 
 .footer-brand img {
-    height: 24px;
+    height: 20px;
     width: auto;
+    filter: grayscale(100%);
+    opacity: 0.5;
 }
 
 .footer-links {
@@ -1812,14 +1814,14 @@ a {
 }
 
 .footer-links a {
-    color: var(--jfu-slate-600);
+    color: #94a3b8;
     text-decoration: none;
-    font-weight: 600;
+    font-weight: 400;
     transition: color 0.2s ease;
 }
 
 .footer-links a:hover {
-    color: var(--jfu-ink);
+    color: #475569;
 }
 
 /* =========================================================

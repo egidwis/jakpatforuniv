@@ -3,6 +3,7 @@ import { AmbientBackdrop } from './AmbientBackdrop';
 import { useLocation, Outlet } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { AppNav } from './AppNav';
+import { UniversalFooter } from './UniversalFooter';
 import { ProfileCompletionSheet } from './ProfileCompletionSheet';
 import { AdminAwayModalHost } from './status/AdminAwayModal';
 import { getOwnProfile, isProfileComplete } from '../utils/supabase';
@@ -27,7 +28,7 @@ export function DashboardLayout() {
   }, [location.pathname]);
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] font-jakarta dark:bg-gray-900 relative">
+    <div className="min-h-screen bg-white font-jakarta dark:bg-gray-900 relative">
       {/* Pendaran latar: satu lapisan radial-gradient, tanpa filter blur (Safari iPhone putih polos, 20 Nov 2026) — lihat AmbientBackdrop.css. */}
       <AmbientBackdrop variant="dashboard" />
 
@@ -61,7 +62,7 @@ export function DashboardLayout() {
           }}
         />
 
-        <main className={isChat ? 'min-w-0 flex-1' : 'min-w-0 pb-10 flex-1'}>
+        <main className={isChat ? 'min-w-0 flex-1' : 'min-w-0 pb-6 flex-1'}>
           {/* Halaman dashboard dimuat lazy (App.tsx): navbar tetap tampil, hanya
               area konten yang menunggu chunk-nya. */}
           <Suspense
@@ -74,6 +75,8 @@ export function DashboardLayout() {
             <Outlet />
           </Suspense>
         </main>
+
+        {!isChat && <UniversalFooter openInNewTab />}
 
         {/* Satu host modal mode libur untuk seluruh dashboard peneliti — juga
             yang menjaga poller status libur tetap hidup (bukan di akar App:

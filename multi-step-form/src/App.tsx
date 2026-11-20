@@ -1,8 +1,7 @@
 import { Suspense, useEffect } from 'react';
 import { Toaster } from 'sonner';
 import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
-import { LanguageSwitcher } from './components/LanguageSwitcher';
-import { useLanguage } from './i18n/LanguageContext';
+import { UniversalFooter } from './components/UniversalFooter';
 import LoginPage from './pages/LoginPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
@@ -112,7 +111,6 @@ function PaymentRetryRedirect() {
 }
 
 function AppContent() {
-  const { t } = useLanguage();
   const location = useLocation();
 
   // If accessing via custom wildcard subdomain (e.g. budi.jakpatforuniv.com)
@@ -151,22 +149,12 @@ function AppContent() {
   }
 
   const PublicLayout = ({ children }: { children: React.ReactNode }) => (
-    <>
-      <main className="container py-8">
+    <div className="min-h-screen flex flex-col bg-[#f8fafc] font-jakarta">
+      <main className="container py-8 flex-1">
         {children}
       </main>
-      <footer className="footer">
-        <div className="container footer-content">
-          <p className="footer-text">
-            {t('footer')}
-          </p>
-          <div className="footer-actions">
-
-            <LanguageSwitcher />
-          </div>
-        </div>
-      </footer>
-    </>
+      <UniversalFooter />
+    </div>
   );
 
   return (

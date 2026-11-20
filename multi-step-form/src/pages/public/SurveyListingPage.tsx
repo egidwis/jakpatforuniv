@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { initialListingFilter, type CategoryFilter } from './listingFilter';
 import { NearViewportImg } from '../../components/NearViewportImg';
 import { AmbientBackdrop } from '../../components/AmbientBackdrop';
+import { UniversalFooter } from '../../components/UniversalFooter';
 import { Link } from 'react-router-dom';
 import {
     AlertCircle,
@@ -1325,42 +1326,8 @@ export function SurveyListingPage() {
                 </div>
             </main>
 
-            {/* Full-Bleed Gradient Footer (selaras dengan landing page `/`) */}
-            <footer className="bg-gradient-to-br from-[#1976D2] to-[#42A5F5] text-white py-8 px-4 sm:px-8">
-                <div className="max-w-[1280px] mx-auto text-center space-y-3">
-                    <nav
-                        aria-label={copy.footerNavLabel}
-                        className="flex flex-wrap items-center justify-center gap-6 text-sm font-medium"
-                    >
-                        <a
-                            href="/"
-                            className="text-white/90 hover:text-white hover:underline underline-offset-4 rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-                        >
-                            {copy.navHome}
-                        </a>
-                        <Link
-                            to="/pages"
-                            aria-current="page"
-                            className="text-white font-semibold underline underline-offset-4 rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-                        >
-                            {copy.navSurveys}
-                        </Link>
-                        <a
-                            href="/privacy-policy"
-                            className="text-white/90 hover:text-white hover:underline underline-offset-4 rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-                        >
-                            {copy.footerPrivacy}
-                        </a>
-                        <a
-                            href="/terms-conditions"
-                            className="text-white/90 hover:text-white hover:underline underline-offset-4 rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-                        >
-                            {copy.footerTerms}
-                        </a>
-                    </nav>
-                    <p className="text-xs text-white/85">{copy.copyright}</p>
-                </div>
-            </footer>
+            {/* Universal Footer */}
+            <UniversalFooter maxWidthClass="max-w-[1280px]" className="mt-auto" />
         </div>
     );
 }
