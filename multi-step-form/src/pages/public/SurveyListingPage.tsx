@@ -18,6 +18,7 @@ import {
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase, getCdnUrl } from '@/utils/supabase';
 import { takeListingPrefetch } from '@/utils/listingPrefetch';
+import { bannerSources, nextBannerStage, type BannerStage } from '@/utils/bannerImage';
 import { compareDisplayOrder, type OrderablePage } from '@/utils/adOrdering';
 import { publicPagePath } from '@/utils/page-url';
 import { hiddenFromFeed, isKilatPage } from '@/components/publish-pages/types';
@@ -328,6 +329,7 @@ export function SurveyListingPage() {
     const [sortBy, setSortBy] = useState<SortOption>('curated');
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [failedBanners, setFailedBanners] = useState<Record<string, true>>({});
+    const [plainBanners, setPlainBanners] = useState<Record<string, true>>({});
 
     useEffect(() => {
         document.title = copy.docTitle;
@@ -607,6 +609,19 @@ export function SurveyListingPage() {
     const markBannerFailed = useCallback((pageId: string) => {
         setFailedBanners((prev) => (prev[pageId] ? prev : { ...prev, [pageId]: true }));
     }, []);
+
+    // Banner gagal dimuat: versi Transformations → /cdn/ asli → panel merek
+    // (src/utils/bannerImage.ts). Transformations belum aktif = satu 404, lalu asli.
+    const handleBannerError = useCallback(
+        (pageId: string, stage: BannerStage) => {
+            if (nextBannerStage(stage) === 'plain') {
+                setPlainBanners((prev) => (prev[pageId] ? prev : { ...prev, [pageId]: true }));
+            } else {
+                markBannerFailed(pageId);
+            }
+        },
+        [markBannerFailed],
+    );
 
     const latestAnnouncementRedirect =
         latestAnnouncement && typeof latestAnnouncement.redirect_url === 'string'
@@ -1062,6 +1077,11 @@ export function SurveyListingPage() {
                                     const hasBanner =
                                         Boolean(page.banner_url) && !failedBanners[page.id];
                                     const isLcpCandidate = index === 0;
+                                    const bannerUrl = hasBanner ? getCdnUrl(page.banner_url) : '';
+                                    // Versi kecil dari Transformations (AVIF/WebP sesuai layar);
+                                    // null = bukan /cdn/ atau sudah gagal → berkas asli.
+                                    const cfBanner = hasBanner && !plainBanners[page.id] ? bannerSources(bannerUrl) : null;
+                                    const bannerStage: BannerStage = cfBanner ? 'cf' : 'plain';
 
                                     const cardClassName = `group flex-1 flex flex-col rounded-[20px] bg-white/65 hover:bg-white/80 backdrop-blur-xl backdrop-saturate-150 border border-white/80 hover:border-white shadow-[0_8px_32px_rgba(25,118,210,0.08),0_2px_8px_rgba(15,23,42,0.04),inset_0_1px_1px_rgba(255,255,255,0.95),inset_0_-1px_1px_rgba(255,255,255,0.3)] hover:shadow-[0_20px_40px_rgba(25,118,210,0.16),0_4px_12px_rgba(15,23,42,0.06),inset_0_1px_2px_rgba(255,255,255,1)] hover:-translate-y-1 transition-all duration-300 motion-reduce:transition-none motion-reduce:transform-none overflow-hidden ${FOCUS_RING}`;
 
@@ -1074,7 +1094,7 @@ export function SurveyListingPage() {
                                                     // ±300 px dari layar — lihat hooks/nearViewport.ts.
                                                     <NearViewportImg
                                                         eager={isLcpCandidate}
-                                                        src={getCdnUrl(page.banner_url!)}
+                                                        {...(cfBanner ?? { src: bannerUrl })}
                                                         alt=""
                                                         width={1000}
                                                         height={400}
@@ -1082,7 +1102,7 @@ export function SurveyListingPage() {
                                                             ? { fetchPriority: 'high' as const }
                                                             : {})}
                                                         decoding="async"
-                                                        onError={() => markBannerFailed(page.id)}
+                                                        onError={() => handleBannerError(page.id, bannerStage)}
                                                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:transform-none"
                                                     />
                                                 ) : (
