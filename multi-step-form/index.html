@@ -61,6 +61,43 @@
       })();
     </script>
     <!--
+      Prefetch data /pages (Fase 3, 20 Nov 2026). Di 4G lambat kueri survey_pages dulu
+      baru jalan ±2,5 s — setelah JS utama diunduh & dijalankan. Di sini ia mulai sejak
+      HTML, sejajar dengan unduhan JS. Hanya pengunjung TANPA sesi (anon); yang login
+      tetap lewat supabase-js ber-JWT supaya hasilnya sama persis dengan sebelumnya.
+      Dipakai SEKALI oleh SurveyListingPage (src/utils/listingPrefetch.ts, umur ≤ 30 s);
+      gagal apa pun = diam, kueri biasa yang jalan. Filter browser tetap otoritatif.
+      ⚠️ KEMBAR: LISTING_SELECT + buildListingQuery + LISTING_END_GRACE_MS
+      (SurveyListingPage.tsx) dan kunci sesi (src/utils/storedSession.ts).
+      src/listingPrefetch.spec.ts menuntut URL skrip ini IDENTIK dengan buatan supabase-js.
+    -->
+    <script id="jfu-listing-prefetch">
+      (function () {
+        try {
+          if (document.documentElement.getAttribute('data-boot') !== 'pages') return;
+          var base = '%VITE_SUPABASE_URL%', key = '%VITE_SUPABASE_ANON_KEY%';
+          if (!key || base.charAt(0) === '%' || key.charAt(0) === '%') return;
+          base = base.replace(/\/+$/, '');
+          try {
+            var raw = localStorage.getItem('sb-' + new URL(base).hostname.split('.')[0] + '-auth-token');
+            var sess = raw ? JSON.parse(raw) : null;
+            if (sess && typeof sess.refresh_token === 'string' && sess.refresh_token) return;
+          } catch (e) {}
+          var u = new URL(base + '/rest/v1/survey_pages');
+          u.searchParams.set('select', 'id,slug,title,banner_url,redirect_url,submission_id,is_published,is_extra_ad,display_order,publish_start_date,publish_end_date,created_at,views_count,form_submissions!submission_id(prize_per_winner,winner_count,distribution_type,criteria_responden)');
+          u.searchParams.append('is_published', 'eq.true');
+          u.searchParams.append('or', '(publish_end_date.is.null,publish_end_date.gte.' + new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString() + ')');
+          u.searchParams.append('order', 'created_at.desc');
+          var rows = fetch(u.toString(), { headers: { apikey: key, Authorization: 'Bearer ' + key } }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+          });
+          rows['catch'](function () {});
+          window.__jfuListing = { at: Date.now(), rows: rows };
+        } catch (e) {}
+      })();
+    </script>
+    <!--
       Watchdog boot. Layar putih tanpa jejak (Safari iPhone, 19 Nov 2026): kalau
       React belum ter-mount 12 s sejak HTML diurai, laporkan ke /api/client-log
       (protokol HTTP, aset yang sudah/belum selesai) dan tampilkan "Muat ulang".

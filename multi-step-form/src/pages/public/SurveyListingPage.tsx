@@ -15,7 +15,9 @@ import {
     Trophy,
     X,
 } from 'lucide-react';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase, getCdnUrl } from '@/utils/supabase';
+import { takeListingPrefetch } from '@/utils/listingPrefetch';
 import { compareDisplayOrder, type OrderablePage } from '@/utils/adOrdering';
 import { publicPagePath } from '@/utils/page-url';
 import { hiddenFromFeed, isKilatPage } from '@/components/publish-pages/types';
@@ -146,10 +148,41 @@ function formatCriteriaPreview(raw: string | null | undefined): string | null {
     return cleaned.length > 0 ? cleaned : null;
 }
 
-/** Batas bawah publish_end_date untuk pra-filter kueri (lihat loadPages). */
+/** Batas bawah publish_end_date untuk pra-filter kueri (lihat buildListingQuery). */
 export const LISTING_END_GRACE_MS = 2 * 24 * 60 * 60 * 1000;
 export function listingEndCutoffIso(now: Date): string {
     return new Date(now.getTime() - LISTING_END_GRACE_MS).toISOString();
+}
+
+/**
+ * Kolom direktori publik. `distribution_type` ikut ditarik SEMATA untuk menyaring
+ * Kilat di loadPages — jangan dibuang saat merapikan. Kolom berat (`blocks`,
+ * `custom_fields`) sengaja tidak ditarik. Kolom form_submissions wajib yang
+ * dihibahkan ke anon (surveyListingKilat.spec.ts).
+ */
+export const LISTING_SELECT =
+    'id, slug, title, banner_url, redirect_url, submission_id, is_published, is_extra_ad, display_order, publish_start_date, publish_end_date, created_at, views_count, form_submissions!submission_id(prize_per_winner, winner_count, distribution_type, criteria_responden)';
+
+/**
+ * Kueri /pages. ⚠️ KEMBAR:
+ * - skrip inline #jfu-listing-prefetch di index.html (Fase 3) — URL-nya dituntut
+ *   IDENTIK oleh src/listingPrefetch.spec.ts;
+ * - functions/api/surveys.js memakai pra-filter tanggal yang sama.
+ */
+export function buildListingQuery(client: SupabaseClient, now: Date) {
+    return client
+        .from('survey_pages')
+        .select(LISTING_SELECT)
+        .eq('is_published', true)
+        // Pra-filter: jangan unduh halaman yang sudah lama berakhir. Sampai
+        // Nov 2026 kueri ini menarik SEMUA halaman terbit (579 baris, 414 KB;
+        // 94% sudah berakhir) hanya untuk dibuang di loadPages — di ponsel itu
+        // bagian besar dari "blank lama". Cutoff = jam yang SAMA dengan filter
+        // browser dikurangi 2 hari, jadi hasilnya selalu SUPERSET dari yang
+        // lolos filter browser (yang tetap otoritatif) meski jam perangkat salah.
+        .or(`publish_end_date.is.null,publish_end_date.gte.${listingEndCutoffIso(now)}`)
+        // Base order; final ordering applied in JS via compareDisplayOrder.
+        .order('created_at', { ascending: false });
 }
 
 const FOCUS_RING =
@@ -318,31 +351,27 @@ export function SurveyListingPage() {
 
         try {
             const now = new Date();
-            const { data, error } = await supabase
-                .from('survey_pages')
-                // `distribution_type` ikut ditarik SEMATA untuk menyaring Kilat di
-                // bawah — lihat komentar di filter. Jangan dibuang saat merapikan
-                // select ini. Kolom berat (`blocks`, `custom_fields`) sengaja tidak
-                // ditarik di direktori publik.
-                .select(
-                    'id, slug, title, banner_url, redirect_url, submission_id, is_published, is_extra_ad, display_order, publish_start_date, publish_end_date, created_at, views_count, form_submissions!submission_id(prize_per_winner, winner_count, distribution_type, criteria_responden)'
-                )
-                .eq('is_published', true)
-                // Pra-filter: jangan unduh halaman yang sudah lama berakhir. Sampai
-                // Nov 2026 kueri ini menarik SEMUA halaman terbit (579 baris, 414 KB;
-                // 94% sudah berakhir) hanya untuk dibuang di bawah — di ponsel itu
-                // bagian besar dari "blank lama". Cutoff = jam yang SAMA dengan filter
-                // di bawah dikurangi 2 hari, jadi hasilnya selalu SUPERSET dari yang
-                // lolos filter browser (yang tetap otoritatif) meski jam perangkat salah.
-                // ⚠️ KEMBAR: functions/api/surveys.js memakai pra-filter yang sama.
-                .or(`publish_end_date.is.null,publish_end_date.gte.${listingEndCutoffIso(now)}`)
-                // Base order; final ordering applied in JS via compareDisplayOrder.
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
+            // Fase 3: baris yang sudah diminta skrip inline index.html sejak HTML
+            // (pengunjung tanpa sesi). Sekali pakai; gagal, kedaluwarsa, atau bukan
+            // array → kueri biasa. Filter di bawah tetap otoritatif untuk keduanya.
+            let rows: ListingPageRow[] | null = null;
+            const prefetched = takeListingPrefetch();
+            if (prefetched) {
+                try {
+                    const result = await prefetched;
+                    if (Array.isArray(result)) rows = result as ListingPageRow[];
+                } catch {
+                    /* jatuh ke kueri biasa */
+                }
+            }
+            if (!rows) {
+                const { data, error } = await buildListingQuery(supabase, now);
+                if (error) throw error;
+                rows = (data || []) as ListingPageRow[];
+            }
 
             // Client-side filtering for schedule
-            const activePages = ((data || []) as ListingPageRow[]).filter((page) => {
+            const activePages = rows.filter((page) => {
                 // ── Kilat tidak pernah tampil di sini (Phase 5, sql/95) ───────
                 // Kilat punya halaman, tapi halamannya adalah tujuan pendaratan
                 // push notification di aplikasi Jakpat — bukan kartu iklan di

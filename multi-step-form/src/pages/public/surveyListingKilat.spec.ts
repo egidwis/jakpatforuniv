@@ -281,9 +281,17 @@ describe('pra-filter publish_end_date /pages', () => {
     it('kueri memakai cutoff dari jam yang sama dengan filter browser', () => {
         expect(LISTING_SRC).toContain('.or(`publish_end_date.is.null,publish_end_date.gte.${listingEndCutoffIso(now)}`)');
         // `now` dideklarasikan SEKALI, sebelum kueri — bukan jam kedua sesudahnya.
+        // Sejak Fase 3 (20 Nov) rantai kuerinya = buildListingQuery(client, now);
+        // `now` yang SAMA wajib diteruskan ke sana.
         const loadPages = LISTING_SRC.slice(LISTING_SRC.indexOf('const loadPages'), LISTING_SRC.indexOf('const loadPages') + 4000);
         expect(loadPages.match(/const now = new Date\(\)/g)?.length).toBe(1);
-        expect(loadPages.indexOf('const now = new Date()')).toBeLessThan(loadPages.indexOf(".from('survey_pages')"));
+        const query = loadPages.indexOf('buildListingQuery(supabase, now)');
+        expect(query).toBeGreaterThan(-1);
+        expect(loadPages.indexOf('const now = new Date()')).toBeLessThan(query);
+        // Dan buildListingQuery memang memakai `now` itu untuk cutoff-nya.
+        const builder = LISTING_SRC.slice(LISTING_SRC.indexOf('export function buildListingQuery'));
+        expect(builder.slice(0, 800)).toContain(".from('survey_pages')");
+        expect(builder.slice(0, 800)).toContain('listingEndCutoffIso(now)');
     });
 
     it('cutoff selalu sebelum "sekarang" (superset dari filter browser)', () => {
