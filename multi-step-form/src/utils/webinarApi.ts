@@ -26,6 +26,10 @@ export interface WebinarEventView {
     seats_label: string | null;
     benefits: string[];
     recording_minutes?: number | null;
+    /** Dikirim functions/api/webinar/_view.js (urutan "rekaman terbaru"). */
+    recording_published_at?: string | null;
+    /** Dikirim _view.js: detik sampai penjualan dibuka (hitung mundur), null bila tak relevan. */
+    seconds_until_open?: number | null;
     /** Video kelas: "Video kelas · 88 menit". */
     kind_label?: string | null;
     /** Video kelas: webinar asal rekamannya (Iterasi 7, sql/137). */
