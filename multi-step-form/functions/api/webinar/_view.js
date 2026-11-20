@@ -62,8 +62,8 @@ function scheduleLabel(event) {
 }
 
 const BENEFITS = {
-  live: ['Sesi live via Zoom', 'Materi PPT', 'Rekaman video webinar'],
-  replay: ['Rekaman video webinar', 'Materi PPT'],
+  live: ['Sesi live via Zoom', 'Materi Slide/PPT', 'Akses rekaman video kelas', 'Sertifikat Webinar'],
+  replay: ['Akses rekaman video kelas', 'Materi Slide/PPT'],
 };
 
 const BUY_LABEL = { live: 'Beli tiket', replay: 'Beli rekaman' };

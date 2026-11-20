@@ -66,8 +66,8 @@ describe('_view', () => {
   });
 
   it('yang didapat mengikuti jenis halaman', () => {
-    expect(buildEventView(event()).benefits).toEqual(['Sesi live via Zoom', 'Materi PPT', 'Rekaman video webinar']);
-    expect(buildEventView(event({ offer_kind: 'replay' })).benefits).toEqual(['Rekaman video webinar', 'Materi PPT']);
+    expect(buildEventView(event()).benefits).toEqual(['Sesi live via Zoom', 'Materi Slide/PPT', 'Akses rekaman video kelas', 'Sertifikat Webinar']);
+    expect(buildEventView(event({ offer_kind: 'replay' })).benefits).toEqual(['Akses rekaman video kelas', 'Materi Slide/PPT']);
   });
 
   it('Video kelas: tanpa jadwal live; label jenis; membawa webinar asal (Iterasi 7)', () => {

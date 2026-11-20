@@ -34,6 +34,9 @@ const ICONS = {
   ticket: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>',
   video: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>',
   laptop: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><line x1="2" y1="20" x2="22" y2="20"/></svg>',
+  fileText: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 13H8"/><path d="M16 17H8"/><path d="M16 13h-2"/></svg>',
+  award: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>',
+  share: '<svg class="ico-sm" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>',
   check: '<svg class="check-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>',
   arrowRight: '<svg class="ico-sm" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>',
   arrowLeft: '<svg class="ico-sm" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>',
@@ -401,20 +404,41 @@ main{
 .stack{display:grid;gap:14px}
 .stack>.badge{justify-self:start}
 
-.detail-poster{border-radius:24px;box-shadow:0 18px 40px -24px rgba(15,23,42,.12)}
-.content{padding:24px}
+.editorial-card{overflow:hidden}
+.editorial-media{padding:14px 14px 0}
+.editorial-media .poster-frame{border-radius:20px}
+.content{padding:20px 22px 26px}
 .content h1{
   font-size:clamp(1.6rem,3vw,2.2rem);font-weight:800;
   line-height:1.15;letter-spacing:-.035em;color:var(--jfu-ink);
   text-wrap:balance;margin:10px 0 10px;
 }
 .detail-summary{font-size:1.02rem;color:var(--jfu-slate-600);line-height:1.6;max-width:62ch}
+.speaker-mini-row{
+  display:inline-flex;align-items:center;gap:10px;margin-top:16px;
+  padding:6px 14px 6px 6px;border-radius:999px;
+  background:var(--jfu-surface);border:1px solid var(--jfu-border);
+  text-decoration:none;color:var(--jfu-ink);max-width:100%;
+  transition:border-color .2s ease,background-color .2s ease;
+}
+.speaker-mini-row:hover{border-color:#93C5FD;background:var(--jfu-blue-soft)}
+.speaker-mini-avatars{display:flex;align-items:center;flex-shrink:0}
+.speaker-mini-avatars img,.speaker-mini-avatars .ph-sm{
+  width:30px;height:30px;border-radius:999px;object-fit:cover;
+  border:2px solid var(--jfu-white);background:#DBEAFE;color:#1E40AF;
+  display:inline-flex;align-items:center;justify-content:center;
+  font-size:.7rem;font-weight:800;
+}
+.speaker-mini-avatars>*+*{margin-left:-8px}
+.speaker-mini-text{font-size:.84rem;color:var(--jfu-slate-600);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.speaker-mini-text strong{color:var(--jfu-ink);font-weight:700}
+
 .mobile-facts{
   margin-top:18px;padding:16px;border-radius:18px;
   background:var(--jfu-surface);border:1px solid var(--jfu-border);
   display:grid;gap:12px;
 }
-.content-section{margin-top:30px;padding-top:26px;border-top:1px solid #F1F5F9}
+.content-section{margin-top:28px;padding-top:26px;border-top:1px solid #F1F5F9;scroll-margin-top:96px}
 .content-section h2{
   font-size:1.18rem;font-weight:800;letter-spacing:-.025em;
   color:var(--jfu-ink);margin-bottom:14px;
@@ -434,28 +458,32 @@ main{
 .prose hr{border:0;border-top:1px solid var(--jfu-border);margin:20px 0}
 .prose img{border-radius:16px;margin:16px 0;border:1px solid var(--jfu-border)}
 
-.speakers-list{display:grid;gap:12px}
+.speakers-list{display:grid;gap:14px}
 .speaker{
-  display:flex;gap:14px;align-items:center;
-  padding:12px 14px;border-radius:18px;
-  background:var(--jfu-surface);border:1px solid var(--jfu-border);
+  display:flex;gap:16px;align-items:center;
+  padding:16px 18px;border-radius:20px;
+  background:linear-gradient(180deg,#F8FAFC 0%,#FFFFFF 100%);
+  border:1px solid var(--jfu-border);
 }
 .speaker>div{min-width:0}
 .speaker img,.speaker .ph{
-  width:50px;height:50px;border-radius:999px;object-fit:cover;flex-shrink:0;
+  width:64px;height:64px;border-radius:999px;object-fit:cover;flex-shrink:0;
   background:#DBEAFE;color:#1E40AF;display:flex;align-items:center;justify-content:center;
-  font-weight:800;font-size:.9rem;border:1px solid rgba(25,118,210,.15);
+  font-weight:800;font-size:1.05rem;
+  box-shadow:0 0 0 3px var(--jfu-white),0 0 0 4.5px rgba(25,118,210,.16);
 }
-.speaker-name{font-weight:700;color:var(--jfu-ink);font-size:.96rem;line-height:1.3}
-.speaker-title{font-size:.84rem;color:var(--jfu-slate-600);margin-top:2px;line-height:1.4}
+.speaker-name{font-weight:800;color:var(--jfu-ink);font-size:1.04rem;letter-spacing:-.015em;line-height:1.3}
+.speaker-title{font-size:.88rem;color:var(--jfu-slate-600);margin-top:3px;line-height:1.45}
 
 .benefits{list-style:none;display:grid;gap:10px}
-.benefits li{display:flex;align-items:center;gap:10px;font-size:.94rem;color:var(--jfu-slate-700);font-weight:500}
-.check-badge{
-  width:24px;height:24px;border-radius:999px;flex-shrink:0;
-  background:#DCFCE7;color:#166534;
+.benefits li{display:flex;align-items:center;gap:10px;font-size:.88rem;color:var(--jfu-slate-700);font-weight:600;line-height:1.35}
+.benefit-ico{
+  width:28px;height:28px;border-radius:10px;flex-shrink:0;
+  background:var(--jfu-blue-soft);color:var(--jfu-blue);
+  border:1px solid rgba(191,219,254,.8);
   display:inline-flex;align-items:center;justify-content:center;
 }
+.benefit-ico .ico{width:14px;height:14px;margin-top:0;color:var(--jfu-blue)}
 
 .contact-note{margin-top:24px;padding-top:18px;border-top:1px solid #F1F5F9;font-size:.85rem;color:var(--jfu-slate-500)}
 .contact-note a{color:var(--jfu-blue-dark);font-weight:600}
@@ -467,7 +495,25 @@ main{
   border-color:#93C5FD;
   box-shadow:0 22px 48px -24px rgba(25,118,210,.16);
 }
+.buy-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.seats-pill{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:.74rem;font-weight:700;color:var(--jfu-amber-dark);
+  background:var(--jfu-amber-soft);border:1px solid #FDE68A;
+  padding:4px 10px;border-radius:999px;font-variant-numeric:tabular-nums;
+}
+.seats-pill .ico{width:13px;height:13px;margin-top:0;color:var(--jfu-amber-dark)}
 .buy-divider{height:1px;background:rgba(203,213,225,.75)}
+.buy-subhead{font-size:.82rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--jfu-slate-500);margin-bottom:2px}
+.share-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;width:100%;
+  background:transparent;color:var(--jfu-slate-600);
+  border:1px solid var(--jfu-border);border-radius:999px;
+  padding:9px 14px;font-family:inherit;font-size:.84rem;font-weight:600;cursor:pointer;
+  transition:background-color .2s ease,border-color .2s ease,color .2s ease;
+}
+.share-btn:hover{background:var(--jfu-surface);border-color:#CBD5E1;color:var(--jfu-ink)}
+.share-btn.is-copied{background:#DCFCE7;border-color:#BBF7D0;color:#166534}
 .countdown-box{
   padding:14px 16px;border-radius:16px;
   background:var(--jfu-blue-soft);border:1px solid var(--jfu-blue-border);
@@ -538,7 +584,8 @@ main{
   .layout{grid-template-columns:minmax(0,1fr) 364px;align-items:start;gap:28px}
   .side{position:sticky;top:96px}
   .buybar{display:none}
-  .content{padding:34px}
+  .editorial-media{padding:20px 20px 0}
+  .content{padding:28px 34px 34px}
   .content h1{margin-top:0}
   .only-sm{display:none}
 }
@@ -572,6 +619,19 @@ if(btn&&menu){
     document.addEventListener("keydown",function(ev){if(ev.key==="Escape"&&menu.classList.contains("is-open")){menu.classList.remove("is-open");btn.setAttribute("aria-expanded","false");btn.focus()}});
   }
 }
+document.querySelectorAll("[data-share-btn]").forEach(function(sb){
+  sb.addEventListener("click",function(){
+    var label=sb.querySelector("[data-share-label]");
+    var done=function(){
+      sb.classList.add("is-copied");
+      if(label)label.textContent="Link kelas tersalin";
+      clearTimeout(sb._t);
+      sb._t=setTimeout(function(){sb.classList.remove("is-copied");if(label)label.textContent="Bagikan kelas ini"},2200);
+    };
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(location.href).then(done,done)}
+    else{done()}
+  });
+});
 })();`;
 
 const INAPP_SCRIPT = `(function(){var u=navigator.userAgent||"";if(!/Instagram|FBAN|FBAV|FB_IAB|Line\\/|TikTok|musical_ly|BytedanceWebview/i.test(u))return;
@@ -711,6 +771,19 @@ async function loadLinks(sb, event, now = Date.now()) {
   return {};
 }
 
+function benefitIcon(label) {
+  const low = String(label || '').toLowerCase();
+  if (low.includes('zoom') || low.includes('live')) return ICONS.video;
+  if (low.includes('slide') || low.includes('ppt') || low.includes('materi')) return ICONS.fileText;
+  if (low.includes('rekaman') || low.includes('video')) return ICONS.play;
+  if (low.includes('sertifikat')) return ICONS.award;
+  return ICONS.check;
+}
+
+const benefitsList = (benefits) => `<ul class="benefits">${benefits.map((b) => `<li><span class="benefit-ico">${benefitIcon(b)}</span><span>${e(b)}</span></li>`).join('')}</ul>`;
+
+const shareButton = () => `<button type="button" class="share-btn" data-share-btn>${ICONS.share}<span data-share-label>Bagikan kelas ini</span></button>`;
+
 function renderDetail(event, { preview, sourceTitle = null, videoSlug = null }) {
   const view = buildEventView(event);
   const description = view.summary || `${view.title} — Kelas JFU | Jakpat for Universities`;
@@ -725,8 +798,15 @@ function renderDetail(event, { preview, sourceTitle = null, videoSlug = null }) 
   const closeBlock = salesCloseBanner(view);
 
   const speakers = view.speakers.map((s) => `<div class="speaker">
-${/^https:\/\//i.test(s?.photo_url || '') ? `<img src="${e(s.photo_url)}" alt="" width="50" height="50" loading="lazy">` : `<div class="ph" aria-hidden="true">${e(initials(s?.name))}</div>`}
+${/^https:\/\//i.test(s?.photo_url || '') ? `<img src="${e(s.photo_url)}" alt="" width="64" height="64" loading="lazy">` : `<div class="ph" aria-hidden="true">${e(initials(s?.name))}</div>`}
 <div><div class="speaker-name">${e(s?.name)}</div>${s?.title ? `<div class="speaker-title">${e(s.title)}</div>` : ''}</div></div>`).join('');
+
+  const speakerNames = view.speakers.map((s) => s?.name).filter(Boolean).join(', ');
+  const speakerMini = view.speakers.length
+    ? `<a class="speaker-mini-row" href="#pembicara"><span class="speaker-mini-avatars" aria-hidden="true">${view.speakers.slice(0, 3).map((s) => (/^https:\/\//i.test(s?.photo_url || '')
+      ? `<img src="${e(s.photo_url)}" alt="" width="30" height="30" loading="lazy">`
+      : `<span class="ph-sm">${e(initials(s?.name))}</span>`)).join('')}</span><span class="speaker-mini-text">Bersama <strong>${e(speakerNames)}</strong></span></a>`
+    : '';
 
   // Rancangan A2 (3 Nov): di HP info acara ada di bawah judul dan tombol di bar bawah;
   // di desktop info acara + tombol pindah ke kartu kanan yang ikut di-scroll.
@@ -736,10 +816,16 @@ ${/^https:\/\//i.test(s?.photo_url || '') ? `<img src="${e(s.photo_url)}" alt=""
     ? `<li>${ICONS.play}<span>Video kelas${view.recording_minutes ? ` · ▶ ${Number(view.recording_minutes)} menit` : ''}</span></li>
 <li>${ICONS.laptop}<span>Tonton kapan saja di menu Webinar</span></li>`
     : '';
-  const facts = `<ul class="meta">
+  const desktopFacts = `<ul class="meta">
+${dateLine ? `<li>${ICONS.calendar}<span>${e(dateLine)}</span></li>` : ''}${timeLine ? `<li>${ICONS.clock}<span>${e(timeLine)}</span></li>` : ''}
+${view.kind === 'live' ? `<li>${ICONS.video}<span>Online via Zoom</span></li>` : ''}${replayFacts}</ul>`;
+  const mobileFacts = `<ul class="meta">
 ${dateLine ? `<li>${ICONS.calendar}<span>${e(dateLine)}</span></li>` : ''}${timeLine ? `<li>${ICONS.clock}<span>${e(timeLine)}</span></li>` : ''}
 ${view.kind === 'live' ? `<li>${ICONS.video}<span>Online via Zoom</span></li>` : ''}${replayFacts}
 ${view.seats_label ? `<li>${ICONS.ticket}<span>${e(view.seats_label)}</span></li>` : ''}</ul>`;
+  const seatsPill = view.seats_label
+    ? `<span class="seats-pill">${ICONS.ticket}<span>${e(view.seats_label)}</span></span>`
+    : '';
   // Tiket: rekaman sudah termasuk; sesudah acara mulai, tunjuk Video kelasnya bila ada.
   // Video kelas dari webinar: pemegang tiket webinar itu tidak perlu membeli lagi.
   const liveNote = videoSlug
@@ -756,16 +842,18 @@ ${view.seats_label ? `<li>${ICONS.ticket}<span>${e(view.seats_label)}</span></li
   const body = `${navbar()}<main id="konten-utama">
 ${preview ? '<div class="preview">Pratinjau — belum tentu terlihat publik</div>' : ''}
 <div class="back-row"><a class="back-link" href="/webinar">${ICONS.arrowLeft}<span>Semua Kelas JFU</span></a></div>
-<div class="layout"><div class="stack" style="gap:20px">
-${posterTag(view, 'poster detail-poster')}<article class="content card"><div class="only-sm" style="margin-bottom:8px">${badge(view)}</div><h1>${e(view.title)}</h1>
+<div class="layout">
+<article class="card editorial-card">
+<div class="editorial-media">${posterTag(view)}</div>
+<div class="content"><div class="only-sm" style="margin-bottom:8px">${badge(view)}</div><h1>${e(view.title)}</h1>
 ${view.summary ? `<p class="detail-summary">${e(view.summary)}</p>` : ''}
-<div class="only-sm mobile-facts">${facts}${closeBlock}${statusBlock}</div>
+${speakerMini}
+<div class="only-sm mobile-facts">${mobileFacts}${closeBlock}${statusBlock}<div class="buy-divider"></div><p class="buy-subhead">Yang kamu dapat</p>${benefitsList(view.benefits)}${shareButton()}</div>
 ${prose ? `<div class="content-section"><h2>Tentang kelas ini</h2><div class="prose">${prose}</div></div>` : ''}
-${speakers ? `<div class="content-section"><h2>Pembicara</h2><div class="speakers-list">${speakers}</div></div>` : ''}
-<div class="content-section"><h2>Yang kamu dapat</h2><ul class="benefits">${view.benefits.map((b) => `<li><span class="check-badge">${ICONS.check}</span><span>${e(b)}</span></li>`).join('')}</ul></div>
+${speakers ? `<div class="content-section" id="pembicara"><h2>Pembicara</h2><div class="speakers-list">${speakers}</div></div>` : ''}
 ${replayNote ? `<div class="only-sm" style="margin-top:20px">${replayNote}</div>` : ''}
-<p class="contact-note">Ada kendala? Hubungi admin di <a href="mailto:${ADMIN_CONTACT}">${ADMIN_CONTACT}</a>.</p></article></div>
-<aside class="side card buy only-lg"><div class="stack">${badge(view)}${priceBlock(view)}<div class="buy-divider"></div>${facts}${closeBlock}${statusBlock}${inAppNotice()}${action}${replayNote}</div></aside></div></main>
+<p class="contact-note">Ada kendala? Hubungi admin di <a href="mailto:${ADMIN_CONTACT}">${ADMIN_CONTACT}</a>.</p></div></article>
+<aside class="side card buy only-lg"><div class="stack"><div class="buy-top">${badge(view)}${seatsPill}</div>${priceBlock(view)}${closeBlock}<div class="buy-divider"></div>${desktopFacts}${statusBlock}${inAppNotice()}${action}<div class="buy-divider"></div><h2 class="buy-subhead">Yang kamu dapat</h2>${benefitsList(view.benefits)}${replayNote}${shareButton()}</div></aside></div></main>
 ${footer()}
 ${hasBuybar ? `<div class="buybar">${inAppNotice()}${action
     ? `<div class="buy-row">${view.price_label ? `<span class="buy-row-price">${e(view.price_label)}</span>` : ''}${action}</div>`
