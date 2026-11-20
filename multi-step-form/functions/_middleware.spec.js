@@ -149,3 +149,58 @@ describe('host lain tidak tersentuh', () => {
     expect(next).toHaveBeenCalledOnce();
   });
 });
+
+describe('cleanHomepagePath — semua subpath non-aset di /homepage/* satu 301 ke root', () => {
+  it.each([
+    ['/homepage/webinar', '/webinar'],
+    ['/homepage/webinar/mau-skripsi-apa', '/webinar/mau-skripsi-apa'],
+    ['/homepage/webinar?utm_source=ig', '/webinar?utm_source=ig'],
+    ['/homepage/pages', '/pages'],
+    ['/homepage/pages/survei-1', '/pages/survei-1'],
+    ['/homepage/login', '/login'],
+    ['/homepage/register', '/register'],
+    ['/homepage/dashboard', '/dashboard'],
+    ['/homepage/dashboard/forms', '/dashboard/forms'],
+    ['/homepage/f/AbCd123', '/f/AbCd123'],
+    ['/Homepage', '/'],
+    ['/HOMEPAGE/', '/'],
+    ['/HOMEPAGE/webinar', '/webinar'],
+    ['/HOMEPAGE/privacy-policy.html', '/privacy-policy'],
+    ['/homepage/privacy-policy/', '/privacy-policy'],
+    ['/homepage/terms-conditions/', '/terms-conditions'],
+    ['/homepage/syarat-ketentuan', '/terms-conditions'],
+    ['/homepage//webinar', '/webinar'],
+  ])('apex %s → 301 ke %s', async (path, clean) => {
+    const res = await run(`https://jakpatforuniv.com${path}`).promise;
+    expect(res.status).toBe(301);
+    expect(res.headers.get('Location')).toBe(`https://jakpatforuniv.com${clean}`);
+  });
+
+  it('submit.jakpatforuniv.com/homepage/webinar langsung satu 301 ke apex /webinar', async () => {
+    const res = await run('https://submit.jakpatforuniv.com/homepage/webinar?utm=wa').promise;
+    if (REDIRECT_SUBMIT_TO_APEX) {
+      expect(res.status).toBe(301);
+      expect(res.headers.get('Location')).toBe('https://jakpatforuniv.com/webinar?utm=wa');
+    } else {
+      expect(res).toBe(NEXT_RESPONSE);
+    }
+  });
+
+  it.each([
+    '/homepage/styles.css',
+    '/homepage/script.js',
+    '/homepage/assets/images/hero-student-portrait.jpg',
+    '/homepage/navbar-logo.png',
+    '/homepage/Logo.PNG',
+  ])('aset %s tidak dialihkan', async (path) => {
+    const { promise, next } = run(`https://jakpatforuniv.com${path}`);
+    expect(await promise).toBe(NEXT_RESPONSE);
+    expect(next).toHaveBeenCalledOnce();
+  });
+
+  it.each(['/homepagex', '/pages/homepage'])('%s bukan URL homepage → aplikasi', async (path) => {
+    const { promise, next } = run(`https://jakpatforuniv.com${path}`);
+    expect(await promise).toBe(NEXT_RESPONSE);
+    expect(next).toHaveBeenCalledOnce();
+  });
+});

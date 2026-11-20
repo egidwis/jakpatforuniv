@@ -42,7 +42,37 @@ const LEGACY_HOMEPAGE_PATHS = {
   '/homepage/privacy-policy.html': '/privacy-policy',
   '/homepage/terms-conditions': '/terms-conditions',
   '/homepage/terms-conditions.html': '/terms-conditions',
+  '/homepage/syarat-ketentuan': '/terms-conditions',
 };
+
+const ASSET_EXT = /\.(css|js|mjs|map|json|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|otf|mp4|webm|pdf|txt|xml)$/;
+
+/**
+ * Alamat bersih untuk URL halaman `/homepage/…` lama, atau `null` bila bukan.
+ * Dipakai cabang apex DAN host lama (www/submit), jadi selalu SATU lompatan:
+ *   - tak peka huruf besar/kecil pada prefix `/homepage`;
+ *   - aset statis (`/homepage/styles.css`, gambar, JS, dll.) → `null` (dilayani apa adanya);
+ *   - path legacy yang dipetakan eksplisit (`/homepage`, `/homepage/index.html`,
+ *     `/homepage/privacy-policy.html`, dll.) → path kanoniknya;
+ *   - subpath lain (`/homepage/webinar`, `/homepage/webinar/<slug>`, `/homepage/pages`,
+ *     `/homepage/login`, `/homepage/dashboard`, dll.) → strip prefix `/homepage`
+ *     dengan menjaga kapitalisasi subpath.
+ */
+export function cleanHomepagePath(pathname) {
+  const lower = pathname.toLowerCase();
+  if (lower !== '/homepage' && !lower.startsWith('/homepage/')) return null;
+  if (ASSET_EXT.test(lower)) return null;
+
+  const exact = LEGACY_HOMEPAGE_PATHS[lower];
+  if (exact) return exact;
+
+  const trimmed = lower.replace(/\/+$/, '') || '/';
+  const exactTrimmed = LEGACY_HOMEPAGE_PATHS[trimmed];
+  if (exactTrimmed) return exactTrimmed;
+
+  const stripped = pathname.slice('/homepage'.length).replace(/^\/+/, '/');
+  return stripped || '/';
+}
 
 export async function onRequest(context) {
   const { request, next, env } = context;
@@ -57,7 +87,7 @@ export async function onRequest(context) {
     if (!redirectable || url.pathname.startsWith('/api/')) {
       return next();
     }
-    const path = LEGACY_HOMEPAGE_PATHS[url.pathname] ?? url.pathname;
+    const path = cleanHomepagePath(url.pathname) ?? url.pathname;
     return Response.redirect(`https://${APEX_HOST}${path}${url.search}`, 301);
   }
 
@@ -65,7 +95,7 @@ export async function onRequest(context) {
     return next();
   }
 
-  const cleanPath = LEGACY_HOMEPAGE_PATHS[url.pathname];
+  const cleanPath = cleanHomepagePath(url.pathname);
   if (cleanPath) {
     return Response.redirect(`https://${APEX_HOST}${cleanPath}${url.search}`, 301);
   }
