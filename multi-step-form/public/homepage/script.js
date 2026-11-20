@@ -379,7 +379,7 @@ function toggleTestimonials() {
             var img = document.createElement('img');
             img.className = 'wf-poster';
             img.src = view.poster_url;
-            img.alt = view.title || 'Poster Webinar';
+            img.alt = view.title || 'Poster Kelas JFU';
             img.width = 1280;
             img.height = 720;
             img.decoding = 'async';
@@ -430,7 +430,7 @@ function toggleTestimonials() {
         var toneClass = view.tone === 'on_sale'
             ? ' is-sale'
             : (view.tone === 'soon' ? ' is-soon' : (view.tone === 'held' ? ' is-held' : ''));
-        top.appendChild(text('span', 'wf-badge' + toneClass, view.badge || 'Webinar'));
+        top.appendChild(text('span', 'wf-badge' + toneClass, view.badge || 'Kelas JFU'));
         if (view.seats_label) {
             top.appendChild(text('span', 'wf-seats', view.seats_label));
         }
@@ -466,7 +466,7 @@ function toggleTestimonials() {
         var ctaWrap = document.createElement('span');
         ctaWrap.className = 'wf-cta';
         ctaWrap.setAttribute('aria-hidden', 'true');
-        var ctaSpan = text('span', '', translated('cta', 'Lihat Webinar'));
+        var ctaSpan = text('span', '', translated('cta', 'Lihat Kelas JFU'));
         ctaSpan.setAttribute('data-i18n', 'webinar.cta');
         ctaWrap.appendChild(ctaSpan);
         ctaWrap.appendChild(document.createTextNode(' →'));

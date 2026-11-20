@@ -13,7 +13,7 @@ export const SEATS_VISIBLE_AT = 20;
 // dipakai untuk kolom yang keluar ke publik.
 export const PUBLIC_EVENT_COLUMNS = [
   'id', 'slug', 'title', 'summary', 'description_blocks', 'speakers', 'poster_url',
-  'starts_at', 'duration_minutes', 'price', 'status', 'offer_kind', 'sales_mode',
+  'starts_at', 'duration_minutes', 'sales_close_at', 'price', 'status', 'offer_kind', 'sales_mode',
   'is_listed', 'is_test', 'recording_minutes', 'recording_published_at',
   'source_event_id', 'webinar_offer_state',
 ].join(',');
@@ -98,12 +98,29 @@ function stateCopy(state, offer) {
   }
 }
 
+function resolveSalesCloseMs(event) {
+  const candidates = [];
+  if (event.sales_close_at) {
+    const t = Date.parse(event.sales_close_at);
+    if (!Number.isNaN(t)) candidates.push(t);
+  }
+  if (event.offer_kind === 'live' && event.starts_at) {
+    const t = Date.parse(event.starts_at);
+    if (!Number.isNaN(t)) candidates.push(t);
+  }
+  return candidates.length ? Math.min(...candidates) : null;
+}
+
 /** Mengubah baris webinar_events + webinar_offer_state menjadi isi tampilan. */
-export function buildEventView(event) {
+export function buildEventView(event, now = Date.now()) {
   const offer = event.webinar_offer_state || {};
   const state = offer.state || 'draft';
   const copy = stateCopy(state, offer);
   const seatsLeft = typeof offer.seats_left === 'number' ? offer.seats_left : null;
+  const closeMs = state === 'on_sale' ? resolveSalesCloseMs(event) : null;
+  const secondsUntilClose = closeMs !== null && closeMs > now
+    ? Math.ceil((closeMs - now) / 1000)
+    : null;
 
   return {
     id: event.id,
@@ -132,6 +149,7 @@ export function buildEventView(event) {
     recording_minutes: event.recording_minutes ?? null,
     recording_published_at: event.recording_published_at ?? null,
     seconds_until_open: offer.seconds_until_open ?? null,
+    seconds_until_close: secondsUntilClose,
     seats_label: state === 'on_sale' && seatsLeft !== null && seatsLeft <= SEATS_VISIBLE_AT
       ? `Sisa ${seatsLeft} kursi`
       : null,
@@ -153,7 +171,7 @@ const isLiveIn = (states) => (v) => v.kind === 'live' && states.includes(v.state
 export function buildListing(rows) {
   const views = rows
     .filter((row) => row.is_listed && row.status === 'published')
-    .map(buildEventView);
+    .map((row) => buildEventView(row));
 
   const onSale = views.filter(isLiveIn(['on_sale', 'seats_held'])).sort(byStart);
   const soldOut = views.filter(isLiveIn(['sold_out'])).sort(byStart);

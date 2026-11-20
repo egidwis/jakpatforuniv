@@ -140,11 +140,11 @@ const translations = {
 
         // Webinar Floating Card
         webinar: {
-            cta: "Lihat Webinar",
+            cta: "Lihat Kelas JFU",
             ppn: "termasuk PPN",
             replayLabel: "Video Kelas",
-            regionAriaLabel: "Pengumuman webinar mendatang",
-            closeAriaLabel: "Tutup pengumuman webinar"
+            regionAriaLabel: "Pengumuman Kelas JFU mendatang",
+            closeAriaLabel: "Tutup pengumuman Kelas JFU"
         },
 
         // Final CTA Section (Opsi 1 Glass Horizon)
@@ -158,7 +158,7 @@ const translations = {
         // Footer
         footer: {
             home: "Beranda",
-            webinar: "Webinar",
+            webinar: "Kelas JFU",
             surveys: "Daftar Survei",
             privacy: "Kebijakan Privasi",
             terms: "Syarat & Ketentuan",
@@ -315,11 +315,11 @@ const translations = {
 
         // Webinar Floating Card
         webinar: {
-            cta: "View Webinar",
+            cta: "View Kelas JFU",
             ppn: "incl. VAT",
             replayLabel: "Class Replay",
-            regionAriaLabel: "Upcoming webinar announcement",
-            closeAriaLabel: "Dismiss webinar announcement"
+            regionAriaLabel: "Upcoming Kelas JFU announcement",
+            closeAriaLabel: "Dismiss Kelas JFU announcement"
         },
 
         // Final CTA Section (Opsi 1 Glass Horizon)
@@ -333,7 +333,7 @@ const translations = {
         // Footer
         footer: {
             home: "Home",
-            webinar: "Webinars",
+            webinar: "Kelas JFU",
             surveys: "Survey List",
             privacy: "Privacy Policy",
             terms: "Terms & Conditions",
