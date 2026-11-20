@@ -61,6 +61,7 @@ import { shouldAutoMint, canRepickInPlace, billExpiryFor } from '../../utils/jad
 import { createInFlightGate } from '../../utils/inFlightGate';
 import { repickEstimate } from '../../utils/repickPrice';
 import { formatIDR } from '../../utils/currency';
+import { payInSameTabNow } from '../../utils/payTab';
 
 /**
  * Halaman "Jadwal & Bayar" — SATU halaman untuk memilih, membayar, dan memilih
@@ -472,13 +473,15 @@ export function JadwalDanBayarPage() {
 
   /**
    * Bayar saat tagihan BELUM terbit (pemicu otomatis gagal, atau lewat 14.00
-   * dan peneliti memilih "tetap bayar"). Tab dibuka sebelum await supaya tidak
-   * kena popup blocker, lalu diarahkan ke `/bayar/<id>` — resolver yang
-   * berwenang, bukan URL DOKU mentah dari respons.
+   * dan peneliti memilih "tetap bayar"). Desktop: tab dibuka sebelum await
+   * supaya tidak kena popup blocker. Ponsel/tablet: TANPA tab baru (20 Nov
+   * 2026) — di iPhone tab `about:blank` langsung aktif dan, bila apa pun
+   * tertunda, peneliti menatap halaman putih. Keduanya lalu diarahkan ke
+   * `/bayar/<id>` — resolver yang berwenang, bukan URL DOKU mentah.
    */
   const handlePayWithoutBill = async () => {
     if (!entry || isOpeningPay) return;
-    const w = window.open('about:blank', '_blank');
+    const w = payInSameTabNow() ? null : window.open('about:blank', '_blank');
     setIsOpeningPay(true);
     try {
       // Pemicu otomatis masih berjalan? `issueBill` mengembalikan permintaan

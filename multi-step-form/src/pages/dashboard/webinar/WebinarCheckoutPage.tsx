@@ -6,9 +6,10 @@ import { useAuth } from '@/context/AuthContext';
 import { getOwnProfile, isProfileComplete, type ResearcherProfile } from '@/utils/supabase';
 import { createInFlightGate } from '@/utils/inFlightGate';
 import {
-    checkoutErrorText, fetchMyWebinarOrders, fetchWebinarEvent, ownedFor, payInSameTabNow, previewWebinarVoucher, startWebinarCheckout, webinarContactError,
+    checkoutErrorText, fetchMyWebinarOrders, fetchWebinarEvent, ownedFor, previewWebinarVoucher, startWebinarCheckout, webinarContactError,
     WebinarApiError, webinarTicketHref, type WebinarCheckoutResult, type WebinarContact, type WebinarEventView, type WebinarVoucherPreview,
 } from '@/utils/webinarApi';
+import { payInSameTabNow } from '@/utils/payTab';
 import { FieldRow, SectionLabel } from '@/components/SurveyFieldRow';
 import { Switch } from '@/components/ui/switch';
 import { ProfileCompletionSheet } from '@/components/ProfileCompletionSheet';
