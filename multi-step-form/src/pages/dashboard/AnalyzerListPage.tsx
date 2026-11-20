@@ -101,7 +101,14 @@ export const AnalyzerListPage: React.FC = () => {
         </div>
 
         {/* Decorative background glow */}
-        <div className="absolute -right-10 -bottom-10 w-60 h-60 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
+        {/* Bekas lingkaran 240px indigo-500/20 ber-blur-3xl, kini radial-gradient
+            hasil ukur (pusat tetap 80px dari kanan & bawah). Tanpa filter blur:
+            lihat src/mobilePaintBudget.spec.ts. */}
+        <div
+          aria-hidden="true"
+          className="absolute -right-[180px] -bottom-[180px] w-[520px] h-[520px] pointer-events-none"
+          style={{ backgroundImage: 'radial-gradient(circle 260px at 50% 50%,rgba(103,103,243,0.165) 0px,rgba(100,100,243,0.161) 26px,rgba(106,106,241,0.141) 58px,rgba(100,100,237,0.11) 92px,rgba(101,101,250,0.059) 136px,rgba(101,101,250,0.027) 176px,rgba(101,101,250,0.008) 214px,rgba(101,101,250,0) 260px)' }}
+        />
       </div>
 
       {/* Projects Section */}

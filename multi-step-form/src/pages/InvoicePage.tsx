@@ -8,6 +8,7 @@ import { terbilangCapitalized } from '../utils/terbilang';
 import { formatPaymentChannel } from '../utils/paymentChannel';
 import { MATERAI_THRESHOLD, buildInvoiceDocument, groupMeta, scheduleBadgeOf, sourceIdOf } from '../utils/groupedInvoice';
 import jakpatLogo from '../assets/Jakpat Navbar Logo.webp';
+import { AmbientBackdrop } from '../components/AmbientBackdrop';
 
 // Bentuk item & jadwal tinggal di `utils/groupedInvoice` bersama agregasinya —
 // halaman ini tidak boleh punya definisi kedua yang bisa menyimpang darinya.
@@ -497,44 +498,8 @@ export function InvoicePage() {
 
     return (
         <div className="min-h-screen bg-[#f8fafc] font-jakarta p-4 md:p-8 print:bg-white print:p-0 relative overflow-x-hidden selection:bg-blue-100 selection:text-jfu-primary">
-            {/* Modern Mesh Aurora Glow (Selaras dengan Dashboard Peneliti) */}
-            <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 select-none no-print" aria-hidden="true">
-                {/* Titik 1: Mid-Right — Pendaran Biru Jakpat Cerah & Sky Blue */}
-                <div
-                    className="absolute top-[10%] -right-[6%] md:right-[2%] w-[600px] md:w-[850px] h-[600px] md:h-[850px] rounded-full pointer-events-none transform-gpu"
-                    style={{
-                        background: 'radial-gradient(circle at center, rgba(24, 124, 255, 0.22) 0%, rgba(56, 189, 248, 0.14) 45%, transparent 75%)',
-                        filter: 'blur(90px)',
-                    }}
-                />
-
-                {/* Titik 2: Mid-Left — Aksen Warm Rose / Blush Pink yang Hidup */}
-                <div
-                    className="absolute top-[18%] -left-[8%] md:-left-[4%] w-[550px] md:w-[800px] h-[550px] md:h-[800px] rounded-full pointer-events-none transform-gpu"
-                    style={{
-                        background: 'radial-gradient(circle at center, rgba(251, 113, 133, 0.18) 0%, rgba(244, 114, 182, 0.10) 45%, transparent 75%)',
-                        filter: 'blur(95px)',
-                    }}
-                />
-
-                {/* Titik 3: Lower-Right — Aksen Soft Rose Pink */}
-                <div
-                    className="absolute top-[55%] -right-[5%] md:right-[4%] w-[550px] md:w-[750px] h-[550px] md:h-[750px] rounded-full pointer-events-none transform-gpu"
-                    style={{
-                        background: 'radial-gradient(circle at center, rgba(244, 114, 182, 0.16) 0%, rgba(251, 113, 133, 0.08) 50%, transparent 75%)',
-                        filter: 'blur(95px)',
-                    }}
-                />
-
-                {/* Titik 4: Lower-Left — Pendaran Sky Cyan & Biru Jakpat Segar */}
-                <div
-                    className="absolute top-[65%] -left-[6%] md:left-[0%] w-[600px] md:w-[850px] h-[600px] md:h-[850px] rounded-full pointer-events-none transform-gpu"
-                    style={{
-                        background: 'radial-gradient(circle at center, rgba(14, 165, 233, 0.20) 0%, rgba(24, 124, 255, 0.12) 45%, transparent 75%)',
-                        filter: 'blur(95px)',
-                    }}
-                />
-            </div>
+            {/* Pendaran latar: radial-gradient, BUKAN lingkaran ber-blur — lihat AmbientBackdrop.css. */}
+            <AmbientBackdrop variant="invoice" />
 
             {/* Print styles */}
             <style>{`

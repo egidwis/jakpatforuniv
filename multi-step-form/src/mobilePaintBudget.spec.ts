@@ -13,6 +13,7 @@ import path from 'node:path';
  * Aura kini SATU elemen ber-radial-gradient (AmbientBackdrop): tampak sama, tanpa
  * buffer blur. Berkas di bawah adalah halaman yang dibuka di ponsel; jangan
  * kembalikan blur besar ke sana. Efek kaca kecil (navbar, kartu) di luar cakupan.
+ * 20 Nov: InvoicePage (4 lingkaran blur 90–95 px) & AnalyzerListPage (blur-3xl) ikut.
  */
 const src = path.resolve(__dirname);
 // Yang diperiksa KODE, bukan komentar (komentar boleh menyebut blur sebagai larangan).
@@ -24,6 +25,8 @@ const MOBILE_SHELLS = [
     'pages/LoginPage.tsx',
     'components/DashboardLayout.tsx',
     'pages/public/SurveyListingPage.tsx',
+    'pages/InvoicePage.tsx',
+    'pages/dashboard/AnalyzerListPage.tsx',
     'components/AmbientBackdrop.tsx',
     'components/AmbientBackdrop.css',
 ];
@@ -48,6 +51,7 @@ describe('halaman ponsel tanpa blur besar', () => {
         ['pages/LoginPage.tsx', 'login'],
         ['components/DashboardLayout.tsx', 'dashboard'],
         ['pages/public/SurveyListingPage.tsx', 'pages'],
+        ['pages/InvoicePage.tsx', 'invoice'],
     ])('%s memakai <AmbientBackdrop variant="%s" />', (rel, variant) => {
         expect(read(rel)).toContain(`<AmbientBackdrop variant="${variant}" />`);
     });
@@ -57,11 +61,15 @@ describe('halaman ponsel tanpa blur besar', () => {
         expect(code).not.toMatch(/\bbackdrop-blur(-[a-z0-9]+)?\b/);
     });
 
-    it('AmbientBackdrop.css: tiga varian, hanya radial-gradient, tanpa filter apa pun', () => {
+    it('AmbientBackdrop.css: empat varian, hanya radial-gradient, tanpa filter apa pun', () => {
         const css = read('components/AmbientBackdrop.css');
-        for (const v of ['login', 'dashboard', 'pages']) expect(css).toContain(`.jfu-aura--${v}`);
+        for (const v of ['login', 'dashboard', 'pages', 'invoice']) expect(css).toContain(`.jfu-aura--${v}`);
         expect(css).toContain('radial-gradient(');
         expect(css).not.toMatch(/(^|[^-])filter\s*:/m);
         expect(css).not.toMatch(/backdrop-filter|will-change/);
+    });
+
+    it('aura tidak ikut tercetak (invoice dicetak/di-PDF-kan)', () => {
+        expect(read('components/AmbientBackdrop.css')).toMatch(/@media print\s*\{\s*\.jfu-aura\s*\{\s*display:\s*none/);
     });
 });
